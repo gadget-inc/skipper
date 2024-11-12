@@ -1,0 +1,30 @@
+version: 3
+
+tasks:
+  build:
+    sources:
+      - cmd/**/*.go
+      - internal/**/*.go
+      - pkg/**/*.go
+      - go.mod
+      - go.sum
+      - main.go
+    generates:
+      - dist/*
+    cmds:
+      - goreleaser build --clean --snapshot
+
+  build-docker:
+    deps:
+      - build
+    sources:
+      - dist/**
+      - docker/**
+    cmds:
+      - deno run -A scripts/build-docker.ts
+
+  deploy:
+    deps:
+      - build-docker
+    cmds:
+      - deno run -A scripts/deploy.ts

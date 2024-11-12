@@ -17,8 +17,10 @@
           direnv = pkgs.direnv;
           git = pkgs.git;
           go = pkgs.go;
+          goreleaser = pkgs.goreleaser;
           nix-direnv = pkgs.nix-direnv;
           nixpkgs-fmt = pkgs.nixpkgs-fmt;
+          task = pkgs.go-task;
         };
 
         devShell = pkgs.mkShell {

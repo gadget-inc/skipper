@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/destination"
+	"github.com/pkg/errors"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -32,8 +34,10 @@ type Client struct {
 type Pod = apiv1.Pod
 
 func NewClient(ctx context.Context) (*Client, error) {
-	config, err := clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
-	// config, err := rest.InClusterConfig()
+	config, err := rest.InClusterConfig()
+	if errors.Is(err, rest.ErrNotInCluster) {
+		config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +104,7 @@ func (k *Client) ListPods(ctx context.Context, namespace string, selector labels
 }
 
 func (k *Client) AssignPod(ctx context.Context, pod *Pod, dest destination.Destination) error {
-	patchBody := `[{"op":"add","path":"/metadata/labels/fusion/environment-id","value":"` + dest.EnvironmentID + `"},{"op":"add","path":"/metadata/labels/fusion/status","value":"pending"}]`
+	patchBody := `[{"op":"add","path":"/metadata/labels/fusion/environment-id","value":"` + dest.EnvironmentID + `"},{"op":"replace","path":"/metadata/labels/fusion/status","value":"pending"}]`
 	_, err := k.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, []byte(patchBody), metav1.PatchOptions{FieldManager: "fusion/router"})
 	if err != nil {
 		return fmt.Errorf("failed to assign pod: %w", err)
