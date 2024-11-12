@@ -1,9 +1,6 @@
-import { $, cd } from "npm:zx";
-import { workDir } from "./_utils.ts";
+import { which } from "npm:zx";
+import { deployKraneNamespace } from "./_utils.ts";
 
-const CONTEXT = "orbstack";
-
-cd(workDir);
-
-// await $`kubectl --context=${CONTEXT} --namespace=fusion-development apply -f k8s/fusion.yaml`;
-await $`kubectl --context=${CONTEXT} --namespace=example apply -f k8s/example.yaml`;
+await which("krane");
+await deployKraneNamespace("example-development");
+// await deployKraneNamespace("fusion-development");

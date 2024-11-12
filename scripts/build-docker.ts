@@ -13,4 +13,4 @@ cd(absolute("docker/fusion"));
 await $`docker buildx build --tag=fusion:latest --platform=linux/arm64 .`;
 
 cd(absolute("docker/example-deno"));
-await $`docker buildx build --tag=fusion-example:latest --platform=linux/arm64 .`;
+await $`docker buildx build --tag=fusion-example-deno:latest --platform=linux/arm64 .`;

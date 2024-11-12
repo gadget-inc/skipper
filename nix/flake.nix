@@ -18,6 +18,7 @@
           git = pkgs.git;
           go = pkgs.go;
           goreleaser = pkgs.goreleaser;
+          krane = pkgs.krane;
           nix-direnv = pkgs.nix-direnv;
           nixpkgs-fmt = pkgs.nixpkgs-fmt;
           task = pkgs.go-task;
