@@ -37,12 +37,12 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	w.Write([]byte(pod.Status.PodIP))
+	pod.ServeHTTP(w, req)
 }
 
 func (r *Router) getPod(ctx context.Context, dest destination.Destination) (*kubernetes.Pod, error) {
 	return timer.Poll(ctx, 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*kubernetes.Pod, error) {
-		assignedPods, err := r.k8s.ListPods(ctx, dest.DeploymentNamespace, dest.AssignedPodsSelector())
+		assignedPods, err := r.k8s.ListAssignedPods(ctx, dest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list assigned pods: %w", err)
 		}
@@ -57,7 +57,7 @@ func (r *Router) getPod(ctx context.Context, dest destination.Destination) (*kub
 		}
 		defer r.assignmentLock.Delete(dest.String())
 
-		availablePods, err := r.k8s.ListPods(ctx, dest.DeploymentNamespace, dest.AvailablePodsSelector())
+		availablePods, err := r.k8s.ListAvailablePods(ctx, dest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list available pods: %w", err)
 		}

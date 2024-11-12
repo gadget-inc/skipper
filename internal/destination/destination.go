@@ -3,67 +3,58 @@ package destination
 import (
 	"errors"
 	"net/http"
+)
 
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
+const (
+	HeaderTenant     = "x-fusion-tenant"
+	HeaderNamespace  = "x-fusion-namespace"
+	HeaderDeployment = "x-fusion-deployment"
+	HeaderAssignment = "x-fusion-assignment"
+)
+
+var (
+	ErrMissingTenantHeader     = errors.New("missing required header: " + HeaderTenant)
+	ErrMissingNamespaceHeader  = errors.New("missing required header: " + HeaderNamespace)
+	ErrMissingDeploymentHeader = errors.New("missing required header: " + HeaderDeployment)
+	ErrMissingAssignmentHeader = errors.New("missing required header: " + HeaderAssignment)
 )
 
 type Destination struct {
-	EnvironmentID       string
-	DeploymentNamespace string
-	DeploymentName      string
-	AssignmentSecrets   string
+	Tenant     string
+	Namespace  string
+	Deployment string
+	Assignment string
 }
 
 func New(req *http.Request) (Destination, error) {
-	envID := req.Header.Get("X-Fusion-Environment-Id")
-	deploymentName := req.Header.Get("X-Fusion-Deployment-Name")
-	deploymentNamespace := req.Header.Get("X-Fusion-Deployment-Namespace")
-	assignmentPayload := req.Header.Get("X-Fusion-Assignment-Blob")
+	tenant := req.Header.Get(HeaderTenant)
+	if tenant == "" {
+		return Destination{}, ErrMissingTenantHeader
+	}
 
-	if envID == "" {
-		return Destination{}, errors.New("missing required header: X-Fusion-Environment-Id")
+	namespace := req.Header.Get(HeaderNamespace)
+	if namespace == "" {
+		return Destination{}, ErrMissingNamespaceHeader
 	}
-	if deploymentName == "" {
-		return Destination{}, errors.New("missing required header: X-Fusion-Deployment-Name")
+
+	deployment := req.Header.Get(HeaderDeployment)
+	if deployment == "" {
+		return Destination{}, ErrMissingDeploymentHeader
 	}
-	if deploymentNamespace == "" {
-		return Destination{}, errors.New("missing required header: X-Fusion-Deployment-Namespace")
-	}
-	if assignmentPayload == "" {
-		return Destination{}, errors.New("missing required header: X-Fusion-Assignment-Payload")
+
+	assignment := req.Header.Get(HeaderAssignment)
+	if assignment == "" {
+		return Destination{}, ErrMissingAssignmentHeader
 	}
 
 	return Destination{
-		EnvironmentID:       envID,
-		DeploymentName:      deploymentName,
-		DeploymentNamespace: deploymentNamespace,
-		AssignmentSecrets:   assignmentPayload,
+		Tenant:     tenant,
+		Namespace:  namespace,
+		Deployment: deployment,
+		Assignment: assignment,
 	}, nil
 }
 
 func (d *Destination) String() string {
-	return d.DeploymentNamespace + "/" + d.DeploymentName + "/" + d.EnvironmentID
-}
-
-func (d *Destination) AssignedPodsSelector() labels.Selector {
-	return labels.SelectorFromSet(labels.Set{
-		"fusion/environment-id":  d.EnvironmentID,
-		"fusion/deployment-name": d.DeploymentName,
-		"fusion/status":          "ready",
-	})
-}
-
-func (d *Destination) AvailablePodsSelector() labels.Selector {
-	noEnvironmentID, err := labels.NewRequirement("fusion/environment-id", selection.DoesNotExist, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	equalDeploymentName, err := labels.NewRequirement("fusion/deployment-name", selection.Equals, []string{d.DeploymentName})
-	if err != nil {
-		panic(err)
-	}
-
-	return labels.NewSelector().Add(*noEnvironmentID, *equalDeploymentName)
+	return d.Namespace + "/" + d.Deployment + "/" + d.Tenant
 }

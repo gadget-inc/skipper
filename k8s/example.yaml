@@ -37,14 +37,17 @@ spec:
   replicas: 1
   selector:
     matchLabels:
+      app.kubernetes.io/managed-by: fusion
       name: example
       fusion/status: unassigned
+      fusion/deployment: example
   template:
     metadata:
       labels:
+        app.kubernetes.io/managed-by: fusion
         name: example
         fusion/status: unassigned
-        app.kubernetes.io/managed-by: fusion
+        fusion/deployment: example
     spec:
       containers:
         - name: example

@@ -11,9 +11,9 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/destination"
 	"github.com/pkg/errors"
-	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -24,14 +24,21 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
+const (
+	labelTenant     = "fusion/tenant"
+	labelDeployment = "fusion/deployment"
+	labelStatus     = "fusion/status"
+
+	patchLabelTenant = "fusion~1tenant"
+	patchLabelStatus = "fusion~1status"
+)
+
 type Client struct {
 	clientset *kubernetes.Clientset
 	ctx       context.Context
 	cancel    context.CancelFunc
 	listers   sync.Map
 }
-
-type Pod = apiv1.Pod
 
 func NewClient(ctx context.Context) (*Client, error) {
 	config, err := rest.InClusterConfig()
@@ -92,20 +99,43 @@ func (k *Client) StartPodListeners(namespaces []string) {
 	}
 }
 
-func (k *Client) ListPods(ctx context.Context, namespace string, selector labels.Selector) ([]*apiv1.Pod, error) {
-	listerAny, found := k.listers.Load(namespace)
-	if !found {
-		k.StartPodListeners([]string{namespace})
-		listerAny, _ = k.listers.Load(namespace)
+func (k *Client) ListAssignedPods(ctx context.Context, dest destination.Destination) ([]*Pod, error) {
+	return k.listPods(dest.Namespace, labels.SelectorFromSet(labels.Set{
+		labelTenant:     dest.Tenant,
+		labelDeployment: dest.Deployment,
+		labelStatus:     "ready",
+	}))
+}
+
+func (k *Client) ListAvailablePods(ctx context.Context, dest destination.Destination) ([]*Pod, error) {
+	noTenant, err := labels.NewRequirement(labelTenant, selection.DoesNotExist, nil)
+	if err != nil {
+		return nil, err
 	}
 
-	lister := listerAny.(listerv1.PodLister)
-	return lister.List(selector)
+	equalDeploymentName, err := labels.NewRequirement(labelDeployment, selection.Equals, []string{dest.Deployment})
+	if err != nil {
+		return nil, err
+	}
+
+	pods, err := k.listPods(dest.Namespace, labels.NewSelector().Add(*noTenant, *equalDeploymentName))
+	if err != nil {
+		return nil, err
+	}
+
+	var availablePods []*Pod
+	for _, pod := range pods {
+		if pod.Status.PodIP != "" {
+			availablePods = append(availablePods, pod)
+		}
+	}
+
+	return availablePods, nil
 }
 
 func (k *Client) AssignPod(ctx context.Context, pod *Pod, dest destination.Destination) error {
-	patchBody := `[{"op":"add","path":"/metadata/labels/fusion/environment-id","value":"` + dest.EnvironmentID + `"},{"op":"replace","path":"/metadata/labels/fusion/status","value":"pending"}]`
-	_, err := k.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, []byte(patchBody), metav1.PatchOptions{FieldManager: "fusion/router"})
+	patchBody := fmt.Sprintf(`[{"op":"add","path":"/metadata/labels/%s","value":"%s"},{"op":"replace","path":"/metadata/labels/%s","value":"pending"}]`, patchLabelTenant, dest.Tenant, patchLabelStatus)
+	_, err := k.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, []byte(patchBody), metav1.PatchOptions{FieldManager: "fusion/serve"})
 	if err != nil {
 		return fmt.Errorf("failed to assign pod: %w", err)
 	}
@@ -113,15 +143,15 @@ func (k *Client) AssignPod(ctx context.Context, pod *Pod, dest destination.Desti
 	assignCtx, cancel := context.WithDeadline(ctx, time.Now().Add(5*time.Second))
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, "http://"+pod.Status.PodIP+":8080/assign", nil)
+	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, "http://"+pod.Status.PodIP+":8080/__fusion/assign", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create assign request: %w", err)
 	}
 
-	req.Header.Set("X-Fusion-Environment-Id", dest.EnvironmentID)
-	req.Header.Set("X-Fusion-Deployment-Name", dest.DeploymentName)
-	req.Header.Set("X-Fusion-Deployment-Namespace", dest.DeploymentNamespace)
-	req.Header.Set("X-Fusion-Assignment-Secrets", dest.AssignmentSecrets)
+	req.Header.Set(destination.HeaderTenant, dest.Tenant)
+	req.Header.Set(destination.HeaderNamespace, dest.Namespace)
+	req.Header.Set(destination.HeaderDeployment, dest.Deployment)
+	req.Header.Set(destination.HeaderAssignment, dest.Assignment)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -132,11 +162,31 @@ func (k *Client) AssignPod(ctx context.Context, pod *Pod, dest destination.Desti
 		return fmt.Errorf("assign request returned status %d", resp.StatusCode)
 	}
 
-	patchBody = `[{"op":"replace","path":"/metadata/labels/fusion/status","value":"ready"}]`
-	_, err = k.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, []byte(patchBody), metav1.PatchOptions{FieldManager: "fusion/router"})
+	patchBody = fmt.Sprintf(`[{"op":"replace","path":"/metadata/labels/%s","value":"ready"}]`, patchLabelStatus)
+	_, err = k.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, []byte(patchBody), metav1.PatchOptions{FieldManager: "fusion/serve"})
 	if err != nil {
 		return fmt.Errorf("failed to patch status: %w", err)
 	}
 
 	return nil
+}
+
+func (k *Client) listPods(namespace string, selector labels.Selector) ([]*Pod, error) {
+	listerAny, found := k.listers.Load(namespace)
+	if !found {
+		k.StartPodListeners([]string{namespace})
+		listerAny, _ = k.listers.Load(namespace)
+	}
+
+	lister := listerAny.(listerv1.PodLister)
+	k8sPods, err := lister.List(selector)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	pods := make([]*Pod, len(k8sPods))
+	for i, k8sPod := range k8sPods {
+		pods[i] = NewPod(k8sPod)
+	}
+	return pods, nil
 }

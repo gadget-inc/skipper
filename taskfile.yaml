@@ -2,24 +2,26 @@ version: 3
 
 tasks:
   build:
+    label: "build {{.CLI_ARGS}}"
     sources:
       - cmd/**/*.go
       - internal/**/*.go
       - pkg/**/*.go
+      - .goreleaser.yaml
       - go.mod
       - go.sum
       - main.go
     generates:
       - dist/*
     cmds:
-      - goreleaser build --clean --snapshot
+      - goreleaser build --clean --snapshot {{.CLI_ARGS}}
 
   build-docker:
     deps:
       - build
     sources:
-      - dist/**
-      - docker/**
+      - dist/**/*
+      - docker/**/*
     cmds:
       - deno run -A scripts/build-docker.ts
 
@@ -28,3 +30,14 @@ tasks:
       - build-docker
     cmds:
       - deno run -A scripts/deploy.ts
+
+  serve:
+    cmds:
+      - task: build
+        vars:
+          CLI_ARGS: --single-target
+      - ./dist/fusion_darwin_arm64_v8.0/fusion serve --namespace=example --log-format=text --log-level=debug
+
+  example:
+    cmds:
+      - deno run -A scripts/send-example-request.ts

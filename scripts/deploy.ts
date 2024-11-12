@@ -5,5 +5,5 @@ const CONTEXT = "orbstack";
 
 cd(workDir);
 
-await $`kubectl --context=${CONTEXT} --namespace=fusion-development apply -f k8s/fusion.yaml`;
+// await $`kubectl --context=${CONTEXT} --namespace=fusion-development apply -f k8s/fusion.yaml`;
 await $`kubectl --context=${CONTEXT} --namespace=example apply -f k8s/example.yaml`;

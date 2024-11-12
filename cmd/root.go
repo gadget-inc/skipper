@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"k8s.io/klog/v2"
 )
 
 func NewCmdRoot() *cobra.Command {
@@ -30,11 +31,13 @@ func NewCmdRoot() *cobra.Command {
 				slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
 			}
 
+			klog.SetSlogLogger(slog.Default())
+
 			return nil
 		},
 	}
 
-	cmd.AddCommand(NewCmdRouter())
+	cmd.AddCommand(NewCmdServe())
 
 	cmd.PersistentFlags().StringVar(&logLevelStr, "log-level", "info", "log level")
 	cmd.PersistentFlags().StringVar(&logFormatStr, "log-format", "json", "log format")
