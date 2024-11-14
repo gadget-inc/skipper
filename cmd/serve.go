@@ -2,17 +2,23 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/kubernetes"
+	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/router"
 	"github.com/spf13/cobra"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 )
 
 func NewCmdServe() *cobra.Command {
@@ -26,16 +32,31 @@ func NewCmdServe() *cobra.Command {
 		Use:   "serve",
 		Short: "Serve HTTP requests",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			client, err := kubernetes.NewClient(ctx)
+			config, err := rest.InClusterConfig()
+			if errors.Is(err, rest.ErrNotInCluster) {
+				config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
+			}
+			if err != nil {
+				return fmt.Errorf("failed to load kubernetes config: %w", err)
+			}
+
+			config.QPS = 100
+			config.Burst = 200
+
+			clientset, err := kubernetes.NewForConfig(config)
 			if err != nil {
 				return fmt.Errorf("failed to create kubernetes client: %w", err)
 			}
-			defer client.Close()
 
-			client.StartPodListeners(fusionNamespace, namespaces)
+			ctx, cancel := context.WithCancel(cmd.Context())
+			defer cancel()
 
-			rtr := router.New(fusionIP, client)
+			podManager := pod.NewManager(clientset)
+			podManager.Start(ctx, namespaces)
+
+			rtr := router.New(fusionIP, clientset, podManager)
+			rtr.Start(ctx, fusionNamespace)
+
 			srv := &http.Server{
 				Addr:    ":8080",
 				Handler: rtr,

@@ -2,6 +2,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: example-deno
+  labels:
+    app.kubernetes.io/managed-by: fusion
+    fusion/deployment: example-deno
+    fusion/status: unassigned
+  annotations:
+    shipit.shopify.io/restart: "true"
 spec:
   replicas: 1
   selector:

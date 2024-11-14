@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -12,48 +11,57 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/destination"
-	"github.com/gadget-inc/fusion/internal/kubernetes"
+	"github.com/gadget-inc/fusion/internal/hashring"
+	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 )
 
 type Router struct {
+	ip             string
+	ring           *hashring.HashRing
+	clientset      *kubernetes.Clientset
+	podManager     *pod.Manager
 	assignmentLock sync.Map
 	routerProxies  sync.Map
-	k8s            *kubernetes.Client
-	ip             string
 }
 
-func New(ip string, k8s *kubernetes.Client) *Router {
-	return &Router{k8s: k8s, ip: ip}
+func New(ip string, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
+	return &Router{ip: ip, ring: hashring.New(), clientset: clientset, podManager: podManager}
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	destination, err := destination.New(req)
+	dest, err := destination.New(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	node, ok := r.k8s.Ring.GetNode(destination.String())
+	routerIP, ok := r.ring.Get(dest.String())
 	if !ok {
-		slog.WarnContext(req.Context(), "no router for destination", slog.String("destination", destination.String()), slog.String("ip", r.ip))
+		slog.WarnContext(req.Context(), "no router for destination", slog.String("destination", dest.String()), slog.String("ip", r.ip))
 		http.Error(w, "no router for destination", http.StatusServiceUnavailable)
 		return
 	}
 
-	if node.IP != r.ip {
-		slog.InfoContext(req.Context(), "forwarding request to assigned router", slog.String("destination", destination.String()), slog.String("ip", node.IP))
-		proxyAny, ok := r.routerProxies.Load(node)
+	if routerIP != r.ip {
+		slog.InfoContext(req.Context(), "forwarding request to assigned router", slog.String("destination", dest.String()), slog.String("ip", routerIP))
+		proxyAny, ok := r.routerProxies.Load(routerIP)
 		if !ok {
-			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: node.IP + ":8080"})
-			r.routerProxies.Store(node, proxyAny)
+			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: routerIP + ":8080"})
+			r.routerProxies.Store(routerIP, proxyAny)
 		}
 		proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
 		return
 	}
 
 	ctx := req.Context()
-	pod, err := r.getPod(ctx, destination)
+	pod, err := r.podManager.GetOrAssignFor(ctx, dest)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -62,41 +70,67 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	pod.ServeHTTP(w, req)
 }
 
-func (r *Router) getPod(ctx context.Context, dest destination.Destination) (*kubernetes.Pod, error) {
-	return timer.Poll(ctx, 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*kubernetes.Pod, error) {
-		assignedPods, err := r.k8s.ListAssignedPods(ctx, dest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list assigned pods: %w", err)
-		}
-		if len(assignedPods) > 0 {
-			return assignedPods[rand.Intn(len(assignedPods))], nil
-		}
+func (r *Router) Start(ctx context.Context, fusionNamespace string) error {
+	slog.InfoContext(ctx, "starting router informer", slog.String("namespace", fusionNamespace))
 
-		_, assignmentInProgress := r.assignmentLock.LoadOrStore(dest.String(), struct{}{})
-		if assignmentInProgress {
-			// another goroutine is already trying to assign a pod for this destination
-			return nil, nil
-		}
-		defer r.assignmentLock.Delete(dest.String())
+	informerFactory := informers.NewSharedInformerFactoryWithOptions(
+		r.clientset,
+		5*time.Minute,
+		informers.WithNamespace(fusionNamespace),
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.LabelSelector = labels.SelectorFromSet(labels.Set{
+				"app.kubernetes.io/name":      "fusion",
+				"app.kubernetes.io/component": "router",
+			}).String()
+		}),
+	)
 
-		availablePods, err := r.k8s.ListAvailablePods(ctx, dest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list available pods: %w", err)
-		}
-		if len(availablePods) == 0 {
-			slog.WarnContext(ctx, "no available pods", slog.Any("destination", dest))
-			return nil, nil
-		}
+	podInformer := informerFactory.Core().V1().Pods().Informer()
 
-		for _, pod := range availablePods {
-			err := r.k8s.AssignPod(ctx, pod, dest)
-			if err != nil {
-				slog.ErrorContext(ctx, "failed to assign pod", slog.Any("error", err), slog.Any("destination", dest))
-				continue
+	_, err := podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			pod := obj.(*v1.Pod)
+			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
+				r.ring.Add(pod.Status.PodIP)
+				slog.DebugContext(ctx, "added router", slog.String("name", pod.Name), slog.String("ip", pod.Status.PodIP))
 			}
-			return pod, nil
-		}
-
-		return nil, nil
+		},
+		UpdateFunc: func(_, newObj any) {
+			pod := newObj.(*v1.Pod)
+			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
+				r.ring.Add(pod.Status.PodIP)
+				slog.DebugContext(ctx, "updated router", slog.String("name", pod.Name), slog.String("ip", pod.Status.PodIP))
+			} else {
+				r.ring.Remove(pod.Status.PodIP)
+				slog.DebugContext(ctx, "removed updated router", slog.String("name", pod.Name), slog.String("ip", pod.Status.PodIP), slog.String("phase", string(pod.Status.Phase)))
+			}
+		},
+		DeleteFunc: func(obj any) {
+			pod := obj.(*v1.Pod)
+			r.ring.Remove(pod.Status.PodIP)
+			slog.DebugContext(ctx, "removed deleted router", slog.String("name", pod.Name), slog.String("ip", pod.Status.PodIP))
+		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add event handler: %w", err)
+	}
+
+	informerFactory.Start(ctx.Done())
+
+	syncResults := informerFactory.WaitForCacheSync(ctx.Done())
+	for informer, synced := range syncResults {
+		if !synced {
+			return fmt.Errorf("failed to sync router informer cache: %v", informer)
+		}
+	}
+
+	go func() {
+		timer.Loop(ctx, 1*time.Second, func(ctx context.Context) error {
+			nodes := r.ring.List()
+			slog.InfoContext(ctx, "routers", slog.Any("ips", nodes))
+			return nil
+		})
+	}()
+
+	return nil
 }

@@ -39,6 +39,6 @@ tasks:
           CLI_ARGS: --single-target
       - ./dist/fusion_darwin_arm64_v8.0/fusion serve --namespace=example-development --log-format=text --log-level=debug --fusion-namespace=fusion-development --fusion-ip=127.0.0.1
 
-  example:
+  example-deno-request:
     cmds:
-      - deno run -A scripts/send-example-request.ts
+      - deno run -A scripts/example-deno-request.ts

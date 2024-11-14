@@ -1,26 +1,22 @@
-import { $, cd, fs, path } from "npm:zx";
+import { $, fs, path } from "npm:zx";
 
 export const workDir = new URL("..", import.meta.url).pathname;
 
-export const absolute = (...segments: string[]) =>
-    path.join(workDir, ...segments);
+export const abs = (...segments: string[]) => path.join(workDir, ...segments);
 
 export const renderKraneNamespace = async (
     namespace: string,
     bindings: Record<string, unknown> = {},
 ) => {
-    cd(workDir);
+    const deployDir = abs(`deploy/${namespace}`);
+    const renderDir = abs(`tmp/krane/${namespace}`);
+    await fs.emptyDir(renderDir);
 
-    await fs.mkdirp("tmp/krane");
-    const renderDir = await fs.mkdtemp(`tmp/krane/${namespace}-`);
-
-    const secretsPath = `deploy/${namespace}/secrets.ejson`;
-    if (await fs.pathExists(secretsPath)) {
-        await fs.copy(secretsPath, `${renderDir}/secrets.ejson`);
+    if (await fs.pathExists(`${deployDir}/secrets.ejson`)) {
+        await fs.copy(`${deployDir}/secrets.ejson`, `${renderDir}/secrets.ejson`);
     }
 
-    const bindingsJson = JSON.stringify(bindings);
-    await $`krane render -f deploy/${namespace} --bindings=${bindingsJson} > ${renderDir}/krane.yaml`;
+    await $`krane render --filenames=${deployDir} --bindings=${JSON.stringify(bindings)} > ${renderDir}/rendered.yaml`;
 
     return renderDir;
 };
@@ -32,4 +28,5 @@ export const deployKraneNamespace = async (
     const renderDir = await renderKraneNamespace(namespace, bindings);
     await $`kubectl --context=orbstack create namespace ${namespace} || true`;
     await $`krane deploy ${namespace} orbstack -f ${renderDir}/*`;
+    await $`krane restart ${namespace} orbstack`;
 };
