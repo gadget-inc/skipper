@@ -4,6 +4,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 
+	"github.com/gadget-inc/fusion/internal/buffer"
 	v1 "k8s.io/api/core/v1"
 )
 
@@ -25,6 +26,7 @@ func New(pod *v1.Pod) *Pod {
 	return &Pod{
 		Pod: pod,
 		ReverseProxy: &httputil.ReverseProxy{
+			BufferPool: buffer.Pool,
 			Rewrite: func(req *httputil.ProxyRequest) {
 				req.SetURL(&url.URL{
 					Scheme: "http",

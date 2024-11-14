@@ -37,7 +37,7 @@ func NewCmdRoot() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(NewCmdServe())
+	cmd.AddCommand(NewCmdRouter())
 
 	cmd.PersistentFlags().StringVar(&logLevelStr, "log-level", "info", "log level")
 	cmd.PersistentFlags().StringVar(&logFormatStr, "log-format", "json", "log format")

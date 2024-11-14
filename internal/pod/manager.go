@@ -11,6 +11,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/destination"
 	"github.com/gadget-inc/fusion/internal/timer"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -62,7 +63,46 @@ func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
 	return nil
 }
 
-func (pm *Manager) GetAssigned(dest destination.Destination) ([]*Pod, error) {
+func (pm *Manager) GetOrAssignFor(ctx context.Context, dest destination.Destination) (*Pod, error) {
+	return timer.Poll(ctx, 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*Pod, error) {
+		assignedPods, err := pm.listAssigned(dest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list assigned pods: %w", err)
+		}
+		if len(assignedPods) > 0 {
+			return New(assignedPods[rand.Intn(len(assignedPods))]), nil
+		}
+
+		_, assignmentInProgress := pm.assignmentLock.LoadOrStore(dest.String(), struct{}{})
+		if assignmentInProgress {
+			// another goroutine is already assigning a pod for this destination
+			return nil, nil
+		}
+		defer pm.assignmentLock.Delete(dest.String())
+
+		availablePods, err := pm.listAvailable(dest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list available pods: %w", err)
+		}
+		if len(availablePods) == 0 {
+			slog.WarnContext(ctx, "no available pods", slog.Any("destination", dest))
+			return nil, nil
+		}
+
+		for _, pod := range availablePods {
+			err := pm.assign(ctx, pod, dest)
+			if err != nil {
+				slog.ErrorContext(ctx, "failed to assign pod", slog.Any("error", err), slog.Any("destination", dest))
+				continue
+			}
+			return pod, nil
+		}
+
+		return nil, nil
+	})
+}
+
+func (pm *Manager) listAssigned(dest destination.Destination) ([]*v1.Pod, error) {
 	return pm.listPods(dest.Namespace, labels.SelectorFromSet(labels.Set{
 		labelTenant:     dest.Tenant,
 		labelDeployment: dest.Deployment,
@@ -70,7 +110,7 @@ func (pm *Manager) GetAssigned(dest destination.Destination) ([]*Pod, error) {
 	}))
 }
 
-func (pm *Manager) GetAvailable(dest destination.Destination) ([]*Pod, error) {
+func (pm *Manager) listAvailable(dest destination.Destination) ([]*Pod, error) {
 	noTenant, err := labels.NewRequirement(labelTenant, selection.DoesNotExist, nil)
 	if err != nil {
 		return nil, err
@@ -88,15 +128,15 @@ func (pm *Manager) GetAvailable(dest destination.Destination) ([]*Pod, error) {
 
 	var availablePods []*Pod
 	for _, pod := range pods {
-		if pod.Status.PodIP != "" {
-			availablePods = append(availablePods, pod)
+		if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
+			availablePods = append(availablePods, New(pod))
 		}
 	}
 
 	return availablePods, nil
 }
 
-func (pm *Manager) Assign(ctx context.Context, pod *Pod, dest destination.Destination) error {
+func (pm *Manager) assign(ctx context.Context, pod *Pod, dest destination.Destination) error {
 	patchBody := fmt.Sprintf(`[{"op":"add","path":"/metadata/labels/%s","value":"%s"},{"op":"replace","path":"/metadata/labels/%s","value":"pending"}]`, patchLabelTenant, dest.Tenant, patchLabelStatus)
 	_, err := pm.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, []byte(patchBody), metav1.PatchOptions{FieldManager: "fusion/serve"})
 	if err != nil {
@@ -134,7 +174,7 @@ func (pm *Manager) Assign(ctx context.Context, pod *Pod, dest destination.Destin
 	return nil
 }
 
-func (pm *Manager) listPods(namespace string, selector labels.Selector) ([]*Pod, error) {
+func (pm *Manager) listPods(namespace string, selector labels.Selector) ([]*v1.Pod, error) {
 	listerAny, found := pm.podListers.Load(namespace)
 	if !found {
 		return nil, fmt.Errorf("managed pod lister not started for namespace %s", namespace)
@@ -146,48 +186,5 @@ func (pm *Manager) listPods(namespace string, selector labels.Selector) ([]*Pod,
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	pods := make([]*Pod, len(k8sPods))
-	for i, k8sPod := range k8sPods {
-		pods[i] = New(k8sPod)
-	}
-	return pods, nil
-}
-
-func (pm *Manager) GetOrAssignFor(ctx context.Context, dest destination.Destination) (*Pod, error) {
-	return timer.Poll(ctx, 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*Pod, error) {
-		assignedPods, err := pm.GetAssigned(dest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list assigned pods: %w", err)
-		}
-		if len(assignedPods) > 0 {
-			return assignedPods[rand.Intn(len(assignedPods))], nil
-		}
-
-		_, assignmentInProgress := pm.assignmentLock.LoadOrStore(dest.String(), struct{}{})
-		if assignmentInProgress {
-			// another goroutine is already assigning a pod for this destination
-			return nil, nil
-		}
-		defer pm.assignmentLock.Delete(dest.String())
-
-		availablePods, err := pm.GetAvailable(dest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list available pods: %w", err)
-		}
-		if len(availablePods) == 0 {
-			slog.WarnContext(ctx, "no available pods", slog.Any("destination", dest))
-			return nil, nil
-		}
-
-		for _, pod := range availablePods {
-			err := pm.Assign(ctx, pod, dest)
-			if err != nil {
-				slog.ErrorContext(ctx, "failed to assign pod", slog.Any("error", err), slog.Any("destination", dest))
-				continue
-			}
-			return pod, nil
-		}
-
-		return nil, nil
-	})
+	return k8sPods, nil
 }

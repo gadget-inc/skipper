@@ -21,7 +21,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-func NewCmdServe() *cobra.Command {
+func NewCmdRouter() *cobra.Command {
 	var (
 		fusionNamespace string
 		fusionIP        string

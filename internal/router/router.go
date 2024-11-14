@@ -23,12 +23,11 @@ import (
 )
 
 type Router struct {
-	ip             string
-	ring           *hashring.HashRing
-	clientset      *kubernetes.Clientset
-	podManager     *pod.Manager
-	assignmentLock sync.Map
-	routerProxies  sync.Map
+	ip            string
+	ring          *hashring.HashRing
+	clientset     *kubernetes.Clientset
+	podManager    *pod.Manager
+	routerProxies sync.Map
 }
 
 func New(ip string, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
@@ -125,7 +124,7 @@ func (r *Router) Start(ctx context.Context, fusionNamespace string) error {
 	}
 
 	go func() {
-		timer.Loop(ctx, 1*time.Second, func(ctx context.Context) error {
+		timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
 			nodes := r.ring.List()
 			slog.InfoContext(ctx, "routers", slog.Any("ips", nodes))
 			return nil
