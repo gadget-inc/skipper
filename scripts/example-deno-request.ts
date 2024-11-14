@@ -1,7 +1,7 @@
 import { sleep } from "npm:zx";
 
 // const url = "http://localhost:8080";
-const url = "http://fusion.fusion-development.svc.cluster.local:8080";
+const url = "http://fusion-router.fusion-development.svc.cluster.local:8080";
 
 let i = 0;
 
@@ -22,8 +22,14 @@ async function sendRequest() {
         }),
     });
 
-    console.log("request", ++i, "status", response.status);
+    if (response.ok) {
+        console.log("request", ++i, "status", response.status);
+    } else {
+        console.error("request", ++i, "status", response.status, "error", await response.text());
+    }
 }
+
+// await sendRequest();
 
 const responses = [];
 while (true) {

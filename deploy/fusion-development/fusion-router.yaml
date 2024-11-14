@@ -1,0 +1,91 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fusion-router
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fusion-router
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fusion-router
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fusion-router
+subjects:
+  - kind: ServiceAccount
+    name: fusion-router
+    namespace: fusion-development
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fusion-router
+  labels:
+    app.kubernetes.io/name: fusion
+    app.kubernetes.io/component: router
+  annotations:
+    shipit.shopify.io/restart: "true"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fusion
+      app.kubernetes.io/component: router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fusion
+        app.kubernetes.io/component: router
+    spec:
+      serviceAccountName: fusion-router
+      containers:
+        - name: router
+          image: fusion:latest
+          imagePullPolicy: Never
+          args:
+            - router
+            - "--controller-host=fusion-controller.fusion-development.svc"
+            - "--namespace=example-development"
+            - "--log-format=text"
+          ports:
+            - name: http-port
+              containerPort: 8080
+          env:
+            - name: FUSION_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: FUSION_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fusion-router
+spec:
+  selector:
+    app.kubernetes.io/name: fusion
+    app.kubernetes.io/component: router
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: http-port

@@ -14,7 +14,6 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/controller"
 	"github.com/gadget-inc/fusion/internal/pod"
-	"github.com/gadget-inc/fusion/internal/router"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -23,15 +22,16 @@ import (
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-func NewCmdRouter() *cobra.Command {
+func NewCmdController() *cobra.Command {
 	var (
-		namespaces     []string
-		controllerHost string
+		namespaces          []string
+		controllerNamespace string
+		controllerIP        string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "router",
-		Short: "Start the fusion router",
+		Use:   "controller",
+		Short: "Start the fusion controller",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := rest.InClusterConfig()
 			if errors.Is(err, rest.ErrNotInCluster) {
@@ -58,14 +58,20 @@ func NewCmdRouter() *cobra.Command {
 			defer cancel()
 
 			podManager := pod.NewManager(clientset, metricsClientset)
-			podManager.Start(ctx, namespaces)
+			err = podManager.Start(ctx, namespaces)
+			if err != nil {
+				return fmt.Errorf("failed to start pod manager: %w", err)
+			}
 
-			controllerClient := controller.NewClient(controllerHost)
+			ctrl := controller.New(controllerIP, clientset, podManager)
+			err = ctrl.Start(ctx, controllerNamespace)
+			if err != nil {
+				return fmt.Errorf("failed to start controller: %w", err)
+			}
 
-			rtr := router.New(controllerClient, clientset, podManager)
 			srv := &http.Server{
 				Addr:    ":8080",
-				Handler: rtr,
+				Handler: ctrl,
 			}
 
 			serverErrors := make(chan error, 1)
@@ -103,10 +109,10 @@ func NewCmdRouter() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVarP(&controllerNamespace, "controller-namespace", "f", os.Getenv("FUSION_CONTROLLER_NAMESPACE"), "namespace where this fusion controller is deployed")
+	cmd.Flags().StringVarP(&controllerIP, "controller-ip", "i", os.Getenv("FUSION_CONTROLLER_IP"), "ip address of this fusion controller")
 	cmd.Flags().StringArrayVarP(&namespaces, "namespace", "n", nil, "namespaces to watch for deployments")
-	cmd.Flags().StringVarP(&controllerHost, "controller-host", "", "", "host of the fusion controller")
 	cmd.MarkFlagRequired("namespace")
-	cmd.MarkFlagRequired("controller-host")
 
 	return cmd
 }
