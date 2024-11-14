@@ -13,17 +13,16 @@ const (
 
 func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
 	start := time.Now()
+	tick := time.Tick(interval)
 	for {
 		if time.Since(start) >= timeout {
 			return nil, fmt.Errorf("poll timed out after %v", timeout)
 		}
 
-		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return nil, ctx.Err()
-		case <-timer.C:
+		case <-tick:
 			result, err := fn(ctx)
 			if err != nil {
 				return nil, err
@@ -36,13 +35,13 @@ func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(c
 }
 
 func Loop(ctx context.Context, interval time.Duration, fn func(context.Context) error) error {
+	tick := time.Tick(interval + time.Duration(rand.Int63n(2*int64(JITTER))) - JITTER)
+
 	for {
-		timer := time.NewTimer(interval + time.Duration(rand.Int63n(2*int64(JITTER))) - JITTER)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return ctx.Err()
-		case <-timer.C:
+		case <-tick:
 			err := fn(ctx)
 			if err != nil {
 				return err

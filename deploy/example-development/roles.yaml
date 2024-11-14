@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: fusion-editor
+  name: example-development-fusion-editor
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -14,11 +14,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: fusion-editor
+  name: example-development-fusion-editor-role-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: fusion-editor
+  name: example-development-fusion-editor
 subjects:
   - kind: ServiceAccount
     name: fusion-editor
+    namespace: fusion-development

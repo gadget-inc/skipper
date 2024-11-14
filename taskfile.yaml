@@ -37,7 +37,7 @@ tasks:
       - task: build
         vars:
           CLI_ARGS: --single-target
-      - ./dist/fusion_darwin_arm64_v8.0/fusion serve --namespace=example-development --log-format=text --log-level=debug
+      - ./dist/fusion_darwin_arm64_v8.0/fusion serve --namespace=example-development --log-format=text --log-level=debug --fusion-namespace=fusion-development --fusion-ip=127.0.0.1
 
   example:
     cmds:

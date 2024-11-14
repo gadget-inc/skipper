@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"sync"
 	"time"
 
@@ -16,17 +18,37 @@ import (
 
 type Router struct {
 	assignmentLock sync.Map
+	routerProxies  sync.Map
 	k8s            *kubernetes.Client
+	ip             string
 }
 
-func New(k8s *kubernetes.Client) *Router {
-	return &Router{k8s: k8s}
+func New(ip string, k8s *kubernetes.Client) *Router {
+	return &Router{k8s: k8s, ip: ip}
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	destination, err := destination.New(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	node, ok := r.k8s.Ring.GetNode(destination.String())
+	if !ok {
+		slog.WarnContext(req.Context(), "no router for destination", slog.String("destination", destination.String()), slog.String("ip", r.ip))
+		http.Error(w, "no router for destination", http.StatusServiceUnavailable)
+		return
+	}
+
+	if node.IP != r.ip {
+		slog.InfoContext(req.Context(), "forwarding request to assigned router", slog.String("destination", destination.String()), slog.String("ip", node.IP))
+		proxyAny, ok := r.routerProxies.Load(node)
+		if !ok {
+			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: node.IP + ":8080"})
+			r.routerProxies.Store(node, proxyAny)
+		}
+		proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
 		return
 	}
 

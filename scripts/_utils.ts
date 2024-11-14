@@ -7,7 +7,7 @@ export const absolute = (...segments: string[]) =>
 
 export const renderKraneNamespace = async (
     namespace: string,
-    bindings: Record<string, unknown>,
+    bindings: Record<string, unknown> = {},
 ) => {
     cd(workDir);
 

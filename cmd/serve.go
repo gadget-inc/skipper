@@ -16,7 +16,11 @@ import (
 )
 
 func NewCmdServe() *cobra.Command {
-	var namespace string
+	var (
+		fusionNamespace string
+		fusionIP        string
+		namespaces      []string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -29,7 +33,9 @@ func NewCmdServe() *cobra.Command {
 			}
 			defer client.Close()
 
-			rtr := router.New(client)
+			client.StartPodListeners(fusionNamespace, namespaces)
+
+			rtr := router.New(fusionIP, client)
 			srv := &http.Server{
 				Addr:    ":8080",
 				Handler: rtr,
@@ -70,7 +76,11 @@ func NewCmdServe() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace to watch")
+	cmd.Flags().StringVarP(&fusionNamespace, "fusion-namespace", "f", os.Getenv("FUSION_NAMESPACE"), "namespace where this fusion router is deployed")
+	cmd.Flags().StringVarP(&fusionIP, "fusion-ip", "i", os.Getenv("FUSION_IP"), "ip address of this fusion router")
+	cmd.Flags().StringArrayVarP(&namespaces, "namespace", "n", nil, "namespaces to watch for deployments")
+	// cmd.MarkFlagRequired("fusion-namespace")
+	// cmd.MarkFlagRequired("fusion-ip")
 	cmd.MarkFlagRequired("namespace")
 
 	return cmd

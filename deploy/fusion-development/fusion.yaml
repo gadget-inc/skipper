@@ -5,15 +5,20 @@ metadata:
   name: fusion
   labels:
     app.kubernetes.io/name: fusion
+    app.kubernetes.io/component: router
+  annotations:
+    shipit.shopify.io/restart: "true"
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: fusion
+      app.kubernetes.io/component: router
   template:
     metadata:
       labels:
         app.kubernetes.io/name: fusion
+        app.kubernetes.io/component: router
     spec:
       serviceAccountName: fusion-editor
       containers:
@@ -24,6 +29,15 @@ spec:
           ports:
             - name: http-port
               containerPort: 8080
+          env:
+            - name: FUSION_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: FUSION_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
           resources:
             limits:
               memory: "512Mi"
@@ -39,6 +53,7 @@ metadata:
 spec:
   selector:
     app.kubernetes.io/name: fusion
+    app.kubernetes.io/component: router
   ports:
     - protocol: TCP
       port: 8080
