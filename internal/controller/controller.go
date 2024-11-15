@@ -194,7 +194,16 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	defer c.assignmentLock.Delete(dest.String())
+
+	defer func() {
+		go func() {
+			if err == nil {
+				// delay releasing the lock to give informers time to update their caches with the new assignment
+				time.Sleep(10 * time.Second)
+			}
+			c.assignmentLock.Delete(dest.String())
+		}()
+	}()
 
 	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*pod.Pod, error) {
 		availablePods, err := c.podManager.GetAvailable(dest)

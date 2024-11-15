@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 )
 
 const (
@@ -53,6 +54,21 @@ func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
 
 		podInformer := informerFactory.Core().V1().Pods()
 		podLister := podInformer.Lister()
+
+		podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				pod := obj.(*v1.Pod)
+				slog.DebugContext(ctx, "pod added", slog.String("pod", pod.Name), slog.String("status", string(pod.Status.Phase)), slog.String("ip", pod.Status.PodIP))
+			},
+			UpdateFunc: func(_, newObj interface{}) {
+				pod := newObj.(*v1.Pod)
+				slog.DebugContext(ctx, "pod updated", slog.String("pod", pod.Name), slog.String("status", string(pod.Status.Phase)), slog.String("ip", pod.Status.PodIP))
+			},
+			DeleteFunc: func(obj interface{}) {
+				pod := obj.(*v1.Pod)
+				slog.DebugContext(ctx, "pod deleted", slog.String("pod", pod.Name))
+			},
+		})
 
 		_, loaded := pm.podListers.LoadOrStore(namespace, podLister)
 		if !loaded {

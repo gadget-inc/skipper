@@ -52,7 +52,11 @@ spec:
         - name: controller
           image: fusion:latest
           imagePullPolicy: Never
-          args: ["controller", "--namespace=example-development", "--log-format=text"]
+          args:
+            - controller
+            - "--namespace=example-development"
+            - "--log-level=debug"
+            - "--log-format=text"
           ports:
             - name: http-port
               containerPort: 8080
