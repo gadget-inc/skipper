@@ -13,6 +13,9 @@ async function sendRequest() {
             "x-fusion-namespace": "example-development",
             "x-fusion-deployment": "example-deno",
             "x-fusion-assignment": "secret123",
+            "x-fusion-replicas": "1",
+            "x-fusion-cpu-utilization": "70",
+            "x-fusion-memory-utilization": "70",
             "content-type": "application/json",
         },
         body: JSON.stringify({

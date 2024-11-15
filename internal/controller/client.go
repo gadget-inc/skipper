@@ -22,10 +22,7 @@ func (c *Client) Assign(ctx context.Context, dest destination.Destination) error
 		return fmt.Errorf("failed to create assign request: %w", err)
 	}
 
-	req.Header.Set(destination.HeaderTenant, dest.Tenant)
-	req.Header.Set(destination.HeaderNamespace, dest.Namespace)
-	req.Header.Set(destination.HeaderDeployment, dest.Deployment)
-	req.Header.Set(destination.HeaderAssignment, dest.Assignment)
+	dest.SetHeaders(req)
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

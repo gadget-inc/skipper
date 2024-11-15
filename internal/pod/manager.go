@@ -2,15 +2,16 @@ package pod
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/destination"
-	"github.com/gadget-inc/fusion/internal/timer"
+	"github.com/gadget-inc/fusion/internal/key"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -19,19 +20,22 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	listerv1 "k8s.io/client-go/listers/core/v1"
-	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
-	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
+)
+
+const (
+	StatusPending    = "pending"
+	StatusReady      = "ready"
+	StatusUnassigned = "unassigned"
 )
 
 type Manager struct {
-	clientset        kubernetes.Interface
-	metricsClientset metricsclientset.Interface
-	podListers       sync.Map
-	assignmentLock   sync.Map
+	clientset      kubernetes.Interface
+	podListers     sync.Map
+	assignmentLock sync.Map
 }
 
-func NewManager(clientset *kubernetes.Clientset, metricsClientset *metricsclientset.Clientset) *Manager {
-	return &Manager{clientset: clientset, metricsClientset: metricsClientset}
+func NewManager(clientset *kubernetes.Clientset) *Manager {
+	return &Manager{clientset: clientset}
 }
 
 func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
@@ -61,47 +65,6 @@ func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
 				return fmt.Errorf("failed to sync managed pod informer cache: %v", informer)
 			}
 		}
-
-		go func() {
-			timer.Loop(ctx, 15*time.Second, func(ctx context.Context) error {
-				podMetricList, err := pm.metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{
-					LabelSelector: "app.kubernetes.io/managed-by=fusion," + labelTenant,
-				})
-				if err != nil {
-					slog.WarnContext(ctx, "failed to list pod metrics", slog.Any("error", err))
-				}
-
-				podMetricsByTenant := make(map[string][]*v1beta1.PodMetrics)
-				for _, podMetric := range podMetricList.Items {
-					tenant := podMetric.Labels[labelTenant]
-					deployment := podMetric.Labels[labelDeployment]
-					key := deployment + "/" + tenant
-					podMetricsByTenant[key] = append(podMetricsByTenant[key], &podMetric)
-				}
-
-				for key, podMetrics := range podMetricsByTenant {
-					var totalCPUUsageMilli int64
-					var totalMemoryUsageBytes int64
-					for _, podMetric := range podMetrics {
-						for _, containerMetric := range podMetric.Containers {
-							totalCPUUsageMilli += containerMetric.Usage.Cpu().MilliValue()
-							totalMemoryUsageBytes += containerMetric.Usage.Memory().Value()
-						}
-					}
-
-					averageCPUUsageMilli := totalCPUUsageMilli / int64(len(podMetrics))
-					averageMemoryUsageBytes := totalMemoryUsageBytes / int64(len(podMetrics))
-
-					split := strings.Split(key, "/")
-					slog.InfoContext(ctx, "pod metrics",
-						slog.String("deployment", split[0]), slog.String("tenant", split[1]),
-						slog.Int64("total_cpu", totalCPUUsageMilli), slog.Int64("total_memory", totalMemoryUsageBytes),
-						slog.Int64("average_cpu", averageCPUUsageMilli), slog.Int64("average_memory", averageMemoryUsageBytes))
-				}
-
-				return nil
-			})
-		}()
 	}
 
 	return nil
@@ -109,19 +72,19 @@ func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
 
 func (pm *Manager) GetAssigned(dest destination.Destination) ([]*v1.Pod, error) {
 	return pm.listPods(dest.Namespace, labels.SelectorFromSet(labels.Set{
-		labelTenant:     dest.Tenant,
-		labelDeployment: dest.Deployment,
-		labelStatus:     "ready",
+		key.Tenant.Label:     dest.Tenant,
+		key.Deployment.Label: dest.Deployment,
+		key.Status.Label:     StatusReady,
 	}))
 }
 
 func (pm *Manager) GetAvailable(dest destination.Destination) ([]*Pod, error) {
-	noTenant, err := labels.NewRequirement(labelTenant, selection.DoesNotExist, nil)
+	noTenant, err := labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	equalDeploymentName, err := labels.NewRequirement(labelDeployment, selection.Equals, []string{dest.Deployment})
+	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{dest.Deployment})
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +105,25 @@ func (pm *Manager) GetAvailable(dest destination.Destination) ([]*Pod, error) {
 }
 
 func (pm *Manager) Assign(ctx context.Context, pod *Pod, dest destination.Destination) error {
-	patchBody := fmt.Sprintf(`[{"op":"add","path":"/metadata/labels/%s","value":"%s"},{"op":"replace","path":"/metadata/labels/%s","value":"pending"}]`, patchLabelTenant, dest.Tenant, patchLabelStatus)
-	_, err := pm.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, []byte(patchBody), metav1.PatchOptions{FieldManager: "fusion/serve"})
+	slog.InfoContext(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Destination.Field(dest))
+
+	assignPatches := []patchOperation{
+		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusPending},
+		{Op: "add", Path: key.Tenant.PatchLabel, Value: dest.Tenant},
+		{Op: "add", Path: key.Namespace.PatchLabel, Value: dest.Namespace},
+		{Op: "add", Path: key.Deployment.PatchLabel, Value: dest.Deployment},
+		{Op: "add", Path: key.Replicas.PatchLabel, Value: dest.ReplicasStr},
+		{Op: "add", Path: key.CpuUtilization.PatchLabel, Value: dest.CpuUtilizationStr},
+		{Op: "add", Path: key.MemoryUtilization.PatchLabel, Value: dest.MemoryUtilizationStr},
+		{Op: "add", Path: key.AssignedAt.PatchLabel, Value: strconv.FormatInt(time.Now().Unix(), 10)},
+	}
+
+	patchBody, err := json.Marshal(assignPatches)
+	if err != nil {
+		return fmt.Errorf("failed to marshal assign patch: %w", err)
+	}
+
+	_, err = pm.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		return fmt.Errorf("failed to assign pod: %w", err)
 	}
@@ -156,10 +136,10 @@ func (pm *Manager) Assign(ctx context.Context, pod *Pod, dest destination.Destin
 		return fmt.Errorf("failed to create assign request: %w", err)
 	}
 
-	req.Header.Set(destination.HeaderTenant, dest.Tenant)
-	req.Header.Set(destination.HeaderNamespace, dest.Namespace)
-	req.Header.Set(destination.HeaderDeployment, dest.Deployment)
-	req.Header.Set(destination.HeaderAssignment, dest.Assignment)
+	req.Header.Set(key.Tenant.Header, dest.Tenant)
+	req.Header.Set(key.Namespace.Header, dest.Namespace)
+	req.Header.Set(key.Deployment.Header, dest.Deployment)
+	req.Header.Set(key.Assignment.Header, dest.Assignment)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -170,8 +150,16 @@ func (pm *Manager) Assign(ctx context.Context, pod *Pod, dest destination.Destin
 		return fmt.Errorf("assign request returned status %d", resp.StatusCode)
 	}
 
-	patchBody = fmt.Sprintf(`[{"op":"replace","path":"/metadata/labels/%s","value":"ready"}]`, patchLabelStatus)
-	_, err = pm.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, []byte(patchBody), metav1.PatchOptions{FieldManager: "fusion/serve"})
+	setReadyPatches := []patchOperation{
+		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusReady},
+	}
+
+	patchBody, err = json.Marshal(setReadyPatches)
+	if err != nil {
+		return fmt.Errorf("failed to marshal set ready patch: %w", err)
+	}
+
+	_, err = pm.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		return fmt.Errorf("failed to patch status: %w", err)
 	}
@@ -192,4 +180,10 @@ func (pm *Manager) listPods(namespace string, selector labels.Selector) ([]*v1.P
 	}
 
 	return k8sPods, nil
+}
+
+type patchOperation struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value string `json:"value"`
 }

@@ -8,15 +8,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-const (
-	labelTenant     = "fusion/tenant"
-	labelDeployment = "fusion/deployment"
-	labelStatus     = "fusion/status"
-
-	patchLabelTenant = "fusion~1tenant"
-	patchLabelStatus = "fusion~1status"
-)
-
 type Pod struct {
 	*v1.Pod
 	*httputil.ReverseProxy

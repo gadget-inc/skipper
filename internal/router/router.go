@@ -33,12 +33,12 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	ctx := req.Context()
 	pod, err := timer.Poll(ctx, 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*pod.Pod, error) {
-		assignedPods, err := r.podManager.GetAssigned(dest)
+		pods, err := r.podManager.GetAssigned(dest)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list assigned pods: %w", err)
 		}
-		if len(assignedPods) > 0 {
-			return pod.New(assignedPods[rand.Intn(len(assignedPods))]), nil
+		if len(pods) > 0 {
+			return pod.New(pods[rand.Intn(len(pods))]), nil
 		}
 		return nil, r.controllerClient.Assign(ctx, dest)
 	})

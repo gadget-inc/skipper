@@ -57,13 +57,13 @@ func NewCmdController() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			podManager := pod.NewManager(clientset, metricsClientset)
+			podManager := pod.NewManager(clientset)
 			err = podManager.Start(ctx, namespaces)
 			if err != nil {
 				return fmt.Errorf("failed to start pod manager: %w", err)
 			}
 
-			ctrl := controller.New(controllerIP, clientset, podManager)
+			ctrl := controller.New(controllerIP, namespaces, clientset, metricsClientset, podManager)
 			err = ctrl.Start(ctx, controllerNamespace)
 			if err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)

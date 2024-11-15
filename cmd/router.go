@@ -20,7 +20,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 func NewCmdRouter() *cobra.Command {
@@ -41,23 +40,15 @@ func NewCmdRouter() *cobra.Command {
 				return fmt.Errorf("failed to load kubernetes config: %w", err)
 			}
 
-			config.QPS = 100
-			config.Burst = 200
-
 			clientset, err := kubernetes.NewForConfig(config)
 			if err != nil {
 				return fmt.Errorf("failed to create kubernetes client: %w", err)
 			}
 
-			metricsClientset, err := metricsclientset.NewForConfig(config)
-			if err != nil {
-				return fmt.Errorf("failed to create metrics client: %w", err)
-			}
-
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			podManager := pod.NewManager(clientset, metricsClientset)
+			podManager := pod.NewManager(clientset)
 			podManager.Start(ctx, namespaces)
 
 			controllerClient := controller.NewClient(controllerHost)
