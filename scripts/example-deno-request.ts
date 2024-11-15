@@ -36,10 +36,10 @@ async function sendRequest() {
 
 const responses = [];
 while (true) {
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 1000; i++) {
         responses.push(sendRequest());
+        await sleep(10);
     }
     await Promise.all(responses);
     responses.length = 0;
-    await sleep(50);
 }

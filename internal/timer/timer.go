@@ -12,6 +12,14 @@ const (
 )
 
 func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
+	result, err := fn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if result != nil {
+		return result, nil
+	}
+
 	start := time.Now()
 	tick := time.Tick(interval)
 	for {

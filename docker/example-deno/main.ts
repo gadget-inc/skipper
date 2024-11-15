@@ -2,18 +2,11 @@ import { pino } from "npm:pino";
 import pretty from "npm:pino-pretty";
 const log = pino(pretty());
 
-const shutdownController = new AbortController();
-
-Deno.addSignalListener("SIGTERM", () => {
-    log.info("shutting down");
-    shutdownController.abort();
-});
-
 let isAssigned = false;
 
 const assignPath = new URLPattern({ pathname: "/__fusion/assign" });
 
-Deno.serve({ port: 8080, signal: shutdownController.signal }, (request) => {
+const server = Deno.serve({ port: 8080 }, (request) => {
     log.info({
         method: request.method,
         url: request.url,
@@ -40,3 +33,13 @@ Deno.serve({ port: 8080, signal: shutdownController.signal }, (request) => {
         },
     });
 });
+
+Deno.addSignalListener("SIGTERM", async () => {
+    log.info("shutting down");
+    await server.shutdown();
+    log.info("shutdown");
+});
+
+await server.finished;
+
+log.info("done");
