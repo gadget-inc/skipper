@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -45,6 +45,75 @@ func New(ip string, namespaces []string, clientset kubernetes.Interface, metrics
 		clientset:        clientset,
 		metricsClientset: metricsClient,
 		podManager:       podManager,
+	}
+}
+
+func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	dest, err := destination.FromRequest(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	controllerIP, ok := c.ring.Get(dest.String())
+	if !ok {
+		slog.WarnContext(req.Context(), "no controller for destination", key.Destination.Field(dest), slog.String("ip", c.ip))
+		http.Error(w, "no controller for destination", http.StatusServiceUnavailable)
+		return
+	}
+
+	if controllerIP != c.ip {
+		slog.InfoContext(req.Context(), "forwarding request to assigned controller", key.Destination.Field(dest), slog.String("ip", controllerIP))
+		proxyAny, ok := c.controllerProxies.Load(controllerIP)
+		if !ok {
+			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
+			c.controllerProxies.Store(controllerIP, proxyAny)
+		}
+		proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
+		return
+	}
+
+	_, assignmentInProgress := c.assignmentLock.LoadOrStore(dest.String(), struct{}{})
+	if assignmentInProgress {
+		// another goroutine is already assigning a pod for this destination
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	defer func() {
+		go func() {
+			if err == nil {
+				// delay releasing the lock so that routers that
+				// continue to ask for an assigned pod have time to
+				// update their pod informer caches with the new
+				// assigned pod
+				time.Sleep(3 * time.Second)
+			}
+			c.assignmentLock.Delete(dest.String())
+		}()
+	}()
+
+	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*pod.Pod, error) {
+		availablePods, err := c.podManager.GetAvailable(dest)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list available pods: %w", err)
+		}
+		if len(availablePods) == 0 {
+			slog.WarnContext(ctx, "no available pods", key.Destination.Field(dest))
+			return nil, nil
+		}
+
+		pod := availablePods[rand.Intn(len(availablePods))]
+		err = c.podManager.Assign(ctx, pod, dest)
+		if err != nil {
+			slog.ErrorContext(ctx, "failed to assign pod", slog.Any("error", err), key.Destination.Field(dest))
+			return nil, nil
+		}
+		return pod, nil
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 }
 
@@ -127,33 +196,81 @@ func (c *Controller) scaleTenantPods(ctx context.Context) error {
 				})
 				if err != nil {
 					slog.WarnContext(ctx, "failed to list pod metrics", slog.Any("error", err))
+					return nil
 				}
 
 				podMetricsByTenant := make(map[string][]*v1beta1.PodMetrics)
 				for _, podMetric := range podMetricList.Items {
-					tenantDeployment := podMetric.Labels[key.Deployment.Label] + "/" + podMetric.Labels[key.Tenant.Label]
-					podMetricsByTenant[tenantDeployment] = append(podMetricsByTenant[tenantDeployment], &podMetric)
+					key := podMetric.Labels[key.Deployment.Label] + "/" + podMetric.Labels[key.Tenant.Label]
+					podMetricsByTenant[key] = append(podMetricsByTenant[key], &podMetric)
 				}
 
-				for tenantDeployment, podMetrics := range podMetricsByTenant {
+				type tenantDeployment struct {
+					dest       destination.Destination
+					podMetrics []*v1beta1.PodMetrics
+				}
+
+				tenantDeployments := make([]tenantDeployment, 0, len(podMetricsByTenant))
+				for _, podMetrics := range podMetricsByTenant {
+					var lastAssignedAt time.Time
+					var dest destination.Destination
+
+					for _, podMetric := range podMetrics {
+						assignedAt, ok := podMetric.Labels[key.AssignedAt.Label]
+						if !ok {
+							slog.WarnContext(ctx, "missing assigned at label", slog.String("pod", podMetric.Name), slog.Any("labels", podMetric.Labels))
+							continue
+						}
+
+						assignedAtInt, err := strconv.ParseInt(assignedAt, 10, 64)
+						if err != nil {
+							slog.WarnContext(ctx, "failed to parse assigned at label", slog.Any("error", err), slog.String("pod", podMetric.Name), slog.String("assigned_at", assignedAt))
+							continue
+						}
+
+						assignedAtTime := time.Unix(assignedAtInt, 0)
+						if assignedAtTime.After(lastAssignedAt) {
+							dest, err = destination.FromLabels(podMetric.Labels)
+							if err != nil {
+								slog.WarnContext(ctx, "failed to parse destination from labels", slog.Any("error", err), slog.String("pod", podMetric.Name), slog.Any("labels", podMetric.Labels))
+								continue
+							}
+							lastAssignedAt = assignedAtTime
+						}
+					}
+
+					if dest == (destination.Destination{}) {
+						slog.WarnContext(ctx, "no destination found", slog.Any("pod_metrics", podMetrics))
+						continue
+					}
+
+					tenantDeployments = append(tenantDeployments, tenantDeployment{dest: dest, podMetrics: podMetrics})
+				}
+
+				for _, tenantDeployment := range tenantDeployments {
 					var totalCPUUsageMilli int64
 					var totalMemoryUsageBytes int64
 
-					for _, podMetric := range podMetrics {
+					for _, podMetric := range tenantDeployment.podMetrics {
 						for _, containerMetric := range podMetric.Containers {
 							totalCPUUsageMilli += containerMetric.Usage.Cpu().MilliValue()
 							totalMemoryUsageBytes += containerMetric.Usage.Memory().Value()
 						}
 					}
 
-					averageCPUUsageMilli := totalCPUUsageMilli / int64(len(podMetrics))
-					averageMemoryUsageBytes := totalMemoryUsageBytes / int64(len(podMetrics))
+					averageCPUUsageMilli := totalCPUUsageMilli / int64(len(tenantDeployment.podMetrics))
+					averageMemoryUsageBytes := totalMemoryUsageBytes / int64(len(tenantDeployment.podMetrics))
 
-					split := strings.Split(tenantDeployment, "/")
 					slog.InfoContext(ctx, "pod metrics",
-						slog.String("deployment", split[0]), slog.String("tenant", split[1]),
-						slog.Int64("total_cpu", totalCPUUsageMilli), slog.Int64("total_memory", totalMemoryUsageBytes),
-						slog.Int64("average_cpu", averageCPUUsageMilli), slog.Int64("average_memory", averageMemoryUsageBytes))
+						key.Destination.Field(tenantDeployment.dest),
+						slog.Int("desired_replicas", tenantDeployment.dest.Replicas),
+						slog.Int("desired_cpu_utilization", tenantDeployment.dest.CpuUtilization),
+						slog.Int("desired_memory_utilization", tenantDeployment.dest.MemoryUtilization),
+						slog.Int64("total_cpu", totalCPUUsageMilli),
+						slog.Int64("total_memory", totalMemoryUsageBytes),
+						slog.Int64("average_cpu", averageCPUUsageMilli),
+						slog.Int64("average_memory", averageMemoryUsageBytes),
+					)
 				}
 
 				return nil
@@ -161,70 +278,4 @@ func (c *Controller) scaleTenantPods(ctx context.Context) error {
 		}()
 	}
 	return nil
-}
-
-func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	dest, err := destination.New(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	controllerIP, ok := c.ring.Get(dest.String())
-	if !ok {
-		slog.WarnContext(req.Context(), "no controller for destination", key.Destination.Field(dest), slog.String("ip", c.ip))
-		http.Error(w, "no controller for destination", http.StatusServiceUnavailable)
-		return
-	}
-
-	if controllerIP != c.ip {
-		slog.InfoContext(req.Context(), "forwarding request to assigned controller", key.Destination.Field(dest), slog.String("ip", controllerIP))
-		proxyAny, ok := c.controllerProxies.Load(controllerIP)
-		if !ok {
-			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
-			c.controllerProxies.Store(controllerIP, proxyAny)
-		}
-		proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
-		return
-	}
-
-	_, assignmentInProgress := c.assignmentLock.LoadOrStore(dest.String(), struct{}{})
-	if assignmentInProgress {
-		// another goroutine is already assigning a pod for this destination
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	defer func() {
-		go func() {
-			if err == nil {
-				// delay releasing the lock to give informers time to update their caches with the new assignment
-				time.Sleep(10 * time.Second)
-			}
-			c.assignmentLock.Delete(dest.String())
-		}()
-	}()
-
-	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*pod.Pod, error) {
-		availablePods, err := c.podManager.GetAvailable(dest)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list available pods: %w", err)
-		}
-		if len(availablePods) == 0 {
-			slog.WarnContext(ctx, "no available pods", key.Destination.Field(dest))
-			return nil, nil
-		}
-
-		pod := availablePods[rand.Intn(len(availablePods))]
-		err = c.podManager.Assign(ctx, pod, dest)
-		if err != nil {
-			slog.ErrorContext(ctx, "failed to assign pod", slog.Any("error", err), key.Destination.Field(dest))
-			return nil, nil
-		}
-		return pod, nil
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 }

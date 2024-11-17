@@ -32,7 +32,7 @@ func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, p
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	dest, err := destination.New(req)
+	dest, err := destination.FromRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

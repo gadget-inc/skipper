@@ -10,7 +10,7 @@ const server = Deno.serve({ port: 8080 }, (request) => {
     log.info({
         method: request.method,
         url: request.url,
-        headers: request.headers,
+        headers: Object.fromEntries(request.headers.entries()),
     }, "incoming request");
 
     if (request.method === "POST" && assignPath.test(request.url)) {

@@ -20,6 +20,18 @@ var (
 	ErrorInvalidReplicasHeader = errors.New("invalid value for header: " + key.Replicas.Header)
 	ErrorInvalidCpuHeader      = errors.New("invalid value for header: " + key.CpuUtilization.Header)
 	ErrorInvalidMemoryHeader   = errors.New("invalid value for header: " + key.MemoryUtilization.Header)
+
+	ErrMissingTenantLabel     = errors.New("missing required label: " + key.Tenant.Label)
+	ErrMissingNamespaceLabel  = errors.New("missing required label: " + key.Namespace.Label)
+	ErrMissingDeploymentLabel = errors.New("missing required label: " + key.Deployment.Label)
+	ErrMissingAssignmentLabel = errors.New("missing required label: " + key.Assignment.Label)
+	ErrorMissingReplicasLabel = errors.New("missing required label: " + key.Replicas.Label)
+	ErrorMissingCpuLabel      = errors.New("missing required label: " + key.CpuUtilization.Label)
+	ErrorMissingMemoryLabel   = errors.New("missing required label: " + key.MemoryUtilization.Label)
+
+	ErrorInvalidReplicasLabel = errors.New("invalid value for label: " + key.Replicas.Label)
+	ErrorInvalidCpuLabel      = errors.New("invalid value for label: " + key.CpuUtilization.Label)
+	ErrorInvalidMemoryLabel   = errors.New("invalid value for label: " + key.MemoryUtilization.Label)
 )
 
 type Destination struct {
@@ -36,7 +48,7 @@ type Destination struct {
 	MemoryUtilizationStr string
 }
 
-func New(req *http.Request) (Destination, error) {
+func FromRequest(req *http.Request) (Destination, error) {
 	tenant := req.Header.Get(key.Tenant.Header)
 	if tenant == "" {
 		return Destination{}, ErrMissingTenantHeader
@@ -85,6 +97,72 @@ func New(req *http.Request) (Destination, error) {
 	memoryUtilization, err := strconv.Atoi(memoryUtilizationStr)
 	if err != nil {
 		return Destination{}, ErrorInvalidMemoryHeader
+	}
+
+	return Destination{
+		Tenant:            tenant,
+		Namespace:         namespace,
+		Deployment:        deployment,
+		Assignment:        assignment,
+		Replicas:          replicas,
+		CpuUtilization:    cpuUtilization,
+		MemoryUtilization: memoryUtilization,
+
+		ReplicasStr:          replicasStr,
+		CpuUtilizationStr:    cpuUtilizationStr,
+		MemoryUtilizationStr: memoryUtilizationStr,
+	}, nil
+}
+
+func FromLabels(labels map[string]string) (Destination, error) {
+	tenant := labels[key.Tenant.Label]
+	if tenant == "" {
+		return Destination{}, ErrMissingTenantLabel
+	}
+
+	namespace := labels[key.Namespace.Label]
+	if namespace == "" {
+		return Destination{}, ErrMissingNamespaceLabel
+	}
+
+	deployment := labels[key.Deployment.Label]
+	if deployment == "" {
+		return Destination{}, ErrMissingDeploymentLabel
+	}
+
+	assignment := labels[key.Assignment.Label]
+	if assignment == "" {
+		return Destination{}, ErrMissingAssignmentLabel
+	}
+
+	replicasStr := labels[key.Replicas.Label]
+	if replicasStr == "" {
+		return Destination{}, ErrorMissingReplicasLabel
+	}
+
+	replicas, err := strconv.Atoi(replicasStr)
+	if err != nil {
+		return Destination{}, ErrorInvalidReplicasLabel
+	}
+
+	cpuUtilizationStr := labels[key.CpuUtilization.Label]
+	if cpuUtilizationStr == "" {
+		return Destination{}, ErrorMissingCpuLabel
+	}
+
+	cpuUtilization, err := strconv.Atoi(cpuUtilizationStr)
+	if err != nil {
+		return Destination{}, ErrorInvalidCpuLabel
+	}
+
+	memoryUtilizationStr := labels[key.MemoryUtilization.Label]
+	if memoryUtilizationStr == "" {
+		return Destination{}, ErrorMissingMemoryLabel
+	}
+
+	memoryUtilization, err := strconv.Atoi(memoryUtilizationStr)
+	if err != nil {
+		return Destination{}, ErrorInvalidMemoryLabel
 	}
 
 	return Destination{
