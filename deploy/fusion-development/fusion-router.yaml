@@ -73,7 +73,7 @@ spec:
             - name: GOMAXPROCS
               value: "1"
             - name: GOMEMLIMIT
-              value: "512MiB"
+              value: "256MiB"
           resources:
             limits:
               memory: "512Mi"

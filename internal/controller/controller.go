@@ -238,6 +238,12 @@ func (c *Controller) scaleTenantPods(ctx context.Context) error {
 
 						stabilizationWindow.RecordRecommendation(desiredReplicas, now)
 
+						controllerIP, ok := c.ring.Get(metrics.LatestInstance.Function.String())
+						if !ok || controllerIP != c.ip {
+							slog.DebugContext(ctx, "skipping scaling for function", key.Function.Field(metrics.LatestInstance), slog.String("controllerIP", controllerIP), slog.String("ip", c.ip), slog.Bool("ok", ok))
+							continue
+						}
+
 						if desiredReplicas < currentReplicas {
 							maxRecommendedReplicas := stabilizationWindow.GetMaxRecommendation()
 							if maxRecommendedReplicas < currentReplicas {

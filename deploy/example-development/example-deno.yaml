@@ -32,6 +32,9 @@ spec:
           ports:
             - name: http-port
               containerPort: 8080
+          env:
+            - name: DENO_V8_FLAGS
+              value: "--max-old-space-size=256"
           volumeMounts:
             - name: empty-dir
               mountPath: /tmp
