@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"sync"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/buffer"
@@ -26,6 +27,7 @@ type Router struct {
 	controllerClient *controller.Client
 	clientset        *kubernetes.Clientset
 	podManager       *pod.Manager
+	fnProxies        sync.Map
 }
 
 func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
@@ -33,16 +35,25 @@ func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, p
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	dest, err := function.FromRequest(req)
+	fn, err := function.FromRequest(req)
 	if err != nil {
+		if req.URL.Path == "/healthz" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	proxy := &httputil.ReverseProxy{
-		BufferPool: buffer.Pool,
-		Director:   func(req *http.Request) {},
-		Transport:  r.newRoundTripper(dest),
+	proxyAny, ok := r.fnProxies.Load(fn)
+	if !ok {
+		proxyAny = &httputil.ReverseProxy{
+			BufferPool: buffer.Pool,
+			Director:   func(req *http.Request) {},
+			Transport:  r.newRoundTripper(fn),
+		}
+		r.fnProxies.Store(fn, proxyAny)
 	}
 
 	if req.Body != nil {
@@ -50,13 +61,13 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		defer req.Body.(*nopCloser).RealClose()
 	}
 
-	proxy.ServeHTTP(w, req)
+	proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
 }
 
-func (r *Router) newRoundTripper(dest function.Function) http.RoundTripper {
+func (r *Router) newRoundTripper(fn function.Function) http.RoundTripper {
 	return &retryingRoundTripper{
 		router: r,
-		dest:   dest,
+		fn:     fn,
 		transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -74,7 +85,7 @@ func (r *Router) newRoundTripper(dest function.Function) http.RoundTripper {
 
 type retryingRoundTripper struct {
 	router    *Router
-	dest      function.Function
+	fn        function.Function
 	transport http.RoundTripper
 }
 
@@ -91,9 +102,9 @@ func (rrt *retryingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 			return nil, fmt.Errorf("failed to get a pod after %d attempts", attempt)
 		}
 
-		pod, err := rrt.getPodFor(ctx, rrt.dest)
+		pod, err := rrt.getPodFor(ctx, rrt.fn)
 		if err != nil {
-			slog.WarnContext(ctx, "failed to get a pod for destination", slog.Any("error", err), key.Function.Field(rrt.dest))
+			slog.WarnContext(ctx, "failed to get a pod for function", key.Error.Field(err), key.Function.Field(rrt.fn))
 			attempt++
 			continue
 		}
@@ -106,36 +117,36 @@ func (rrt *retryingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				slog.WarnContext(ctx, "failed to dial pod", slog.Any("error", err), slog.String("pod", pod.Name), key.Function.Field(rrt.dest))
+				slog.WarnContext(ctx, "failed to dial pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
 				attempt++
 				continue
 			}
 
 			if netOpErr.Timeout() {
-				slog.WarnContext(ctx, "timeout dialing pod", slog.Any("error", err), slog.String("pod", pod.Name), key.Function.Field(rrt.dest))
+				slog.WarnContext(ctx, "timeout dialing pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
 				attempt++
 				continue
 			}
 		}
 
 		if err != nil && err != context.Canceled {
-			slog.ErrorContext(ctx, "unknown error", slog.Any("error", err), slog.String("pod", pod.Name), key.Function.Field(rrt.dest))
+			slog.ErrorContext(ctx, "unknown error", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
 		}
 
 		return res, err
 	}
 }
 
-func (rrt *retryingRoundTripper) getPodFor(ctx context.Context, dest function.Function) (*v1.Pod, error) {
+func (rrt *retryingRoundTripper) getPodFor(ctx context.Context, fn function.Function) (*v1.Pod, error) {
 	return timer.Poll(ctx, 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*v1.Pod, error) {
-		pods, err := rrt.router.podManager.GetAssigned(dest)
+		pods, err := rrt.router.podManager.GetAssigned(fn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list assigned pods: %w", err)
 		}
 		if len(pods) > 0 {
 			return pods[rand.Intn(len(pods))], nil
 		}
-		return nil, rrt.router.controllerClient.Assign(ctx, dest)
+		return nil, rrt.router.controllerClient.Assign(ctx, fn)
 	})
 }
 

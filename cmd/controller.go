@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/controller"
+	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
@@ -79,7 +80,7 @@ func NewCmdController() *cobra.Command {
 			go func() {
 				err := srv.ListenAndServe()
 				if err != nil && err != http.ErrServerClosed {
-					slog.ErrorContext(ctx, "failed to serve listen and serve", slog.Any("error", err))
+					slog.ErrorContext(ctx, "failed to serve listen and serve", key.Error.Field(err))
 					serverErrors <- err
 				}
 			}()

@@ -4,8 +4,8 @@ var (
 	AssignedAt              = timeKey{new("assigned-at")}
 	Controller              = stringKey{new("controller")}
 	Deployment              = stringKey{new("deployment")}
-	Function                = stringerKey{new("function")}
-	Error                   = stringerKey{new("error")}
+	Function                = valueKey{new("function")}
+	Error                   = errorKey{new("error")}
 	MaxReplicas             = intKey{new("max-replicas")}
 	Metadata                = stringKey{new("metadata")}
 	MinReplicas             = intKey{new("min-replicas")}

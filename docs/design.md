@@ -15,3 +15,8 @@
 
 - Router
 - Controller w/ leader election
+
+## Notes
+
+- need to keep track of the last time a function was called for a tenant
+- need to keep track of the last time a pod had an ongoing websocket connection

@@ -15,12 +15,7 @@ import (
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-type FunctionMetrics struct {
-	LatestInstance function.Instance
-	PodMetrics     map[string]PodMetricsInfo // pod name -> metrics
-}
-
-func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsClientset metricsclientset.Interface, namespace string) (map[string]FunctionMetrics, error) {
+func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsClientset metricsclientset.Interface, namespace string) (map[function.Function]map[string]PodMetricsInfo, error) {
 	pods, err := podManager.GetAllAssignedPods(namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
@@ -38,12 +33,12 @@ func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsCli
 		metricsMap[m.Name] = m
 	}
 
-	functionsMap := make(map[string]FunctionMetrics)
+	functionsMap := make(map[function.Function]map[string]PodMetricsInfo)
 
 	for _, pod := range pods {
 		fn, err := function.FromLabels(pod.Labels)
 		if err != nil {
-			slog.WarnContext(ctx, "failed to get function from labels", slog.Any("error", err), slog.String("pod", pod.Name), slog.Any("labels", pod.Labels))
+			slog.WarnContext(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", pod.Name), slog.Any("labels", pod.Labels))
 			continue
 		}
 
@@ -87,21 +82,11 @@ func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsCli
 			info.MemoryUsage = nil
 		}
 
-		metrics, ok := functionsMap[fn.String()]
-		if !ok {
-			functionsMap[fn.String()] = FunctionMetrics{
-				LatestInstance: fn,
-				PodMetrics:     make(map[string]PodMetricsInfo),
-			}
-		} else if fn.AssignedAt.After(metrics.LatestInstance.AssignedAt) {
-			// keep the latest assigned function
-			functionsMap[fn.String()] = FunctionMetrics{
-				LatestInstance: fn,
-				PodMetrics:     metrics.PodMetrics,
-			}
+		if _, exists := functionsMap[fn.Function]; !exists {
+			functionsMap[fn.Function] = make(map[string]PodMetricsInfo)
 		}
 
-		functionsMap[fn.String()].PodMetrics[pod.Name] = info
+		functionsMap[fn.Function][pod.Name] = info
 	}
 
 	return functionsMap, nil
@@ -141,13 +126,13 @@ func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Fun
 
 			instanceA, err := function.FromLabels(a.Labels)
 			if err != nil {
-				slog.WarnContext(ctx, "failed to get function from labels", slog.Any("error", err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
+				slog.WarnContext(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
 				return -1
 			}
 
 			instanceB, err := function.FromLabels(b.Labels)
 			if err != nil {
-				slog.WarnContext(ctx, "failed to get function from labels", slog.Any("error", err), slog.String("pod", b.Name), slog.Any("labels", b.Labels))
+				slog.WarnContext(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", b.Name), slog.Any("labels", b.Labels))
 				return 1
 			}
 

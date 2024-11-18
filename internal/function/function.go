@@ -2,11 +2,13 @@ package function
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/key"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -237,8 +239,8 @@ func FromLabels(labels map[string]string) (Instance, error) {
 	}, nil
 }
 
-func (d Function) String() string {
-	return d.Namespace + "/" + d.Deployment + "/" + d.Tenant
+func (d Function) RingKey() string {
+	return "fusion://" + d.Namespace + "." + d.Deployment + "." + d.Tenant
 }
 
 func (d Function) SetHeaders(r *http.Request) {
@@ -250,4 +252,20 @@ func (d Function) SetHeaders(r *http.Request) {
 	r.Header.Set(key.MaxReplicas.Header, d.MaxReplicasStr)
 	r.Header.Set(key.TargetCPUUtilization.Header, d.TargetCPUUtilizationStr)
 	r.Header.Set(key.TargetMemoryUtilization.Header, d.TargetMemoryUtilizationStr)
+}
+
+func (d Function) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("tenant", d.Tenant),
+		slog.String("namespace", d.Namespace),
+		slog.String("deployment", d.Deployment),
+		slog.Int("minReplicas", d.MinReplicas),
+		slog.Int("maxReplicas", d.MaxReplicas),
+		slog.Int("targetCPUUtilization", d.TargetCPUUtilization),
+		slog.Int("targetMemoryUtilization", d.TargetMemoryUtilization),
+	)
+}
+
+func (d Function) AttributeValue() attribute.Value {
+	return attribute.StringValue("fusion://" + d.Namespace + "." + d.Deployment + "." + d.Tenant + "?minReplicas=" + d.MinReplicasStr + "&maxReplicas=" + d.MaxReplicasStr + "&targetCPUUtilization=" + d.TargetCPUUtilizationStr + "&targetMemoryUtilization=" + d.TargetMemoryUtilizationStr)
 }

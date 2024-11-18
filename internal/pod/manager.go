@@ -89,11 +89,23 @@ func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
 }
 
 func (pm *Manager) GetAssigned(fn function.Function) ([]*v1.Pod, error) {
-	return pm.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
+	assignedPods, err := pm.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
 		key.Status.Label:     StatusReady,
 	}))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
+	}
+
+	var readyPods []*v1.Pod
+	for _, pod := range assignedPods {
+		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil {
+			continue
+		}
+		readyPods = append(readyPods, pod)
+	}
+	return readyPods, nil
 }
 
 func (pm *Manager) GetAssignedAndPending(fn function.Function) ([]*v1.Pod, error) {

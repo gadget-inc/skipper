@@ -81,6 +81,32 @@ spec:
             requests:
               memory: "256Mi"
               cpu: "250m"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http-port
+            failureThreshold: 3
+            initialDelaySeconds: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http-port
+            failureThreshold: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http-port
+            failureThreshold: 1
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+
 ---
 apiVersion: v1
 kind: Service

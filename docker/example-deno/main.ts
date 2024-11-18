@@ -2,6 +2,8 @@ import { pino } from "npm:pino";
 import pretty from "npm:pino-pretty";
 const log = pino(pretty());
 
+const healthzPath = new URLPattern({ pathname: "/healthz" });
+
 const assignPath = new URLPattern({ pathname: "/__fusion/assign" });
 const assignFilePath = "/tmp/assignment.json";
 let assignmentHeaders = await Deno.readTextFile(assignFilePath).then((txt) => JSON.parse(txt)).catch(() => null);
@@ -12,6 +14,10 @@ const server = Deno.serve({ port: 8080 }, async (request) => {
         url: request.url,
         headers: Object.fromEntries(request.headers.entries()),
     }, "incoming request");
+
+    if (request.method === "GET" && healthzPath.test(request.url)) {
+        return new Response();
+    }
 
     if (request.method === "POST" && assignPath.test(request.url)) {
         if (assignmentHeaders) {

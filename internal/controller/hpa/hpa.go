@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/fusion/internal/key"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -231,7 +232,7 @@ func CalculateDesiredReplicas(
 			timestamp,
 		)
 		if err != nil {
-			slog.Warn("failed to calculate desired replicas for metric", slog.Any("error", err), slog.String("metric", metric.name))
+			slog.Warn("failed to calculate desired replicas for metric", key.Error.Field(err), slog.String("metric", metric.name))
 			if desiredReplicas < currentReplicas {
 				scaleDownErrors++
 			}

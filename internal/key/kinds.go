@@ -113,3 +113,32 @@ func (k stringerKey) Field(value fmt.Stringer) slog.Attr {
 func (k stringerKey) Attribute(value fmt.Stringer) attribute.KeyValue {
 	return attribute.String(string(k.name), value.String())
 }
+
+type errorKey struct{ key }
+
+var _ Key[error] = errorKey{}
+
+func (k errorKey) Field(value error) slog.Attr {
+	return slog.String(string(k.underscored), value.Error())
+}
+
+func (k errorKey) Attribute(value error) attribute.KeyValue {
+	return attribute.String(string(k.name), value.Error())
+}
+
+type Value interface {
+	LogValue() slog.Value
+	AttributeValue() attribute.Value
+}
+
+type valueKey struct{ key }
+
+var _ Key[Value] = valueKey{}
+
+func (k valueKey) Field(value Value) slog.Attr {
+	return slog.Any(string(k.underscored), value.LogValue())
+}
+
+func (k valueKey) Attribute(value Value) attribute.KeyValue {
+	return attribute.KeyValue{Key: attribute.Key(k.name), Value: value.AttributeValue()}
+}

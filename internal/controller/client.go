@@ -17,7 +17,7 @@ func NewClient(host string) *Client {
 }
 
 func (c *Client) Assign(ctx context.Context, fn function.Function) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+c.host+":8080", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+c.host+":8080/assign", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create assign request: %w", err)
 	}

@@ -46,67 +46,6 @@ func New(ip string, namespaces []string, clientset kubernetes.Interface, metrics
 	}
 }
 
-func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	fn, err := function.FromRequest(req)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	controllerIP, ok := c.ring.Get(fn.String())
-	if !ok {
-		slog.WarnContext(req.Context(), "no controller for function", key.Function.Field(fn), slog.String("ip", c.ip))
-		http.Error(w, "no controller for function", http.StatusServiceUnavailable)
-		return
-	}
-
-	if controllerIP != c.ip {
-		slog.InfoContext(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
-		proxyAny, ok := c.controllerProxies.Load(controllerIP)
-		if !ok {
-			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
-			c.controllerProxies.Store(controllerIP, proxyAny)
-		}
-		proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
-		return
-	}
-
-	_, assignmentInProgress := c.assignmentLock.LoadOrStore(fn.String(), struct{}{})
-	if assignmentInProgress {
-		// another goroutine is already assigning a pod for this function
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	defer func() {
-		go func() {
-			if err == nil {
-				// delay releasing the lock so that routers that
-				// continue to ask for an assigned pod have time to
-				// update their pod informer caches with the new
-				// assigned pod
-				time.Sleep(3 * time.Second)
-			}
-			c.assignmentLock.Delete(fn.String())
-		}()
-	}()
-
-	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*v1.Pod, error) {
-		pod, err := c.podManager.Assign(ctx, fn)
-		if err != nil {
-			slog.ErrorContext(ctx, "failed to assign pod", slog.Any("error", err), key.Function.Field(fn))
-			return nil, nil
-		}
-		return pod, nil
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
 func (c *Controller) Start(ctx context.Context, controllerNamespace string) error {
 	err := c.startControllerPodInformer(ctx, controllerNamespace)
 	if err != nil {
@@ -119,6 +58,19 @@ func (c *Controller) Start(ctx context.Context, controllerNamespace string) erro
 	// TODO: clean up pods that have been pending for too long
 	// TODO: clean up pods that haven't received a request in a while
 	return nil
+}
+
+func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	switch req.URL.Path {
+	case "/healthz":
+		w.WriteHeader(http.StatusOK)
+	case "/assign":
+		c.assign(w, req)
+	case "/track":
+		c.track(w, req)
+	default:
+		http.Error(w, "not found", http.StatusNotFound)
+	}
 }
 
 func (c *Controller) startControllerPodInformer(ctx context.Context, controllerNamespace string) error {
@@ -183,7 +135,7 @@ func (c *Controller) scaleTenantPods(ctx context.Context) error {
 	for _, namespace := range c.namespaces {
 		go func() {
 			// TODO: garbage collect old stabilization windows
-			stabilizationWindows := make(map[string]*hpa.StabilizationWindow)
+			stabilizationWindows := make(map[function.Function]*hpa.StabilizationWindow)
 
 			timer.Loop(
 				ctx,
@@ -191,56 +143,59 @@ func (c *Controller) scaleTenantPods(ctx context.Context) error {
 				func(ctx context.Context) error {
 					functionMetrics, err := hpa.GetFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
 					if err != nil {
-						slog.WarnContext(ctx, "failed to get function metrics", slog.Any("error", err))
+						slog.WarnContext(ctx, "failed to get function metrics", key.Error.Field(err))
 						return nil
 					}
 
 					now := time.Now()
-					for _, metrics := range functionMetrics {
-						currentReplicas := len(metrics.PodMetrics)
+					for fn, metrics := range functionMetrics {
+						currentReplicas := len(metrics)
 						desiredReplicas, err := hpa.CalculateDesiredReplicas(
 							currentReplicas,
-							metrics.PodMetrics,
-							int64(metrics.LatestInstance.TargetCPUUtilization),
-							int64(metrics.LatestInstance.TargetMemoryUtilization),
+							metrics,
+							int64(fn.TargetCPUUtilization),
+							int64(fn.TargetMemoryUtilization),
 							hpa.DefaultConfig,
 							now,
 						)
 						if err != nil {
-							slog.WarnContext(ctx, "failed to calculate desired replicas", slog.Any("error", err), key.Function.Field(metrics.LatestInstance))
+							slog.WarnContext(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
 							continue
 						}
 
-						if desiredReplicas < metrics.LatestInstance.MinReplicas {
-							desiredReplicas = metrics.LatestInstance.MinReplicas
+						if desiredReplicas < fn.MinReplicas {
+							desiredReplicas = fn.MinReplicas
 						}
 
-						if desiredReplicas > metrics.LatestInstance.MaxReplicas {
-							desiredReplicas = metrics.LatestInstance.MaxReplicas
+						if desiredReplicas > fn.MaxReplicas {
+							desiredReplicas = fn.MaxReplicas
 						}
 
-						stabilizationWindow, exists := stabilizationWindows[metrics.LatestInstance.String()]
+						stabilizationWindow, exists := stabilizationWindows[fn]
 						if !exists {
 							stabilizationWindow = &hpa.StabilizationWindow{
 								Window: hpa.DefaultConfig.DownscaleStabilization,
 							}
-							stabilizationWindows[metrics.LatestInstance.String()] = stabilizationWindow
+							stabilizationWindows[fn] = stabilizationWindow
 						}
 
 						slog.DebugContext(ctx, "desired replicas",
-							slog.Any("function", metrics.LatestInstance.Function),
-							slog.Int("currentReplicas", currentReplicas),
+							key.Function.Field(fn),
 							slog.Int("desiredReplicas", desiredReplicas),
+							slog.Int("currentReplicas", currentReplicas),
 							slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
-							slog.Int("minReplicas", metrics.LatestInstance.MinReplicas),
-							slog.Int("maxReplicas", metrics.LatestInstance.MaxReplicas),
 						)
 
 						stabilizationWindow.RecordRecommendation(desiredReplicas, now)
 
-						controllerIP, ok := c.ring.Get(metrics.LatestInstance.Function.String())
+						controllerIP, ok := c.ring.Get(fn.RingKey())
 						if !ok || controllerIP != c.ip {
-							slog.DebugContext(ctx, "skipping scaling for function", key.Function.Field(metrics.LatestInstance), slog.String("controllerIP", controllerIP), slog.String("ip", c.ip), slog.Bool("ok", ok))
+							slog.DebugContext(ctx, "skipping scaling for function",
+								key.Function.Field(fn),
+								slog.String("controllerIP", controllerIP),
+								slog.String("ip", c.ip),
+								slog.Bool("ok", ok),
+							)
 							continue
 						}
 
@@ -254,19 +209,17 @@ func (c *Controller) scaleTenantPods(ctx context.Context) error {
 						}
 
 						slog.DebugContext(ctx, "scaling function",
-							slog.Any("function", metrics.LatestInstance.Function),
-							slog.Int("currentReplicas", currentReplicas),
+							key.Function.Field(fn),
 							slog.Int("desiredReplicas", desiredReplicas),
+							slog.Int("currentReplicas", currentReplicas),
 							slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
-							slog.Int("minReplicas", metrics.LatestInstance.MinReplicas),
-							slog.Int("maxReplicas", metrics.LatestInstance.MaxReplicas),
 						)
 
-						err = hpa.ScaleFunction(ctx, c.podManager, metrics.LatestInstance.Function, desiredReplicas)
+						err = hpa.ScaleFunction(ctx, c.podManager, fn, desiredReplicas)
 						if err != nil {
 							slog.WarnContext(ctx, "failed to scale function",
-								slog.Any("error", err),
-								key.Function.Field(metrics.LatestInstance),
+								key.Error.Field(err),
+								key.Function.Field(fn),
 								slog.Int("currentReplicas", currentReplicas),
 								slog.Int("desiredReplicas", desiredReplicas),
 							)
@@ -280,4 +233,68 @@ func (c *Controller) scaleTenantPods(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Controller) assign(w http.ResponseWriter, req *http.Request) {
+	fn, err := function.FromRequest(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	controllerIP, ok := c.ring.Get(fn.RingKey())
+	if !ok {
+		slog.WarnContext(req.Context(), "no controller for function", key.Function.Field(fn), slog.String("ip", c.ip))
+		http.Error(w, "no controller for function", http.StatusServiceUnavailable)
+		return
+	}
+
+	if controllerIP != c.ip {
+		slog.InfoContext(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
+		proxyAny, ok := c.controllerProxies.Load(controllerIP)
+		if !ok {
+			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
+			c.controllerProxies.Store(controllerIP, proxyAny)
+		}
+		proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
+		return
+	}
+
+	_, assignmentInProgress := c.assignmentLock.LoadOrStore(fn.RingKey(), struct{}{})
+	if assignmentInProgress {
+		// another goroutine is already assigning a pod for this function
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	defer func() {
+		go func() {
+			if err == nil {
+				// delay releasing the lock so that routers that
+				// continue to ask for an assigned pod have time to
+				// update their pod informer caches with the new
+				// assigned pod
+				time.Sleep(3 * time.Second)
+			}
+			c.assignmentLock.Delete(fn.RingKey())
+		}()
+	}()
+
+	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*v1.Pod, error) {
+		pod, err := c.podManager.Assign(ctx, fn)
+		if err != nil {
+			slog.ErrorContext(ctx, "failed to assign pod", key.Error.Field(err), key.Function.Field(fn))
+			return nil, nil
+		}
+		return pod, nil
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (c *Controller) track(w http.ResponseWriter, req *http.Request) {
 }
