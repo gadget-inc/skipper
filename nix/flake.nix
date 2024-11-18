@@ -13,6 +13,7 @@
       in
       {
         packages = {
+          buf = pkgs.buf;
           deno = pkgs.deno;
           direnv = pkgs.direnv;
           git = pkgs.git;
