@@ -12,17 +12,14 @@ async function sendRequest() {
             "x-fusion-tenant": "123",
             "x-fusion-namespace": "example-development",
             "x-fusion-deployment": "example-deno",
-            "x-fusion-assignment": "secret123",
-            "x-fusion-replicas": "1",
-            "x-fusion-cpu-utilization": "70",
-            "x-fusion-memory-utilization": "70",
+            "x-fusion-metadata": "secret123",
+            "x-fusion-min-replicas": "0",
+            "x-fusion-max-replicas": "5",
+            "x-fusion-target-cpu-utilization": "100",
+            "x-fusion-target-memory-utilization": "200",
             "content-type": "application/json",
         },
-        body: JSON.stringify({
-            hello: "world",
-            foo: "bar",
-            jason: "gedge",
-        }),
+        body: JSON.stringify({ hello: "world" }),
     });
 
     if (response.ok) {
@@ -38,7 +35,7 @@ const responses = [];
 while (true) {
     for (let i = 0; i < 1000; i++) {
         responses.push(sendRequest());
-        await sleep(10);
+        await sleep(1);
     }
     await Promise.all(responses);
     responses.length = 0;

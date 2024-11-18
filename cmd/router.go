@@ -49,7 +49,10 @@ func NewCmdRouter() *cobra.Command {
 			defer cancel()
 
 			podManager := pod.NewManager(clientset)
-			podManager.Start(ctx, namespaces)
+			err = podManager.Start(ctx, namespaces)
+			if err != nil {
+				return fmt.Errorf("failed to start pod manager: %w", err)
+			}
 
 			controllerClient := controller.NewClient(controllerHost)
 
@@ -64,7 +67,7 @@ func NewCmdRouter() *cobra.Command {
 			go func() {
 				err := srv.ListenAndServe()
 				if err != nil && err != http.ErrServerClosed {
-					slog.ErrorContext(ctx, "failed to serve listen and serve", slog.Any("error", err))
+					slog.ErrorContext(ctx, "failed to listen and serve", slog.Any("error", err))
 					serverErrors <- err
 				}
 			}()

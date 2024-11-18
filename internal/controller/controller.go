@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math/rand"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/destination"
+	"github.com/gadget-inc/fusion/internal/controller/hpa"
+	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/hashring"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/pod"
@@ -22,7 +21,6 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
@@ -49,21 +47,21 @@ func New(ip string, namespaces []string, clientset kubernetes.Interface, metrics
 }
 
 func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	dest, err := destination.FromRequest(req)
+	fn, err := function.FromRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	controllerIP, ok := c.ring.Get(dest.String())
+	controllerIP, ok := c.ring.Get(fn.String())
 	if !ok {
-		slog.WarnContext(req.Context(), "no controller for destination", key.Destination.Field(dest), slog.String("ip", c.ip))
-		http.Error(w, "no controller for destination", http.StatusServiceUnavailable)
+		slog.WarnContext(req.Context(), "no controller for function", key.Function.Field(fn), slog.String("ip", c.ip))
+		http.Error(w, "no controller for function", http.StatusServiceUnavailable)
 		return
 	}
 
 	if controllerIP != c.ip {
-		slog.InfoContext(req.Context(), "forwarding request to assigned controller", key.Destination.Field(dest), slog.String("ip", controllerIP))
+		slog.InfoContext(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
 		proxyAny, ok := c.controllerProxies.Load(controllerIP)
 		if !ok {
 			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
@@ -73,9 +71,9 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_, assignmentInProgress := c.assignmentLock.LoadOrStore(dest.String(), struct{}{})
+	_, assignmentInProgress := c.assignmentLock.LoadOrStore(fn.String(), struct{}{})
 	if assignmentInProgress {
-		// another goroutine is already assigning a pod for this destination
+		// another goroutine is already assigning a pod for this function
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -89,24 +87,14 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				// assigned pod
 				time.Sleep(3 * time.Second)
 			}
-			c.assignmentLock.Delete(dest.String())
+			c.assignmentLock.Delete(fn.String())
 		}()
 	}()
 
-	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*pod.Pod, error) {
-		availablePods, err := c.podManager.GetAvailable(dest)
+	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*v1.Pod, error) {
+		pod, err := c.podManager.Assign(ctx, fn)
 		if err != nil {
-			return nil, fmt.Errorf("failed to list available pods: %w", err)
-		}
-		if len(availablePods) == 0 {
-			slog.WarnContext(ctx, "no available pods", key.Destination.Field(dest))
-			return nil, nil
-		}
-
-		pod := availablePods[rand.Intn(len(availablePods))]
-		err = c.podManager.Assign(ctx, pod, dest)
-		if err != nil {
-			slog.ErrorContext(ctx, "failed to assign pod", slog.Any("error", err), key.Destination.Field(dest))
+			slog.ErrorContext(ctx, "failed to assign pod", slog.Any("error", err), key.Function.Field(fn))
 			return nil, nil
 		}
 		return pod, nil
@@ -115,6 +103,8 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (c *Controller) Start(ctx context.Context, controllerNamespace string) error {
@@ -126,6 +116,8 @@ func (c *Controller) Start(ctx context.Context, controllerNamespace string) erro
 	if err != nil {
 		return fmt.Errorf("failed to start tenant pod informer: %w", err)
 	}
+	// TODO: clean up pods that have been pending for too long
+	// TODO: clean up pods that haven't received a request in a while
 	return nil
 }
 
@@ -190,92 +182,96 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 func (c *Controller) scaleTenantPods(ctx context.Context) error {
 	for _, namespace := range c.namespaces {
 		go func() {
-			timer.Loop(ctx, 15*time.Second, func(ctx context.Context) error {
-				podMetricList, err := c.metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{
-					LabelSelector: "app.kubernetes.io/managed-by=fusion," + key.Tenant.Label,
-				})
-				if err != nil {
-					slog.WarnContext(ctx, "failed to list pod metrics", slog.Any("error", err))
-					return nil
-				}
+			// TODO: garbage collect old stabilization windows
+			stabilizationWindows := make(map[string]*hpa.StabilizationWindow)
 
-				podMetricsByTenant := make(map[string][]*v1beta1.PodMetrics)
-				for _, podMetric := range podMetricList.Items {
-					key := podMetric.Labels[key.Deployment.Label] + "/" + podMetric.Labels[key.Tenant.Label]
-					podMetricsByTenant[key] = append(podMetricsByTenant[key], &podMetric)
-				}
+			timer.Loop(
+				ctx,
+				15*time.Second,
+				func(ctx context.Context) error {
+					functionMetrics, err := hpa.GetFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
+					if err != nil {
+						slog.WarnContext(ctx, "failed to get function metrics", slog.Any("error", err))
+						return nil
+					}
 
-				type tenantDeployment struct {
-					dest       destination.Destination
-					podMetrics []*v1beta1.PodMetrics
-				}
-
-				tenantDeployments := make([]tenantDeployment, 0, len(podMetricsByTenant))
-				for _, podMetrics := range podMetricsByTenant {
-					var lastAssignedAt time.Time
-					var dest destination.Destination
-
-					for _, podMetric := range podMetrics {
-						assignedAt, ok := podMetric.Labels[key.AssignedAt.Label]
-						if !ok {
-							slog.WarnContext(ctx, "missing assigned at label", slog.String("pod", podMetric.Name), slog.Any("labels", podMetric.Labels))
-							continue
-						}
-
-						assignedAtInt, err := strconv.ParseInt(assignedAt, 10, 64)
+					now := time.Now()
+					for _, metrics := range functionMetrics {
+						currentReplicas := len(metrics.PodMetrics)
+						desiredReplicas, err := hpa.CalculateDesiredReplicas(
+							currentReplicas,
+							metrics.PodMetrics,
+							int64(metrics.LatestInstance.TargetCPUUtilization),
+							int64(metrics.LatestInstance.TargetMemoryUtilization),
+							hpa.DefaultConfig,
+							now,
+						)
 						if err != nil {
-							slog.WarnContext(ctx, "failed to parse assigned at label", slog.Any("error", err), slog.String("pod", podMetric.Name), slog.String("assigned_at", assignedAt))
+							slog.WarnContext(ctx, "failed to calculate desired replicas", slog.Any("error", err), key.Function.Field(metrics.LatestInstance))
 							continue
 						}
 
-						assignedAtTime := time.Unix(assignedAtInt, 0)
-						if assignedAtTime.After(lastAssignedAt) {
-							dest, err = destination.FromLabels(podMetric.Labels)
-							if err != nil {
-								slog.WarnContext(ctx, "failed to parse destination from labels", slog.Any("error", err), slog.String("pod", podMetric.Name), slog.Any("labels", podMetric.Labels))
-								continue
+						if desiredReplicas < metrics.LatestInstance.MinReplicas {
+							desiredReplicas = metrics.LatestInstance.MinReplicas
+						}
+
+						if desiredReplicas > metrics.LatestInstance.MaxReplicas {
+							desiredReplicas = metrics.LatestInstance.MaxReplicas
+						}
+
+						stabilizationWindow, exists := stabilizationWindows[metrics.LatestInstance.String()]
+						if !exists {
+							stabilizationWindow = &hpa.StabilizationWindow{
+								Window: hpa.DefaultConfig.DownscaleStabilization,
 							}
-							lastAssignedAt = assignedAtTime
+							stabilizationWindows[metrics.LatestInstance.String()] = stabilizationWindow
+						}
+
+						slog.DebugContext(ctx, "desired replicas",
+							slog.Any("function", metrics.LatestInstance.Function),
+							slog.Int("currentReplicas", currentReplicas),
+							slog.Int("desiredReplicas", desiredReplicas),
+							slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
+							slog.Int("minReplicas", metrics.LatestInstance.MinReplicas),
+							slog.Int("maxReplicas", metrics.LatestInstance.MaxReplicas),
+						)
+
+						stabilizationWindow.RecordRecommendation(desiredReplicas, now)
+
+						if desiredReplicas < currentReplicas {
+							maxRecommendedReplicas := stabilizationWindow.GetMaxRecommendation()
+							if maxRecommendedReplicas < currentReplicas {
+								desiredReplicas = maxRecommendedReplicas
+							} else {
+								desiredReplicas = currentReplicas
+							}
+						}
+
+						slog.DebugContext(ctx, "scaling function",
+							slog.Any("function", metrics.LatestInstance.Function),
+							slog.Int("currentReplicas", currentReplicas),
+							slog.Int("desiredReplicas", desiredReplicas),
+							slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
+							slog.Int("minReplicas", metrics.LatestInstance.MinReplicas),
+							slog.Int("maxReplicas", metrics.LatestInstance.MaxReplicas),
+						)
+
+						err = hpa.ScaleFunction(ctx, c.podManager, metrics.LatestInstance.Function, desiredReplicas)
+						if err != nil {
+							slog.WarnContext(ctx, "failed to scale function",
+								slog.Any("error", err),
+								key.Function.Field(metrics.LatestInstance),
+								slog.Int("currentReplicas", currentReplicas),
+								slog.Int("desiredReplicas", desiredReplicas),
+							)
 						}
 					}
 
-					if dest == (destination.Destination{}) {
-						slog.WarnContext(ctx, "no destination found", slog.Any("pod_metrics", podMetrics))
-						continue
-					}
-
-					tenantDeployments = append(tenantDeployments, tenantDeployment{dest: dest, podMetrics: podMetrics})
-				}
-
-				for _, tenantDeployment := range tenantDeployments {
-					var totalCPUUsageMilli int64
-					var totalMemoryUsageBytes int64
-
-					for _, podMetric := range tenantDeployment.podMetrics {
-						for _, containerMetric := range podMetric.Containers {
-							totalCPUUsageMilli += containerMetric.Usage.Cpu().MilliValue()
-							totalMemoryUsageBytes += containerMetric.Usage.Memory().Value()
-						}
-					}
-
-					averageCPUUsageMilli := totalCPUUsageMilli / int64(len(tenantDeployment.podMetrics))
-					averageMemoryUsageBytes := totalMemoryUsageBytes / int64(len(tenantDeployment.podMetrics))
-
-					slog.InfoContext(ctx, "pod metrics",
-						key.Destination.Field(tenantDeployment.dest),
-						slog.Int("desired_replicas", tenantDeployment.dest.Replicas),
-						slog.Int("desired_cpu_utilization", tenantDeployment.dest.CpuUtilization),
-						slog.Int("desired_memory_utilization", tenantDeployment.dest.MemoryUtilization),
-						slog.Int64("total_cpu", totalCPUUsageMilli),
-						slog.Int64("total_memory", totalMemoryUsageBytes),
-						slog.Int64("average_cpu", averageCPUUsageMilli),
-						slog.Int64("average_memory", averageMemoryUsageBytes),
-					)
-				}
-
-				return nil
-			})
+					return nil
+				},
+			)
 		}()
 	}
+
 	return nil
 }

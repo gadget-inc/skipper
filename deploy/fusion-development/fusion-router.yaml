@@ -70,6 +70,10 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            - name: GOMAXPROCS
+              value: "1"
+            - name: GOMEMLIMIT
+              value: "512MiB"
           resources:
             limits:
               memory: "512Mi"

@@ -22,6 +22,9 @@ spec:
         fusion/deployment: example-deno
         fusion/status: unassigned
     spec:
+      volumes:
+        - name: empty-dir
+          emptyDir: {}
       containers:
         - name: deno
           image: fusion-example-deno:latest
@@ -29,6 +32,9 @@ spec:
           ports:
             - name: http-port
               containerPort: 8080
+          volumeMounts:
+            - name: empty-dir
+              mountPath: /tmp
           resources:
             limits:
               memory: "512Mi"

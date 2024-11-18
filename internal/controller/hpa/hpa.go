@@ -3,44 +3,45 @@ package hpa
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"time"
 
+	"github.com/gadget-inc/fusion/internal/function"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
-	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-const (
-	defaultTolerance               = 0.1
-	defaultInitialReadinessDelay   = 30 * time.Second
-	defaultCPUInitializationPeriod = 5 * time.Minute
-	defaultDownscaleStabilization  = 5 * time.Minute
-)
-
-// HPAConfig holds configuration values for the HPA algorithm
-type HPAConfig struct {
+// Config holds configuration values for the HPA algorithm
+type Config struct {
 	Tolerance               float64
 	InitialReadinessDelay   time.Duration
 	CPUInitializationPeriod time.Duration
 	DownscaleStabilization  time.Duration
 }
 
+var DefaultConfig = Config{
+	Tolerance:               0.1,
+	InitialReadinessDelay:   30 * time.Second,
+	CPUInitializationPeriod: 90 * time.Second,
+	DownscaleStabilization:  90 * time.Second,
+}
+
 // PodMetricsInfo contains metrics and status information for a pod
 type PodMetricsInfo struct {
+	*v1.Pod
+	Function          function.Instance
 	CPUUsage          *int64
 	MemoryUsage       *int64
 	Ready             bool
-	StartTime         time.Time
+	AssignedAt        time.Time
 	DeletionTimestamp *metav1.Time
 }
 
 // Recommendation represents a scaling recommendation
 type Recommendation struct {
-	Replicas  int32
+	Replicas  int
 	Timestamp time.Time
 }
 
@@ -51,7 +52,7 @@ type StabilizationWindow struct {
 }
 
 // RecordRecommendation adds a new recommendation and prunes old ones
-func (sw *StabilizationWindow) RecordRecommendation(replicas int32, timestamp time.Time) {
+func (sw *StabilizationWindow) RecordRecommendation(replicas int, timestamp time.Time) {
 	sw.Recommendations = append(sw.Recommendations, Recommendation{
 		Replicas:  replicas,
 		Timestamp: timestamp,
@@ -69,8 +70,8 @@ func (sw *StabilizationWindow) RecordRecommendation(replicas int32, timestamp ti
 }
 
 // GetMaxRecommendation returns the maximum recommended replicas in the window
-func (sw *StabilizationWindow) GetMaxRecommendation() int32 {
-	var maxReplicas int32
+func (sw *StabilizationWindow) GetMaxRecommendation() int {
+	var maxReplicas int
 	for _, rec := range sw.Recommendations {
 		if rec.Replicas > maxReplicas {
 			maxReplicas = rec.Replicas
@@ -79,86 +80,23 @@ func (sw *StabilizationWindow) GetMaxRecommendation() int32 {
 	return maxReplicas
 }
 
-// getPodMetrics fetches metrics and status for pods matching the selector
-func getPodMetrics(clientset kubernetes.Interface, metricsClientset metricsclientset.Interface, namespace, selector string) (map[string]PodMetricsInfo, error) {
-	pods, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: selector,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods: %v", err)
-	}
-
-	podMetrics := make(map[string]PodMetricsInfo)
-	podMetricsList, err := metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: selector,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pod metrics: %v", err)
-	}
-
-	metricsMap := make(map[string]metricsv1beta1.PodMetrics)
-	for _, m := range podMetricsList.Items {
-		metricsMap[m.Name] = m
-	}
-
-	for _, pod := range pods.Items {
-		info := PodMetricsInfo{
-			Ready:             false,
-			StartTime:         pod.Status.StartTime.Time,
-			DeletionTimestamp: pod.DeletionTimestamp,
-		}
-
-		for _, cond := range pod.Status.Conditions {
-			if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
-				info.Ready = true
-				break
-			}
-		}
-
-		if m, exists := metricsMap[pod.Name]; exists {
-			for _, c := range m.Containers {
-				if c.Usage.Cpu() != nil {
-					cpuUsage := c.Usage.Cpu().MilliValue()
-					if info.CPUUsage == nil {
-						info.CPUUsage = new(int64)
-					}
-					*info.CPUUsage += cpuUsage
-				}
-				if c.Usage.Memory() != nil {
-					memUsage := c.Usage.Memory().Value()
-					if info.MemoryUsage == nil {
-						info.MemoryUsage = new(int64)
-					}
-					*info.MemoryUsage += memUsage
-				}
-			}
-		} else {
-			// Metrics missing for this pod
-			info.CPUUsage = nil
-			info.MemoryUsage = nil
-		}
-
-		podMetrics[pod.Name] = info
-	}
-
-	return podMetrics, nil
-}
-
 // calculateDesiredReplicasForMetric computes desired replicas based on a single metric
 func calculateDesiredReplicasForMetric(
-	currentReplicas int32,
+	currentReplicas int,
 	metricName string,
 	podMetrics map[string]PodMetricsInfo,
 	targetUtilization int64,
-	hpaConfig HPAConfig,
+	hpaConfig Config,
 	timestamp time.Time,
-) (int32, error) {
+) (int, error) {
 	includedPods := []PodMetricsInfo{}
 	missingMetricsPods := []PodMetricsInfo{}
 	notYetReadyPods := []PodMetricsInfo{}
 
+	logger := slog.With(slog.String("metric", metricName), slog.Int64("targetUtilization", targetUtilization), slog.Int("currentReplicas", currentReplicas))
 	for _, pod := range podMetrics {
 		if pod.DeletionTimestamp != nil && !pod.DeletionTimestamp.IsZero() {
+			logger.Debug("skipping pod with deletion timestamp", slog.String("pod", pod.Name), slog.Time("deletionTimestamp", pod.DeletionTimestamp.Time))
 			continue
 		}
 
@@ -173,7 +111,7 @@ func calculateDesiredReplicasForMetric(
 		}
 
 		if metricName == "cpu" && !pod.Ready {
-			timeSinceStart := timestamp.Sub(pod.StartTime)
+			timeSinceStart := timestamp.Sub(pod.AssignedAt)
 			if timeSinceStart < hpaConfig.InitialReadinessDelay {
 				notYetReadyPods = append(notYetReadyPods, pod)
 				continue
@@ -194,7 +132,8 @@ func calculateDesiredReplicasForMetric(
 		case "cpu":
 			usage = *pod.CPUUsage
 		case "memory":
-			usage = *pod.MemoryUsage
+			// Convert memory usage from bytes to MB
+			usage = *pod.MemoryUsage / 1024 / 1024
 		}
 		totalUsage += usage
 	}
@@ -207,51 +146,76 @@ func calculateDesiredReplicasForMetric(
 	currentAverageUsage := float64(totalUsage) / float64(numIncludedPods)
 	usageRatio := currentAverageUsage / float64(targetUtilization)
 
+	logger = logger.With(
+		slog.Int("includedPods", len(includedPods)),
+		slog.Int("missingMetricsPods", len(missingMetricsPods)),
+		slog.Int("notYetReadyPods", len(notYetReadyPods)),
+		slog.Int64("totalUsage", totalUsage),
+		slog.Float64("currentAverageUsage", currentAverageUsage),
+		slog.Float64("usageRatio", usageRatio))
+
+	logger.Debug("calculated usage ratio")
+
 	if math.Abs(1.0-usageRatio) <= hpaConfig.Tolerance {
+		logger.Debug("usage ratio within tolerance of target utilization")
 		return currentReplicas, nil
 	}
 
-	desiredReplicas := int32(math.Ceil(float64(currentReplicas) * usageRatio))
+	desiredReplicas := int(math.Ceil(float64(currentReplicas) * usageRatio))
+	logger.Debug("calculated desired replicas", slog.Int("desiredReplicas", desiredReplicas))
 
 	if len(missingMetricsPods) > 0 || len(notYetReadyPods) > 0 {
 		totalPods := numIncludedPods + len(missingMetricsPods) + len(notYetReadyPods)
 		adjustedTotalUsage := totalUsage
 
+		logger = logger.With(slog.Int("totalPods", totalPods))
+
 		if desiredReplicas < currentReplicas {
 			adjustedTotalUsage += int64(len(missingMetricsPods)) * targetUtilization
+			logger.Debug("adjusted total usage for missing metrics", slog.Int64("adjustedTotalUsage", adjustedTotalUsage))
 		}
 
 		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(totalPods)
 		adjustedUsageRatio := adjustedAverageUsage / float64(targetUtilization)
 
+		logger = logger.With(
+			slog.Int64("adjustedTotalUsage", adjustedTotalUsage),
+			slog.Float64("adjustedAverageUsage", adjustedAverageUsage),
+			slog.Float64("adjustedUsageRatio", adjustedUsageRatio))
+
+		logger.Debug("calculated adjusted usage ratio")
+
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
 			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance {
+			// If the adjusted usage ratio is within tolerance of the target utilization, return the current replicas
+			logger.Debug("adjusted usage ratio within tolerance of target utilization")
 			return currentReplicas, nil
 		}
 
-		desiredReplicas = int32(math.Ceil(float64(currentReplicas) * adjustedUsageRatio))
+		desiredReplicas = int(math.Ceil(float64(currentReplicas) * adjustedUsageRatio))
+		logger.Debug("calculated adjusted desired replicas", slog.Int("desiredReplicas", desiredReplicas))
 	}
 
 	return desiredReplicas, nil
 }
 
-// calculateDesiredReplicas computes desired replicas based on multiple metrics
-func calculateDesiredReplicas(
-	currentReplicas int32,
+// CalculateDesiredReplicas computes desired replicas based on multiple metrics
+func CalculateDesiredReplicas(
+	currentReplicas int,
 	podMetrics map[string]PodMetricsInfo,
 	targetCPUUtilization int64,
 	targetMemoryUtilization int64,
-	hpaConfig HPAConfig,
+	hpaConfig Config,
 	timestamp time.Time,
-) (int32, error) {
-	maxDesiredReplicas := currentReplicas
+) (int, error) {
+	maxDesiredReplicas := 0
 	metricsToCalculate := []struct {
 		name              string
 		targetUtilization int64
 	}{
 		{"cpu", targetCPUUtilization},
-		{"memory", targetMemoryUtilization},
+		// {"memory", targetMemoryUtilization},
 	}
 
 	scaleDownErrors := 0
@@ -267,6 +231,7 @@ func calculateDesiredReplicas(
 			timestamp,
 		)
 		if err != nil {
+			slog.Warn("failed to calculate desired replicas for metric", slog.Any("error", err), slog.String("metric", metric.name))
 			if desiredReplicas < currentReplicas {
 				scaleDownErrors++
 			}
@@ -282,6 +247,10 @@ func calculateDesiredReplicas(
 		}
 	}
 
+	if maxDesiredReplicas == 0 {
+		return currentReplicas, fmt.Errorf("no metrics available")
+	}
+
 	if scaleDownSuggested && scaleDownErrors > 0 {
 		return currentReplicas, nil
 	}
@@ -293,15 +262,15 @@ func calculateDesiredReplicas(
 func autoscale(
 	clientset *kubernetes.Clientset,
 	namespace, deploymentName string,
-	currentReplicas int32,
+	currentReplicas int,
 	podMetrics map[string]PodMetricsInfo,
 	targetCPUUtilization int64,
 	targetMemoryUtilization int64,
-	hpaConfig HPAConfig,
+	hpaConfig Config,
 	stabilizationWindow *StabilizationWindow,
 	timestamp time.Time,
 ) error {
-	desiredReplicas, err := calculateDesiredReplicas(
+	desiredReplicas, err := CalculateDesiredReplicas(
 		currentReplicas,
 		podMetrics,
 		targetCPUUtilization,
@@ -335,14 +304,15 @@ func autoscale(
 }
 
 // scaleDeployment updates the deployment to the desired number of replicas
-func scaleDeployment(clientset *kubernetes.Clientset, namespace, deploymentName string, desiredReplicas int32) error {
+func scaleDeployment(clientset *kubernetes.Clientset, namespace, deploymentName string, desiredReplicas int) error {
 	deploymentClient := clientset.AppsV1().Deployments(namespace)
 	deployment, err := deploymentClient.Get(context.TODO(), deploymentName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get deployment: %v", err)
 	}
 
-	deployment.Spec.Replicas = &desiredReplicas
+	desiredReplicasInt32 := int32(desiredReplicas)
+	deployment.Spec.Replicas = &desiredReplicasInt32
 	_, err = deploymentClient.Update(context.TODO(), deployment, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update deployment: %v", err)
@@ -352,81 +322,74 @@ func scaleDeployment(clientset *kubernetes.Clientset, namespace, deploymentName 
 }
 
 // getCurrentReplicas fetches the current number of replicas in the deployment
-func getCurrentReplicas(clientset *kubernetes.Clientset, namespace, deploymentName string) (int32, error) {
+func getCurrentReplicas(clientset *kubernetes.Clientset, namespace, deploymentName string) (int, error) {
 	deploymentClient := clientset.AppsV1().Deployments(namespace)
 	deployment, err := deploymentClient.Get(context.TODO(), deploymentName, metav1.GetOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("failed to get deployment: %v", err)
 	}
-	return *deployment.Spec.Replicas, nil
+	return int(*deployment.Spec.Replicas), nil
 }
 
-func main() {
-	kubeconfig := "/path/to/kubeconfig"
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		panic(err.Error())
-	}
+// func main() {
+// 	kubeconfig := "/path/to/kubeconfig"
+// 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
+// 	clientset, err := kubernetes.NewForConfig(config)
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
 
-	metricsClientset, err := metricsclientset.NewForConfig(config)
-	if err != nil {
-		panic(err.Error())
-	}
+// 	metricsClientset, err := metricsclientset.NewForConfig(config)
+// 	if err != nil {
+// 		panic(err.Error())
+// 	}
 
-	hpaConfig := HPAConfig{
-		Tolerance:               defaultTolerance,
-		InitialReadinessDelay:   defaultInitialReadinessDelay,
-		CPUInitializationPeriod: defaultCPUInitializationPeriod,
-		DownscaleStabilization:  defaultDownscaleStabilization,
-	}
+// 	namespace := "default"
+// 	deploymentName := "my-deployment"
+// 	podLabelSelector := "app=my-app"
+// 	targetCPUUtilization := int64(100)    // in millicores
+// 	targetMemoryUtilization := int64(500) // in MB
 
-	namespace := "default"
-	deploymentName := "my-deployment"
-	podLabelSelector := "app=my-app"
-	targetCPUUtilization := int64(100)    // in millicores
-	targetMemoryUtilization := int64(500) // in MB
+// 	stabilizationWindow := &StabilizationWindow{
+// 		Window: DefaultConfig.DownscaleStabilization,
+// 	}
 
-	stabilizationWindow := &StabilizationWindow{
-		Window: hpaConfig.DownscaleStabilization,
-	}
+// 	ticker := time.NewTicker(15 * time.Second)
+// 	for {
+// 		select {
+// 		case <-ticker.C:
+// 			timestamp := time.Now()
+// 			currentReplicas, err := getCurrentReplicas(clientset, namespace, deploymentName)
+// 			if err != nil {
+// 				fmt.Printf("Error getting current replicas: %v\n", err)
+// 				continue
+// 			}
 
-	ticker := time.NewTicker(15 * time.Second)
-	for {
-		select {
-		case <-ticker.C:
-			timestamp := time.Now()
-			currentReplicas, err := getCurrentReplicas(clientset, namespace, deploymentName)
-			if err != nil {
-				fmt.Printf("Error getting current replicas: %v\n", err)
-				continue
-			}
+// 			podMetrics, err := getPodMetrics(clientset, metricsClientset, namespace, podLabelSelector)
+// 			if err != nil {
+// 				fmt.Printf("Error getting pod metrics: %v\n", err)
+// 				continue
+// 			}
 
-			podMetrics, err := getPodMetrics(clientset, metricsClientset, namespace, podLabelSelector)
-			if err != nil {
-				fmt.Printf("Error getting pod metrics: %v\n", err)
-				continue
-			}
-
-			err = autoscale(
-				clientset,
-				namespace,
-				deploymentName,
-				currentReplicas,
-				podMetrics,
-				targetCPUUtilization,
-				targetMemoryUtilization,
-				hpaConfig,
-				stabilizationWindow,
-				timestamp,
-			)
-			if err != nil {
-				fmt.Printf("Error in autoscaling: %v\n", err)
-			}
-		}
-	}
-}
+// 			err = autoscale(
+// 				clientset,
+// 				namespace,
+// 				deploymentName,
+// 				currentReplicas,
+// 				podMetrics,
+// 				targetCPUUtilization,
+// 				targetMemoryUtilization,
+// 				DefaultConfig,
+// 				stabilizationWindow,
+// 				timestamp,
+// 			)
+// 			if err != nil {
+// 				fmt.Printf("Error in autoscaling: %v\n", err)
+// 			}
+// 		}
+// 	}
+// }

@@ -11,7 +11,7 @@ func ptrInt64(val int64) *int64 {
 
 func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 	timestamp := time.Now()
-	hpaConfig := HPAConfig{
+	hpaConfig := Config{
 		Tolerance:               0.1,
 		InitialReadinessDelay:   30 * time.Second,
 		CPUInitializationPeriod: 5 * time.Minute,
@@ -19,11 +19,11 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 
 	tests := []struct {
 		name              string
-		currentReplicas   int32
+		currentReplicas   int
 		metricName        string
 		podMetrics        map[string]PodMetricsInfo
 		targetUtilization int64
-		expectedReplicas  int32
+		expectedReplicas  int
 		expectError       bool
 	}{
 		{
@@ -94,7 +94,7 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 			targetUtilization: 100,
 			podMetrics: map[string]PodMetricsInfo{
 				"pod1": {CPUUsage: ptrInt64(150), Ready: true},
-				"pod2": {CPUUsage: ptrInt64(150), Ready: false, StartTime: timestamp.Add(-10 * time.Second)},
+				"pod2": {CPUUsage: ptrInt64(150), Ready: false, AssignedAt: timestamp.Add(-10 * time.Second)},
 			},
 			expectedReplicas: 2,
 			expectError:      false,
