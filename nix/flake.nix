@@ -22,6 +22,7 @@
           krane = pkgs.krane;
           nix-direnv = pkgs.nix-direnv;
           nixpkgs-fmt = pkgs.nixpkgs-fmt;
+          node = pkgs.nodejs;
           task = pkgs.go-task;
         };
 

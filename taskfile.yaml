@@ -42,3 +42,7 @@ tasks:
   example-deno-request:
     cmds:
       - deno run -A scripts/example-deno-request.ts
+
+  example-deno-websocket:
+    cmds:
+      - node scripts/nodejs/example-deno-websocket.js

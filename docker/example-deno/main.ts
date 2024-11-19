@@ -9,15 +9,15 @@ const assignFilePath = "/tmp/assignment.json";
 let assignmentHeaders = await Deno.readTextFile(assignFilePath).then((txt) => JSON.parse(txt)).catch(() => null);
 
 const server = Deno.serve({ port: 8080 }, async (request) => {
+    if (request.method === "GET" && healthzPath.test(request.url)) {
+        return new Response();
+    }
+
     log.info({
         method: request.method,
         url: request.url,
         headers: Object.fromEntries(request.headers.entries()),
     }, "incoming request");
-
-    if (request.method === "GET" && healthzPath.test(request.url)) {
-        return new Response();
-    }
 
     if (request.method === "POST" && assignPath.test(request.url)) {
         if (assignmentHeaders) {
@@ -33,6 +33,23 @@ const server = Deno.serve({ port: 8080 }, async (request) => {
 
     if (!assignmentHeaders) {
         return new Response("not assigned", { status: 503 });
+    }
+
+    if (request.headers.get("upgrade") === "websocket") {
+        const { socket, response } = Deno.upgradeWebSocket(request);
+
+        socket.addEventListener("open", () => {
+            log.info("websocket opened");
+        });
+
+        socket.addEventListener("message", (event) => {
+            log.info({ data: event.data }, "websocket message");
+            if (event.data === "ping") {
+                socket.send("pong");
+            }
+        });
+
+        return response;
     }
 
     return new Response(request.body, {

@@ -31,8 +31,9 @@ type Controller struct {
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
-	controllerProxies sync.Map
-	assignmentLock    sync.Map
+	controllerProxies sync.Map // map[string]*httputil.ReverseProxy
+	assignmentLock    sync.Map // map[string]struct{}
+	fnStats           sync.Map // map[string]*function.Stats
 }
 
 func New(ip string, namespaces []string, clientset kubernetes.Interface, metricsClient metricsclientset.Interface, podManager *pod.Manager) *Controller {

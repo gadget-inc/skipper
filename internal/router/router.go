@@ -28,21 +28,22 @@ type Router struct {
 	clientset        *kubernetes.Clientset
 	podManager       *pod.Manager
 	fnProxies        sync.Map
+	podStats         sync.Map
 }
 
 func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
 	return &Router{controllerClient: controllerClient, clientset: clientset, podManager: podManager}
 }
 
-func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	fn, err := function.FromRequest(req)
 	if err != nil {
 		if req.URL.Path == "/healthz" {
-			w.WriteHeader(http.StatusOK)
+			rw.WriteHeader(http.StatusOK)
 			return
 		}
 
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -61,7 +62,15 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		defer req.Body.(*nopCloser).RealClose()
 	}
 
-	proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
+	if req.Header.Get("Connection") == "Upgrade" && req.Header.Get("Upgrade") == "websocket" {
+		// TODO: need to associate which pod the websocket is connected to
+		slog.InfoContext(req.Context(), "websocket started", key.Function.Field(fn))
+		defer func() {
+			slog.InfoContext(req.Context(), "websocket ended", key.Function.Field(fn))
+		}()
+	}
+
+	proxyAny.(*httputil.ReverseProxy).ServeHTTP(rw, req)
 }
 
 func (r *Router) newRoundTripper(fn function.Function) http.RoundTripper {
@@ -94,12 +103,12 @@ func (rrt *retryingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 	attempt := 1
 	for {
-		if attempt > 1 {
-			time.Sleep(1 * time.Second * time.Duration(attempt-1))
-		}
-
 		if attempt > 3 {
 			return nil, fmt.Errorf("failed to get a pod after %d attempts", attempt)
+		}
+
+		if attempt > 1 {
+			time.Sleep(1 * time.Second * time.Duration(attempt-1))
 		}
 
 		pod, err := rrt.getPodFor(ctx, rrt.fn)
