@@ -58,17 +58,17 @@ func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
 		podLister := podInformer.Lister()
 
 		podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
+			AddFunc: func(obj any) {
 				pod := obj.(*v1.Pod)
-				slog.DebugContext(ctx, "pod added", slog.String("pod", pod.Name), slog.String("status", string(pod.Status.Phase)), slog.String("ip", pod.Status.PodIP))
+				slog.DebugContext(ctx, "pod added", key.Pod.Field(pod))
 			},
-			UpdateFunc: func(_, newObj interface{}) {
+			UpdateFunc: func(_, newObj any) {
 				pod := newObj.(*v1.Pod)
-				slog.DebugContext(ctx, "pod updated", slog.String("pod", pod.Name), slog.String("status", string(pod.Status.Phase)), slog.String("ip", pod.Status.PodIP))
+				slog.DebugContext(ctx, "pod updated", key.Pod.Field(pod))
 			},
-			DeleteFunc: func(obj interface{}) {
+			DeleteFunc: func(obj any) {
 				pod := obj.(*v1.Pod)
-				slog.DebugContext(ctx, "pod deleted", slog.String("pod", pod.Name))
+				slog.DebugContext(ctx, "pod deleted", key.Pod.Field(pod))
 			},
 		})
 

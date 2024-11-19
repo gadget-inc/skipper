@@ -14,9 +14,8 @@
 ## Components
 
 - Router
-- Controller w/ leader election
+- Controller w/ hashring or leader election
 
 ## Notes
 
-- need to keep track of the last time a function received a request
-- routers periodically send request traffic to the controller
+- need to re-assign all functions when deployment is updated

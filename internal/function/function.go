@@ -195,7 +195,8 @@ func (f Function) Fields() []slog.Attr {
 	return []slog.Attr{
 		key.Tenant.Field(f.Tenant),
 		key.Namespace.Field(f.Namespace),
-		key.Deployment.Field(f.Deployment),
+		// key.Deployment.Field(f.Deployment),
+		slog.String("deployment", f.Deployment),
 		key.MinReplicas.Field(f.MinReplicas),
 		key.MaxReplicas.Field(f.MaxReplicas),
 		key.TargetCPUUtilization.Field(f.TargetCPUUtilization),
@@ -207,7 +208,8 @@ func (f Function) Attributes() []attribute.KeyValue {
 	return []attribute.KeyValue{
 		key.Tenant.Attribute(f.Tenant),
 		key.Namespace.Attribute(f.Namespace),
-		key.Deployment.Attribute(f.Deployment),
+		// key.Deployment.Field(f.Deployment),
+		attribute.String("deployment", f.Deployment),
 		key.MinReplicas.Attribute(f.MinReplicas),
 		key.MaxReplicas.Attribute(f.MaxReplicas),
 		key.TargetCPUUtilization.Attribute(f.TargetCPUUtilization),

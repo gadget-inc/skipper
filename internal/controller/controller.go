@@ -17,6 +17,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
@@ -32,6 +33,7 @@ type Controller struct {
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
+	deploymentListers sync.Map // map[string]listerv1.DeploymentLister
 	controllerProxies sync.Map // map[string]*httputil.ReverseProxy
 	assignmentLock    sync.Map // map[string]struct{}
 	fnTraffic         map[function.Function]time.Time
@@ -54,12 +56,14 @@ func (c *Controller) Start(ctx context.Context, controllerNamespace string) erro
 	if err != nil {
 		return fmt.Errorf("failed to start controller pod informer: %w", err)
 	}
+	err = c.startManagedDeploymentInformer(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start managed deployment informer: %w", err)
+	}
 	err = c.startScalingTenantPods(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to start tenant pod informer: %w", err)
+		return fmt.Errorf("failed to start scaling tenant pods: %w", err)
 	}
-	// TODO: clean up pods that have been pending for too long
-	// TODO: clean up pods that haven't received a request in a while
 	return nil
 }
 
@@ -93,23 +97,23 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 			pod := obj.(*v1.Pod)
 			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
 				c.ring.Add(pod.Status.PodIP)
-				slog.DebugContext(ctx, "added controller", slog.String("name", pod.Name), slog.String("ip", pod.Status.PodIP))
+				slog.DebugContext(ctx, "added controller", key.Pod.Field(pod))
 			}
 		},
 		UpdateFunc: func(_, newObj any) {
 			pod := newObj.(*v1.Pod)
 			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
 				c.ring.Add(pod.Status.PodIP)
-				slog.DebugContext(ctx, "updated controller", slog.String("name", pod.Name), slog.String("ip", pod.Status.PodIP))
+				slog.DebugContext(ctx, "updated controller", key.Pod.Field(pod))
 			} else {
 				c.ring.Remove(pod.Status.PodIP)
-				slog.DebugContext(ctx, "removed updated controller", slog.String("name", pod.Name), slog.String("ip", pod.Status.PodIP), slog.String("phase", string(pod.Status.Phase)))
+				slog.DebugContext(ctx, "removed updated controller", key.Pod.Field(pod))
 			}
 		},
 		DeleteFunc: func(obj any) {
 			pod := obj.(*v1.Pod)
 			c.ring.Remove(pod.Status.PodIP)
-			slog.DebugContext(ctx, "removed deleted controller", slog.String("name", pod.Name), slog.String("ip", pod.Status.PodIP))
+			slog.DebugContext(ctx, "removed deleted controller", key.Pod.Field(pod))
 		},
 	})
 	if err != nil {
@@ -130,6 +134,53 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 			return nil
 		})
 	}()
+
+	return nil
+}
+
+func (c *Controller) startManagedDeploymentInformer(ctx context.Context) error {
+	slog.InfoContext(ctx, "starting managed deployment informers", slog.Any("namespaces", c.namespaces))
+
+	for _, namespace := range c.namespaces {
+		informerFactory := informers.NewSharedInformerFactoryWithOptions(
+			c.clientset,
+			5*time.Minute,
+			informers.WithNamespace(namespace),
+			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+				options.LabelSelector = "app.kubernetes.io/managed-by=fusion"
+			}),
+		)
+
+		deploymentInformer := informerFactory.Apps().V1().Deployments()
+		deploymentLister := deploymentInformer.Lister()
+
+		deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj any) {
+				deployment := obj.(*appsv1.Deployment)
+				slog.DebugContext(ctx, "deployment added", key.Deployment.Field(deployment))
+			},
+			UpdateFunc: func(_, newObj any) {
+				deployment := newObj.(*appsv1.Deployment)
+				slog.DebugContext(ctx, "deployment updated", key.Deployment.Field(deployment))
+			},
+			DeleteFunc: func(obj any) {
+				deployment := obj.(*appsv1.Deployment)
+				slog.DebugContext(ctx, "deployment deleted", key.Deployment.Field(deployment))
+			},
+		})
+
+		_, loaded := c.deploymentListers.LoadOrStore(namespace, deploymentLister)
+		if !loaded {
+			informerFactory.Start(ctx.Done())
+		}
+
+		syncResults := informerFactory.WaitForCacheSync(ctx.Done())
+		for informer, synced := range syncResults {
+			if !synced {
+				return fmt.Errorf("failed to sync managed deployment informer cache: %v", informer)
+			}
+		}
+	}
 
 	return nil
 }
@@ -241,6 +292,12 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						} else {
 							desiredReplicas = currentReplicas
 						}
+					}
+
+					if desiredReplicas == 0 {
+						// we only scale to 0 if the last request was more than 90 seconds ago
+						slog.DebugContext(ctx, "skipping scaling function to 0 based on hpa", key.Function.Field(fn))
+						continue
 					}
 
 					slog.DebugContext(ctx, "scaling function",
