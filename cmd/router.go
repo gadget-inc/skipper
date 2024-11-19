@@ -58,6 +58,8 @@ func NewCmdRouter() *cobra.Command {
 			controllerClient := controller.NewClient(controllerHost)
 
 			rtr := router.New(controllerClient, clientset, podManager)
+			rtr.Start(ctx)
+
 			srv := &http.Server{
 				Addr:    ":8080",
 				Handler: rtr,

@@ -44,13 +44,12 @@ func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsCli
 
 		info := PodMetricsInfo{
 			Pod:               pod,
-			Function:          fn,
 			Ready:             false,
 			AssignedAt:        fn.AssignedAt,
 			DeletionTimestamp: pod.DeletionTimestamp,
 		}
 
-		if fn.ReadyAt != nil {
+		if !fn.ReadyAt.IsZero() {
 			for _, cond := range pod.Status.Conditions {
 				if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
 					info.Ready = true

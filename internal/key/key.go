@@ -13,19 +13,19 @@ type Key[v any] interface {
 }
 
 type key struct {
-	name        string
-	underscored string
+	KebabCased  string
+	Underscored string
 	Header      string
 	Label       string
 	PatchLabel  string
 }
 
-func new(name string) key {
+func new(kebabCasedName string) key {
 	return key{
-		name:        name,
-		Header:      "x-fusion-" + name,
-		Label:       "fusion/" + name,
-		PatchLabel:  "/metadata/labels/" + "fusion~1" + strings.ReplaceAll(strings.ReplaceAll(name, "~", "~0"), "/", "~1"),
-		underscored: strings.ReplaceAll(name, "-", "_"),
+		KebabCased:  kebabCasedName,
+		Underscored: strings.ReplaceAll(kebabCasedName, "-", "_"),
+		Header:      "x-fusion-" + kebabCasedName,
+		Label:       "fusion/" + kebabCasedName,
+		PatchLabel:  "/metadata/labels/" + "fusion~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
 	}
 }

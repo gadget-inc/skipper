@@ -1,9 +1,13 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
 )
@@ -31,6 +35,35 @@ func (c *Client) Assign(ctx context.Context, fn function.Function) error {
 
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("assign request failed: %s", res.Status)
+	}
+
+	return nil
+}
+
+func (c *Client) Traffic(ctx context.Context, fnLastRequest *sync.Map) error {
+	var trafficEntries []trafficEntry
+	fnLastRequest.Range(func(key, value interface{}) bool {
+		trafficEntries = append(trafficEntries, trafficEntry{fn: key.(function.Function), lastRequest: value.(time.Time)})
+		return true
+	})
+
+	body, err := json.Marshal(trafficEntries)
+	if err != nil {
+		return fmt.Errorf("failed to marshal traffic: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+c.host+":8080/traffic", bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("failed to create traffic request: %w", err)
+	}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send traffic request: %w", err)
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("traffic request failed: %s", res.Status)
 	}
 
 	return nil

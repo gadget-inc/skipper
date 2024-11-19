@@ -3,9 +3,12 @@ package key
 var (
 	AssignedAt              = timeKey{new("assigned-at")}
 	Controller              = stringKey{new("controller")}
+	CurrentReplicas         = intKey{new("current-replicas")}
 	Deployment              = stringKey{new("deployment")}
-	Function                = valueKey{new("function")}
+	DesiredReplicas         = intKey{new("desired-replicas")}
 	Error                   = errorKey{new("error")}
+	Function                = groupKey{new("function")}
+	LastRequest             = timeKey{new("last-request")}
 	MaxReplicas             = intKey{new("max-replicas")}
 	Metadata                = stringKey{new("metadata")}
 	MinReplicas             = intKey{new("min-replicas")}
@@ -15,4 +18,5 @@ var (
 	TargetCPUUtilization    = intKey{new("target-cpu-utilization")}
 	TargetMemoryUtilization = intKey{new("target-memory-utilization")}
 	Tenant                  = stringKey{new("tenant")}
+	Traffic                 = stringKey{new("traffic")}
 )

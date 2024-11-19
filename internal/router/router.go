@@ -27,12 +27,25 @@ type Router struct {
 	controllerClient *controller.Client
 	clientset        *kubernetes.Clientset
 	podManager       *pod.Manager
-	fnProxies        sync.Map
-	podStats         sync.Map
+	fnProxies        sync.Map // map[function.Function]*httputil.ReverseProxy
+	fnTraffic        sync.Map // map[function.Function]time.Time
 }
 
 func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
 	return &Router{controllerClient: controllerClient, clientset: clientset, podManager: podManager}
+}
+
+func (r *Router) Start(ctx context.Context) {
+	go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
+		fnTraffic := &r.fnTraffic
+		r.fnTraffic = sync.Map{}
+
+		err := r.controllerClient.Traffic(ctx, fnTraffic)
+		if err != nil {
+			slog.WarnContext(ctx, "failed to send traffic", key.Error.Field(err))
+		}
+		return nil
+	})
 }
 
 func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -46,6 +59,8 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	r.fnTraffic.Store(fn, time.Now())
 
 	proxyAny, ok := r.fnProxies.Load(fn)
 	if !ok {
@@ -63,11 +78,12 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if req.Header.Get("Connection") == "Upgrade" && req.Header.Get("Upgrade") == "websocket" {
-		// TODO: need to associate which pod the websocket is connected to
 		slog.InfoContext(req.Context(), "websocket started", key.Function.Field(fn))
-		defer func() {
-			slog.InfoContext(req.Context(), "websocket ended", key.Function.Field(fn))
-		}()
+		go timer.Loop(req.Context(), 10*time.Second, func(ctx context.Context) error {
+			r.fnTraffic.Store(fn, time.Now())
+			return nil
+		})
+		defer slog.InfoContext(req.Context(), "websocket ended", key.Function.Field(fn))
 	}
 
 	proxyAny.(*httputil.ReverseProxy).ServeHTTP(rw, req)

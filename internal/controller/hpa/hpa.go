@@ -7,7 +7,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,7 +31,6 @@ var DefaultConfig = Config{
 // PodMetricsInfo contains metrics and status information for a pod
 type PodMetricsInfo struct {
 	*v1.Pod
-	Function          function.Instance
 	CPUUsage          *int64
 	MemoryUsage       *int64
 	Ready             bool

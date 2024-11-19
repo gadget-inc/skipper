@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -33,7 +34,8 @@ type Controller struct {
 	podManager        *pod.Manager
 	controllerProxies sync.Map // map[string]*httputil.ReverseProxy
 	assignmentLock    sync.Map // map[string]struct{}
-	fnStats           sync.Map // map[string]*function.Stats
+	fnTraffic         map[function.Function]time.Time
+	fnTrafficMu       sync.Mutex
 }
 
 func New(ip string, namespaces []string, clientset kubernetes.Interface, metricsClient metricsclientset.Interface, podManager *pod.Manager) *Controller {
@@ -52,7 +54,7 @@ func (c *Controller) Start(ctx context.Context, controllerNamespace string) erro
 	if err != nil {
 		return fmt.Errorf("failed to start controller pod informer: %w", err)
 	}
-	err = c.scaleTenantPods(ctx)
+	err = c.startScalingTenantPods(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start tenant pod informer: %w", err)
 	}
@@ -66,9 +68,9 @@ func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case "/healthz":
 		w.WriteHeader(http.StatusOK)
 	case "/assign":
-		c.assign(w, req)
-	case "/track":
-		c.track(w, req)
+		c.handleAssign(w, req)
+	case "/traffic":
+		c.handleTraffic(w, req)
 	default:
 		http.Error(w, "not found", http.StatusNotFound)
 	}
@@ -132,111 +134,140 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 	return nil
 }
 
-func (c *Controller) scaleTenantPods(ctx context.Context) error {
-	for _, namespace := range c.namespaces {
-		go func() {
-			// TODO: garbage collect old stabilization windows
-			stabilizationWindows := make(map[function.Function]*hpa.StabilizationWindow)
+func (c *Controller) startScalingTenantPods(ctx context.Context) error {
+	// TODO: garbage collect old stabilization windows
+	stabilizationWindows := make(map[function.Function]*hpa.StabilizationWindow)
 
-			timer.Loop(
-				ctx,
-				15*time.Second,
-				func(ctx context.Context) error {
-					functionMetrics, err := hpa.GetFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
-					if err != nil {
-						slog.WarnContext(ctx, "failed to get function metrics", key.Error.Field(err))
-						return nil
+	go timer.Loop(
+		ctx,
+		15*time.Second,
+		func(ctx context.Context) error {
+			// scale tenant pods to 0
+			c.fnTrafficMu.Lock()
+			fnTraffic := c.fnTraffic
+			c.fnTraffic = make(map[function.Function]time.Time)
+			c.fnTrafficMu.Unlock()
+
+			for _, namespace := range c.namespaces {
+				// scale remaining tenant pods
+				functionMetrics, err := hpa.GetFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
+				if err != nil {
+					slog.WarnContext(ctx, "failed to get function metrics", key.Error.Field(err))
+					return nil
+				}
+
+				now := time.Now()
+				for fn, metrics := range functionMetrics {
+					lastRequest, ok := fnTraffic[fn]
+					if !ok {
+						for _, metric := range metrics {
+							if metric.AssignedAt.After(lastRequest) {
+								lastRequest = metric.AssignedAt
+							}
+						}
 					}
 
-					now := time.Now()
-					for fn, metrics := range functionMetrics {
-						currentReplicas := len(metrics)
-						desiredReplicas, err := hpa.CalculateDesiredReplicas(
-							currentReplicas,
-							metrics,
-							int64(fn.TargetCPUUtilization),
-							int64(fn.TargetMemoryUtilization),
-							hpa.DefaultConfig,
-							now,
-						)
-						if err != nil {
-							slog.WarnContext(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
-							continue
-						}
-
-						if desiredReplicas < fn.MinReplicas {
-							desiredReplicas = fn.MinReplicas
-						}
-
-						if desiredReplicas > fn.MaxReplicas {
-							desiredReplicas = fn.MaxReplicas
-						}
-
-						stabilizationWindow, exists := stabilizationWindows[fn]
-						if !exists {
-							stabilizationWindow = &hpa.StabilizationWindow{
-								Window: hpa.DefaultConfig.DownscaleStabilization,
-							}
-							stabilizationWindows[fn] = stabilizationWindow
-						}
-
-						slog.DebugContext(ctx, "desired replicas",
-							key.Function.Field(fn),
-							slog.Int("desiredReplicas", desiredReplicas),
-							slog.Int("currentReplicas", currentReplicas),
-							slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
-						)
-
-						stabilizationWindow.RecordRecommendation(desiredReplicas, now)
-
+					if time.Since(lastRequest) > 90*time.Second {
 						controllerIP, ok := c.ring.Get(fn.RingKey())
 						if !ok || controllerIP != c.ip {
-							slog.DebugContext(ctx, "skipping scaling for function",
-								key.Function.Field(fn),
-								slog.String("controllerIP", controllerIP),
-								slog.String("ip", c.ip),
-								slog.Bool("ok", ok),
-							)
+							slog.DebugContext(ctx, "skipping scaling fn to 0, not assigned to this controller", key.Function.Field(fn), slog.String("controllerIP", controllerIP), slog.String("ip", c.ip), slog.Bool("ok", ok))
 							continue
 						}
 
-						if desiredReplicas < currentReplicas {
-							maxRecommendedReplicas := stabilizationWindow.GetMaxRecommendation()
-							if maxRecommendedReplicas < currentReplicas {
-								desiredReplicas = maxRecommendedReplicas
-							} else {
-								desiredReplicas = currentReplicas
-							}
-						}
-
-						slog.DebugContext(ctx, "scaling function",
-							key.Function.Field(fn),
-							slog.Int("desiredReplicas", desiredReplicas),
-							slog.Int("currentReplicas", currentReplicas),
-							slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
-						)
-
-						err = hpa.ScaleFunction(ctx, c.podManager, fn, desiredReplicas)
+						slog.InfoContext(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(lastRequest))
+						err := hpa.ScaleFunction(ctx, c.podManager, fn, 0)
 						if err != nil {
-							slog.WarnContext(ctx, "failed to scale function",
-								key.Error.Field(err),
-								key.Function.Field(fn),
-								slog.Int("currentReplicas", currentReplicas),
-								slog.Int("desiredReplicas", desiredReplicas),
-							)
+							slog.WarnContext(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
+						}
+						continue
+					}
+
+					currentReplicas := len(metrics)
+					desiredReplicas, err := hpa.CalculateDesiredReplicas(
+						currentReplicas,
+						metrics,
+						int64(fn.TargetCPUUtilization),
+						int64(fn.TargetMemoryUtilization),
+						hpa.DefaultConfig,
+						now,
+					)
+					if err != nil {
+						slog.WarnContext(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
+						continue
+					}
+
+					if desiredReplicas < fn.MinReplicas {
+						desiredReplicas = fn.MinReplicas
+					}
+
+					if desiredReplicas > fn.MaxReplicas {
+						desiredReplicas = fn.MaxReplicas
+					}
+
+					stabilizationWindow, exists := stabilizationWindows[fn]
+					if !exists {
+						stabilizationWindow = &hpa.StabilizationWindow{
+							Window: hpa.DefaultConfig.DownscaleStabilization,
+						}
+						stabilizationWindows[fn] = stabilizationWindow
+					}
+
+					slog.DebugContext(ctx, "desired replicas",
+						key.Function.Field(fn),
+						key.CurrentReplicas.Field(currentReplicas),
+						key.DesiredReplicas.Field(desiredReplicas),
+						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
+					)
+
+					stabilizationWindow.RecordRecommendation(desiredReplicas, now)
+
+					controllerIP, ok := c.ring.Get(fn.RingKey())
+					if !ok || controllerIP != c.ip {
+						slog.DebugContext(ctx, "skipping scaling for function, not assigned to this controller",
+							key.Function.Field(fn),
+							slog.String("controllerIP", controllerIP),
+							slog.String("ip", c.ip),
+							slog.Bool("ok", ok),
+						)
+						continue
+					}
+
+					if desiredReplicas < currentReplicas {
+						maxRecommendedReplicas := stabilizationWindow.GetMaxRecommendation()
+						if maxRecommendedReplicas < currentReplicas {
+							desiredReplicas = maxRecommendedReplicas
+						} else {
+							desiredReplicas = currentReplicas
 						}
 					}
 
-					return nil
-				},
-			)
-		}()
-	}
+					slog.DebugContext(ctx, "scaling function",
+						key.Function.Field(fn),
+						key.CurrentReplicas.Field(currentReplicas),
+						key.DesiredReplicas.Field(desiredReplicas),
+						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
+					)
+
+					err = hpa.ScaleFunction(ctx, c.podManager, fn, desiredReplicas)
+					if err != nil {
+						slog.WarnContext(ctx, "failed to scale function",
+							key.Error.Field(err),
+							key.Function.Field(fn),
+							key.CurrentReplicas.Field(currentReplicas),
+							key.DesiredReplicas.Field(desiredReplicas),
+						)
+					}
+				}
+			}
+
+			return nil
+		},
+	)
 
 	return nil
 }
 
-func (c *Controller) assign(w http.ResponseWriter, req *http.Request) {
+func (c *Controller) handleAssign(w http.ResponseWriter, req *http.Request) {
 	fn, err := function.FromRequest(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -297,5 +328,25 @@ func (c *Controller) assign(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (c *Controller) track(w http.ResponseWriter, req *http.Request) {
+func (c *Controller) handleTraffic(w http.ResponseWriter, req *http.Request) {
+	var trafficEntries []trafficEntry
+	err := json.NewDecoder(req.Body).Decode(&trafficEntries)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	c.fnTrafficMu.Lock()
+	defer c.fnTrafficMu.Unlock()
+	for _, trafficEntry := range trafficEntries {
+		lastRequest, ok := c.fnTraffic[trafficEntry.fn]
+		if !ok || trafficEntry.lastRequest.After(lastRequest) {
+			c.fnTraffic[trafficEntry.fn] = trafficEntry.lastRequest
+		}
+	}
+}
+
+type trafficEntry struct {
+	fn          function.Function
+	lastRequest time.Time
 }
