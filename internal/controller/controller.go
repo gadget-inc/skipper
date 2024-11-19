@@ -168,6 +168,8 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 					}
 
 					if time.Since(lastRequest) > 90*time.Second {
+						delete(stabilizationWindows, fn)
+
 						controllerIP, ok := c.ring.Get(fn.RingKey())
 						if !ok || controllerIP != c.ip {
 							slog.DebugContext(ctx, "skipping scaling fn to 0, not assigned to this controller", key.Function.Field(fn), slog.String("controllerIP", controllerIP), slog.String("ip", c.ip), slog.Bool("ok", ok))
