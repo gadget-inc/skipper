@@ -63,7 +63,7 @@ func (c *Controller) Start(ctx context.Context, controllerNamespace string) erro
 	if err != nil {
 		return fmt.Errorf("failed to start controller pod informer: %w", err)
 	}
-	err = c.startManagedDeploymentInformer(ctx)
+	err = c.startManagedReplicaSetInformer(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start managed deployment informer: %w", err)
 	}
@@ -145,7 +145,7 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 	return nil
 }
 
-func (c *Controller) startManagedDeploymentInformer(ctx context.Context) error {
+func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", c.namespaces))
 
 	for _, namespace := range c.namespaces {
@@ -212,6 +212,7 @@ func (c *Controller) startManagedDeploymentInformer(ctx context.Context) error {
 			}
 
 			for _, fn := range defunctFunctions {
+				log.Debug(ctx, "terminating defunct function", key.Pod.Field(fn.Pod), key.Function.Field(fn))
 				err = c.podManager.Terminate(ctx, fn.Function, fn.Pod)
 				if err != nil {
 					log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(fn.Pod), key.Function.Field(fn))
