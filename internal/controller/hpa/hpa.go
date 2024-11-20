@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/fusion/internal/log"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -92,10 +93,16 @@ func calculateDesiredReplicasForMetric(
 	missingMetricsPods := []PodMetricsInfo{}
 	notYetReadyPods := []PodMetricsInfo{}
 
-	logger := slog.With(slog.String("metric", metricName), slog.Int64("targetUtilization", targetUtilization), slog.Int("currentReplicas", currentReplicas))
+	ctx := log.With(
+		context.Background(),
+		slog.String("metric", metricName),
+		slog.Int64("targetUtilization", targetUtilization),
+		slog.Int("currentReplicas", currentReplicas),
+	)
+
 	for _, pod := range podMetrics {
 		if pod.DeletionTimestamp != nil && !pod.DeletionTimestamp.IsZero() {
-			logger.Debug("skipping pod with deletion timestamp", slog.String("pod", pod.Name), slog.Time("deletionTimestamp", pod.DeletionTimestamp.Time))
+			log.Trace(ctx, "skipping pod with deletion timestamp", key.Pod.Field(pod.Pod), slog.Time("deletionTimestamp", pod.DeletionTimestamp.Time))
 			continue
 		}
 
@@ -145,55 +152,58 @@ func calculateDesiredReplicasForMetric(
 	currentAverageUsage := float64(totalUsage) / float64(numIncludedPods)
 	usageRatio := currentAverageUsage / float64(targetUtilization)
 
-	logger = logger.With(
+	ctx = log.With(
+		ctx,
 		slog.Int("includedPods", len(includedPods)),
 		slog.Int("missingMetricsPods", len(missingMetricsPods)),
 		slog.Int("notYetReadyPods", len(notYetReadyPods)),
 		slog.Int64("totalUsage", totalUsage),
 		slog.Float64("currentAverageUsage", currentAverageUsage),
-		slog.Float64("usageRatio", usageRatio))
+		slog.Float64("usageRatio", usageRatio),
+	)
 
-	logger.Debug("calculated usage ratio")
+	log.Trace(ctx, "calculated usage ratio")
 
 	if math.Abs(1.0-usageRatio) <= hpaConfig.Tolerance {
-		logger.Debug("usage ratio within tolerance of target utilization")
+		log.Trace(ctx, "usage ratio within tolerance of target utilization")
 		return currentReplicas, nil
 	}
 
 	desiredReplicas := int(math.Ceil(float64(currentReplicas) * usageRatio))
-	logger.Debug("calculated desired replicas", slog.Int("desiredReplicas", desiredReplicas))
+	log.Trace(ctx, "calculated desired replicas", slog.Int("desiredReplicas", desiredReplicas))
 
 	if len(missingMetricsPods) > 0 || len(notYetReadyPods) > 0 {
 		totalPods := numIncludedPods + len(missingMetricsPods) + len(notYetReadyPods)
 		adjustedTotalUsage := totalUsage
 
-		logger = logger.With(slog.Int("totalPods", totalPods))
+		ctx = log.With(ctx, slog.Int("totalPods", totalPods))
 
 		if desiredReplicas < currentReplicas {
 			adjustedTotalUsage += int64(len(missingMetricsPods)) * targetUtilization
-			logger.Debug("adjusted total usage for missing metrics", slog.Int64("adjustedTotalUsage", adjustedTotalUsage))
+			log.Trace(ctx, "adjusted total usage for missing metrics", slog.Int64("adjustedTotalUsage", adjustedTotalUsage))
 		}
 
 		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(totalPods)
 		adjustedUsageRatio := adjustedAverageUsage / float64(targetUtilization)
 
-		logger = logger.With(
+		ctx = log.With(ctx,
 			slog.Int64("adjustedTotalUsage", adjustedTotalUsage),
 			slog.Float64("adjustedAverageUsage", adjustedAverageUsage),
-			slog.Float64("adjustedUsageRatio", adjustedUsageRatio))
+			slog.Float64("adjustedUsageRatio", adjustedUsageRatio),
+		)
 
-		logger.Debug("calculated adjusted usage ratio")
+		log.Trace(ctx, "calculated adjusted usage ratio")
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
 			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance {
 			// If the adjusted usage ratio is within tolerance of the target utilization, return the current replicas
-			logger.Debug("adjusted usage ratio within tolerance of target utilization")
+			log.Trace(ctx, "adjusted usage ratio within tolerance of target utilization")
 			return currentReplicas, nil
 		}
 
 		desiredReplicas = int(math.Ceil(float64(currentReplicas) * adjustedUsageRatio))
-		logger.Debug("calculated adjusted desired replicas", slog.Int("desiredReplicas", desiredReplicas))
+		log.Trace(ctx, "calculated adjusted desired replicas", slog.Int("desiredReplicas", desiredReplicas))
 	}
 
 	return desiredReplicas, nil
@@ -230,7 +240,7 @@ func CalculateDesiredReplicas(
 			timestamp,
 		)
 		if err != nil {
-			slog.Warn("failed to calculate desired replicas for metric", key.Error.Field(err), slog.String("metric", metric.name))
+			log.Warn(nil, "failed to calculate desired replicas for metric", key.Error.Field(err), slog.String("metric", metric.name))
 			if desiredReplicas < currentReplicas {
 				scaleDownErrors++
 			}

@@ -18,6 +18,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/hashring"
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
 	appsv1 "k8s.io/api/apps/v1"
@@ -101,23 +102,23 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 			pod := obj.(*v1.Pod)
 			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
 				c.ring.Add(pod.Status.PodIP)
-				slog.DebugContext(ctx, "added controller", key.Pod.Field(pod))
+				log.Trace(ctx, "added controller", key.Pod.Field(pod))
 			}
 		},
 		UpdateFunc: func(_, newObj any) {
 			pod := newObj.(*v1.Pod)
 			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
 				c.ring.Add(pod.Status.PodIP)
-				slog.DebugContext(ctx, "updated controller", key.Pod.Field(pod))
+				log.Trace(ctx, "updated controller", key.Pod.Field(pod))
 			} else {
 				c.ring.Remove(pod.Status.PodIP)
-				slog.DebugContext(ctx, "removed updated controller", key.Pod.Field(pod))
+				log.Trace(ctx, "removed updated controller", key.Pod.Field(pod))
 			}
 		},
 		DeleteFunc: func(obj any) {
 			pod := obj.(*v1.Pod)
 			c.ring.Remove(pod.Status.PodIP)
-			slog.DebugContext(ctx, "removed deleted controller", key.Pod.Field(pod))
+			log.Trace(ctx, "removed deleted controller", key.Pod.Field(pod))
 		},
 	})
 	if err != nil {
@@ -131,19 +132,19 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 		return fmt.Errorf("failed to sync controller pod informer")
 	}
 
-	// go func() {
-	// 	timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-	// 		nodes := c.ring.List()
-	// 		slog.DebugContext(ctx, "controller pods", slog.Any("ips", nodes))
-	// 		return nil
-	// 	})
-	// }()
+	go func() {
+		timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
+			controllerIPs := c.ring.List()
+			log.Trace(ctx, "controller pods", slog.Any("ips", controllerIPs))
+			return nil
+		})
+	}()
 
 	return nil
 }
 
 func (c *Controller) startManagedDeploymentInformer(ctx context.Context) error {
-	slog.InfoContext(ctx, "starting managed deployment informers", slog.Any("namespaces", c.namespaces))
+	log.Info(ctx, "starting managed deployment informers", slog.Any("namespaces", c.namespaces))
 
 	for _, namespace := range c.namespaces {
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
@@ -161,15 +162,15 @@ func (c *Controller) startManagedDeploymentInformer(ctx context.Context) error {
 		deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
 				deployment := obj.(*appsv1.Deployment)
-				slog.DebugContext(ctx, "deployment added", key.Deployment.Field(deployment))
+				log.Trace(ctx, "deployment added", key.Deployment.Field(deployment))
 			},
 			UpdateFunc: func(_, newObj any) {
 				deployment := newObj.(*appsv1.Deployment)
-				slog.DebugContext(ctx, "deployment updated", key.Deployment.Field(deployment))
+				log.Trace(ctx, "deployment updated", key.Deployment.Field(deployment))
 			},
 			DeleteFunc: func(obj any) {
 				deployment := obj.(*appsv1.Deployment)
-				slog.DebugContext(ctx, "deployment deleted", key.Deployment.Field(deployment))
+				log.Trace(ctx, "deployment deleted", key.Deployment.Field(deployment))
 			},
 		})
 
@@ -197,17 +198,15 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 		ctx,
 		15*time.Second,
 		func(ctx context.Context) error {
-			// scale tenant pods to 0
 			c.fnTrafficMu.Lock()
 			fnTraffic := c.fnTraffic
 			c.fnTraffic = make(map[function.Function]time.Time)
 			c.fnTrafficMu.Unlock()
 
 			for _, namespace := range c.namespaces {
-				// scale remaining tenant pods
 				functionMetrics, err := hpa.GetFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
 				if err != nil {
-					slog.WarnContext(ctx, "failed to get function metrics", key.Error.Field(err))
+					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
 					return nil
 				}
 
@@ -215,6 +214,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 				for fn, metrics := range functionMetrics {
 					lastRequest, ok := fnTraffic[fn]
 					if !ok {
+						log.Warn(ctx, "no traffic entry for function", key.Function.Field(fn))
 						for _, metric := range metrics {
 							if metric.AssignedAt.After(lastRequest) {
 								lastRequest = metric.AssignedAt
@@ -227,14 +227,14 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 
 						controllerIP, ok := c.ring.Get(fn.RingKey())
 						if !ok || controllerIP != c.ip {
-							slog.DebugContext(ctx, "skipping scaling fn to 0, not assigned to this controller", key.Function.Field(fn), slog.String("controllerIP", controllerIP), slog.String("ip", c.ip), slog.Bool("ok", ok))
+							log.Trace(ctx, "skipping scaling fn to 0, not assigned to this controller", key.Function.Field(fn), slog.String("controllerIP", controllerIP), slog.String("ip", c.ip), slog.Bool("ok", ok))
 							continue
 						}
 
-						slog.InfoContext(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(lastRequest))
+						log.Info(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(lastRequest))
 						err := hpa.ScaleFunction(ctx, c.podManager, fn, 0)
 						if err != nil {
-							slog.WarnContext(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
+							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 						}
 						continue
 					}
@@ -249,7 +249,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						now,
 					)
 					if err != nil {
-						slog.WarnContext(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
+						log.Warn(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
 						continue
 					}
 
@@ -269,7 +269,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						stabilizationWindows[fn] = stabilizationWindow
 					}
 
-					slog.DebugContext(ctx, "desired replicas",
+					log.Trace(ctx, "desired replicas",
 						key.Function.Field(fn),
 						key.CurrentReplicas.Field(currentReplicas),
 						key.DesiredReplicas.Field(desiredReplicas),
@@ -280,7 +280,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 
 					controllerIP, ok := c.ring.Get(fn.RingKey())
 					if !ok || controllerIP != c.ip {
-						slog.DebugContext(ctx, "skipping scaling for function, not assigned to this controller",
+						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
 							key.Function.Field(fn),
 							slog.String("controllerIP", controllerIP),
 							slog.String("ip", c.ip),
@@ -300,11 +300,11 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 
 					if desiredReplicas == 0 {
 						// we only scale to 0 if the last request was more than 90 seconds ago
-						slog.DebugContext(ctx, "skipping scaling function to 0 based on hpa", key.Function.Field(fn))
+						log.Debug(ctx, "skipping scaling function to 0 based on hpa", key.Function.Field(fn))
 						continue
 					}
 
-					slog.DebugContext(ctx, "scaling function",
+					log.Trace(ctx, "scaling function",
 						key.Function.Field(fn),
 						key.CurrentReplicas.Field(currentReplicas),
 						key.DesiredReplicas.Field(desiredReplicas),
@@ -313,7 +313,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 
 					err = hpa.ScaleFunction(ctx, c.podManager, fn, desiredReplicas)
 					if err != nil {
-						slog.WarnContext(ctx, "failed to scale function",
+						log.Warn(ctx, "failed to scale function",
 							key.Error.Field(err),
 							key.Function.Field(fn),
 							key.CurrentReplicas.Field(currentReplicas),
@@ -339,13 +339,13 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 
 	controllerIP, ok := c.ring.Get(fn.RingKey())
 	if !ok {
-		slog.WarnContext(req.Context(), "no controller for function", key.Function.Field(fn), slog.String("ip", c.ip))
+		log.Warn(req.Context(), "no controller for function", key.Function.Field(fn), slog.String("ip", c.ip))
 		http.Error(rw, "no controller for function", http.StatusServiceUnavailable)
 		return
 	}
 
 	if controllerIP != c.ip {
-		slog.InfoContext(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
+		log.Info(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
 		proxyAny, ok := c.controllerProxies.Load(controllerIP)
 		if !ok {
 			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
@@ -378,7 +378,7 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*v1.Pod, error) {
 		pod, err := c.podManager.Assign(ctx, fn)
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to assign pod", key.Error.Field(err), key.Function.Field(fn))
+			log.Error(ctx, "failed to assign pod", key.Error.Field(err), key.Function.Field(fn))
 			return nil, nil
 		}
 		return pod, nil
@@ -391,6 +391,11 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 }
 
+type TrafficEntry struct {
+	Function    function.Function `json:"function"`
+	LastRequest time.Time         `json:"lastRequest"`
+}
+
 func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -398,7 +403,7 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var trafficEntries []trafficEntry
+	var trafficEntries []TrafficEntry
 	err = json.Unmarshal(body, &trafficEntries)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
@@ -408,12 +413,13 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 	c.fnTrafficMu.Lock()
 	defer c.fnTrafficMu.Unlock()
 	for _, trafficEntry := range trafficEntries {
-		lastRequest, ok := c.fnTraffic[trafficEntry.fn]
-		if !ok || trafficEntry.lastRequest.After(lastRequest) {
-			c.fnTraffic[trafficEntry.fn] = trafficEntry.lastRequest
+		lastRequest, ok := c.fnTraffic[trafficEntry.Function]
+		if !ok || trafficEntry.LastRequest.After(lastRequest) {
+			c.fnTraffic[trafficEntry.Function] = trafficEntry.LastRequest
 		}
 	}
 
+	log.Trace(req.Context(), "received traffic", slog.Int("trafficEntries", len(trafficEntries)))
 	rw.WriteHeader(http.StatusOK)
 
 	go func() {
@@ -422,33 +428,28 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 
 		for _, controllerIP := range c.ring.List() {
 			if !slices.Contains(forwardedFor, controllerIP) {
-				slog.Debug("forwarding traffic", slog.String("controllerIP", controllerIP), key.ForwardedFor.Field(forwardedFor))
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 
 				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":8080/traffic", bytes.NewBuffer(body))
 				if err != nil {
-					slog.Warn("failed to create traffic request", key.Error.Field(err))
+					log.Warn(ctx, "failed to create traffic request", key.Error.Field(err))
 					continue
 				}
 
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set(key.ForwardedFor.Header, strings.Join(forwardedFor, ","))
 
+				log.Trace(ctx, "forwarding traffic", slog.String("controllerIP", controllerIP), key.ForwardedFor.Field(forwardedFor))
 				res, err := http.DefaultClient.Do(req)
 				if err != nil {
-					slog.Warn("failed to forward traffic", key.Error.Field(err))
+					log.Warn(ctx, "failed to forward traffic", key.Error.Field(err))
 				}
 
 				if res.StatusCode != http.StatusOK {
-					slog.Warn("forwarded traffic failed", slog.String("status", res.Status))
+					log.Warn(ctx, "forwarded traffic failed", slog.String("status", res.Status))
 				}
 			}
 		}
 	}()
-}
-
-type trafficEntry struct {
-	fn          function.Function
-	lastRequest time.Time
 }

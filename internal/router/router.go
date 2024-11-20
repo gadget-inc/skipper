@@ -17,8 +17,10 @@ import (
 	"github.com/gadget-inc/fusion/internal/controller"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
+	"github.com/puzpuzpuz/xsync/v3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -27,26 +29,29 @@ type Router struct {
 	controllerClient *controller.Client
 	clientset        *kubernetes.Clientset
 	podManager       *pod.Manager
-	fnProxies        sync.Map // map[function.Function]*httputil.ReverseProxy
-	fnTraffic        sync.Map // map[function.Function]time.Time
+	fnProxies        sync.Map                                   // map[function.Function]*httputil.ReverseProxy
+	fnTraffic        *xsync.MapOf[function.Function, time.Time] // map[function.Function]time.Time
 }
 
 func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
-	return &Router{controllerClient: controllerClient, clientset: clientset, podManager: podManager}
+	return &Router{controllerClient: controllerClient, clientset: clientset, podManager: podManager, fnTraffic: xsync.NewMapOf[function.Function, time.Time]()}
 }
 
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-		fnTraffic := make(map[function.Function]time.Time)
-		r.fnTraffic.Range(func(key, value interface{}) bool {
-			fnTraffic[key.(function.Function)] = value.(time.Time)
+		fnTraffic := r.fnTraffic
+		r.fnTraffic = xsync.NewMapOf[function.Function, time.Time]()
+
+		var trafficEntries []controller.TrafficEntry
+		fnTraffic.Range(func(fn function.Function, lastRequest time.Time) bool {
+			trafficEntries = append(trafficEntries, controller.TrafficEntry{Function: fn, LastRequest: lastRequest})
 			return true
 		})
-		r.fnTraffic = sync.Map{}
 
-		err := r.controllerClient.Traffic(ctx, fnTraffic)
+		log.Trace(ctx, "sending traffic", slog.Int("entries", len(trafficEntries)))
+		err := r.controllerClient.Traffic(ctx, trafficEntries)
 		if err != nil {
-			slog.WarnContext(ctx, "failed to send traffic", key.Error.Field(err))
+			log.Warn(ctx, "failed to send traffic", key.Error.Field(err))
 		}
 		return nil
 	})
@@ -82,12 +87,12 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if req.Header.Get("Connection") == "Upgrade" && req.Header.Get("Upgrade") == "websocket" {
-		slog.InfoContext(req.Context(), "websocket started", key.Function.Field(fn))
+		log.Info(req.Context(), "websocket started", key.Function.Field(fn))
 		go timer.Loop(req.Context(), 10*time.Second, func(ctx context.Context) error {
 			r.fnTraffic.Store(fn, time.Now())
 			return nil
 		})
-		defer slog.InfoContext(req.Context(), "websocket ended", key.Function.Field(fn))
+		defer log.Info(req.Context(), "websocket ended", key.Function.Field(fn))
 	}
 
 	proxyAny.(*httputil.ReverseProxy).ServeHTTP(rw, req)
@@ -133,7 +138,7 @@ func (rrt *retryingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 		pod, err := rrt.getPodFor(ctx, rrt.fn)
 		if err != nil {
-			slog.WarnContext(ctx, "failed to get a pod for function", key.Error.Field(err), key.Function.Field(rrt.fn))
+			log.Warn(ctx, "failed to get a pod for function", key.Error.Field(err), key.Function.Field(rrt.fn))
 			attempt++
 			continue
 		}
@@ -146,20 +151,20 @@ func (rrt *retryingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				slog.WarnContext(ctx, "failed to dial pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
+				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
 				attempt++
 				continue
 			}
 
 			if netOpErr.Timeout() {
-				slog.WarnContext(ctx, "timeout dialing pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
+				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
 				attempt++
 				continue
 			}
 		}
 
 		if err != nil && err != context.Canceled {
-			slog.ErrorContext(ctx, "unknown error", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
+			log.Error(ctx, "unknown error", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
 		}
 
 		return res, err

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/pod"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,7 +39,7 @@ func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsCli
 	for _, pod := range pods {
 		fn, err := function.FromLabels(pod.Labels)
 		if err != nil {
-			slog.WarnContext(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", pod.Name), slog.Any("labels", pod.Labels))
+			log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", pod.Name), slog.Any("labels", pod.Labels))
 			continue
 		}
 
@@ -102,7 +103,7 @@ func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Fun
 		return nil
 	}
 
-	slog.InfoContext(ctx, "scaling function", slog.Int("currentReplicas", currentReplicas), slog.Int("desiredReplicas", desiredReplicas), key.Function.Field(fn))
+	log.Info(ctx, "scaling function", slog.Int("currentReplicas", currentReplicas), slog.Int("desiredReplicas", desiredReplicas), key.Function.Field(fn))
 
 	if desiredReplicas > currentReplicas {
 		// TODO: lock assigning map
@@ -111,7 +112,7 @@ func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Fun
 			if err != nil {
 				return fmt.Errorf("failed to assign pod: %w", err)
 			}
-			slog.InfoContext(ctx, "assigned pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+			log.Info(ctx, "assigned pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 		}
 	} else {
 		slices.SortFunc(assignedPods, func(a, b *v1.Pod) int {
@@ -125,13 +126,13 @@ func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Fun
 
 			instanceA, err := function.FromLabels(a.Labels)
 			if err != nil {
-				slog.WarnContext(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
+				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
 				return -1
 			}
 
 			instanceB, err := function.FromLabels(b.Labels)
 			if err != nil {
-				slog.WarnContext(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", b.Name), slog.Any("labels", b.Labels))
+				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", b.Name), slog.Any("labels", b.Labels))
 				return 1
 			}
 
@@ -144,7 +145,7 @@ func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Fun
 			if err != nil {
 				return fmt.Errorf("failed to delete pod: %w", err)
 			}
-			slog.InfoContext(ctx, "deleted pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+			log.Info(ctx, "deleted pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 		}
 	}
 

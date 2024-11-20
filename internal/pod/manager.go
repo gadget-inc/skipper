@@ -13,6 +13,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/timer"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,7 +43,7 @@ func NewManager(clientset *kubernetes.Clientset) *Manager {
 }
 
 func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
-	slog.InfoContext(ctx, "starting managed pod informers", slog.Any("namespaces", namespaces))
+	log.Info(ctx, "starting managed pod informers", slog.Any("namespaces", namespaces))
 
 	for _, namespace := range namespaces {
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
@@ -60,15 +61,15 @@ func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
 		podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
 				pod := obj.(*v1.Pod)
-				slog.DebugContext(ctx, "pod added", key.Pod.Field(pod))
+				log.Trace(ctx, "pod added", key.Pod.Field(pod))
 			},
 			UpdateFunc: func(_, newObj any) {
 				pod := newObj.(*v1.Pod)
-				slog.DebugContext(ctx, "pod updated", key.Pod.Field(pod))
+				log.Trace(ctx, "pod updated", key.Pod.Field(pod))
 			},
 			DeleteFunc: func(obj any) {
 				pod := obj.(*v1.Pod)
-				slog.DebugContext(ctx, "pod deleted", key.Pod.Field(pod))
+				log.Trace(ctx, "pod deleted", key.Pod.Field(pod))
 			},
 		})
 
@@ -152,7 +153,7 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 			return nil, fmt.Errorf("failed to list available pods: %w", err)
 		}
 		if len(availablePods) == 0 {
-			slog.WarnContext(ctx, "no available pods", key.Function.Field(fn))
+			log.Warn(ctx, "no available pods", key.Function.Field(fn))
 			return nil, nil
 		}
 
@@ -162,7 +163,7 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
 	}
 
-	slog.InfoContext(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+	log.Info(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 
 	assignPatches := []patchOperation{
 		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusPending},
