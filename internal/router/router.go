@@ -37,7 +37,11 @@ func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, p
 
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-		fnTraffic := &r.fnTraffic
+		fnTraffic := make(map[function.Function]time.Time)
+		r.fnTraffic.Range(func(key, value interface{}) bool {
+			fnTraffic[key.(function.Function)] = value.(time.Time)
+			return true
+		})
 		r.fnTraffic = sync.Map{}
 
 		err := r.controllerClient.Traffic(ctx, fnTraffic)

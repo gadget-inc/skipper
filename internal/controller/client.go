@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
@@ -40,12 +39,15 @@ func (c *Client) Assign(ctx context.Context, fn function.Function) error {
 	return nil
 }
 
-func (c *Client) Traffic(ctx context.Context, fnLastRequest *sync.Map) error {
+func (c *Client) Traffic(ctx context.Context, fnLastRequest map[function.Function]time.Time) error {
+	if len(fnLastRequest) == 0 {
+		return nil
+	}
+
 	var trafficEntries []trafficEntry
-	fnLastRequest.Range(func(key, value interface{}) bool {
-		trafficEntries = append(trafficEntries, trafficEntry{fn: key.(function.Function), lastRequest: value.(time.Time)})
-		return true
-	})
+	for fn, lastRequest := range fnLastRequest {
+		trafficEntries = append(trafficEntries, trafficEntry{fn: fn, lastRequest: lastRequest})
+	}
 
 	body, err := json.Marshal(trafficEntries)
 	if err != nil {

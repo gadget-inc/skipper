@@ -7,6 +7,7 @@ var (
 	Deployment              = deploymentKey{new("deployment")}
 	DesiredReplicas         = intKey{new("desired-replicas")}
 	Error                   = errorKey{new("error")}
+	ForwardedFor            = stringSliceKey{new("forwarded-for")}
 	Function                = groupValueKey{new("function")}
 	LastRequest             = timeKey{new("last-request")}
 	MaxReplicas             = intKey{new("max-replicas")}

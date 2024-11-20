@@ -1,13 +1,16 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +27,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
+	"k8s.io/utils/strings/slices"
 )
 
 type Controller struct {
@@ -127,13 +131,13 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 		return fmt.Errorf("failed to sync controller pod informer")
 	}
 
-	go func() {
-		timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-			nodes := c.ring.List()
-			slog.InfoContext(ctx, "controller pods", slog.Any("ips", nodes))
-			return nil
-		})
-	}()
+	// go func() {
+	// 	timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
+	// 		nodes := c.ring.List()
+	// 		slog.DebugContext(ctx, "controller pods", slog.Any("ips", nodes))
+	// 		return nil
+	// 	})
+	// }()
 
 	return nil
 }
@@ -326,17 +330,17 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) handleAssign(w http.ResponseWriter, req *http.Request) {
+func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 	fn, err := function.FromRequest(req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	controllerIP, ok := c.ring.Get(fn.RingKey())
 	if !ok {
 		slog.WarnContext(req.Context(), "no controller for function", key.Function.Field(fn), slog.String("ip", c.ip))
-		http.Error(w, "no controller for function", http.StatusServiceUnavailable)
+		http.Error(rw, "no controller for function", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -347,14 +351,14 @@ func (c *Controller) handleAssign(w http.ResponseWriter, req *http.Request) {
 			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
 			c.controllerProxies.Store(controllerIP, proxyAny)
 		}
-		proxyAny.(*httputil.ReverseProxy).ServeHTTP(w, req)
+		proxyAny.(*httputil.ReverseProxy).ServeHTTP(rw, req)
 		return
 	}
 
 	_, assignmentInProgress := c.assignmentLock.LoadOrStore(fn.RingKey(), struct{}{})
 	if assignmentInProgress {
 		// another goroutine is already assigning a pod for this function
-		w.WriteHeader(http.StatusOK)
+		rw.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -380,18 +384,24 @@ func (c *Controller) handleAssign(w http.ResponseWriter, req *http.Request) {
 		return pod, nil
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	rw.WriteHeader(http.StatusOK)
 }
 
-func (c *Controller) handleTraffic(w http.ResponseWriter, req *http.Request) {
-	var trafficEntries []trafficEntry
-	err := json.NewDecoder(req.Body).Decode(&trafficEntries)
+func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var trafficEntries []trafficEntry
+	err = json.Unmarshal(body, &trafficEntries)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -403,6 +413,39 @@ func (c *Controller) handleTraffic(w http.ResponseWriter, req *http.Request) {
 			c.fnTraffic[trafficEntry.fn] = trafficEntry.lastRequest
 		}
 	}
+
+	rw.WriteHeader(http.StatusOK)
+
+	go func() {
+		forwardedFor := req.Header.Values(key.ForwardedFor.Header)
+		forwardedFor = append(forwardedFor, c.ip)
+
+		for _, controllerIP := range c.ring.List() {
+			if !slices.Contains(forwardedFor, controllerIP) {
+				slog.Debug("forwarding traffic", slog.String("controllerIP", controllerIP), key.ForwardedFor.Field(forwardedFor))
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":8080/traffic", bytes.NewBuffer(body))
+				if err != nil {
+					slog.Warn("failed to create traffic request", key.Error.Field(err))
+					continue
+				}
+
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set(key.ForwardedFor.Header, strings.Join(forwardedFor, ","))
+
+				res, err := http.DefaultClient.Do(req)
+				if err != nil {
+					slog.Warn("failed to forward traffic", key.Error.Field(err))
+				}
+
+				if res.StatusCode != http.StatusOK {
+					slog.Warn("forwarded traffic failed", slog.String("status", res.Status))
+				}
+			}
+		}
+	}()
 }
 
 type trafficEntry struct {
