@@ -69,11 +69,11 @@ func (p podKey) Attributes(pod *v1.Pod) []attribute.KeyValue {
 	}
 
 	return []attribute.KeyValue{
-		attribute.String(p.KebabCased+".name", pod.Name),
-		attribute.String(p.KebabCased+".namespace", pod.Namespace),
-		attribute.String(p.KebabCased+".ip", pod.Status.PodIP),
-		attribute.String(p.KebabCased+".phase", string(pod.Status.Phase)),
-		attribute.Bool(p.KebabCased+".ready", ready),
+		attribute.String(p.Underscored+".name", pod.Name),
+		attribute.String(p.Underscored+".namespace", pod.Namespace),
+		attribute.String(p.Underscored+".ip", pod.Status.PodIP),
+		attribute.String(p.Underscored+".phase", string(pod.Status.Phase)),
+		attribute.Bool(p.Underscored+".ready", ready),
 	}
 }
 
@@ -88,18 +88,45 @@ func (d deploymentKey) Field(deployment *appsv1.Deployment) slog.Attr {
 			slog.String("name", deployment.Name),
 			slog.String("namespace", deployment.Namespace),
 			slog.Int("replicas", int(*deployment.Spec.Replicas)),
-			slog.Int("available", int(deployment.Status.AvailableReplicas)),
-			slog.Int("unavailable", int(deployment.Status.UnavailableReplicas)),
+			slog.Int("available_replicas", int(deployment.Status.AvailableReplicas)),
+			slog.Int("unavailable_replicas", int(deployment.Status.UnavailableReplicas)),
 		),
 	}
 }
 
 func (d deploymentKey) Attributes(deployment *appsv1.Deployment) []attribute.KeyValue {
 	return []attribute.KeyValue{
-		attribute.String(d.KebabCased+".name", deployment.Name),
-		attribute.String(d.KebabCased+".namespace", deployment.Namespace),
-		attribute.Int(d.KebabCased+".replicas", int(*deployment.Spec.Replicas)),
-		attribute.Int(d.KebabCased+".available", int(deployment.Status.AvailableReplicas)),
-		attribute.Int(d.KebabCased+".unavailable", int(deployment.Status.UnavailableReplicas)),
+		attribute.String(d.Underscored+".name", deployment.Name),
+		attribute.String(d.Underscored+".namespace", deployment.Namespace),
+		attribute.Int(d.Underscored+".replicas", int(*deployment.Spec.Replicas)),
+		attribute.Int(d.Underscored+".available_replicas", int(deployment.Status.AvailableReplicas)),
+		attribute.Int(d.Underscored+".unavailable_replicas", int(deployment.Status.UnavailableReplicas)),
+	}
+}
+
+type replicaSetKey struct{ key }
+
+var _ GroupKey[*appsv1.ReplicaSet] = replicaSetKey{}
+
+func (d replicaSetKey) Field(replicaSet *appsv1.ReplicaSet) slog.Attr {
+	return slog.Attr{
+		Key: d.Underscored,
+		Value: slog.GroupValue(
+			slog.String("name", replicaSet.Name),
+			slog.String("namespace", replicaSet.Namespace),
+			slog.Int("replicas", int(*replicaSet.Spec.Replicas)),
+			slog.Int("available_replicas", int(replicaSet.Status.AvailableReplicas)),
+			slog.Int("ready_replicas", int(replicaSet.Status.ReadyReplicas)),
+		),
+	}
+}
+
+func (d replicaSetKey) Attributes(replicaSet *appsv1.ReplicaSet) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String(d.Underscored+".name", replicaSet.Name),
+		attribute.String(d.Underscored+".namespace", replicaSet.Namespace),
+		attribute.Int(d.Underscored+".replicas", int(*replicaSet.Spec.Replicas)),
+		attribute.Int(d.Underscored+".available_replicas", int(replicaSet.Status.AvailableReplicas)),
+		attribute.Int(d.Underscored+".ready_replicas", int(replicaSet.Status.ReadyReplicas)),
 	}
 }

@@ -165,6 +165,8 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 	log.Info(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 
 	assignPatches := []patchOperation{
+		{Op: "test", Path: "/metadata/ownerReferences/0/kind", Value: "ReplicaSet"},
+		{Op: "copy", From: "/metadata/ownerReferences/0/name", Path: key.ReplicaSet.PatchLabel},
 		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusPending},
 		{Op: "add", Path: key.Tenant.PatchLabel, Value: fn.Tenant},
 		{Op: "add", Path: key.Namespace.PatchLabel, Value: fn.Namespace},
@@ -224,6 +226,7 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 	return pod, nil
 }
 
+// TODO: make this take a function.Instance
 func (pm *Manager) Terminate(ctx context.Context, fn function.Function, pod *v1.Pod) error {
 	return pm.clientset.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 }
@@ -253,6 +256,7 @@ func (pm *Manager) listPods(namespace string, selector labels.Selector) ([]*v1.P
 
 type patchOperation struct {
 	Op    string `json:"op"`
+	From  string `json:"from,omitempty"`
 	Path  string `json:"path"`
-	Value string `json:"value"`
+	Value string `json:"value,omitempty"`
 }

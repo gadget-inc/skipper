@@ -16,6 +16,7 @@ var (
 	Namespace               = stringKey{new("namespace")}
 	Pod                     = podKey{new("pod")}
 	ReadyAt                 = timeKey{new("ready-at")}
+	ReplicaSet              = replicaSetKey{new("replica-set")}
 	Status                  = stringKey{new("status")}
 	TargetCPUUtilization    = intKey{new("target-cpu-utilization")}
 	TargetMemoryUtilization = intKey{new("target-memory-utilization")}

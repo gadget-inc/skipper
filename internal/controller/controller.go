@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
-	listerv1 "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 	"k8s.io/utils/strings/slices"
@@ -40,7 +39,6 @@ type Controller struct {
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
-	deploymentListers *xsync.MapOf[string, listerv1.DeploymentLister]
 	controllerProxies *xsync.MapOf[string, *httputil.ReverseProxy]
 	assignmentLock    *xsync.MapOf[string, struct{}]
 	fnTraffic         map[function.Function]time.Time
@@ -55,7 +53,6 @@ func New(ip string, namespaces []string, clientset kubernetes.Interface, metrics
 		clientset:         clientset,
 		metricsClientset:  metricsClient,
 		podManager:        podManager,
-		deploymentListers: xsync.NewMapOf[string, listerv1.DeploymentLister](),
 		controllerProxies: xsync.NewMapOf[string, *httputil.ReverseProxy](),
 		assignmentLock:    xsync.NewMapOf[string, struct{}](),
 	}
@@ -149,7 +146,7 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 }
 
 func (c *Controller) startManagedDeploymentInformer(ctx context.Context) error {
-	log.Info(ctx, "starting managed deployment informers", slog.Any("namespaces", c.namespaces))
+	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", c.namespaces))
 
 	for _, namespace := range c.namespaces {
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
@@ -161,28 +158,25 @@ func (c *Controller) startManagedDeploymentInformer(ctx context.Context) error {
 			}),
 		)
 
-		deploymentInformer := informerFactory.Apps().V1().Deployments()
-		deploymentLister := deploymentInformer.Lister()
+		replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()
+		replicaSetLister := replicaSetInformer.Lister()
 
-		deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
-				deployment := obj.(*appsv1.Deployment)
-				log.Trace(ctx, "deployment added", key.Deployment.Field(deployment))
+				replicaSet := obj.(*appsv1.ReplicaSet)
+				log.Trace(ctx, "replica set added", key.ReplicaSet.Field(replicaSet))
 			},
 			UpdateFunc: func(_, newObj any) {
-				deployment := newObj.(*appsv1.Deployment)
-				log.Trace(ctx, "deployment updated", key.Deployment.Field(deployment))
+				replicaSet := newObj.(*appsv1.ReplicaSet)
+				log.Trace(ctx, "replica set updated", key.ReplicaSet.Field(replicaSet))
 			},
 			DeleteFunc: func(obj any) {
-				deployment := obj.(*appsv1.Deployment)
-				log.Trace(ctx, "deployment deleted", key.Deployment.Field(deployment))
+				replicaSet := obj.(*appsv1.ReplicaSet)
+				log.Trace(ctx, "replica set deleted", key.ReplicaSet.Field(replicaSet))
 			},
 		})
 
-		_, loaded := c.deploymentListers.LoadOrStore(namespace, deploymentLister)
-		if !loaded {
-			informerFactory.Start(ctx.Done())
-		}
+		informerFactory.Start(ctx.Done())
 
 		syncResults := informerFactory.WaitForCacheSync(ctx.Done())
 		for informer, synced := range syncResults {
@@ -190,6 +184,43 @@ func (c *Controller) startManagedDeploymentInformer(ctx context.Context) error {
 				return fmt.Errorf("failed to sync managed deployment informer cache: %v", informer)
 			}
 		}
+
+		go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
+			pods, err := c.podManager.GetAllAssignedPods(namespace)
+			if err != nil {
+				log.Warn(ctx, "failed to get all assigned pods for replica set check", key.Error.Field(err))
+				return nil
+			}
+
+			var defunctFunctions []function.Instance
+			for _, pod := range pods {
+				fn, err := function.FromPod(pod)
+				if err != nil {
+					log.Warn(ctx, "failed to get function from pod", key.Error.Field(err), key.Pod.Field(pod))
+					continue
+				}
+
+				replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(fn.ReplicaSet)
+				if err != nil {
+					log.Warn(ctx, "failed to get replica set for pod", key.Pod.Field(pod), key.Error.Field(err))
+					continue
+				}
+
+				if replicaSet.Spec.Replicas == nil || *replicaSet.Spec.Replicas == 0 {
+					defunctFunctions = append(defunctFunctions, fn)
+				}
+			}
+
+			for _, fn := range defunctFunctions {
+				err = c.podManager.Terminate(ctx, fn.Function, fn.Pod)
+				if err != nil {
+					log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(fn.Pod), key.Function.Field(fn))
+				}
+				time.Sleep(1 * time.Second)
+			}
+
+			return nil
+		})
 	}
 
 	return nil

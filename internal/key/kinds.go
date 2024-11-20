@@ -17,7 +17,7 @@ func (k boolKey) Field(value bool) slog.Attr {
 }
 
 func (k boolKey) Attribute(value bool) attribute.KeyValue {
-	return attribute.Bool(k.KebabCased, value)
+	return attribute.Bool(k.Underscored, value)
 }
 
 type stringKey struct{ key }
@@ -27,7 +27,7 @@ func (k stringKey) Field(value string) slog.Attr {
 }
 
 func (k stringKey) Attribute(value string) attribute.KeyValue {
-	return attribute.String(string(k.KebabCased), value)
+	return attribute.String(string(k.Underscored), value)
 }
 
 type stringSliceKey struct{ key }
@@ -39,7 +39,7 @@ func (k stringSliceKey) Field(value []string) slog.Attr {
 }
 
 func (k stringSliceKey) Attribute(value []string) attribute.KeyValue {
-	return attribute.StringSlice(string(k.KebabCased), value)
+	return attribute.StringSlice(string(k.Underscored), value)
 }
 
 type intKey struct{ key }
@@ -51,7 +51,7 @@ func (k intKey) Field(value int) slog.Attr {
 }
 
 func (k intKey) Attribute(value int) attribute.KeyValue {
-	return attribute.Int(string(k.KebabCased), value)
+	return attribute.Int(string(k.Underscored), value)
 }
 
 type int64Key struct{ key }
@@ -63,7 +63,7 @@ func (k int64Key) Field(value int64) slog.Attr {
 }
 
 func (k int64Key) Attribute(value int64) attribute.KeyValue {
-	return attribute.Int64(string(k.KebabCased), value)
+	return attribute.Int64(string(k.Underscored), value)
 }
 
 type durationKey struct{ key }
@@ -75,7 +75,7 @@ func (k durationKey) Field(value time.Duration) slog.Attr {
 }
 
 func (k durationKey) Attribute(value time.Duration) attribute.KeyValue {
-	return attribute.Float64(string(k.KebabCased), float64(value.Milliseconds()))
+	return attribute.Float64(string(k.Underscored), float64(value.Milliseconds()))
 }
 
 type float64Key struct{ key }
@@ -87,7 +87,7 @@ func (k float64Key) Field(value float64) slog.Attr {
 }
 
 func (k float64Key) Attribute(value float64) attribute.KeyValue {
-	return attribute.Float64(string(k.KebabCased), value)
+	return attribute.Float64(string(k.Underscored), value)
 }
 
 type timeKey struct{ key }
@@ -99,7 +99,7 @@ func (k timeKey) Field(value time.Time) slog.Attr {
 }
 
 func (k timeKey) Attribute(value time.Time) attribute.KeyValue {
-	return attribute.String(string(k.KebabCased), value.Format(time.RFC3339))
+	return attribute.String(string(k.Underscored), value.Format(time.RFC3339))
 }
 
 type stringerKey struct{ key }
@@ -111,7 +111,7 @@ func (k stringerKey) Field(value fmt.Stringer) slog.Attr {
 }
 
 func (k stringerKey) Attribute(value fmt.Stringer) attribute.KeyValue {
-	return attribute.String(string(k.KebabCased), value.String())
+	return attribute.String(string(k.Underscored), value.String())
 }
 
 type errorKey struct{ key }
@@ -119,11 +119,14 @@ type errorKey struct{ key }
 var _ Key[error] = errorKey{}
 
 func (k errorKey) Field(value error) slog.Attr {
+	if value == nil {
+		return slog.Attr{Key: k.Underscored}
+	}
 	return slog.String(string(k.Underscored), value.Error())
 }
 
 func (k errorKey) Attribute(value error) attribute.KeyValue {
-	return attribute.String(string(k.KebabCased), value.Error())
+	return attribute.String(string(k.Underscored), value.Error())
 }
 
 type Value interface {
@@ -140,5 +143,5 @@ func (k valueKey) Field(value Value) slog.Attr {
 }
 
 func (k valueKey) Attribute(value Value) attribute.KeyValue {
-	return attribute.KeyValue{Key: attribute.Key(k.KebabCased), Value: value.AttributeValue()}
+	return attribute.KeyValue{Key: attribute.Key(k.Underscored), Value: value.AttributeValue()}
 }

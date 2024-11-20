@@ -37,7 +37,7 @@ func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsCli
 	functionsMap := make(map[function.Function]map[string]PodMetricsInfo)
 
 	for _, pod := range pods {
-		fn, err := function.FromLabels(pod.Labels)
+		fn, err := function.FromPod(pod)
 		if err != nil {
 			log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", pod.Name), slog.Any("labels", pod.Labels))
 			continue
@@ -124,13 +124,13 @@ func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Fun
 				return -1
 			}
 
-			instanceA, err := function.FromLabels(a.Labels)
+			instanceA, err := function.FromPod(a)
 			if err != nil {
 				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
 				return -1
 			}
 
-			instanceB, err := function.FromLabels(b.Labels)
+			instanceB, err := function.FromPod(b)
 			if err != nil {
 				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", b.Name), slog.Any("labels", b.Labels))
 				return 1

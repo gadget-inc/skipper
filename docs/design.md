@@ -18,4 +18,5 @@
 
 ## Notes
 
-- need to re-assign all functions when deployment is updated
+- update functions when deployment is updated
+  - terminate old pods, new pods will be assigned if needed

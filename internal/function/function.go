@@ -8,6 +8,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/key"
 	"go.opentelemetry.io/otel/attribute"
+	v1 "k8s.io/api/core/v1"
 )
 
 type Function struct {
@@ -27,6 +28,8 @@ type Function struct {
 
 type Instance struct {
 	Function
+	Pod         *v1.Pod
+	ReplicaSet  string
 	AssignedAt  time.Time
 	ReadyAt     time.Time
 	LastRequest time.Time
@@ -129,22 +132,22 @@ func FromRequest(req *http.Request) (Function, error) {
 	)
 }
 
-func FromLabels(labels map[string]string) (Instance, error) {
+func FromPod(pod *v1.Pod) (Instance, error) {
 	fn, err := from(
-		labels[key.Deployment.Label],
-		labels[key.MaxReplicas.Label],
+		pod.Labels[key.Deployment.Label],
+		pod.Labels[key.MaxReplicas.Label],
 		"", // we don't store metadata in labels because they may contain sensitive information
-		labels[key.MinReplicas.Label],
-		labels[key.Namespace.Label],
-		labels[key.TargetCPUUtilization.Label],
-		labels[key.TargetMemoryUtilization.Label],
-		labels[key.Tenant.Label],
+		pod.Labels[key.MinReplicas.Label],
+		pod.Labels[key.Namespace.Label],
+		pod.Labels[key.TargetCPUUtilization.Label],
+		pod.Labels[key.TargetMemoryUtilization.Label],
+		pod.Labels[key.Tenant.Label],
 	)
 	if err != nil {
 		return emptyInstance, err
 	}
 
-	assignedAtStr := labels[key.AssignedAt.Label]
+	assignedAtStr := pod.Labels[key.AssignedAt.Label]
 	if assignedAtStr == "" {
 		return emptyInstance, ErrMissingAssignedAt
 	}
@@ -155,7 +158,7 @@ func FromLabels(labels map[string]string) (Instance, error) {
 	}
 
 	var readyAt time.Time
-	if readyAtStr, ok := labels[key.ReadyAt.Label]; ok {
+	if readyAtStr, ok := pod.Labels[key.ReadyAt.Label]; ok {
 		readyAtInt, err := strconv.ParseInt(readyAtStr, 10, 64)
 		if err != nil || readyAtInt == 0 {
 			return emptyInstance, ErrInvalidReadyAt
@@ -163,10 +166,17 @@ func FromLabels(labels map[string]string) (Instance, error) {
 		readyAt = time.Unix(readyAtInt, 0)
 	}
 
+	replicaSet := pod.Labels[key.ReplicaSet.Label]
+	if replicaSet == "" {
+		return emptyInstance, ErrMissingReplicaSet
+	}
+
 	return Instance{
+		Function:   fn,
+		Pod:        pod,
 		AssignedAt: time.Unix(assignedAt, 0),
 		ReadyAt:    readyAt,
-		Function:   fn,
+		ReplicaSet: replicaSet,
 	}, nil
 }
 
