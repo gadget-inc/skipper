@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"sync"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/buffer"
@@ -29,12 +28,18 @@ type Router struct {
 	controllerClient *controller.Client
 	clientset        *kubernetes.Clientset
 	podManager       *pod.Manager
-	fnProxies        sync.Map                                   // map[function.Function]*httputil.ReverseProxy
-	fnTraffic        *xsync.MapOf[function.Function, time.Time] // map[function.Function]time.Time
+	fnProxies        *xsync.MapOf[function.Function, *httputil.ReverseProxy]
+	fnTraffic        *xsync.MapOf[function.Function, time.Time]
 }
 
 func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
-	return &Router{controllerClient: controllerClient, clientset: clientset, podManager: podManager, fnTraffic: xsync.NewMapOf[function.Function, time.Time]()}
+	return &Router{
+		controllerClient: controllerClient,
+		clientset:        clientset,
+		podManager:       podManager,
+		fnProxies:        xsync.NewMapOf[function.Function, *httputil.ReverseProxy](),
+		fnTraffic:        xsync.NewMapOf[function.Function, time.Time](),
+	}
 }
 
 func (r *Router) Start(ctx context.Context) {
@@ -71,14 +76,14 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	r.fnTraffic.Store(fn, time.Now())
 
-	proxyAny, ok := r.fnProxies.Load(fn)
+	proxy, ok := r.fnProxies.Load(fn)
 	if !ok {
-		proxyAny = &httputil.ReverseProxy{
+		proxy = &httputil.ReverseProxy{
 			BufferPool: buffer.Pool,
 			Director:   func(req *http.Request) {},
 			Transport:  r.newRoundTripper(fn),
 		}
-		r.fnProxies.Store(fn, proxyAny)
+		r.fnProxies.Store(fn, proxy)
 	}
 
 	if req.Body != nil {
@@ -87,15 +92,15 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if req.Header.Get("Connection") == "Upgrade" && req.Header.Get("Upgrade") == "websocket" {
-		log.Info(req.Context(), "websocket started", key.Function.Field(fn))
+		log.Trace(req.Context(), "websocket started", key.Function.Field(fn))
 		go timer.Loop(req.Context(), 10*time.Second, func(ctx context.Context) error {
 			r.fnTraffic.Store(fn, time.Now())
 			return nil
 		})
-		defer log.Info(req.Context(), "websocket ended", key.Function.Field(fn))
+		defer log.Trace(req.Context(), "websocket ended", key.Function.Field(fn))
 	}
 
-	proxyAny.(*httputil.ReverseProxy).ServeHTTP(rw, req)
+	proxy.ServeHTTP(rw, req)
 }
 
 func (r *Router) newRoundTripper(fn function.Function) http.RoundTripper {

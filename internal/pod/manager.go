@@ -8,13 +8,13 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/timer"
+	"github.com/puzpuzpuz/xsync/v3"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -33,13 +33,12 @@ const (
 )
 
 type Manager struct {
-	clientset      kubernetes.Interface
-	podListers     sync.Map
-	assignmentLock sync.Map
+	clientset  kubernetes.Interface
+	podListers *xsync.MapOf[string, listerv1.PodLister]
 }
 
 func NewManager(clientset *kubernetes.Clientset) *Manager {
-	return &Manager{clientset: clientset}
+	return &Manager{clientset: clientset, podListers: xsync.NewMapOf[string, listerv1.PodLister]()}
 }
 
 func (pm *Manager) Start(ctx context.Context, namespaces []string) error {

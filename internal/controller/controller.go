@@ -21,11 +21,13 @@ import (
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
+	"github.com/puzpuzpuz/xsync/v3"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	listerv1 "k8s.io/client-go/listers/apps/v1"
 	"k8s.io/client-go/tools/cache"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 	"k8s.io/utils/strings/slices"
@@ -38,21 +40,24 @@ type Controller struct {
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
-	deploymentListers sync.Map // map[string]listerv1.DeploymentLister
-	controllerProxies sync.Map // map[string]*httputil.ReverseProxy
-	assignmentLock    sync.Map // map[string]struct{}
+	deploymentListers *xsync.MapOf[string, listerv1.DeploymentLister]
+	controllerProxies *xsync.MapOf[string, *httputil.ReverseProxy]
+	assignmentLock    *xsync.MapOf[string, struct{}]
 	fnTraffic         map[function.Function]time.Time
-	fnTrafficMu       sync.Mutex
+	fnTrafficMu       sync.Mutex // guards fnTraffic
 }
 
 func New(ip string, namespaces []string, clientset kubernetes.Interface, metricsClient metricsclientset.Interface, podManager *pod.Manager) *Controller {
 	return &Controller{
-		ip:               ip,
-		ring:             hashring.New(),
-		namespaces:       namespaces,
-		clientset:        clientset,
-		metricsClientset: metricsClient,
-		podManager:       podManager,
+		ip:                ip,
+		ring:              hashring.New(),
+		namespaces:        namespaces,
+		clientset:         clientset,
+		metricsClientset:  metricsClient,
+		podManager:        podManager,
+		deploymentListers: xsync.NewMapOf[string, listerv1.DeploymentLister](),
+		controllerProxies: xsync.NewMapOf[string, *httputil.ReverseProxy](),
+		assignmentLock:    xsync.NewMapOf[string, struct{}](),
 	}
 }
 
@@ -346,12 +351,12 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 
 	if controllerIP != c.ip {
 		log.Info(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
-		proxyAny, ok := c.controllerProxies.Load(controllerIP)
+		proxy, ok := c.controllerProxies.Load(controllerIP)
 		if !ok {
-			proxyAny = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
-			c.controllerProxies.Store(controllerIP, proxyAny)
+			proxy = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
+			c.controllerProxies.Store(controllerIP, proxy)
 		}
-		proxyAny.(*httputil.ReverseProxy).ServeHTTP(rw, req)
+		proxy.ServeHTTP(rw, req)
 		return
 	}
 
