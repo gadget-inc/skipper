@@ -76,14 +76,14 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	r.fnTraffic.Store(fn, time.Now())
 
-	proxy, ok := r.fnProxies.Load(fn)
+	fnProxy, ok := r.fnProxies.Load(fn)
 	if !ok {
-		proxy = &httputil.ReverseProxy{
+		fnProxy = &httputil.ReverseProxy{
 			BufferPool: buffer.Pool,
 			Director:   func(req *http.Request) {},
 			Transport:  r.newRoundTripper(fn),
 		}
-		r.fnProxies.Store(fn, proxy)
+		r.fnProxies.Store(fn, fnProxy)
 	}
 
 	if req.Body != nil {
@@ -100,11 +100,11 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		defer log.Trace(req.Context(), "websocket ended", key.Function.Field(fn))
 	}
 
-	proxy.ServeHTTP(rw, req)
+	fnProxy.ServeHTTP(rw, req)
 }
 
 func (r *Router) newRoundTripper(fn function.Function) http.RoundTripper {
-	return &retryingRoundTripper{
+	return &fnRoundTripper{
 		router: r,
 		fn:     fn,
 		transport: &http.Transport{
@@ -122,13 +122,13 @@ func (r *Router) newRoundTripper(fn function.Function) http.RoundTripper {
 	}
 }
 
-type retryingRoundTripper struct {
+type fnRoundTripper struct {
 	router    *Router
 	fn        function.Function
 	transport http.RoundTripper
 }
 
-func (rrt *retryingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+func (frt *fnRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 
 	attempt := 1
@@ -141,9 +141,9 @@ func (rrt *retryingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 			time.Sleep(1 * time.Second * time.Duration(attempt-1))
 		}
 
-		pod, err := rrt.getPodFor(ctx, rrt.fn)
+		pod, err := frt.getAssignedPod(ctx, frt.fn)
 		if err != nil {
-			log.Warn(ctx, "failed to get a pod for function", key.Error.Field(err), key.Function.Field(rrt.fn))
+			log.Warn(ctx, "failed to get a pod for function", key.Error.Field(err), key.Function.Field(frt.fn))
 			attempt++
 			continue
 		}
@@ -151,32 +151,32 @@ func (rrt *retryingRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 		req.URL.Scheme = "http"
 		req.URL.Host = pod.Status.PodIP + ":8080"
 
-		res, err := rrt.transport.RoundTrip(req)
+		res, err := frt.transport.RoundTrip(req)
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
+				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(frt.fn))
 				attempt++
 				continue
 			}
 
 			if netOpErr.Timeout() {
-				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
+				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(frt.fn))
 				attempt++
 				continue
 			}
 		}
 
 		if err != nil && err != context.Canceled {
-			log.Error(ctx, "unknown error", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(rrt.fn))
+			log.Error(ctx, "unknown error", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(frt.fn))
 		}
 
 		return res, err
 	}
 }
 
-func (rrt *retryingRoundTripper) getPodFor(ctx context.Context, fn function.Function) (*v1.Pod, error) {
+func (rrt *fnRoundTripper) getAssignedPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
 	return timer.Poll(ctx, 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*v1.Pod, error) {
 		pods, err := rrt.router.podManager.GetAssigned(fn)
 		if err != nil {

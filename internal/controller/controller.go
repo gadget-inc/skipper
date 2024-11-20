@@ -351,12 +351,12 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 
 	if controllerIP != c.ip {
 		log.Info(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
-		proxy, ok := c.controllerProxies.Load(controllerIP)
+		controllerProxy, ok := c.controllerProxies.Load(controllerIP)
 		if !ok {
-			proxy = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
-			c.controllerProxies.Store(controllerIP, proxy)
+			controllerProxy = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
+			c.controllerProxies.Store(controllerIP, controllerProxy)
 		}
-		proxy.ServeHTTP(rw, req)
+		controllerProxy.ServeHTTP(rw, req)
 		return
 	}
 
