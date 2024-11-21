@@ -55,6 +55,7 @@ spec:
           args:
             - controller
             - "--namespace=example-development"
+            - "--namespace=gadget-app-sandbox-development"
             - "--log-level=debug"
             - "--log-format=text"
           ports:

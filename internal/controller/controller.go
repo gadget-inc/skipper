@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -55,6 +56,7 @@ func New(ip string, namespaces []string, clientset kubernetes.Interface, metrics
 		podManager:        podManager,
 		controllerProxies: xsync.NewMapOf[string, *httputil.ReverseProxy](),
 		assignmentLock:    xsync.NewMapOf[string, struct{}](),
+		fnTraffic:         make(map[function.Function]time.Time),
 	}
 }
 
@@ -74,16 +76,16 @@ func (c *Controller) Start(ctx context.Context, controllerNamespace string) erro
 	return nil
 }
 
-func (c *Controller) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch req.URL.Path {
 	case "/healthz":
-		w.WriteHeader(http.StatusOK)
+		rw.WriteHeader(http.StatusOK)
 	case "/assign":
-		c.handleAssign(w, req)
+		c.handleAssign(rw, req)
 	case "/traffic":
-		c.handleTraffic(w, req)
+		c.handleTraffic(rw, req)
 	default:
-		http.Error(w, "not found", http.StatusNotFound)
+		http.Error(rw, "not found", http.StatusNotFound)
 	}
 }
 
@@ -236,8 +238,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 		15*time.Second,
 		func(ctx context.Context) error {
 			c.fnTrafficMu.Lock()
-			fnTraffic := c.fnTraffic
-			c.fnTraffic = make(map[function.Function]time.Time)
+			fnTraffic := maps.Clone(c.fnTraffic)
 			c.fnTrafficMu.Unlock()
 
 			for _, namespace := range c.namespaces {
@@ -448,13 +449,14 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	c.fnTrafficMu.Lock()
-	defer c.fnTrafficMu.Unlock()
 	for _, trafficEntry := range trafficEntries {
+		trafficEntry.Function.Metadata = "" // the idle function reaper doesn't have the function metadata, so we need to clear it to match the function in the map
 		lastRequest, ok := c.fnTraffic[trafficEntry.Function]
 		if !ok || trafficEntry.LastRequest.After(lastRequest) {
 			c.fnTraffic[trafficEntry.Function] = trafficEntry.LastRequest
 		}
 	}
+	defer c.fnTrafficMu.Unlock()
 
 	log.Trace(req.Context(), "received traffic", slog.Int("trafficEntries", len(trafficEntries)))
 	rw.WriteHeader(http.StatusOK)

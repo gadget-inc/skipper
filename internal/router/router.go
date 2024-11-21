@@ -43,7 +43,7 @@ func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, p
 }
 
 func (r *Router) Start(ctx context.Context) {
-	go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
+	go timer.Loop(ctx, 3*time.Second, func(ctx context.Context) error {
 		fnTraffic := r.fnTraffic
 		r.fnTraffic = xsync.NewMapOf[function.Function, time.Time]()
 
@@ -149,7 +149,7 @@ func (frt *fnRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 		}
 
 		req.URL.Scheme = "http"
-		req.URL.Host = pod.Status.PodIP + ":8080"
+		req.URL.Host = pod.Status.PodIP + ":8888"
 
 		res, err := frt.transport.RoundTrip(req)
 

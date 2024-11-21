@@ -191,7 +191,7 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 	assignCtx, cancel := context.WithDeadline(ctx, time.Now().Add(5*time.Second))
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, "http://"+pod.Status.PodIP+":8080/__fusion/assign", nil)
+	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, "http://"+pod.Status.PodIP+":8888/__fusion/assign", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}

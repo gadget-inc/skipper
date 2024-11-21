@@ -8,7 +8,7 @@ const assignPath = new URLPattern({ pathname: "/__fusion/assign" });
 const assignFilePath = "/tmp/assignment.json";
 let assignmentHeaders = await Deno.readTextFile(assignFilePath).then((txt) => JSON.parse(txt)).catch(() => null);
 
-const server = Deno.serve({ port: 8080 }, async (request) => {
+const server = Deno.serve({ port: 8888 }, async (request) => {
     if (request.method === "GET" && healthzPath.test(request.url)) {
         return new Response();
     }

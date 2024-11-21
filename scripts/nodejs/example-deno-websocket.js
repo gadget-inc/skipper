@@ -1,6 +1,7 @@
 const WebSocket = require("ws");
 const { setTimeout } = require("timers/promises");
 
+// const url = "http://127.0.0.1:8080";
 const url = "http://fusion-router.fusion-development.svc.cluster.local:8080";
 
 const socket = new WebSocket(url, undefined, {
