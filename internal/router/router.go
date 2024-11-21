@@ -93,7 +93,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	if req.Header.Get("Connection") == "Upgrade" && req.Header.Get("Upgrade") == "websocket" {
 		log.Trace(req.Context(), "websocket started", key.Function.Field(fn))
-		go timer.Loop(req.Context(), 10*time.Second, func(ctx context.Context) error {
+		go timer.Loop(req.Context(), 3*time.Second, func(ctx context.Context) error {
 			r.fnTraffic.Store(fn, time.Now())
 			return nil
 		})
@@ -177,7 +177,7 @@ func (frt *fnRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 }
 
 func (rrt *fnRoundTripper) getAssignedPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
-	return timer.Poll(ctx, 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*v1.Pod, error) {
+	return timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		pods, err := rrt.router.podManager.GetAssigned(fn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list assigned pods: %w", err)

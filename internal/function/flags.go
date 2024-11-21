@@ -1,6 +1,10 @@
 package function
 
-import "github.com/gadget-inc/fusion/internal/flag"
+import (
+	"time"
+
+	"github.com/gadget-inc/fusion/internal/flag"
+)
 
 var (
 	FlagNamespaces = flag.Flag[[]string]{
@@ -13,5 +17,17 @@ var (
 		Name:        "function-port",
 		Description: "The port on which the function server listens.",
 		Default:     8888,
+	}
+
+	FlagAssignPath = flag.Flag[string]{
+		Name:        "function-assign-path",
+		Description: "The path used to assign a function to a pod.",
+		Default:     "/__fusion/assign",
+	}
+
+	FlagAssignTimeout = flag.Flag[time.Duration]{
+		Name:        "function-assign-timeout",
+		Description: "The timeout for assigning a function to a pod.",
+		Default:     30 * time.Second,
 	}
 )

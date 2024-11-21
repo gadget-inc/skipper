@@ -11,6 +11,7 @@ const (
 	JITTER = 200 * time.Millisecond
 )
 
+// Poll polls the given function until it returns a non-nil result or the timeout is reached.
 func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
 	result, err := fn(ctx)
 	if err != nil {
@@ -42,6 +43,12 @@ func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(c
 	}
 }
 
+// PollUntil polls the given function until it returns a non-nil result or the context is cancelled.
+func PollUntil[T any](ctx context.Context, interval time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
+	return Poll(ctx, interval, time.Duration(1<<63-1), fn)
+}
+
+// Loop calls the given function at the given interval until the it returns an error or the context is cancelled.
 func Loop(ctx context.Context, interval time.Duration, fn func(context.Context) error) error {
 	tick := time.Tick(interval + time.Duration(rand.Int63n(2*int64(JITTER))) - JITTER)
 

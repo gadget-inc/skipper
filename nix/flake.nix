@@ -18,6 +18,7 @@
           direnv = pkgs.direnv;
           git = pkgs.git;
           go = pkgs.go;
+          golangci-lint = pkgs.golangci-lint;
           goreleaser = pkgs.goreleaser;
           krane = pkgs.krane;
           nix-direnv = pkgs.nix-direnv;

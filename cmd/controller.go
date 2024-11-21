@@ -107,6 +107,8 @@ func NewCmdController() *cobra.Command {
 		},
 	}
 
+	function.FlagAssignPath.Bind(cmd)
+	function.FlagAssignTimeout.Bind(cmd)
 	function.FlagNamespaces.Bind(cmd)
 	function.FlagPort.Bind(cmd)
 

@@ -12,10 +12,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/gadget-inc/fusion/internal/buffer"
 	"github.com/gadget-inc/fusion/internal/controller/hpa"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/hashring"
@@ -160,7 +160,7 @@ func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 		replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()
 		replicaSetLister := replicaSetInformer.Lister()
 
-		replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		_, err := replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
 				replicaSet := obj.(*appsv1.ReplicaSet)
 				log.Trace(ctx, "replica set added", key.ReplicaSet.Field(replicaSet))
@@ -174,6 +174,9 @@ func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 				log.Trace(ctx, "replica set deleted", key.ReplicaSet.Field(replicaSet))
 			},
 		})
+		if err != nil {
+			return fmt.Errorf("failed to add replica set event handler: %w", err)
+		}
 
 		informerFactory.Start(ctx.Done())
 
@@ -390,7 +393,8 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 		log.Info(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
 		controllerProxy, ok := c.controllerProxies.Load(controllerIP)
 		if !ok {
-			controllerProxy = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":8080"})
+			controllerProxy = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":" + strconv.Itoa(FlagPort.Value)})
+			controllerProxy.BufferPool = buffer.Pool
 			c.controllerProxies.Store(controllerIP, controllerProxy)
 		}
 		controllerProxy.ServeHTTP(rw, req)
@@ -417,7 +421,7 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 		}()
 	}()
 
-	_, err = timer.Poll(req.Context(), 100*time.Millisecond, 5*time.Second, func(ctx context.Context) (*v1.Pod, error) {
+	_, err = timer.PollUntil(req.Context(), 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		pod, err := c.podManager.Assign(ctx, fn)
 		if err != nil {
 			log.Error(ctx, "failed to assign pod", key.Error.Field(err), key.Function.Field(fn))
@@ -482,7 +486,9 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 				}
 
 				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set(key.ForwardedFor.Header, strings.Join(forwardedFor, ","))
+				for _, forwardedForIP := range forwardedFor {
+					req.Header.Add(key.ForwardedFor.Header, forwardedForIP)
+				}
 
 				log.Trace(ctx, "forwarding traffic", slog.String("controllerIP", controllerIP), key.ForwardedFor.Field(forwardedFor))
 				res, err := http.DefaultClient.Do(req)

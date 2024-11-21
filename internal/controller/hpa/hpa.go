@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"time"
 
+	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/fusion/internal/pod"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
+	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 // Config holds configuration values for the HPA algorithm
@@ -240,7 +244,7 @@ func CalculateDesiredReplicas(
 			timestamp,
 		)
 		if err != nil {
-			log.Warn(nil, "failed to calculate desired replicas for metric", key.Error.Field(err), slog.String("metric", metric.name))
+			log.Warn(context.TODO(), "failed to calculate desired replicas for metric", key.Error.Field(err), slog.String("metric", metric.name))
 			if desiredReplicas < currentReplicas {
 				scaleDownErrors++
 			}
@@ -267,138 +271,138 @@ func CalculateDesiredReplicas(
 	return maxDesiredReplicas, nil
 }
 
-// autoscale adjusts the deployment replicas based on calculated desired replicas
-func autoscale(
-	clientset *kubernetes.Clientset,
-	namespace, deploymentName string,
-	currentReplicas int,
-	podMetrics map[string]PodMetricsInfo,
-	targetCPUUtilization int64,
-	targetMemoryUtilization int64,
-	hpaConfig Config,
-	stabilizationWindow *StabilizationWindow,
-	timestamp time.Time,
-) error {
-	desiredReplicas, err := CalculateDesiredReplicas(
-		currentReplicas,
-		podMetrics,
-		targetCPUUtilization,
-		targetMemoryUtilization,
-		hpaConfig,
-		timestamp,
-	)
+func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsClientset metricsclientset.Interface, namespace string) (map[function.Function]map[string]PodMetricsInfo, error) {
+	pods, err := podManager.GetAllAssignedPods(namespace)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
 	}
 
-	stabilizationWindow.RecordRecommendation(desiredReplicas, timestamp)
-
-	if desiredReplicas < currentReplicas {
-		maxRecommendedReplicas := stabilizationWindow.GetMaxRecommendation()
-		if maxRecommendedReplicas < currentReplicas {
-			desiredReplicas = maxRecommendedReplicas
-		} else {
-			desiredReplicas = currentReplicas
-		}
+	podMetricsList, err := metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/managed-by=fusion," + key.Tenant.Label,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pod metrics: %w", err)
 	}
 
-	if desiredReplicas != currentReplicas {
-		err := scaleDeployment(clientset, namespace, deploymentName, desiredReplicas)
+	metricsMap := make(map[string]metricsv1beta1.PodMetrics)
+	for _, m := range podMetricsList.Items {
+		metricsMap[m.Name] = m
+	}
+
+	functionsMap := make(map[function.Function]map[string]PodMetricsInfo)
+
+	for _, pod := range pods {
+		fn, err := function.FromPod(pod)
 		if err != nil {
-			return fmt.Errorf("failed to scale deployment: %v", err)
+			log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", pod.Name), slog.Any("labels", pod.Labels))
+			continue
+		}
+
+		info := PodMetricsInfo{
+			Pod:               pod,
+			Ready:             false,
+			AssignedAt:        fn.AssignedAt,
+			DeletionTimestamp: pod.DeletionTimestamp,
+		}
+
+		if !fn.ReadyAt.IsZero() {
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
+					info.Ready = true
+					break
+				}
+			}
+		}
+
+		if m, exists := metricsMap[pod.Name]; exists {
+			for _, c := range m.Containers {
+				if c.Usage.Cpu() != nil {
+					cpuUsage := c.Usage.Cpu().MilliValue()
+					if info.CPUUsage == nil {
+						info.CPUUsage = new(int64)
+					}
+					*info.CPUUsage += cpuUsage
+				}
+				if c.Usage.Memory() != nil {
+					memUsage := c.Usage.Memory().Value()
+					if info.MemoryUsage == nil {
+						info.MemoryUsage = new(int64)
+					}
+					*info.MemoryUsage += memUsage
+				}
+			}
+		} else {
+			// Metrics missing for this pod
+			info.CPUUsage = nil
+			info.MemoryUsage = nil
+		}
+
+		if _, exists := functionsMap[fn.Function]; !exists {
+			functionsMap[fn.Function] = make(map[string]PodMetricsInfo)
+		}
+
+		functionsMap[fn.Function][pod.Name] = info
+	}
+
+	return functionsMap, nil
+}
+
+func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Function, desiredReplicas int) error {
+	assignedPods, err := podManager.GetAssignedAndPending(fn)
+	if err != nil {
+		return fmt.Errorf("failed to get assigned pods: %w", err)
+	}
+
+	currentReplicas := len(assignedPods)
+	if currentReplicas == desiredReplicas {
+		return nil
+	}
+
+	log.Info(ctx, "scaling function", slog.Int("currentReplicas", currentReplicas), slog.Int("desiredReplicas", desiredReplicas), key.Function.Field(fn))
+
+	if desiredReplicas > currentReplicas {
+		// TODO: lock assigning map
+		for i := 0; i < desiredReplicas-currentReplicas; i++ {
+			pod, err := podManager.Assign(ctx, fn)
+			if err != nil {
+				return fmt.Errorf("failed to assign pod: %w", err)
+			}
+			log.Info(ctx, "assigned pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+		}
+	} else {
+		slices.SortFunc(assignedPods, func(a, b *v1.Pod) int {
+			if a.DeletionTimestamp != nil && b.DeletionTimestamp == nil {
+				return 1
+			}
+
+			if a.DeletionTimestamp == nil && b.DeletionTimestamp != nil {
+				return -1
+			}
+
+			instanceA, err := function.FromPod(a)
+			if err != nil {
+				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
+				return -1
+			}
+
+			instanceB, err := function.FromPod(b)
+			if err != nil {
+				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", b.Name), slog.Any("labels", b.Labels))
+				return 1
+			}
+
+			return instanceA.AssignedAt.Compare(instanceB.AssignedAt)
+		})
+
+		for i := 0; i < currentReplicas-desiredReplicas; i++ {
+			pod := assignedPods[i]
+			err := podManager.Terminate(ctx, fn, pod)
+			if err != nil {
+				return fmt.Errorf("failed to delete pod: %w", err)
+			}
+			log.Info(ctx, "deleted pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 		}
 	}
 
 	return nil
 }
-
-// scaleDeployment updates the deployment to the desired number of replicas
-func scaleDeployment(clientset *kubernetes.Clientset, namespace, deploymentName string, desiredReplicas int) error {
-	deploymentClient := clientset.AppsV1().Deployments(namespace)
-	deployment, err := deploymentClient.Get(context.TODO(), deploymentName, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to get deployment: %v", err)
-	}
-
-	desiredReplicasInt32 := int32(desiredReplicas)
-	deployment.Spec.Replicas = &desiredReplicasInt32
-	_, err = deploymentClient.Update(context.TODO(), deployment, metav1.UpdateOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to update deployment: %v", err)
-	}
-
-	return nil
-}
-
-// getCurrentReplicas fetches the current number of replicas in the deployment
-func getCurrentReplicas(clientset *kubernetes.Clientset, namespace, deploymentName string) (int, error) {
-	deploymentClient := clientset.AppsV1().Deployments(namespace)
-	deployment, err := deploymentClient.Get(context.TODO(), deploymentName, metav1.GetOptions{})
-	if err != nil {
-		return 0, fmt.Errorf("failed to get deployment: %v", err)
-	}
-	return int(*deployment.Spec.Replicas), nil
-}
-
-// func main() {
-// 	kubeconfig := "/path/to/kubeconfig"
-// 	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-
-// 	clientset, err := kubernetes.NewForConfig(config)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-
-// 	metricsClientset, err := metricsclientset.NewForConfig(config)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-
-// 	namespace := "default"
-// 	deploymentName := "my-deployment"
-// 	podLabelSelector := "app=my-app"
-// 	targetCPUUtilization := int64(100)    // in millicores
-// 	targetMemoryUtilization := int64(500) // in MB
-
-// 	stabilizationWindow := &StabilizationWindow{
-// 		Window: DefaultConfig.DownscaleStabilization,
-// 	}
-
-// 	ticker := time.NewTicker(15 * time.Second)
-// 	for {
-// 		select {
-// 		case <-ticker.C:
-// 			timestamp := time.Now()
-// 			currentReplicas, err := getCurrentReplicas(clientset, namespace, deploymentName)
-// 			if err != nil {
-// 				fmt.Printf("Error getting current replicas: %v\n", err)
-// 				continue
-// 			}
-
-// 			podMetrics, err := getPodMetrics(clientset, metricsClientset, namespace, podLabelSelector)
-// 			if err != nil {
-// 				fmt.Printf("Error getting pod metrics: %v\n", err)
-// 				continue
-// 			}
-
-// 			err = autoscale(
-// 				clientset,
-// 				namespace,
-// 				deploymentName,
-// 				currentReplicas,
-// 				podMetrics,
-// 				targetCPUUtilization,
-// 				targetMemoryUtilization,
-// 				DefaultConfig,
-// 				stabilizationWindow,
-// 				timestamp,
-// 			)
-// 			if err != nil {
-// 				fmt.Printf("Error in autoscaling: %v\n", err)
-// 			}
-// 		}
-// 	}
-// }

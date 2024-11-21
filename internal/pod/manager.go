@@ -57,7 +57,7 @@ func (pm *Manager) Start(ctx context.Context) error {
 		podInformer := informerFactory.Core().V1().Pods()
 		podLister := podInformer.Lister()
 
-		podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		_, err := podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
 				pod := obj.(*v1.Pod)
 				log.Trace(ctx, "pod added", key.Pod.Field(pod))
@@ -71,11 +71,12 @@ func (pm *Manager) Start(ctx context.Context) error {
 				log.Trace(ctx, "pod deleted", key.Pod.Field(pod))
 			},
 		})
-
-		_, loaded := pm.podListers.LoadOrStore(namespace, podLister)
-		if !loaded {
-			informerFactory.Start(ctx.Done())
+		if err != nil {
+			return fmt.Errorf("failed to add pod informer event handler: %w", err)
 		}
+
+		informerFactory.Start(ctx.Done())
+		pm.podListers.Store(namespace, podLister)
 
 		syncResults := informerFactory.WaitForCacheSync(ctx.Done())
 		for informer, synced := range syncResults {
@@ -146,7 +147,7 @@ func (pm *Manager) GetAvailable(fn function.Function) ([]*v1.Pod, error) {
 }
 
 func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, error) {
-	pod, err := timer.Poll(ctx, 250*time.Millisecond, 10*time.Second, func(ctx context.Context) (*v1.Pod, error) {
+	pod, err := timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		availablePods, err := pm.GetAvailable(fn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list available pods: %w", err)
@@ -155,14 +156,11 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 			log.Warn(ctx, "no available pods", key.Function.Field(fn))
 			return nil, nil
 		}
-
 		return availablePods[rand.Intn(len(availablePods))], nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
 	}
-
-	log.Info(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 
 	assignPatches := []patchOperation{
 		{Op: "test", Path: "/metadata/ownerReferences/0/kind", Value: "ReplicaSet"},
@@ -188,10 +186,11 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 		return nil, fmt.Errorf("failed to assign pod: %w", err)
 	}
 
-	assignCtx, cancel := context.WithDeadline(ctx, time.Now().Add(5*time.Second))
+	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, "http://"+pod.Status.PodIP+":8888/__fusion/assign", nil)
+	assignURL := fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, function.FlagPort.Value, function.FlagAssignPath.Value)
+	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}
@@ -199,6 +198,7 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 	req.Header.Set(key.Tenant.Header, fn.Tenant)
 	req.Header.Set(key.Metadata.Header, fn.Metadata)
 
+	log.Info(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send assign request: %w", err)
@@ -240,18 +240,17 @@ func (pm *Manager) GetAllAssignedPods(namespace string) ([]*v1.Pod, error) {
 }
 
 func (pm *Manager) listPods(namespace string, selector labels.Selector) ([]*v1.Pod, error) {
-	listerAny, found := pm.podListers.Load(namespace)
+	lister, found := pm.podListers.Load(namespace)
 	if !found {
 		return nil, fmt.Errorf("managed pod lister not started for namespace %s", namespace)
 	}
 
-	lister := listerAny.(listerv1.PodLister)
-	k8sPods, err := lister.List(selector)
+	pods, err := lister.List(selector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	return k8sPods, nil
+	return pods, nil
 }
 
 type patchOperation struct {
