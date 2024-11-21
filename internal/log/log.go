@@ -3,30 +3,34 @@ package log
 import (
 	"context"
 	"log/slog"
+	"os"
 )
 
 const (
 	LevelTrace = slog.Level(-8)
 )
 
-type ctxKey struct{}
-
-var key = ctxKey{}
-
-type ctxHandler struct {
-	slog.Handler
-}
-
-func (h ctxHandler) Handle(ctx context.Context, r slog.Record) error {
-	fields, ok := ctx.Value(key).([]slog.Attr)
-	if ok {
-		r.AddAttrs(fields...)
+func Init() {
+	logOptions := slog.HandlerOptions{
+		Level: FlagLogLevel.Value,
+		ReplaceAttr: func(groups []string, field slog.Attr) slog.Attr {
+			if field.Key == slog.LevelKey {
+				if field.Value.Any().(slog.Level) == LevelTrace {
+					field.Value = slog.StringValue("TRACE")
+				}
+			}
+			return field
+		},
 	}
-	return h.Handler.Handle(ctx, r)
-}
 
-func Init(h slog.Handler) {
-	slog.SetDefault(slog.New(ctxHandler{Handler: h}))
+	var handler slog.Handler
+	if FlagLogFormat.Value == "json" {
+		handler = slog.NewJSONHandler(os.Stderr, &logOptions)
+	} else {
+		handler = slog.NewTextHandler(os.Stderr, &logOptions)
+	}
+
+	slog.SetDefault(slog.New(ctxHandler{Handler: handler}))
 }
 
 func Trace(ctx context.Context, msg string, fields ...slog.Attr) {

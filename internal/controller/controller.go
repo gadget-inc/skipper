@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,9 +35,7 @@ import (
 )
 
 type Controller struct {
-	ip                string
 	ring              *hashring.HashRing
-	namespaces        []string
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
@@ -46,11 +45,9 @@ type Controller struct {
 	fnTrafficMu       sync.Mutex // guards fnTraffic
 }
 
-func New(ip string, namespaces []string, clientset kubernetes.Interface, metricsClient metricsclientset.Interface, podManager *pod.Manager) *Controller {
+func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interface, podManager *pod.Manager) *Controller {
 	return &Controller{
-		ip:                ip,
 		ring:              hashring.New(),
-		namespaces:        namespaces,
 		clientset:         clientset,
 		metricsClientset:  metricsClient,
 		podManager:        podManager,
@@ -60,8 +57,8 @@ func New(ip string, namespaces []string, clientset kubernetes.Interface, metrics
 	}
 }
 
-func (c *Controller) Start(ctx context.Context, controllerNamespace string) error {
-	err := c.startControllerPodInformer(ctx, controllerNamespace)
+func (c *Controller) Start(ctx context.Context) error {
+	err := c.startControllerPodInformer(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start controller pod informer: %w", err)
 	}
@@ -89,11 +86,11 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) startControllerPodInformer(ctx context.Context, controllerNamespace string) error {
+func (c *Controller) startControllerPodInformer(ctx context.Context) error {
 	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		c.clientset,
 		10*time.Minute,
-		informers.WithNamespace(controllerNamespace),
+		informers.WithNamespace(FlagNamespace.Value),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = "app.kubernetes.io/name=fusion,app.kubernetes.io/component=controller"
 		}),
@@ -148,9 +145,9 @@ func (c *Controller) startControllerPodInformer(ctx context.Context, controllerN
 }
 
 func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
-	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", c.namespaces))
+	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", function.FlagNamespaces.Value))
 
-	for _, namespace := range c.namespaces {
+	for _, namespace := range function.FlagNamespaces.Value {
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
 			c.clientset,
 			5*time.Minute,
@@ -241,7 +238,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 			fnTraffic := maps.Clone(c.fnTraffic)
 			c.fnTrafficMu.Unlock()
 
-			for _, namespace := range c.namespaces {
+			for _, namespace := range function.FlagNamespaces.Value {
 				functionMetrics, err := hpa.GetFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
 				if err != nil {
 					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
@@ -264,8 +261,15 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						delete(stabilizationWindows, fn)
 
 						controllerIP, ok := c.ring.Get(fn.RingKey())
-						if !ok || controllerIP != c.ip {
-							log.Trace(ctx, "skipping scaling fn to 0, not assigned to this controller", key.Function.Field(fn), slog.String("controllerIP", controllerIP), slog.String("ip", c.ip), slog.Bool("ok", ok))
+						if !ok || controllerIP != FlagIP.Value {
+							log.Trace(
+								ctx,
+								"skipping scaling fn to 0, not assigned to this controller",
+								key.Function.Field(fn),
+								slog.String("controllerIP", controllerIP),
+								slog.String("ip", FlagIP.Value),
+								slog.Bool("ok", ok),
+							)
 							continue
 						}
 
@@ -317,11 +321,11 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 					stabilizationWindow.RecordRecommendation(desiredReplicas, now)
 
 					controllerIP, ok := c.ring.Get(fn.RingKey())
-					if !ok || controllerIP != c.ip {
+					if !ok || controllerIP != FlagIP.Value {
 						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
 							key.Function.Field(fn),
 							slog.String("controllerIP", controllerIP),
-							slog.String("ip", c.ip),
+							slog.String("ip", FlagIP.Value),
 							slog.Bool("ok", ok),
 						)
 						continue
@@ -377,12 +381,12 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 
 	controllerIP, ok := c.ring.Get(fn.RingKey())
 	if !ok {
-		log.Warn(req.Context(), "no controller for function", key.Function.Field(fn), slog.String("ip", c.ip))
+		log.Warn(req.Context(), "no controller for function", key.Function.Field(fn), slog.String("ip", FlagIP.Value))
 		http.Error(rw, "no controller for function", http.StatusServiceUnavailable)
 		return
 	}
 
-	if controllerIP != c.ip {
+	if controllerIP != FlagIP.Value {
 		log.Info(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
 		controllerProxy, ok := c.controllerProxies.Load(controllerIP)
 		if !ok {
@@ -463,14 +467,15 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 
 	go func() {
 		forwardedFor := req.Header.Values(key.ForwardedFor.Header)
-		forwardedFor = append(forwardedFor, c.ip)
+		forwardedFor = append(forwardedFor, FlagIP.Value)
 
 		for _, controllerIP := range c.ring.List() {
 			if !slices.Contains(forwardedFor, controllerIP) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 
-				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":8080/traffic", bytes.NewBuffer(body))
+				controllerPort := strconv.Itoa(FlagPort.Value)
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":"+controllerPort+"/traffic", bytes.NewBuffer(body))
 				if err != nil {
 					log.Warn(ctx, "failed to create traffic request", key.Error.Field(err))
 					continue
@@ -483,6 +488,7 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 				res, err := http.DefaultClient.Do(req)
 				if err != nil {
 					log.Warn(ctx, "failed to forward traffic", key.Error.Field(err))
+					continue
 				}
 
 				if res.StatusCode != http.StatusOK {

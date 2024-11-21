@@ -52,25 +52,25 @@ spec:
         - name: router
           image: fusion:latest
           imagePullPolicy: Never
-          args:
-            - router
-            - "--controller-host=fusion-controller.fusion-development.svc"
-            - "--namespace=example-development"
-            - "--namespace=gadget-app-sandbox-development"
-            - "--log-level=debug"
-            - "--log-format=text"
+          args: ["router"]
           ports:
             - name: http-port
               containerPort: 8080
           env:
-            - name: FUSION_NAMESPACE
+            - name: FUSION_FUNCTION_NAMESPACES
+              value: "example-development,gadget-app-sandbox-development"
+            - name: FUSION_CONTROLLER_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: FUSION_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
+            - name: FUSION_CONTROLLER_HOST
+              value: "fusion-controller.fusion-development.svc"
+            - name: FUSION_CONTROLLER_PORT
+              value: "8080"
+            - name: FUSION_LOG_LEVEL
+              value: "debug"
+            - name: FUSION_LOG_FORMAT
+              value: "text"
             - name: GOMAXPROCS
               value: "1"
             - name: GOMEMLIMIT

@@ -11,15 +11,17 @@ import (
 )
 
 type Client struct {
-	host string
+	addr string
 }
 
-func NewClient(host string) *Client {
-	return &Client{host: host}
+func NewClient() *Client {
+	return &Client{
+		addr: fmt.Sprintf("http://%s:%d", FlagHost.Value, FlagPort.Value),
+	}
 }
 
 func (c *Client) Assign(ctx context.Context, fn function.Function) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+c.host+":8080/assign", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/assign", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create assign request: %w", err)
 	}
@@ -48,7 +50,7 @@ func (c *Client) Traffic(ctx context.Context, trafficEntries []TrafficEntry) err
 		return fmt.Errorf("failed to marshal traffic: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+c.host+":8080/traffic", bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/traffic", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("failed to create traffic request: %w", err)
 	}

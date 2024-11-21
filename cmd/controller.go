@@ -9,10 +9,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/controller"
+	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/pod"
@@ -25,12 +27,6 @@ import (
 )
 
 func NewCmdController() *cobra.Command {
-	var (
-		namespaces          []string
-		controllerNamespace string
-		controllerIP        string
-	)
-
 	cmd := &cobra.Command{
 		Use:   "controller",
 		Short: "Start the fusion controller",
@@ -60,19 +56,19 @@ func NewCmdController() *cobra.Command {
 			defer cancel()
 
 			podManager := pod.NewManager(clientset)
-			err = podManager.Start(ctx, namespaces)
+			err = podManager.Start(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to start pod manager: %w", err)
 			}
 
-			ctrl := controller.New(controllerIP, namespaces, clientset, metricsClientset, podManager)
-			err = ctrl.Start(ctx, controllerNamespace)
+			ctrl := controller.New(clientset, metricsClientset, podManager)
+			err = ctrl.Start(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)
 			}
 
 			srv := &http.Server{
-				Addr:    ":8080",
+				Addr:    ":" + strconv.Itoa(controller.FlagPort.Value),
 				Handler: ctrl,
 			}
 
@@ -111,10 +107,12 @@ func NewCmdController() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&controllerNamespace, "controller-namespace", "f", os.Getenv("FUSION_CONTROLLER_NAMESPACE"), "namespace where this fusion controller is deployed")
-	cmd.Flags().StringVarP(&controllerIP, "controller-ip", "i", os.Getenv("FUSION_CONTROLLER_IP"), "ip address of this fusion controller")
-	cmd.Flags().StringArrayVarP(&namespaces, "namespace", "n", nil, "namespaces to watch for deployments")
-	cmd.MarkFlagRequired("namespace")
+	function.FlagNamespaces.Bind(cmd)
+	function.FlagPort.Bind(cmd)
+
+	controller.FlagIP.Bind(cmd)
+	controller.FlagNamespace.Bind(cmd)
+	controller.FlagPort.Bind(cmd)
 
 	return cmd
 }

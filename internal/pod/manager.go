@@ -41,10 +41,10 @@ func NewManager(clientset *kubernetes.Clientset) *Manager {
 	return &Manager{clientset: clientset, podListers: xsync.NewMapOf[string, listerv1.PodLister]()}
 }
 
-func (pm *Manager) Start(ctx context.Context, namespaces []string) error {
-	log.Info(ctx, "starting managed pod informers", slog.Any("namespaces", namespaces))
+func (pm *Manager) Start(ctx context.Context) error {
+	log.Info(ctx, "starting managed pod informers", slog.Any("namespaces", function.FlagNamespaces.Value))
 
-	for _, namespace := range namespaces {
+	for _, namespace := range function.FlagNamespaces.Value {
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
 			pm.clientset,
 			5*time.Minute,

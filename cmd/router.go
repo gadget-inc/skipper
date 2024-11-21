@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/controller"
+	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/pod"
@@ -25,11 +26,6 @@ import (
 )
 
 func NewCmdRouter() *cobra.Command {
-	var (
-		namespaces     []string
-		controllerHost string
-	)
-
 	cmd := &cobra.Command{
 		Use:   "router",
 		Short: "Start the fusion router",
@@ -51,12 +47,12 @@ func NewCmdRouter() *cobra.Command {
 			defer cancel()
 
 			podManager := pod.NewManager(clientset)
-			err = podManager.Start(ctx, namespaces)
+			err = podManager.Start(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to start pod manager: %w", err)
 			}
 
-			controllerClient := controller.NewClient(controllerHost)
+			controllerClient := controller.NewClient()
 
 			rtr := router.New(controllerClient, clientset, podManager)
 			rtr.Start(ctx)
@@ -101,10 +97,9 @@ func NewCmdRouter() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringArrayVarP(&namespaces, "namespace", "n", nil, "namespaces to watch for deployments")
-	cmd.Flags().StringVarP(&controllerHost, "controller-host", "", "", "host of the fusion controller")
-	cmd.MarkFlagRequired("namespace")
-	cmd.MarkFlagRequired("controller-host")
+	function.FlagNamespaces.Bind(cmd)
+	controller.FlagHost.Bind(cmd)
+	controller.FlagPort.Bind(cmd)
 
 	return cmd
 }
