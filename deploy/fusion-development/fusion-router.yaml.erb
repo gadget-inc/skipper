@@ -2,12 +2,12 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: fusion-controller
+  name: fusion-router
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: fusion-controller
+  name: fusion-router
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -16,23 +16,23 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: fusion-controller
+  name: fusion-router
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: fusion-controller
+  name: fusion-router
 subjects:
   - kind: ServiceAccount
-    name: fusion-controller
+    name: fusion-router
     namespace: fusion-development
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fusion-controller
+  name: fusion-router
   labels:
     app.kubernetes.io/name: fusion
-    app.kubernetes.io/component: controller
+    app.kubernetes.io/component: router
   annotations:
     shipit.shopify.io/restart: "true"
 spec:
@@ -40,19 +40,19 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: fusion
-      app.kubernetes.io/component: controller
+      app.kubernetes.io/component: router
   template:
     metadata:
       labels:
         app.kubernetes.io/name: fusion
-        app.kubernetes.io/component: controller
+        app.kubernetes.io/component: router
     spec:
-      serviceAccountName: fusion-controller
+      serviceAccountName: fusion-router
       containers:
-        - name: controller
-          image: fusion:latest
+        - name: router
+          image: fusion:<%= imageTag %>
           imagePullPolicy: Never
-          args: ["controller"]
+          args: ["router"]
           ports:
             - name: http-port
               containerPort: 8080
@@ -63,10 +63,8 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: FUSION_CONTROLLER_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
+            - name: FUSION_CONTROLLER_HOST
+              value: "fusion-controller.fusion-development.svc"
             - name: FUSION_CONTROLLER_PORT
               value: "8080"
             - name: FUSION_LOG_LEVEL
@@ -113,11 +111,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fusion-controller
+  name: fusion-router
 spec:
   selector:
     app.kubernetes.io/name: fusion
-    app.kubernetes.io/component: controller
+    app.kubernetes.io/component: router
   ports:
     - protocol: TCP
       port: 8080

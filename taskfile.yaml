@@ -16,19 +16,30 @@ tasks:
     cmds:
       - goreleaser build --clean --snapshot {{.CLI_ARGS}}
 
-  build-docker:
+  docker-build:
     deps:
       - build
     sources:
       - dist/**/*
       - docker/**/*
-      - scripts/build-docker.ts
+      - scripts/docker-build.ts
     cmds:
-      - deno run -A scripts/build-docker.ts
+      - deno run -A scripts/docker-build.ts
+
+  docker-push:
+    deps:
+      - docker-build
+    sources:
+      - scripts/docker-push.ts
+    cmds:
+      - deno run -A scripts/docker-push.ts
 
   deploy:
     deps:
-      - build-docker
+      - docker-build
+    sources:
+      - deploy/**/*
+      - scripts/deploy.ts
     cmds:
       - deno run -A scripts/deploy.ts
 

@@ -1,8 +1,13 @@
 import { $, fs, path } from "npm:zx";
 
 export const workDir = new URL("..", import.meta.url).pathname;
-
 export const abs = (...segments: string[]) => path.join(workDir, ...segments);
+
+export const gitSha = async () => await $`git rev-parse --short HEAD`.then((res) => res.stdout.trim());
+
+const imageTag = async (arch: string) => `sha-${await gitSha()}-${arch}`;
+export const amd64DockerImageTag = async () => await imageTag("amd64");
+export const arm64DockerImageTag = async () => await imageTag("arm64v8");
 
 export const renderKraneNamespace = async (
     namespace: string,

@@ -27,7 +27,7 @@ spec:
           emptyDir: {}
       containers:
         - name: deno
-          image: fusion-example-deno:latest
+          image: fusion-example-deno:<%= imageTag %>
           imagePullPolicy: Never
           ports:
             - name: http-port
