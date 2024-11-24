@@ -14,9 +14,9 @@ type Client struct {
 	addr string
 }
 
-func NewClient() *Client {
+func NewClient(host string, port int) *Client {
 	return &Client{
-		addr: fmt.Sprintf("http://%s:%d", FlagHost.Value, FlagPort.Value),
+		addr: fmt.Sprintf("http://%s:%d", host, port),
 	}
 }
 

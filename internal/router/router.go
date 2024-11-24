@@ -91,14 +91,26 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		defer req.Body.(*nopCloser).RealClose()
 	}
 
-	if req.Header.Get("Connection") == "Upgrade" && req.Header.Get("Upgrade") == "websocket" {
-		log.Trace(req.Context(), "websocket started", key.Function.Field(fn))
-		go timer.Loop(req.Context(), 3*time.Second, func(ctx context.Context) error {
-			r.fnTraffic.Store(fn, time.Now())
-			return nil
-		})
-		defer log.Trace(req.Context(), "websocket ended", key.Function.Field(fn))
-	}
+	// if req.Header.Get("Connection") == "Upgrade" && req.Header.Get("Upgrade") == "websocket" {
+	// 	log.Debug(req.Context(), "websocket started", key.Function.Field(fn))
+	// 	go timer.Loop(req.Context(), 3*time.Second, func(ctx context.Context) error {
+	// 		r.fnTraffic.Store(fn, time.Now())
+	// 		return nil
+	// 	})
+	// 	defer log.Debug(req.Context(), "websocket ended", key.Function.Field(fn))
+	// }
+
+	go func() {
+		for {
+			select {
+			case <-req.Context().Done():
+				log.Debug(req.Context(), "request done", key.Function.Field(fn), slog.String("url", req.URL.String()), key.Error.Field(req.Context().Err()))
+				return
+			case <-time.After(5 * time.Second):
+				log.Debug(req.Context(), "request active", key.Function.Field(fn), slog.String("url", req.URL.String()))
+			}
+		}
+	}()
 
 	fnProxy.ServeHTTP(rw, req)
 }
@@ -131,14 +143,14 @@ type fnRoundTripper struct {
 func (frt *fnRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 
-	attempt := 1
+	attempt := 0
 	for {
-		if attempt > 3 {
+		if attempt > 2 {
 			return nil, fmt.Errorf("failed to get a pod after %d attempts", attempt)
 		}
 
-		if attempt > 1 {
-			time.Sleep(1 * time.Second * time.Duration(attempt-1))
+		if attempt > 0 {
+			time.Sleep(1 * time.Second * time.Duration(attempt))
 		}
 
 		pod, err := frt.getAssignedPod(ctx, frt.fn)

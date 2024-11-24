@@ -204,13 +204,13 @@ func (f Function) SetHeaders(r *http.Request) {
 func (f Function) Fields() []slog.Attr {
 	return []slog.Attr{
 		key.Tenant.Field(f.Tenant),
-		key.Namespace.Field(f.Namespace),
+		// key.Namespace.Field(f.Namespace),
 		// key.Deployment.Field(f.Deployment),
 		slog.String("deployment", f.Deployment),
-		key.MinReplicas.Field(f.MinReplicas),
-		key.MaxReplicas.Field(f.MaxReplicas),
-		key.TargetCPUUtilization.Field(f.TargetCPUUtilization),
-		key.TargetMemoryUtilization.Field(f.TargetMemoryUtilization),
+		// key.MinReplicas.Field(f.MinReplicas),
+		// key.MaxReplicas.Field(f.MaxReplicas),
+		// key.TargetCPUUtilization.Field(f.TargetCPUUtilization),
+		// key.TargetMemoryUtilization.Field(f.TargetMemoryUtilization),
 	}
 }
 

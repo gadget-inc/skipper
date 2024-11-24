@@ -9,13 +9,10 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/buffer"
 	"github.com/gadget-inc/fusion/internal/controller/hpa"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/hashring"
@@ -39,7 +36,7 @@ type Controller struct {
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
-	controllerProxies *xsync.MapOf[string, *httputil.ReverseProxy]
+	controllerClients *xsync.MapOf[string, *Client]
 	assignmentLock    *xsync.MapOf[string, struct{}]
 	fnTraffic         map[function.Function]time.Time
 	fnTrafficMu       sync.Mutex // guards fnTraffic
@@ -51,7 +48,7 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 		clientset:         clientset,
 		metricsClientset:  metricsClient,
 		podManager:        podManager,
-		controllerProxies: xsync.NewMapOf[string, *httputil.ReverseProxy](),
+		controllerClients: xsync.NewMapOf[string, *Client](),
 		assignmentLock:    xsync.NewMapOf[string, struct{}](),
 		fnTraffic:         make(map[function.Function]time.Time),
 	}
@@ -276,7 +273,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 							continue
 						}
 
-						log.Info(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(lastRequest))
+						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(lastRequest))
 						err := hpa.ScaleFunction(ctx, c.podManager, fn, 0)
 						if err != nil {
 							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
@@ -294,7 +291,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						now,
 					)
 					if err != nil {
-						log.Warn(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
+						log.Trace(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
 						continue
 					}
 
@@ -391,13 +388,15 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 
 	if controllerIP != FlagIP.Value {
 		log.Info(req.Context(), "forwarding request to assigned controller", key.Function.Field(fn), slog.String("ip", controllerIP))
-		controllerProxy, ok := c.controllerProxies.Load(controllerIP)
+		controllerClient, ok := c.controllerClients.Load(controllerIP)
 		if !ok {
-			controllerProxy = httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: controllerIP + ":" + strconv.Itoa(FlagPort.Value)})
-			controllerProxy.BufferPool = buffer.Pool
-			c.controllerProxies.Store(controllerIP, controllerProxy)
+			controllerClient = NewClient(controllerIP, FlagPort.Value)
+			c.controllerClients.Store(controllerIP, controllerClient)
 		}
-		controllerProxy.ServeHTTP(rw, req)
+		err = controllerClient.Assign(req.Context(), fn)
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -419,6 +418,18 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 			}
 			c.assignmentLock.Delete(fn.RingKey())
 		}()
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-req.Context().Done():
+				log.Debug(req.Context(), "request done", key.Function.Field(fn), slog.String("url", req.URL.String()), key.Error.Field(req.Context().Err()))
+				return
+			case <-time.After(5 * time.Second):
+				log.Debug(req.Context(), "request active", key.Function.Field(fn), slog.String("url", req.URL.String()))
+			}
+		}
 	}()
 
 	_, err = timer.PollUntil(req.Context(), 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {

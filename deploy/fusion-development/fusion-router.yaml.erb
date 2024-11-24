@@ -58,7 +58,7 @@ spec:
               containerPort: 8080
           env:
             - name: FUSION_FUNCTION_NAMESPACES
-              value: "example-development,gadget-app-sandbox-development"
+              value: "example-development,gadget-app-sandbox-development,gadget-app-sandbox-test"
             - name: FUSION_CONTROLLER_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -113,10 +113,11 @@ kind: Service
 metadata:
   name: fusion-router
 spec:
+  type: NodePort
   selector:
     app.kubernetes.io/name: fusion
     app.kubernetes.io/component: router
   ports:
-    - protocol: TCP
-      port: 8080
+    - port: 8080
+      nodePort: 31315
       targetPort: http-port

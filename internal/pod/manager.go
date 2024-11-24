@@ -153,7 +153,7 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 			return nil, fmt.Errorf("failed to list available pods: %w", err)
 		}
 		if len(availablePods) == 0 {
-			log.Warn(ctx, "no available pods", key.Function.Field(fn))
+			log.Trace(ctx, "no available pods", key.Function.Field(fn))
 			return nil, nil
 		}
 		return availablePods[rand.Intn(len(availablePods))], nil
@@ -205,6 +205,7 @@ func (pm *Manager) Assign(ctx context.Context, fn function.Function) (*v1.Pod, e
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		// TODO: log response body
 		return nil, fmt.Errorf("assign request returned status %d", resp.StatusCode)
 	}
 

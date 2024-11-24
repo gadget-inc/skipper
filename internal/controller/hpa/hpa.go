@@ -244,7 +244,7 @@ func CalculateDesiredReplicas(
 			timestamp,
 		)
 		if err != nil {
-			log.Warn(context.TODO(), "failed to calculate desired replicas for metric", key.Error.Field(err), slog.String("metric", metric.name))
+			log.Trace(context.TODO(), "failed to calculate desired replicas for metric", key.Error.Field(err), slog.String("metric", metric.name))
 			if desiredReplicas < currentReplicas {
 				scaleDownErrors++
 			}
@@ -367,7 +367,7 @@ func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Fun
 			if err != nil {
 				return fmt.Errorf("failed to assign pod: %w", err)
 			}
-			log.Info(ctx, "assigned pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+			log.Trace(ctx, "assigned pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 		}
 	} else {
 		slices.SortFunc(assignedPods, func(a, b *v1.Pod) int {
@@ -400,7 +400,7 @@ func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Fun
 			if err != nil {
 				return fmt.Errorf("failed to delete pod: %w", err)
 			}
-			log.Info(ctx, "deleted pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+			log.Trace(ctx, "deleted pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
 		}
 	}
 
