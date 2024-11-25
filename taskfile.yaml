@@ -29,8 +29,6 @@ tasks:
   docker-push:
     deps:
       - docker-build
-    sources:
-      - scripts/docker-push.ts
     cmds:
       - deno run -A scripts/docker-push.ts
 
