@@ -29,17 +29,16 @@ type Router struct {
 	controllerClient *controller.Client
 	clientset        *kubernetes.Clientset
 	podManager       *pod.Manager
-	fnProxies        *xsync.MapOf[function.Function, *httputil.ReverseProxy]
+	fnProxy          *httputil.ReverseProxy
 	fnTraffic        *xsync.MapOf[function.Function, time.Time]
 	transport        *http.Transport
 }
 
 func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
-	return &Router{
+	r := &Router{
 		controllerClient: controllerClient,
 		clientset:        clientset,
 		podManager:       podManager,
-		fnProxies:        xsync.NewMapOf[function.Function, *httputil.ReverseProxy](),
 		fnTraffic:        xsync.NewMapOf[function.Function, time.Time](),
 		transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -54,6 +53,14 @@ func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, p
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 	}
+
+	r.fnProxy = &httputil.ReverseProxy{
+		BufferPool: buffer.Pool,
+		Rewrite:    rewriteHeaders,
+		Transport:  r,
+	}
+
+	return r
 }
 
 func (r *Router) Start(ctx context.Context) {
@@ -112,17 +119,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		defer req.Body.(*nopCloser).RealClose()
 	}
 
-	fnProxy, ok := r.fnProxies.Load(fn)
-	if !ok {
-		fnProxy = &httputil.ReverseProxy{
-			BufferPool: buffer.Pool,
-			Rewrite:    rewriteHeaders,
-			Transport:  r,
-		}
-		r.fnProxies.Store(fn, fnProxy)
-	}
-
-	fnProxy.ServeHTTP(rw, req.WithContext(function.With(req.Context(), fn)))
+	r.fnProxy.ServeHTTP(rw, req.WithContext(function.With(req.Context(), fn)))
 }
 
 func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {

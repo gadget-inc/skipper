@@ -37,7 +37,7 @@ type Controller struct {
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
 	controllerClients *xsync.MapOf[string, *Client]
-	assignmentLock    *xsync.MapOf[string, struct{}]
+	assignmentLock    *xsync.MapOf[function.Function, struct{}]
 	fnTraffic         map[function.Function]time.Time
 	fnTrafficMu       sync.Mutex // guards fnTraffic
 }
@@ -49,7 +49,7 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 		metricsClientset:  metricsClient,
 		podManager:        podManager,
 		controllerClients: xsync.NewMapOf[string, *Client](),
-		assignmentLock:    xsync.NewMapOf[string, struct{}](),
+		assignmentLock:    xsync.NewMapOf[function.Function, struct{}](),
 		fnTraffic:         make(map[function.Function]time.Time),
 	}
 }
@@ -400,7 +400,7 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_, assignmentInProgress := c.assignmentLock.LoadOrStore(fn.RingKey(), struct{}{})
+	_, assignmentInProgress := c.assignmentLock.LoadOrStore(fn, struct{}{})
 	if assignmentInProgress {
 		// another goroutine is already assigning a pod for this function
 		rw.WriteHeader(http.StatusOK)
@@ -416,7 +416,7 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 				// assigned pod
 				time.Sleep(3 * time.Second)
 			}
-			c.assignmentLock.Delete(fn.RingKey())
+			c.assignmentLock.Delete(fn)
 		}()
 	}()
 
