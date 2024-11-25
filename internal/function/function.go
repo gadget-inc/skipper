@@ -2,7 +2,6 @@ package function
 
 import (
 	"log/slog"
-	"net/http"
 	"strconv"
 	"time"
 
@@ -40,7 +39,7 @@ var (
 	emptyInstance = Instance{Function: emptyFunction}
 )
 
-func from(
+func new(
 	deployment string,
 	maxReplicasStr string,
 	metadata string,
@@ -61,11 +60,6 @@ func from(
 	if deployment == "" {
 		return emptyFunction, ErrMissingDeployment
 	}
-
-	// TODO: require metadata from headers
-	// if metadata == "" {
-	// 	return emptyFunction, ErrMissingMetadata
-	// }
 
 	if maxReplicasStr == "" {
 		return emptyFunction, ErrMissingMaxReplicas
@@ -119,21 +113,8 @@ func from(
 	}, nil
 }
 
-func FromRequest(req *http.Request) (Function, error) {
-	return from(
-		req.Header.Get(key.Deployment.Header),
-		req.Header.Get(key.MaxReplicas.Header),
-		req.Header.Get(key.Metadata.Header),
-		req.Header.Get(key.MinReplicas.Header),
-		req.Header.Get(key.Namespace.Header),
-		req.Header.Get(key.TargetCPUUtilization.Header),
-		req.Header.Get(key.TargetMemoryUtilization.Header),
-		req.Header.Get(key.Tenant.Header),
-	)
-}
-
 func FromPod(pod *v1.Pod) (Instance, error) {
-	fn, err := from(
+	fn, err := new(
 		pod.Labels[key.Deployment.Label],
 		pod.Labels[key.MaxReplicas.Label],
 		"", // we don't store metadata in labels because they may contain sensitive information
@@ -188,17 +169,6 @@ func (f Function) RingKey() string {
 		f.MaxReplicasStr + ":" +
 		f.TargetCPUUtilizationStr + ":" +
 		f.TargetMemoryUtilizationStr
-}
-
-func (f Function) SetHeaders(r *http.Request) {
-	r.Header.Set(key.Tenant.Header, f.Tenant)
-	r.Header.Set(key.Namespace.Header, f.Namespace)
-	r.Header.Set(key.Deployment.Header, f.Deployment)
-	r.Header.Set(key.Metadata.Header, f.Metadata)
-	r.Header.Set(key.MinReplicas.Header, f.MinReplicasStr)
-	r.Header.Set(key.MaxReplicas.Header, f.MaxReplicasStr)
-	r.Header.Set(key.TargetCPUUtilization.Header, f.TargetCPUUtilizationStr)
-	r.Header.Set(key.TargetMemoryUtilization.Header, f.TargetMemoryUtilizationStr)
 }
 
 func (f Function) Fields() []slog.Attr {

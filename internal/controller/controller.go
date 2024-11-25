@@ -373,7 +373,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 }
 
 func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
-	fn, err := function.FromRequest(req)
+	fn, err := function.FromHeaders(req)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return

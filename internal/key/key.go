@@ -2,6 +2,7 @@ package key
 
 import (
 	"log/slog"
+	"net/textproto"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -24,7 +25,7 @@ func new(kebabCasedName string) key {
 	return key{
 		KebabCased:  kebabCasedName,
 		Underscored: strings.ReplaceAll(kebabCasedName, "-", "_"),
-		Header:      "x-fusion-" + kebabCasedName,
+		Header:      "X-Fusion-" + textproto.CanonicalMIMEHeaderKey(kebabCasedName),
 		Label:       "fusion/" + kebabCasedName,
 		PatchLabel:  "/metadata/labels/" + "fusion~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
 	}
