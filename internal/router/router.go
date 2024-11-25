@@ -160,20 +160,20 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(fn))
+				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), key.Pod.Field(pod), key.Function.Field(fn))
 				attempt++
 				continue
 			}
 
 			if netOpErr.Timeout() {
-				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(fn))
+				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), key.Pod.Field(pod), key.Function.Field(fn))
 				attempt++
 				continue
 			}
 		}
 
 		if err != nil && err != context.Canceled {
-			log.Error(ctx, "unknown error", key.Error.Field(err), slog.String("pod", pod.Name), key.Function.Field(fn))
+			log.Error(ctx, "unknown error", key.Error.Field(err), key.Pod.Field(pod), key.Function.Field(fn))
 		}
 
 		return res, err
