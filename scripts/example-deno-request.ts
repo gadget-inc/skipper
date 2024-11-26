@@ -1,7 +1,7 @@
 import { sleep } from "npm:zx";
 
 // const url = "http://127.0.0.1:8080";
-const url = "http://fusion-router.fusion-development.svc.cluster.local:8080";
+const url = "http://fusion-router.fusion-development.svc.cluster.local";
 
 let i = 0;
 

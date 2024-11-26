@@ -52,7 +52,7 @@ func NewCmdRouter() *cobra.Command {
 				return fmt.Errorf("failed to start pod manager: %w", err)
 			}
 
-			controllerClient := controller.NewClient(controller.FlagHost.Value, controller.FlagPort.Value)
+			controllerClient := controller.NewClient(controller.FlagServiceHost.Value, controller.FlagServicePort.Value)
 
 			rtr := router.New(controllerClient, clientset, podManager)
 			rtr.Start(ctx)
@@ -98,8 +98,8 @@ func NewCmdRouter() *cobra.Command {
 	}
 
 	function.FlagNamespaces.Bind(cmd)
-	controller.FlagHost.Bind(cmd)
-	controller.FlagPort.Bind(cmd)
+	controller.FlagServiceHost.Bind(cmd)
+	controller.FlagServicePort.Bind(cmd)
 
 	return cmd
 }

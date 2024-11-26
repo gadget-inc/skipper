@@ -59,14 +59,10 @@ spec:
           env:
             - name: FUSION_FUNCTION_NAMESPACES
               value: "example-development,gadget-app-sandbox-development,gadget-app-sandbox-test"
-            - name: FUSION_CONTROLLER_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: FUSION_CONTROLLER_HOST
+            - name: FUSION_CONTROLLER_SERVICE_HOST
               value: "fusion-controller.fusion-development.svc"
-            - name: FUSION_CONTROLLER_PORT
-              value: "8080"
+            - name: FUSION_CONTROLLER_SERVICE_PORT
+              value: "80"
             - name: FUSION_LOG_LEVEL
               value: "debug"
             - name: FUSION_LOG_FORMAT
@@ -118,6 +114,6 @@ spec:
     app.kubernetes.io/name: fusion
     app.kubernetes.io/component: router
   ports:
-    - port: 8080
+    - port: 80
       nodePort: 31315
       targetPort: http-port
