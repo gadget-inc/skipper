@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"math/rand"
 	"net"
@@ -112,12 +111,6 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
-	if req.Body != nil {
-		// TODO: explain why this exists
-		req.Body = &nopCloser{req.Body}
-		defer req.Body.(*nopCloser).RealClose()
-	}
-
 	r.fnProxy.ServeHTTP(rw, req.WithContext(function.With(req.Context(), fn)))
 }
 
@@ -192,17 +185,6 @@ func (r *Router) getAssignedPod(ctx context.Context, fn function.Function) (*v1.
 	})
 }
 
-type nopCloser struct{ io.ReadCloser }
-
-func (n *nopCloser) Close() error { return nil }
-
-func (n *nopCloser) RealClose() error {
-	if n.ReadCloser == nil {
-		return nil
-	}
-	return n.ReadCloser.Close()
-}
-
 func rewriteHeaders(pr *httputil.ProxyRequest) {
 	function.RemoveHeaders(pr.Out)
 
@@ -234,10 +216,15 @@ func rewriteHeaders(pr *httputil.ProxyRequest) {
 			b.WriteString(formatForwardedHost(host))
 		}
 
-		b.WriteString(";host=")
-		b.WriteString(pr.In.Host)
-		b.WriteString(";proto=")
-		b.WriteString(pr.In.URL.Scheme)
+		if pr.In.URL.Host != "" {
+			b.WriteString(";host=")
+			b.WriteString(pr.In.Host)
+		}
+
+		if pr.In.URL.Scheme != "" {
+			b.WriteString(";proto=")
+			b.WriteString(pr.In.URL.Scheme)
+		}
 
 		pr.Out.Header["Forwarded"] = []string{b.String()}
 	}
@@ -249,7 +236,7 @@ func formatForwardedHost(hostPort string) string {
 		return hostPort
 	}
 	ip := net.ParseIP(host)
-	if ip != nil && ip.To16() != nil {
+	if ip != nil && ip.To4() == nil && ip.To16() != nil {
 		return "\"[" + hostPort + "]\""
 	}
 	return hostPort
