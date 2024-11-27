@@ -2,7 +2,7 @@ version: 3
 
 tasks:
   build:
-    label: "build {{.CLI_ARGS}}"
+    label: "build"
     sources:
       - cmd/**/*.go
       - internal/**/*.go
@@ -14,7 +14,7 @@ tasks:
     generates:
       - dist/*
     cmds:
-      - goreleaser build --clean --snapshot {{.CLI_ARGS}}
+      - goreleaser build --clean --snapshot
 
   docker-build:
     deps:
