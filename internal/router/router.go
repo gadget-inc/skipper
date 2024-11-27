@@ -28,7 +28,6 @@ import (
 
 type Router struct {
 	controllerClient *controller.Client
-	clientset        *kubernetes.Clientset
 	podManager       *pod.Manager
 	fnProxy          *httputil.ReverseProxy
 	fnTraffic        *xsync.MapOf[function.Function, time.Time]
@@ -38,7 +37,6 @@ type Router struct {
 func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
 	r := &Router{
 		controllerClient: controllerClient,
-		clientset:        clientset,
 		podManager:       podManager,
 		fnTraffic:        xsync.NewMapOf[function.Function, time.Time](),
 		transport: &http.Transport{
