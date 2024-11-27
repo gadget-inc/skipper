@@ -114,7 +114,7 @@ func NewCmdController() *cobra.Command {
 	function.FlagAssignTimeout.Bind(cmd)
 	function.FlagNamespaces.Bind(cmd)
 	function.FlagPort.Bind(cmd)
-	pod.FlagSkipForbiddenNamespaces.Bind(cmd)
+	function.FlagSkipForbiddenNamespaces.Bind(cmd)
 
 	return cmd
 }

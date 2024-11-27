@@ -30,4 +30,10 @@ var (
 		Description: "The timeout for assigning a function to a pod.",
 		Default:     30 * time.Second,
 	}
+
+	FlagSkipForbiddenNamespaces = flag.Flag[bool]{
+		Name:        "skip-forbidden-namespaces",
+		Description: "Whether to skip function namespaces that the service account does not have access to.",
+		Default:     false,
+	}
 )

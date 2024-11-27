@@ -16,6 +16,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -47,8 +48,8 @@ func (pm *Manager) Start(ctx context.Context) error {
 	for _, namespace := range function.FlagNamespaces.Value {
 		_, err := pm.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
-			if FlagSkipForbiddenNamespaces.Value {
-				log.Warn(ctx, "skipping namespace, no access", slog.String("namespace", namespace))
+			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value {
+				log.Warn(ctx, "skipping namespace", slog.String("namespace", namespace), key.Error.Field(err))
 				continue
 			}
 			return fmt.Errorf("failed to list pods in namespace %s: %w", namespace, err)

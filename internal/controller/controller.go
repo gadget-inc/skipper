@@ -23,6 +23,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v3"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -145,6 +146,15 @@ func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", function.FlagNamespaces.Value))
 
 	for _, namespace := range function.FlagNamespaces.Value {
+		_, err := c.clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{Limit: 1})
+		if err != nil {
+			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value {
+				log.Warn(ctx, "skipping namespace", slog.String("namespace", namespace), key.Error.Field(err))
+				continue
+			}
+			return fmt.Errorf("failed to list replica sets in namespace %s: %w", namespace, err)
+		}
+
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
 			c.clientset,
 			5*time.Minute,
@@ -157,7 +167,7 @@ func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 		replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()
 		replicaSetLister := replicaSetInformer.Lister()
 
-		_, err := replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		_, err = replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
 				replicaSet := obj.(*appsv1.ReplicaSet)
 				log.Trace(ctx, "replica set added", key.ReplicaSet.Field(replicaSet))

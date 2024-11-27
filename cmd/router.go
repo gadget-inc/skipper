@@ -98,9 +98,10 @@ func NewCmdRouter() *cobra.Command {
 	}
 
 	function.FlagNamespaces.Bind(cmd)
-	router.FlagPort.Bind(cmd)
+	function.FlagSkipForbiddenNamespaces.Bind(cmd)
 	router.FlagControllerServiceHost.Bind(cmd)
 	router.FlagControllerServicePort.Bind(cmd)
+	router.FlagPort.Bind(cmd)
 
 	return cmd
 }
