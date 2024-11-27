@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"strings"
 	"time"
 
@@ -147,13 +148,13 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		pod, err := r.getAssignedPod(ctx, fn)
 		if err != nil {
-			log.Warn(ctx, "failed to get a pod for function", key.Error.Field(err), key.Function.Field(fn))
+			log.Warn(ctx, "failed to get assigned pod for function", key.Error.Field(err), key.Function.Field(fn))
 			attempt++
 			continue
 		}
 
 		req.URL.Scheme = "http"
-		req.URL.Host = pod.Status.PodIP + ":8888"
+		req.URL.Host = pod.Status.PodIP + ":" + strconv.Itoa(function.FlagPort.Value)
 
 		res, err := r.transport.RoundTrip(req)
 
@@ -244,14 +245,14 @@ func rewriteHeaders(pr *httputil.ProxyRequest) {
 	}
 }
 
-func formatForwardedHost(hostname string) string {
-	host, _, err := net.SplitHostPort(hostname)
+func formatForwardedHost(hostPort string) string {
+	host, _, err := net.SplitHostPort(hostPort)
 	if err != nil {
-		return hostname
+		return hostPort
 	}
 	ip := net.ParseIP(host)
 	if ip != nil && ip.To16() != nil {
-		return "\"[" + hostname + "]\""
+		return "\"[" + hostPort + "]\""
 	}
-	return hostname
+	return hostPort
 }

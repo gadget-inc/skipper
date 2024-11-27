@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -52,32 +53,31 @@ func NewCmdRouter() *cobra.Command {
 				return fmt.Errorf("failed to start pod manager: %w", err)
 			}
 
-			controllerClient := controller.NewClient(controller.FlagServiceHost.Value, controller.FlagServicePort.Value)
+			controllerClient := controller.NewClient(router.FlagControllerServiceHost.Value, router.FlagControllerServicePort.Value)
+			r := router.New(controllerClient, clientset, podManager)
+			r.Start(ctx)
 
-			rtr := router.New(controllerClient, clientset, podManager)
-			rtr.Start(ctx)
-
-			srv := &http.Server{
-				Addr:    ":8080",
-				Handler: rtr,
+			httpServer := &http.Server{
+				Addr:    ":" + strconv.Itoa(router.FlagPort.Value),
+				Handler: r,
 			}
 
-			serverErrors := make(chan error, 1)
+			httpServerErrors := make(chan error, 1)
 
 			go func() {
-				err := srv.ListenAndServe()
-				if err != nil && err != http.ErrServerClosed {
+				err := httpServer.ListenAndServe()
+				if err != http.ErrServerClosed {
 					log.Error(ctx, "failed to listen and serve", key.Error.Field(err))
-					serverErrors <- err
+					httpServerErrors <- err
 				}
 			}()
 
-			log.Info(ctx, "server started", slog.String("address", srv.Addr))
+			log.Info(ctx, "server started", slog.String("address", httpServer.Addr))
 			quit := make(chan os.Signal, 1)
 			signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 			select {
-			case err := <-serverErrors:
+			case err := <-httpServerErrors:
 				return fmt.Errorf("server error: %w", err)
 			case sig := <-quit:
 				log.Info(ctx, "received signal, shutting down", slog.String("signal", sig.String()))
@@ -86,7 +86,7 @@ func NewCmdRouter() *cobra.Command {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			err = srv.Shutdown(shutdownCtx)
+			err = httpServer.Shutdown(shutdownCtx)
 			if err != nil {
 				return fmt.Errorf("failed to shutdown server: %w", err)
 			}
@@ -98,8 +98,9 @@ func NewCmdRouter() *cobra.Command {
 	}
 
 	function.FlagNamespaces.Bind(cmd)
-	controller.FlagServiceHost.Bind(cmd)
-	controller.FlagServicePort.Bind(cmd)
+	router.FlagPort.Bind(cmd)
+	router.FlagControllerServiceHost.Bind(cmd)
+	router.FlagControllerServicePort.Bind(cmd)
 
 	return cmd
 }

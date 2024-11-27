@@ -1,35 +1,36 @@
 package controller
 
-import "github.com/gadget-inc/fusion/internal/flag"
+import (
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/gadget-inc/fusion/internal/flag"
+)
 
 var (
 	FlagNamespace = flag.Flag[string]{
 		Name:        "controller-namespace",
-		Description: "The namespace this controller instance is in.",
+		Description: "The namespace the controller is in.",
 		Required:    true,
 	}
 
 	FlagIP = flag.Flag[string]{
 		Name:        "controller-ip",
-		Description: "The IP address assigned to this controller.",
+		Description: "The IP the controller listens on.",
 		Required:    true,
 	}
 
 	FlagPort = flag.Flag[int]{
 		Name:        "controller-port",
-		Description: "The port this controller is listening on.",
+		Description: "The port the controller listens on.",
 		Default:     8080,
-	}
-
-	FlagServiceHost = flag.Flag[string]{
-		Name:        "controller-service-host",
-		Description: "The hostname of the controller service.",
-		Required:    true,
-	}
-
-	FlagServicePort = flag.Flag[int]{
-		Name:        "controller-service-port",
-		Description: "The port of the controller service.",
-		Default:     80,
+		Parse: func(s string) (int, error) {
+			if strings.HasPrefix(s, "tcp://") && s == os.Getenv("FUSION_CONTROLLER_PORT") {
+				// this environment variable was set by kubernetes, ignore it and use the default
+				return 8080, nil
+			}
+			return strconv.Atoi(s)
+		},
 	}
 )

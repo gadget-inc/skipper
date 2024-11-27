@@ -120,7 +120,7 @@ var _ Key[error] = errorKey{}
 
 func (k errorKey) Field(value error) slog.Attr {
 	if value == nil {
-		return slog.Attr{Key: k.Underscored}
+		return slog.Attr{}
 	}
 	return slog.String(string(k.Underscored), value.Error())
 }

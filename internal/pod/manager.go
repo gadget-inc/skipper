@@ -45,6 +45,15 @@ func (pm *Manager) Start(ctx context.Context) error {
 	log.Info(ctx, "starting managed pod informers", slog.Any("namespaces", function.FlagNamespaces.Value))
 
 	for _, namespace := range function.FlagNamespaces.Value {
+		_, err := pm.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
+		if err != nil {
+			if FlagSkipForbiddenNamespaces.Value {
+				log.Warn(ctx, "skipping namespace, no access", slog.String("namespace", namespace))
+				continue
+			}
+			return fmt.Errorf("failed to list pods in namespace %s: %w", namespace, err)
+		}
+
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
 			pm.clientset,
 			5*time.Minute,
@@ -57,7 +66,7 @@ func (pm *Manager) Start(ctx context.Context) error {
 		podInformer := informerFactory.Core().V1().Pods()
 		podLister := podInformer.Lister()
 
-		_, err := podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		_, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
 				pod := obj.(*v1.Pod)
 				log.Trace(ctx, "pod added", key.Pod.Field(pod))

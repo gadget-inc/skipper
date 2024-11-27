@@ -107,14 +107,14 @@ func NewCmdController() *cobra.Command {
 		},
 	}
 
+	controller.FlagIP.Bind(cmd)
+	controller.FlagNamespace.Bind(cmd)
+	controller.FlagPort.Bind(cmd)
 	function.FlagAssignPath.Bind(cmd)
 	function.FlagAssignTimeout.Bind(cmd)
 	function.FlagNamespaces.Bind(cmd)
 	function.FlagPort.Bind(cmd)
-
-	controller.FlagIP.Bind(cmd)
-	controller.FlagNamespace.Bind(cmd)
-	controller.FlagPort.Bind(cmd)
+	pod.FlagSkipForbiddenNamespaces.Bind(cmd)
 
 	return cmd
 }
