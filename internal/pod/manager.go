@@ -45,16 +45,19 @@ func NewManager(clientset *kubernetes.Clientset) *Manager {
 func (pm *Manager) Start(ctx context.Context) error {
 	log.Info(ctx, "starting managed pod informers", slog.Any("namespaces", function.FlagNamespaces.Value))
 
-	for i, namespace := range function.FlagNamespaces.Value {
+	// TODO: test all required permissions before starting informers
+	var validNamespaces []string
+	for _, namespace := range function.FlagNamespaces.Value {
 		_, err := pm.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
 			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value {
 				log.Warn(ctx, "skipping namespace", slog.String("namespace", namespace), key.Error.Field(err))
-				function.FlagNamespaces.Value = append(function.FlagNamespaces.Value[:i], function.FlagNamespaces.Value[i+1:]...)
 				continue
 			}
 			return fmt.Errorf("failed to list pods in namespace %s: %w", namespace, err)
 		}
+
+		validNamespaces = append(validNamespaces, namespace)
 
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
 			pm.clientset,
@@ -96,6 +99,8 @@ func (pm *Manager) Start(ctx context.Context) error {
 			}
 		}
 	}
+
+	function.FlagNamespaces.Value = validNamespaces
 
 	return nil
 }

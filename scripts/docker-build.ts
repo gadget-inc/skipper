@@ -10,7 +10,3 @@ await $`docker buildx build . --tag=fusion:${amd64Tag} --platform=linux/amd64`;
 
 await Deno.copyFile(abs(`dist/fusion_linux_arm64_v8.0/fusion`), abs("docker/fusion/fusion"));
 await $`docker buildx build . --tag=fusion:${arm64Tag} --platform=linux/arm64/v8`;
-
-// cd(abs("docker/example-deno"));
-// await $`docker buildx build . --tag=fusion-example-deno:${amd64Tag} --platform=linux/amd64`;
-// await $`docker buildx build . --tag=fusion-example-deno:${arm64Tag} --platform=linux/arm64/v8`;

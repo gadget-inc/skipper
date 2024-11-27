@@ -2,7 +2,6 @@ version: 3
 
 tasks:
   build:
-    label: "build"
     sources:
       - cmd/**/*.go
       - internal/**/*.go
@@ -21,7 +20,7 @@ tasks:
       - build
     sources:
       - dist/**/*
-      - docker/**/*
+      - docker/fusion/**/*
       - scripts/docker-build.ts
     cmds:
       - deno run -A scripts/docker-build.ts
@@ -38,6 +37,19 @@ tasks:
     cmds:
       - deno run -A scripts/deploy.ts
 
+  example-deno-docker-build:
+    sources:
+      - docker/example-deno/**/*
+      - scripts/example-deno-docker-build.ts
+    cmds:
+      - deno run -A scripts/example-deno-docker-build.ts
+
+  example-deno-deploy:
+    deps:
+      - example-deno-docker-build
+    cmds:
+      - deno run -A scripts/example-deno-deploy.ts
+
   example-deno-request:
     cmds:
       - deno run -A scripts/example-deno-request.ts
@@ -45,3 +57,11 @@ tasks:
   example-deno-websocket:
     cmds:
       - node scripts/nodejs/example-deno-websocket.js
+
+  metrics-server-deploy:
+    sources:
+      - deploy/cluster/metrics-server.yaml
+      - deploy/kube-system/metrics-server.yaml
+      - scripts/metrics-server-deploy.ts
+    cmds:
+      - deno run -A scripts/metrics-server-deploy.ts

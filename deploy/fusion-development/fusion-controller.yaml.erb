@@ -67,6 +67,8 @@ spec:
                   fieldPath: status.podIP
             - name: FUSION_FUNCTION_NAMESPACES
               value: "example-development,gadget-app-sandbox-development,gadget-app-sandbox-test"
+            - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
+              value: "true"
             - name: FUSION_LOG_LEVEL
               value: "debug"
             - name: FUSION_LOG_FORMAT
