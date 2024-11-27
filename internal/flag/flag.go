@@ -12,14 +12,18 @@ import (
 type Flag[T any] struct {
 	// Name is the name of the flag.
 	//
-	// This is used as the double-dashed flag name in the command line and as the name of the environment variable. The
-	// name of the environment variable is derived by upper-casing, replacing hyphens with underscores, and prefixing
-	// with "FUSION_". For example, the name "foo-bar" would result in the environment variable "FUSION_FOO_BAR".
+	// This is used as the double-dashed flag name in the command line
+	// and as the name of the environment variable. The name of the
+	// environment variable is derived by upper-casing, replacing
+	// hyphens with underscores, and prefixing with "FUSION_". For
+	// example, the name "foo-bar" would result in a flag named
+	// --foo-bar and an environment variable named FUSION_FOO_BAR.
 	Name string
 
 	// Shorthand is the shorthand name of the flag.
 	//
-	// This is used as the single-dash flag name in the command line. If not set, no shorthand is used.
+	// This is used as the single-dash flag name in the command line. If
+	// not set, no shorthand is used.
 	Shorthand string
 
 	// Description is the description of the flag.
@@ -29,44 +33,55 @@ type Flag[T any] struct {
 
 	// Default is the default value of the flag.
 	//
-	// This is used when the flag is not set via the command line or environment variable.
+	// This is used when the flag is not set via the command line or
+	// environment variable.
 	Default T
 
 	// Required is used to indicate that the flag is required.
 	//
-	// If true and the flag is not set via the command line or environment variable, the bound command will return an
-	// error before Run/RunE is called.
+	// If true and the flag is not set via the command line or
+	// environment variable, the bound command will return an error
+	// before Run/RunE is called.
 	Required bool
 
 	// Requires is a list of flags that this flag depends on.
 	//
-	// If any of the flags in this list are not set, the bound command will return an error before Run/RunE is called.
+	// If any of the flags in this list are not set, the bound command
+	// will return an error before Run/RunE is called.
 	Requires []string
 
-	// Separator is the separator to use when parsing the string representation of the flag's value.
+	// Separator is the separator to use when parsing the string
+	// representation of the flag's value.
 	//
-	// This is only used when the flag's type is a slice or map. By default, the value is split by commas.
+	// This is only used when the flag's type is a slice or map. By
+	// default, the value is split by commas.
 	Separator string
 
 	// Sensitive indicates whether the flag's value is sensitive.
 	//
-	// Use this to redact the flags value from help text, error messages, and logs.
+	// Use this to redact the flags value from help text, error
+	// messages, and logs.
 	Sensitive bool
 
-	// Parse is used to parse the string representation of the flag's value.
+	// Parse is used to parse the string representation of the flag's
+	// value.
 	//
-	// This is used to convert the command line or environment variable's value into the flag's underlying type. Use
-	// this to implement custom parsing or to override the default parser for a given type.
+	// This is used to convert the command line or environment
+	// variable's value into the flag's underlying type. Use this to
+	// implement custom parsing or to override the default parser for a
+	// given type.
 	Parse func(string) (T, error)
 
 	// Display is used to display the flag's value in the help text.
 	//
-	// This is used when displaying the default value. Use this to implement a custom display.
+	// This is used when displaying the default value. Use this to
+	// implement a custom display.
 	Display func(T) string
 
 	// Action is called immediately after the flag has been set.
 	//
-	// Use this to perform validation or other actions that depend on the flag value.
+	// Use this to perform validation or other actions that depend on
+	// the flag value.
 	Action func(T) error
 
 	// Value is the underlying value of the flag.
@@ -74,29 +89,34 @@ type Flag[T any] struct {
 	// This is where the value is stored after the flag has been set.
 	Value T
 
-	// WasSet indicates whether the flag was set via the command line or environment variable.
+	// WasSet indicates whether the flag was set via the command line or
+	// environment variable.
 	//
-	// This is useful for determining whether the flag was set to its default value or not.
+	// This is useful for determining whether the flag was set to its
+	// default value or not.
 	WasSet bool
 
 	// value is a pointer to the flag's value.
 	//
-	// This is used to perform switch.(type) checks which aren't possible with generic types.
+	// This is used to perform switch.(type) checks which aren't
+	// possible with generic types.
 	value any
 }
 
 // Bind binds the flag to the given command.
 //
-// Once the command is executed and Run/RunE is called, the flag's value will be set to the value provided by the
-// command line, environment variable, or default value.
+// Once the command is executed and Run/RunE is called, the flag's value
+// will be set to the value provided by the command line, environment
+// variable, or default value.
 func (self *Flag[T]) Bind(cmd *cobra.Command) {
 	self.bind(cmd, false)
 }
 
 // Bind binds the flag to the given command.
 //
-// Once the command is executed and Run/RunE is called, the flag's value will be set to the value provided by the
-// command line, environment variable, or default value.
+// Once the command is executed and Run/RunE is called, the flag's value
+// will be set to the value provided by the command line, environment
+// variable, or default value.
 func (self *Flag[T]) BindPersistent(cmd *cobra.Command) {
 	self.bind(cmd, true)
 }
