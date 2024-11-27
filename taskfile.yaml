@@ -56,7 +56,7 @@ tasks:
 
   example-deno-websocket:
     cmds:
-      - node scripts/nodejs/example-deno-websocket.js
+      - deno run -A scripts/example-deno-websocket.ts
 
   metrics-server-deploy:
     sources:

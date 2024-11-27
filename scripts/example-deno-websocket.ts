@@ -1,5 +1,6 @@
-const WebSocket = require("ws");
-const { setTimeout } = require("timers/promises");
+// @deno-types="npm:@types/ws"
+import WebSocket from "npm:ws";
+import { delay } from "jsr:@std/async";
 
 // const url = "http://127.0.0.1:8080";
 const url = "http://fusion-router.fusion-development.svc.cluster.local";
@@ -17,8 +18,8 @@ const socket = new WebSocket(url, undefined, {
   },
 });
 
-socket.on("open", (event) => {
-  console.log("websocket open", event);
+socket.on("open", () => {
+  console.log("websocket open");
   socket.send("ping");
 });
 
@@ -27,7 +28,7 @@ socket.on("message", async (message) => {
 
   console.log("websocket message", { data });
   if (data === "pong") {
-    await setTimeout(1000);
+    await delay(1000);
     socket.send("ping");
   }
 });

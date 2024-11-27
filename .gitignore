@@ -2,5 +2,4 @@
 .task/
 dist/
 docker/fusion/fusion
-scripts/nodejs/node_modules/
 tmp/
