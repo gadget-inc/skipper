@@ -38,7 +38,7 @@ type Manager struct {
 	podListers *xsync.MapOf[string, listerv1.PodLister]
 }
 
-func NewManager(clientset *kubernetes.Clientset) *Manager {
+func NewManager(clientset kubernetes.Interface) *Manager {
 	return &Manager{clientset: clientset, podListers: xsync.NewMapOf[string, listerv1.PodLister]()}
 }
 
