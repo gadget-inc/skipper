@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/buffer"
@@ -185,59 +184,9 @@ func (r *Router) getAssignedPod(ctx context.Context, fn function.Function) (*v1.
 	})
 }
 
-func rewriteHeaders(pr *httputil.ProxyRequest) {
-	function.RemoveHeaders(pr.Out)
-
-	// TODO: only do this if we trust the client
-	pr.Out.Host = pr.In.Host
-
-	var ok bool
-	if pr.Out.Header["X-Forwarded-For"], ok = pr.In.Header["X-Forwarded-For"]; !ok {
-		pr.Out.Header["X-Forwarded-For"] = []string{pr.In.RemoteAddr}
-	}
-
-	if pr.Out.Header["X-Forwarded-Host"], ok = pr.In.Header["X-Forwarded-Host"]; !ok {
-		pr.Out.Header["X-Forwarded-Host"] = []string{pr.In.Host}
-	}
-
-	pr.Out.Header["X-Forwarded-Proto"] = pr.In.Header["X-Forwarded-Proto"]
-	// if pr.Out.Header["X-Forwarded-Proto"], ok = pr.In.Header["X-Forwarded-Proto"]; !ok {
-	// 	pr.Out.Header["X-Forwarded-Proto"] = []string{pr.In.URL.Scheme}
-	// }
-
-	if pr.Out.Header["Forwarded"], ok = pr.In.Header["Forwarded"]; !ok {
-		var b strings.Builder
-
-		b.WriteString("by=")
-		b.WriteString(formatForwardedHost(pr.In.Host))
-
-		for _, host := range pr.Out.Header["X-Forwarded-For"] {
-			b.WriteString(";for=")
-			b.WriteString(formatForwardedHost(host))
-		}
-
-		if pr.In.URL.Host != "" {
-			b.WriteString(";host=")
-			b.WriteString(pr.In.Host)
-		}
-
-		if pr.In.URL.Scheme != "" {
-			b.WriteString(";proto=")
-			b.WriteString(pr.In.URL.Scheme)
-		}
-
-		pr.Out.Header["Forwarded"] = []string{b.String()}
-	}
-}
-
-func formatForwardedHost(hostPort string) string {
-	host, _, err := net.SplitHostPort(hostPort)
-	if err != nil {
-		return hostPort
-	}
-	ip := net.ParseIP(host)
-	if ip != nil && ip.To4() == nil && ip.To16() != nil {
-		return "\"[" + hostPort + "]\""
-	}
-	return hostPort
+func rewriteHeaders(r *httputil.ProxyRequest) {
+	function.RemoveHeaders(r.Out)
+	r.Out.Host = r.In.Host
+	r.Out.Header["X-Forwarded-For"] = r.In.Header["X-Forwarded-For"]
+	r.SetXForwarded()
 }
