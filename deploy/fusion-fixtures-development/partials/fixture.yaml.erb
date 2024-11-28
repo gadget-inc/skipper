@@ -1,33 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: example-deno
+  name: <%= name %>
   labels:
-    app.kubernetes.io/managed-by: fusion
-    fusion/deployment: example-deno
-    fusion/status: unassigned
+    fusion/deployment: <%= name %>
   annotations:
     shipit.shopify.io/restart: "true"
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/managed-by: fusion
-      fusion/deployment: example-deno
+      fusion/deployment: <%= name %>
       fusion/status: unassigned
   template:
     metadata:
       labels:
-        app.kubernetes.io/managed-by: fusion
-        fusion/deployment: example-deno
+        fusion/deployment: <%= name %>
         fusion/status: unassigned
     spec:
       volumes:
         - name: empty-dir
           emptyDir: {}
       containers:
-        - name: deno
-          image: fusion-example-deno:<%= imageTag %>
+        - name: <%= name %>
+          image: fusion-fixture-<%= name %>:<%= imageTag %>
           imagePullPolicy: Never
           ports:
             - name: http-port

@@ -150,7 +150,7 @@ func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 			5*time.Minute,
 			informers.WithNamespace(namespace),
 			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-				options.LabelSelector = "app.kubernetes.io/managed-by=fusion"
+				options.LabelSelector = key.Deployment.Label
 			}),
 		)
 

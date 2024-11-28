@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <%= name %>
+  labels:
+    fusion/deployment: <%= name %>
+  annotations:
+    shipit.shopify.io/restart: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      fusion/deployment: <%= name %>
+      fusion/status: unassigned
+  template:
+    metadata:
+      labels:
+        fusion/deployment: <%= name %>
+        fusion/status: unassigned
+    spec:
+      volumes:
+        - name: empty-dir
+          emptyDir: {}
+      containers:
+        - name: <%= name %>
+          image: fusion-fixture-<%= name %>:<%= imageTag %>
+          imagePullPolicy: Never
+          ports:
+            - name: http-port
+              containerPort: 8888
+          env:
+            - name: DENO_V8_FLAGS
+              value: "--max-old-space-size=256"
+          volumeMounts:
+            - name: empty-dir
+              mountPath: /tmp
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http-port
+            failureThreshold: 3
+            initialDelaySeconds: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http-port
+            failureThreshold: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http-port
+            failureThreshold: 1
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1

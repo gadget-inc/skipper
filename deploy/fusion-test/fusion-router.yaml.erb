@@ -2,12 +2,12 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: fusion-controller
+  name: fusion-router
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: fusion-controller
+  name: fusion-router
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -16,23 +16,23 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: fusion-controller
+  name: fusion-router
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: fusion-controller
+  name: fusion-router
 subjects:
   - kind: ServiceAccount
-    name: fusion-controller
-    namespace: fusion-development
+    name: fusion-router
+    namespace: fusion-test
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fusion-controller
+  name: fusion-router
   labels:
     app.kubernetes.io/name: fusion
-    app.kubernetes.io/component: controller
+    app.kubernetes.io/component: router
   annotations:
     shipit.shopify.io/restart: "true"
 spec:
@@ -40,35 +40,25 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: fusion
-      app.kubernetes.io/component: controller
+      app.kubernetes.io/component: router
   template:
     metadata:
       labels:
         app.kubernetes.io/name: fusion
-        app.kubernetes.io/component: controller
+        app.kubernetes.io/component: router
     spec:
-      serviceAccountName: fusion-controller
+      serviceAccountName: fusion-router
       containers:
-        - name: controller
+        - name: router
           image: fusion:<%= imageTag %>
           imagePullPolicy: Never
-          args: ["controller"]
+          args: ["router"]
           ports:
             - name: http-port
               containerPort: 8080
           env:
-            - name: FUSION_CONTROLLER_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: FUSION_CONTROLLER_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
             - name: FUSION_FUNCTION_NAMESPACES
-              value: "fusion-fixtures-development,gadget-app-sandbox-development,gadget-app-sandbox-test"
-            - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
-              value: "true"
+              value: "fusion-fixtures-test"
             - name: FUSION_LOG_LEVEL
               value: "debug"
             - name: FUSION_LOG_FORMAT
@@ -113,11 +103,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fusion-controller
+  name: fusion-router
 spec:
+  type: NodePort
   selector:
     app.kubernetes.io/name: fusion
-    app.kubernetes.io/component: controller
+    app.kubernetes.io/component: router
   ports:
     - port: 80
+      nodePort: 31021
       targetPort: http-port

@@ -24,7 +24,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: fusion-controller
-    namespace: fusion-development
+    namespace: fusion-test
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -66,9 +66,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
             - name: FUSION_FUNCTION_NAMESPACES
-              value: "fusion-fixtures-development,gadget-app-sandbox-development,gadget-app-sandbox-test"
-            - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
-              value: "true"
+              value: "fusion-fixtures-test"
             - name: FUSION_LOG_LEVEL
               value: "debug"
             - name: FUSION_LOG_FORMAT

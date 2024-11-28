@@ -278,7 +278,7 @@ func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsCli
 	}
 
 	podMetricsList, err := metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "app.kubernetes.io/managed-by=fusion," + key.Tenant.Label,
+		LabelSelector: key.Tenant.Label,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod metrics: %w", err)

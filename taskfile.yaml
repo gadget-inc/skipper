@@ -37,26 +37,18 @@ tasks:
     cmds:
       - deno run -A scripts/deploy.ts
 
-  example-deno-docker-build:
+  fixtures-docker-build:
     sources:
-      - docker/example-deno/**/*
-      - scripts/example-deno-docker-build.ts
+      - docker/fixtures/**/*
+      - scripts/fixtures-docker-build.ts
     cmds:
-      - deno run -A scripts/example-deno-docker-build.ts
+      - deno run -A scripts/fixtures-docker-build.ts
 
-  example-deno-deploy:
+  fixtures-deploy:
     deps:
-      - example-deno-docker-build
+      - fixtures-docker-build
     cmds:
-      - deno run -A scripts/example-deno-deploy.ts
-
-  example-deno-request:
-    cmds:
-      - deno run -A scripts/example-deno-request.ts
-
-  example-deno-websocket:
-    cmds:
-      - deno run -A scripts/example-deno-websocket.ts
+      - deno run -A scripts/fixtures-deploy.ts
 
   metrics-server-deploy:
     sources:
@@ -65,3 +57,11 @@ tasks:
       - scripts/metrics-server-deploy.ts
     cmds:
       - deno run -A scripts/metrics-server-deploy.ts
+
+  echo-request:
+    cmds:
+      - deno run -A scripts/echo-request.ts
+
+  echo-websocket:
+    cmds:
+      - deno run -A scripts/echo-websocket.ts

@@ -18,7 +18,7 @@ func TestController(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:31020/", bytes.NewBufferString("hello world!"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://localhost:31021/", bytes.NewBufferString("hello world!"))
 	assert.NoError(t, err, "failed to create request")
 
 	req.Header.Set("Content-Type", "text/plain")
@@ -38,7 +38,7 @@ func TestController(t *testing.T) {
 	err = json.NewDecoder(res.Body).Decode(&response)
 	assert.NoError(t, err, "failed to decode response")
 	assert.Equal(t, http.MethodPost, response.Method, "unexpected method")
-	assert.Equal(t, "http://localhost:31020/", response.URL, "unexpected url")
+	assert.Equal(t, "http://localhost:31021/", response.URL, "unexpected url")
 	assert.Equal(t, "hello world!", response.Body, "unexpected body")
 	assert.Equal(t, "text/plain", response.Headers["content-type"], "unexpected content type")
 }

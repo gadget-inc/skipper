@@ -2,14 +2,14 @@
 import WebSocket from "npm:ws";
 import { delay } from "jsr:@std/async";
 
-// const url = "http://127.0.0.1:8080";
+// const url = "http://127.0.0.1:31020";
 const url = "http://fusion-router.fusion-development.svc.cluster.local";
 
 const socket = new WebSocket(url, undefined, {
   headers: {
     "x-fusion-tenant": "123",
-    "x-fusion-namespace": "example-development",
-    "x-fusion-deployment": "example-deno",
+    "x-fusion-namespace": "fusion-fixtures-development",
+    "x-fusion-deployment": "echo",
     "x-fusion-metadata": "secret123",
     "x-fusion-min-replicas": "0",
     "x-fusion-max-replicas": "5",
