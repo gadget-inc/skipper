@@ -21,7 +21,6 @@ import (
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 type Router struct {
@@ -32,7 +31,7 @@ type Router struct {
 	transport        *http.Transport
 }
 
-func New(controllerClient *controller.Client, clientset *kubernetes.Clientset, podManager *pod.Manager) *Router {
+func New(controllerClient *controller.Client, podManager *pod.Manager) *Router {
 	r := &Router{
 		controllerClient: controllerClient,
 		podManager:       podManager,

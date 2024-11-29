@@ -54,7 +54,7 @@ func NewCmdRouter() *cobra.Command {
 			}
 
 			controllerClient := controller.NewClient(router.FlagControllerServiceHost.Value, router.FlagControllerServicePort.Value)
-			r := router.New(controllerClient, clientset, podManager)
+			r := router.New(controllerClient, podManager)
 			r.Start(ctx)
 
 			httpServer := &http.Server{
