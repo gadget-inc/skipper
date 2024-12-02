@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -26,8 +27,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
+	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
-	"k8s.io/utils/strings/slices"
 )
 
 type Controller struct {
@@ -238,7 +239,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 			c.fnTrafficMu.Unlock()
 
 			for _, namespace := range function.FlagNamespaces.Value {
-				functionMetrics, err := getFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
+				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)
 				if err != nil {
 					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
 					return nil
@@ -273,7 +274,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						}
 
 						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(lastRequest))
-						err := scaleFunction(ctx, c.podManager, fn, 0)
+						err := c.scaleFunction(ctx, fn, 0)
 						if err != nil {
 							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 						}
@@ -352,7 +353,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
 					)
 
-					err = scaleFunction(ctx, c.podManager, fn, desiredReplicas)
+					err = c.scaleFunction(ctx, fn, desiredReplicas)
 					if err != nil {
 						log.Warn(ctx, "failed to scale function",
 							key.Error.Field(err),
@@ -513,4 +514,140 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}()
+}
+
+func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (map[function.Function]map[string]PodMetricsInfo, error) {
+	pods, err := c.podManager.GetAllAssignedPods(namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
+	}
+
+	podMetricsList, err := c.metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pod metrics: %w", err)
+	}
+
+	metricsMap := make(map[string]metricsv1beta1.PodMetrics)
+	for _, m := range podMetricsList.Items {
+		metricsMap[m.Name] = m
+	}
+
+	functionsMap := make(map[function.Function]map[string]PodMetricsInfo)
+
+	for _, pod := range pods {
+		fn, err := function.FromPod(pod)
+		if err != nil {
+			log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", pod.Name), slog.Any("labels", pod.Labels))
+			continue
+		}
+
+		info := PodMetricsInfo{
+			Pod:               pod,
+			Ready:             false,
+			AssignedAt:        fn.AssignedAt,
+			DeletionTimestamp: pod.DeletionTimestamp,
+		}
+
+		if !fn.ReadyAt.IsZero() {
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
+					info.Ready = true
+					break
+				}
+			}
+		}
+
+		if m, exists := metricsMap[pod.Name]; exists {
+			for _, c := range m.Containers {
+				if c.Usage.Cpu() != nil {
+					cpuUsage := c.Usage.Cpu().MilliValue()
+					if info.CPUUsage == nil {
+						info.CPUUsage = new(int64)
+					}
+					*info.CPUUsage += cpuUsage
+				}
+				if c.Usage.Memory() != nil {
+					memUsage := c.Usage.Memory().Value()
+					if info.MemoryUsage == nil {
+						info.MemoryUsage = new(int64)
+					}
+					*info.MemoryUsage += memUsage
+				}
+			}
+		} else {
+			// Metrics missing for this pod
+			info.CPUUsage = nil
+			info.MemoryUsage = nil
+		}
+
+		if _, exists := functionsMap[fn.Function]; !exists {
+			functionsMap[fn.Function] = make(map[string]PodMetricsInfo)
+		}
+
+		functionsMap[fn.Function][pod.Name] = info
+	}
+
+	return functionsMap, nil
+}
+
+func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredReplicas int) error {
+	assignedPods, err := c.podManager.GetAssignedAndPending(fn)
+	if err != nil {
+		return fmt.Errorf("failed to get assigned pods: %w", err)
+	}
+
+	currentReplicas := len(assignedPods)
+	if currentReplicas == desiredReplicas {
+		return nil
+	}
+
+	log.Info(ctx, "scaling function", slog.Int("currentReplicas", currentReplicas), slog.Int("desiredReplicas", desiredReplicas), key.Function.Field(fn))
+
+	if desiredReplicas > currentReplicas {
+		// TODO: lock assigning map
+		for i := 0; i < desiredReplicas-currentReplicas; i++ {
+			pod, err := c.podManager.Assign(ctx, fn)
+			if err != nil {
+				return fmt.Errorf("failed to assign pod: %w", err)
+			}
+			log.Trace(ctx, "assigned pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+		}
+	} else {
+		slices.SortFunc(assignedPods, func(a, b *v1.Pod) int {
+			if a.DeletionTimestamp != nil && b.DeletionTimestamp == nil {
+				return 1
+			}
+
+			if a.DeletionTimestamp == nil && b.DeletionTimestamp != nil {
+				return -1
+			}
+
+			instanceA, err := function.FromPod(a)
+			if err != nil {
+				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
+				return -1
+			}
+
+			instanceB, err := function.FromPod(b)
+			if err != nil {
+				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", b.Name), slog.Any("labels", b.Labels))
+				return 1
+			}
+
+			return instanceA.AssignedAt.Compare(instanceB.AssignedAt)
+		})
+
+		for i := 0; i < currentReplicas-desiredReplicas; i++ {
+			pod := assignedPods[i]
+			err := c.podManager.Terminate(ctx, fn, pod)
+			if err != nil {
+				return fmt.Errorf("failed to delete pod: %w", err)
+			}
+			log.Trace(ctx, "deleted pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+		}
+	}
+
+	return nil
 }
