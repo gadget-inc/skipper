@@ -1,4 +1,4 @@
-package hpa
+package controller
 
 import (
 	"context"
@@ -213,8 +213,8 @@ func calculateDesiredReplicasForMetric(
 	return desiredReplicas, nil
 }
 
-// CalculateDesiredReplicas computes desired replicas based on multiple metrics
-func CalculateDesiredReplicas(
+// calculateDesiredReplicas computes desired replicas based on multiple metrics
+func calculateDesiredReplicas(
 	currentReplicas int,
 	podMetrics map[string]PodMetricsInfo,
 	targetCPUUtilization int64,
@@ -271,7 +271,7 @@ func CalculateDesiredReplicas(
 	return maxDesiredReplicas, nil
 }
 
-func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsClientset metricsclientset.Interface, namespace string) (map[function.Function]map[string]PodMetricsInfo, error) {
+func getFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsClientset metricsclientset.Interface, namespace string) (map[function.Function]map[string]PodMetricsInfo, error) {
 	pods, err := podManager.GetAllAssignedPods(namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
@@ -347,7 +347,7 @@ func GetFunctionMetrics(ctx context.Context, podManager *pod.Manager, metricsCli
 	return functionsMap, nil
 }
 
-func ScaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Function, desiredReplicas int) error {
+func scaleFunction(ctx context.Context, podManager *pod.Manager, fn function.Function, desiredReplicas int) error {
 	assignedPods, err := podManager.GetAssignedAndPending(fn)
 	if err != nil {
 		return fmt.Errorf("failed to get assigned pods: %w", err)

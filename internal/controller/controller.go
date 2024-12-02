@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/controller/hpa"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/hashring"
 	"github.com/gadget-inc/fusion/internal/key"
@@ -228,7 +227,7 @@ func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 
 func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 	// TODO: garbage collect old stabilization windows
-	stabilizationWindows := make(map[function.Function]*hpa.StabilizationWindow)
+	stabilizationWindows := make(map[function.Function]*StabilizationWindow)
 
 	go timer.Loop(
 		ctx,
@@ -239,7 +238,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 			c.fnTrafficMu.Unlock()
 
 			for _, namespace := range function.FlagNamespaces.Value {
-				functionMetrics, err := hpa.GetFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
+				functionMetrics, err := getFunctionMetrics(ctx, c.podManager, c.metricsClientset, namespace)
 				if err != nil {
 					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
 					return nil
@@ -274,7 +273,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						}
 
 						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(lastRequest))
-						err := hpa.ScaleFunction(ctx, c.podManager, fn, 0)
+						err := scaleFunction(ctx, c.podManager, fn, 0)
 						if err != nil {
 							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 						}
@@ -282,12 +281,12 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 					}
 
 					currentReplicas := len(metrics)
-					desiredReplicas, err := hpa.CalculateDesiredReplicas(
+					desiredReplicas, err := calculateDesiredReplicas(
 						currentReplicas,
 						metrics,
 						int64(fn.TargetCPUUtilization),
 						int64(fn.TargetMemoryUtilization),
-						hpa.DefaultConfig,
+						DefaultConfig,
 						now,
 					)
 					if err != nil {
@@ -305,8 +304,8 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 
 					stabilizationWindow, exists := stabilizationWindows[fn]
 					if !exists {
-						stabilizationWindow = &hpa.StabilizationWindow{
-							Window: hpa.DefaultConfig.DownscaleStabilization,
+						stabilizationWindow = &StabilizationWindow{
+							Window: DefaultConfig.DownscaleStabilization,
 						}
 						stabilizationWindows[fn] = stabilizationWindow
 					}
@@ -353,7 +352,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
 					)
 
-					err = hpa.ScaleFunction(ctx, c.podManager, fn, desiredReplicas)
+					err = scaleFunction(ctx, c.podManager, fn, desiredReplicas)
 					if err != nil {
 						log.Warn(ctx, "failed to scale function",
 							key.Error.Field(err),
