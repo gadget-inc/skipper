@@ -32,6 +32,7 @@ func (c *Client) Assign(ctx context.Context, fn function.Function) error {
 	if err != nil {
 		return fmt.Errorf("failed to send assign request: %w", err)
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("assign request failed: %s", res.Status)
@@ -59,6 +60,7 @@ func (c *Client) Traffic(ctx context.Context, trafficEntries []TrafficEntry) err
 	if err != nil {
 		return fmt.Errorf("failed to send traffic request: %w", err)
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("traffic request failed: %s", res.Status)
