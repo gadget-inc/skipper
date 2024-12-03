@@ -27,11 +27,10 @@ type Function struct {
 
 type Instance struct {
 	Function
-	Pod         *v1.Pod
-	ReplicaSet  string
-	AssignedAt  time.Time
-	ReadyAt     time.Time
-	LastRequest time.Time
+	Pod        *v1.Pod
+	ReplicaSet string
+	AssignedAt time.Time
+	ReadyAt    time.Time
 }
 
 var (

@@ -516,7 +516,7 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 	}()
 }
 
-func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (map[function.Function]map[string]PodMetricsInfo, error) {
+func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (map[function.Function][]InstanceMetric, error) {
 	pods, err := c.podManager.GetAllAssignedPods(namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
@@ -529,67 +529,50 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 		return nil, fmt.Errorf("failed to get pod metrics: %w", err)
 	}
 
-	metricsMap := make(map[string]metricsv1beta1.PodMetrics)
-	for _, m := range podMetricsList.Items {
-		metricsMap[m.Name] = m
+	podMetricsMap := make(map[string]metricsv1beta1.PodMetrics)
+	for _, podMetric := range podMetricsList.Items {
+		podMetricsMap[podMetric.Name] = podMetric
 	}
 
-	functionsMap := make(map[function.Function]map[string]PodMetricsInfo)
+	functionMetrics := make(map[function.Function][]InstanceMetric)
 
 	for _, pod := range pods {
-		fn, err := function.FromPod(pod)
+		instance, err := function.FromPod(pod)
 		if err != nil {
-			log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", pod.Name), slog.Any("labels", pod.Labels))
+			log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), key.Pod.Field(pod), slog.Any("labels", pod.Labels))
 			continue
 		}
 
-		info := PodMetricsInfo{
-			Pod:               pod,
-			Ready:             false,
-			AssignedAt:        fn.AssignedAt,
-			DeletionTimestamp: pod.DeletionTimestamp,
-		}
+		instanceMetric := InstanceMetric{Instance: instance}
 
-		if !fn.ReadyAt.IsZero() {
-			for _, cond := range pod.Status.Conditions {
-				if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
-					info.Ready = true
-					break
+		if m, exists := podMetricsMap[pod.Name]; exists {
+			for _, container := range m.Containers {
+				if container.Usage.Cpu() != nil {
+					cpuUsage := container.Usage.Cpu().MilliValue()
+					if instanceMetric.CPUUsage == nil {
+						instanceMetric.CPUUsage = new(int64)
+					}
+					*instanceMetric.CPUUsage += cpuUsage
 				}
-			}
-		}
 
-		if m, exists := metricsMap[pod.Name]; exists {
-			for _, c := range m.Containers {
-				if c.Usage.Cpu() != nil {
-					cpuUsage := c.Usage.Cpu().MilliValue()
-					if info.CPUUsage == nil {
-						info.CPUUsage = new(int64)
+				if container.Usage.Memory() != nil {
+					memUsage := container.Usage.Memory().Value()
+					if instanceMetric.MemoryUsage == nil {
+						instanceMetric.MemoryUsage = new(int64)
 					}
-					*info.CPUUsage += cpuUsage
-				}
-				if c.Usage.Memory() != nil {
-					memUsage := c.Usage.Memory().Value()
-					if info.MemoryUsage == nil {
-						info.MemoryUsage = new(int64)
-					}
-					*info.MemoryUsage += memUsage
+					*instanceMetric.MemoryUsage += memUsage
 				}
 			}
 		} else {
-			// Metrics missing for this pod
-			info.CPUUsage = nil
-			info.MemoryUsage = nil
+			// metrics missing for this instance
+			instanceMetric.CPUUsage = nil
+			instanceMetric.MemoryUsage = nil
 		}
 
-		if _, exists := functionsMap[fn.Function]; !exists {
-			functionsMap[fn.Function] = make(map[string]PodMetricsInfo)
-		}
-
-		functionsMap[fn.Function][pod.Name] = info
+		functionMetrics[instance.Function] = append(functionMetrics[instance.Function], instanceMetric)
 	}
 
-	return functionsMap, nil
+	return functionMetrics, nil
 }
 
 func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredReplicas int) error {

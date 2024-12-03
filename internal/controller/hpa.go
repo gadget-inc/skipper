@@ -1,16 +1,18 @@
 package controller
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/key"
-	"github.com/gadget-inc/fusion/internal/log"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"github.com/gadget-inc/fusion/internal/function"
+)
+
+type Metric int
+
+const (
+	MetricCPU Metric = iota
+	MetricMemory
 )
 
 // Config holds configuration values for the HPA algorithm
@@ -28,14 +30,11 @@ var DefaultConfig = Config{
 	DownscaleStabilization:  90 * time.Second,
 }
 
-// PodMetricsInfo contains metrics and status information for a pod
-type PodMetricsInfo struct {
-	*v1.Pod
-	CPUUsage          *int64
-	MemoryUsage       *int64
-	Ready             bool
-	AssignedAt        time.Time
-	DeletionTimestamp *metav1.Time
+// InstanceMetric contains metrics and status information for a pod
+type InstanceMetric struct {
+	function.Instance
+	CPUUsage    *int64
+	MemoryUsage *int64
 }
 
 // Recommendation represents a scaling recommendation
@@ -82,127 +81,85 @@ func (sw *StabilizationWindow) GetMaxRecommendation() int {
 // calculateDesiredReplicasForMetric computes desired replicas based on a single metric
 func calculateDesiredReplicasForMetric(
 	currentReplicas int,
-	metricName string,
-	podMetrics map[string]PodMetricsInfo,
+	metric Metric,
+	instanceMetrics []InstanceMetric,
 	targetUtilization int64,
 	hpaConfig Config,
 	timestamp time.Time,
 ) (int, error) {
-	includedPods := []PodMetricsInfo{}
-	missingMetricsPods := []PodMetricsInfo{}
-	notYetReadyPods := []PodMetricsInfo{}
+	var instancesWithMetrics []InstanceMetric
+	var instancesWithoutMetrics []InstanceMetric
+	var notReadyInstances []InstanceMetric
 
-	ctx := log.With(
-		context.Background(),
-		slog.String("metric", metricName),
-		slog.Int64("targetUtilization", targetUtilization),
-		slog.Int("currentReplicas", currentReplicas),
-	)
-
-	for _, pod := range podMetrics {
-		if pod.DeletionTimestamp != nil && !pod.DeletionTimestamp.IsZero() {
-			log.Trace(ctx, "skipping pod with deletion timestamp", key.Pod.Field(pod.Pod), slog.Time("deletionTimestamp", pod.DeletionTimestamp.Time))
-			continue
-		}
-
+	for _, instance := range instanceMetrics {
 		var usage *int64
-		switch metricName {
-		case "cpu":
-			usage = pod.CPUUsage
-		case "memory":
-			usage = pod.MemoryUsage
+		switch metric {
+		case MetricCPU:
+			usage = instance.CPUUsage
+		case MetricMemory:
+			usage = instance.MemoryUsage
 		default:
-			return 0, fmt.Errorf("unsupported metric: %s", metricName)
+			return 0, fmt.Errorf("unsupported metric: %v", metric)
 		}
 
-		if metricName == "cpu" && !pod.Ready {
-			timeSinceStart := timestamp.Sub(pod.AssignedAt)
-			if timeSinceStart < hpaConfig.InitialReadinessDelay {
-				notYetReadyPods = append(notYetReadyPods, pod)
+		if metric == MetricCPU && instance.ReadyAt.IsZero() {
+			if timestamp.Sub(instance.AssignedAt) < hpaConfig.InitialReadinessDelay {
+				notReadyInstances = append(notReadyInstances, instance)
 				continue
 			}
 		}
 
 		if usage == nil {
-			missingMetricsPods = append(missingMetricsPods, pod)
+			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 		} else {
-			includedPods = append(includedPods, pod)
+			instancesWithMetrics = append(instancesWithMetrics, instance)
 		}
 	}
 
-	totalUsage := int64(0)
-	for _, pod := range includedPods {
+	var totalUsage int64
+	for _, instance := range instancesWithMetrics {
 		var usage int64
-		switch metricName {
-		case "cpu":
-			usage = *pod.CPUUsage
-		case "memory":
-			// Convert memory usage from bytes to MB
-			usage = *pod.MemoryUsage / 1024 / 1024
+		switch metric {
+		case MetricCPU:
+			usage = *instance.CPUUsage
+		case MetricMemory:
+			usage = *instance.MemoryUsage / 1024 / 1024 // convert memory usage from bytes to mb
 		}
 		totalUsage += usage
 	}
 
-	numIncludedPods := len(includedPods)
-	if numIncludedPods == 0 {
-		return currentReplicas, fmt.Errorf("no metrics available for metric %s", metricName)
+	if len(instancesWithMetrics) == 0 {
+		return currentReplicas, fmt.Errorf("no metrics available for metric %v", metric)
 	}
 
-	currentAverageUsage := float64(totalUsage) / float64(numIncludedPods)
+	currentAverageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
 	usageRatio := currentAverageUsage / float64(targetUtilization)
 
-	ctx = log.With(
-		ctx,
-		slog.Int("includedPods", len(includedPods)),
-		slog.Int("missingMetricsPods", len(missingMetricsPods)),
-		slog.Int("notYetReadyPods", len(notYetReadyPods)),
-		slog.Int64("totalUsage", totalUsage),
-		slog.Float64("currentAverageUsage", currentAverageUsage),
-		slog.Float64("usageRatio", usageRatio),
-	)
-
-	log.Trace(ctx, "calculated usage ratio")
-
 	if math.Abs(1.0-usageRatio) <= hpaConfig.Tolerance {
-		log.Trace(ctx, "usage ratio within tolerance of target utilization")
 		return currentReplicas, nil
 	}
 
 	desiredReplicas := int(math.Ceil(float64(currentReplicas) * usageRatio))
-	log.Trace(ctx, "calculated desired replicas", slog.Int("desiredReplicas", desiredReplicas))
 
-	if len(missingMetricsPods) > 0 || len(notYetReadyPods) > 0 {
-		totalPods := numIncludedPods + len(missingMetricsPods) + len(notYetReadyPods)
+	if len(instancesWithoutMetrics) > 0 || len(notReadyInstances) > 0 {
+		totalInstances := len(instancesWithMetrics) + len(instancesWithoutMetrics) + len(notReadyInstances)
+
 		adjustedTotalUsage := totalUsage
-
-		ctx = log.With(ctx, slog.Int("totalPods", totalPods))
-
 		if desiredReplicas < currentReplicas {
-			adjustedTotalUsage += int64(len(missingMetricsPods)) * targetUtilization
-			log.Trace(ctx, "adjusted total usage for missing metrics", slog.Int64("adjustedTotalUsage", adjustedTotalUsage))
+			adjustedTotalUsage += int64(len(instancesWithoutMetrics)) * targetUtilization
 		}
 
-		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(totalPods)
+		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(totalInstances)
 		adjustedUsageRatio := adjustedAverageUsage / float64(targetUtilization)
-
-		ctx = log.With(ctx,
-			slog.Int64("adjustedTotalUsage", adjustedTotalUsage),
-			slog.Float64("adjustedAverageUsage", adjustedAverageUsage),
-			slog.Float64("adjustedUsageRatio", adjustedUsageRatio),
-		)
-
-		log.Trace(ctx, "calculated adjusted usage ratio")
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
 			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance {
 			// If the adjusted usage ratio is within tolerance of the target utilization, return the current replicas
-			log.Trace(ctx, "adjusted usage ratio within tolerance of target utilization")
 			return currentReplicas, nil
 		}
 
 		desiredReplicas = int(math.Ceil(float64(currentReplicas) * adjustedUsageRatio))
-		log.Trace(ctx, "calculated adjusted desired replicas", slog.Int("desiredReplicas", desiredReplicas))
 	}
 
 	return desiredReplicas, nil
@@ -211,7 +168,7 @@ func calculateDesiredReplicasForMetric(
 // calculateDesiredReplicas computes desired replicas based on multiple metrics
 func calculateDesiredReplicas(
 	currentReplicas int,
-	podMetrics map[string]PodMetricsInfo,
+	instanceMetrics []InstanceMetric,
 	targetCPUUtilization int64,
 	targetMemoryUtilization int64,
 	hpaConfig Config,
@@ -219,11 +176,11 @@ func calculateDesiredReplicas(
 ) (int, error) {
 	maxDesiredReplicas := 0
 	metricsToCalculate := []struct {
-		name              string
+		name              Metric
 		targetUtilization int64
 	}{
-		{"cpu", targetCPUUtilization},
-		// {"memory", targetMemoryUtilization},
+		{MetricCPU, targetCPUUtilization},
+		// {MetricMemory, targetMemoryUtilization},
 	}
 
 	scaleDownErrors := 0
@@ -233,13 +190,12 @@ func calculateDesiredReplicas(
 		desiredReplicas, err := calculateDesiredReplicasForMetric(
 			currentReplicas,
 			metric.name,
-			podMetrics,
+			instanceMetrics,
 			metric.targetUtilization,
 			hpaConfig,
 			timestamp,
 		)
 		if err != nil {
-			log.Trace(context.TODO(), "failed to calculate desired replicas for metric", key.Error.Field(err), slog.String("metric", metric.name))
 			if desiredReplicas < currentReplicas {
 				scaleDownErrors++
 			}

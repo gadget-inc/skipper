@@ -3,6 +3,8 @@ package controller
 import (
 	"testing"
 	"time"
+
+	"github.com/gadget-inc/fusion/internal/function"
 )
 
 func ptrInt64(val int64) *int64 {
@@ -10,7 +12,7 @@ func ptrInt64(val int64) *int64 {
 }
 
 func TestCalculateDesiredReplicasForMetric(t *testing.T) {
-	timestamp := time.Now()
+	now := time.Now()
 	hpaConfig := Config{
 		Tolerance:               0.1,
 		InitialReadinessDelay:   30 * time.Second,
@@ -20,8 +22,8 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 	tests := []struct {
 		name              string
 		currentReplicas   int
-		metricName        string
-		podMetrics        map[string]PodMetricsInfo
+		metricName        Metric
+		podMetrics        []InstanceMetric
 		targetUtilization int64
 		expectedReplicas  int
 		expectError       bool
@@ -29,12 +31,12 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 		{
 			name:              "Scaling up due to high CPU utilization",
 			currentReplicas:   3,
-			metricName:        "cpu",
+			metricName:        MetricCPU,
 			targetUtilization: 100,
-			podMetrics: map[string]PodMetricsInfo{
-				"pod1": {CPUUsage: ptrInt64(200), Ready: true},
-				"pod2": {CPUUsage: ptrInt64(200), Ready: true},
-				"pod3": {CPUUsage: ptrInt64(200), Ready: true},
+			podMetrics: []InstanceMetric{
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(200)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(200)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(200)},
 			},
 			expectedReplicas: 6,
 			expectError:      false,
@@ -42,15 +44,15 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 		{
 			name:              "Scaling down due to low CPU utilization",
 			currentReplicas:   6,
-			metricName:        "cpu",
+			metricName:        MetricCPU,
 			targetUtilization: 200,
-			podMetrics: map[string]PodMetricsInfo{
-				"pod1": {CPUUsage: ptrInt64(50), Ready: true},
-				"pod2": {CPUUsage: ptrInt64(50), Ready: true},
-				"pod3": {CPUUsage: ptrInt64(50), Ready: true},
-				"pod4": {CPUUsage: ptrInt64(50), Ready: true},
-				"pod5": {CPUUsage: ptrInt64(50), Ready: true},
-				"pod6": {CPUUsage: ptrInt64(50), Ready: true},
+			podMetrics: []InstanceMetric{
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
 			},
 			expectedReplicas: 2,
 			expectError:      false,
@@ -58,13 +60,13 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 		{
 			name:              "No scaling when within tolerance",
 			currentReplicas:   4,
-			metricName:        "cpu",
+			metricName:        MetricCPU,
 			targetUtilization: 100,
-			podMetrics: map[string]PodMetricsInfo{
-				"pod1": {CPUUsage: ptrInt64(105), Ready: true},
-				"pod2": {CPUUsage: ptrInt64(95), Ready: true},
-				"pod3": {CPUUsage: ptrInt64(100), Ready: true},
-				"pod4": {CPUUsage: ptrInt64(100), Ready: true},
+			podMetrics: []InstanceMetric{
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(105)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(95)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(100)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(100)},
 			},
 			expectedReplicas: 4,
 			expectError:      false,
@@ -78,11 +80,11 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 		{
 			name:              "Handling missing metrics when scaling up",
 			currentReplicas:   2,
-			metricName:        "cpu",
+			metricName:        MetricCPU,
 			targetUtilization: 100,
-			podMetrics: map[string]PodMetricsInfo{
-				"pod1": {CPUUsage: ptrInt64(150), Ready: true},
-				"pod2": {CPUUsage: nil, Ready: true},
+			podMetrics: []InstanceMetric{
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(150)},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: nil},
 			},
 			expectedReplicas: 2,
 			expectError:      false,
@@ -90,11 +92,11 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 		{
 			name:              "Handling not-yet-ready pods when scaling up",
 			currentReplicas:   2,
-			metricName:        "cpu",
+			metricName:        MetricCPU,
 			targetUtilization: 100,
-			podMetrics: map[string]PodMetricsInfo{
-				"pod1": {CPUUsage: ptrInt64(150), Ready: true},
-				"pod2": {CPUUsage: ptrInt64(150), Ready: false, AssignedAt: timestamp.Add(-10 * time.Second)},
+			podMetrics: []InstanceMetric{
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(150)},
+				{Instance: function.Instance{AssignedAt: now.Add(-10 * time.Second)}, CPUUsage: ptrInt64(150)},
 			},
 			expectedReplicas: 2,
 			expectError:      false,
@@ -102,11 +104,11 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 		{
 			name:              "No metrics available",
 			currentReplicas:   2,
-			metricName:        "cpu",
+			metricName:        MetricCPU,
 			targetUtilization: 100,
-			podMetrics: map[string]PodMetricsInfo{
-				"pod1": {CPUUsage: nil, Ready: true},
-				"pod2": {CPUUsage: nil, Ready: true},
+			podMetrics: []InstanceMetric{
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: nil},
+				{Instance: function.Instance{ReadyAt: now}, CPUUsage: nil},
 			},
 			expectedReplicas: 2,
 			expectError:      true,
@@ -121,7 +123,7 @@ func TestCalculateDesiredReplicasForMetric(t *testing.T) {
 				tt.podMetrics,
 				tt.targetUtilization,
 				hpaConfig,
-				timestamp,
+				now,
 			)
 			if tt.expectError {
 				if err == nil {
