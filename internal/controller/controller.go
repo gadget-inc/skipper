@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"math/rand"
 	"net/http"
 	"slices"
 	"strconv"
@@ -24,12 +25,47 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
+
+const (
+	StatusPending    = "pending"
+	StatusReady      = "ready"
+	StatusUnassigned = "unassigned"
+)
+
+var (
+	hasTenantRequirement labels.Requirement
+	hasTenantSelector    labels.Selector
+
+	doesNotHaveTenantRequirement labels.Requirement
+	doesNotHaveTenantSelector    labels.Selector
+)
+
+func init() {
+	hasTenant, err := labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	hasTenantRequirement = *hasTenant
+	hasTenantSelector = labels.NewSelector().Add(hasTenantRequirement)
+
+	doesNotHaveTenant, err := labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	doesNotHaveTenantRequirement = *doesNotHaveTenant
+	doesNotHaveTenantSelector = labels.NewSelector().Add(doesNotHaveTenantRequirement)
+}
 
 type Controller struct {
 	ring              *hashring.HashRing
@@ -185,36 +221,36 @@ func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 		}
 
 		go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-			pods, err := c.podManager.GetAllAssignedPods(namespace)
+			pods, err := c.podManager.ListPods(namespace, hasTenantSelector)
 			if err != nil {
 				log.Warn(ctx, "failed to get all assigned pods for replica set check", key.Error.Field(err))
 				return nil
 			}
 
-			var defunctFunctions []function.Instance
+			var defunctInstances []function.Instance
 			for _, pod := range pods {
-				fn, err := function.FromPod(pod)
+				instance, err := function.FromPod(pod)
 				if err != nil {
 					log.Warn(ctx, "failed to get function from pod", key.Error.Field(err), key.Pod.Field(pod))
 					continue
 				}
 
-				replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(fn.ReplicaSet)
+				replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(instance.ReplicaSet)
 				if err != nil {
 					log.Warn(ctx, "failed to get replica set for pod", key.Pod.Field(pod), key.Error.Field(err))
 					continue
 				}
 
 				if replicaSet.Spec.Replicas == nil || *replicaSet.Spec.Replicas == 0 {
-					defunctFunctions = append(defunctFunctions, fn)
+					defunctInstances = append(defunctInstances, instance)
 				}
 			}
 
-			for _, fn := range defunctFunctions {
-				log.Debug(ctx, "terminating defunct function", key.Pod.Field(fn.Pod), key.Function.Field(fn))
-				err = c.podManager.Terminate(ctx, fn.Function, fn.Pod)
+			for _, instance := range defunctInstances {
+				log.Debug(ctx, "terminating defunct function", key.Pod.Field(instance.Pod), key.Function.Field(instance))
+				err = c.clientset.CoreV1().Pods(instance.Pod.Namespace).Delete(ctx, instance.Pod.Name, metav1.DeleteOptions{})
 				if err != nil {
-					log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(fn.Pod), key.Function.Field(fn))
+					log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(instance))
 				}
 				time.Sleep(1 * time.Second)
 			}
@@ -433,7 +469,7 @@ func (c *Controller) handleAssign(rw http.ResponseWriter, req *http.Request) {
 	}()
 
 	_, err = timer.PollUntil(req.Context(), 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
-		pod, err := c.podManager.Assign(ctx, fn)
+		pod, err := c.assign(ctx, fn)
 		if err != nil {
 			log.Error(ctx, "failed to assign pod", key.Error.Field(err), key.Function.Field(fn))
 			return nil, nil
@@ -517,7 +553,7 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (map[function.Function][]InstanceMetric, error) {
-	pods, err := c.podManager.GetAllAssignedPods(namespace)
+	pods, err := c.podManager.ListPods(namespace, hasTenantSelector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
 	}
@@ -576,7 +612,10 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 }
 
 func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredReplicas int) error {
-	assignedPods, err := c.podManager.GetAssignedAndPending(fn)
+	assignedPods, err := c.podManager.ListPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
+		key.Tenant.Label:     fn.Tenant,
+		key.Deployment.Label: fn.Deployment,
+	}))
 	if err != nil {
 		return fmt.Errorf("failed to get assigned pods: %w", err)
 	}
@@ -591,7 +630,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	if desiredReplicas > currentReplicas {
 		// TODO: lock assigning map
 		for i := 0; i < desiredReplicas-currentReplicas; i++ {
-			pod, err := c.podManager.Assign(ctx, fn)
+			pod, err := c.assign(ctx, fn)
 			if err != nil {
 				return fmt.Errorf("failed to assign pod: %w", err)
 			}
@@ -599,14 +638,6 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 		}
 	} else {
 		slices.SortFunc(assignedPods, func(a, b *v1.Pod) int {
-			if a.DeletionTimestamp != nil && b.DeletionTimestamp == nil {
-				return 1
-			}
-
-			if a.DeletionTimestamp == nil && b.DeletionTimestamp != nil {
-				return -1
-			}
-
 			instanceA, err := function.FromPod(a)
 			if err != nil {
 				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
@@ -624,7 +655,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 
 		for i := 0; i < currentReplicas-desiredReplicas; i++ {
 			pod := assignedPods[i]
-			err := c.podManager.Terminate(ctx, fn, pod)
+			err := c.clientset.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to delete pod: %w", err)
 			}
@@ -633,4 +664,117 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	}
 
 	return nil
+}
+
+func (c *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1.Pod, error) {
+	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
+	if err != nil {
+		return nil, err
+	}
+
+	pods, err := c.podManager.ListPods(fn.Namespace, doesNotHaveTenantSelector.Add(*equalDeploymentName))
+	if err != nil {
+		return nil, err
+	}
+
+	var availablePods []*v1.Pod
+	for _, pod := range pods {
+		if pod.Status.PodIP != "" {
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
+					availablePods = append(availablePods, pod)
+				}
+			}
+		}
+	}
+
+	return availablePods, nil
+}
+
+func (c *Controller) assign(ctx context.Context, fn function.Function) (*v1.Pod, error) {
+	pod, err := timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
+		availablePods, err := c.getAvailablePodsForFunction(fn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list available pods: %w", err)
+		}
+		if len(availablePods) == 0 {
+			log.Trace(ctx, "no available pods", key.Function.Field(fn))
+			return nil, nil
+		}
+		return availablePods[rand.Intn(len(availablePods))], nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
+	}
+
+	assignPatches := []patchOperation{
+		{Op: "test", Path: "/metadata/ownerReferences/0/kind", Value: "ReplicaSet"},
+		{Op: "copy", From: "/metadata/ownerReferences/0/name", Path: key.ReplicaSet.PatchLabel},
+		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusPending},
+		{Op: "add", Path: key.Tenant.PatchLabel, Value: fn.Tenant},
+		{Op: "add", Path: key.Namespace.PatchLabel, Value: fn.Namespace},
+		{Op: "add", Path: key.Deployment.PatchLabel, Value: fn.Deployment},
+		{Op: "add", Path: key.MinReplicas.PatchLabel, Value: fn.MinReplicasStr},
+		{Op: "add", Path: key.MaxReplicas.PatchLabel, Value: fn.MaxReplicasStr},
+		{Op: "add", Path: key.TargetCPUUtilization.PatchLabel, Value: fn.TargetCPUUtilizationStr},
+		{Op: "add", Path: key.TargetMemoryUtilization.PatchLabel, Value: fn.TargetMemoryUtilizationStr},
+		{Op: "add", Path: key.AssignedAt.PatchLabel, Value: strconv.FormatInt(time.Now().Unix(), 10)},
+	}
+
+	patchBody, err := json.Marshal(assignPatches)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal assign patch: %w", err)
+	}
+
+	_, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	if err != nil {
+		return nil, fmt.Errorf("failed to assign pod: %w", err)
+	}
+
+	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value)
+	defer cancel()
+
+	assignURL := fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, function.FlagPort.Value, function.FlagAssignPath.Value)
+	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create assign request: %w", err)
+	}
+
+	req.Header.Set(key.Tenant.Header, fn.Tenant)
+	req.Header.Set(key.Metadata.Header, fn.Metadata)
+
+	log.Info(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send assign request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// TODO: log response body
+		return nil, fmt.Errorf("assign request returned status %d", resp.StatusCode)
+	}
+
+	setReadyPatches := []patchOperation{
+		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusReady},
+		{Op: "add", Path: key.ReadyAt.PatchLabel, Value: strconv.FormatInt(time.Now().Unix(), 10)},
+	}
+
+	patchBody, err = json.Marshal(setReadyPatches)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal set ready patch: %w", err)
+	}
+
+	pod, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	if err != nil {
+		return nil, fmt.Errorf("failed to patch status: %w", err)
+	}
+
+	return pod, nil
+}
+
+type patchOperation struct {
+	Op    string `json:"op"`
+	From  string `json:"from,omitempty"`
+	Path  string `json:"path"`
+	Value string `json:"value,omitempty"`
 }
