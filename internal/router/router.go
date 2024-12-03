@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math/rand"
 	"net"
 	"net/http"
@@ -26,8 +25,8 @@ import (
 type Router struct {
 	controllerClient *controller.Client
 	podManager       *pod.Manager
-	fnProxy          *httputil.ReverseProxy
-	fnTraffic        *xsync.MapOf[function.Function, time.Time]
+	reverseProxy     *httputil.ReverseProxy
+	keepAlives       *xsync.MapOf[function.Function, time.Time]
 	transport        *http.Transport
 }
 
@@ -35,7 +34,7 @@ func New(controllerClient *controller.Client, podManager *pod.Manager) *Router {
 	r := &Router{
 		controllerClient: controllerClient,
 		podManager:       podManager,
-		fnTraffic:        xsync.NewMapOf[function.Function, time.Time](),
+		keepAlives:       xsync.NewMapOf[function.Function, time.Time](),
 		transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -50,7 +49,7 @@ func New(controllerClient *controller.Client, podManager *pod.Manager) *Router {
 		},
 	}
 
-	r.fnProxy = &httputil.ReverseProxy{
+	r.reverseProxy = &httputil.ReverseProxy{
 		BufferPool: buffer.Pool,
 		Rewrite:    rewriteHeaders,
 		Transport:  r,
@@ -61,19 +60,18 @@ func New(controllerClient *controller.Client, podManager *pod.Manager) *Router {
 
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, 3*time.Second, func(ctx context.Context) error {
-		fnTraffic := r.fnTraffic
-		r.fnTraffic = xsync.NewMapOf[function.Function, time.Time]()
+		keepAlives := r.keepAlives
+		r.keepAlives = xsync.NewMapOf[function.Function, time.Time]()
 
-		var trafficEntries []controller.TrafficEntry
-		fnTraffic.Range(func(fn function.Function, lastRequest time.Time) bool {
-			trafficEntries = append(trafficEntries, controller.TrafficEntry{Function: fn, LastRequest: lastRequest})
+		var keepAliveEntries []controller.KeepAlive
+		keepAlives.Range(func(fn function.Function, lastRequest time.Time) bool {
+			keepAliveEntries = append(keepAliveEntries, controller.KeepAlive{Function: fn, Timestamp: lastRequest})
 			return true
 		})
 
-		log.Trace(ctx, "sending traffic", slog.Int("entries", len(trafficEntries)))
-		err := r.controllerClient.Traffic(ctx, trafficEntries)
+		err := r.controllerClient.KeepAlive(ctx, keepAliveEntries)
 		if err != nil {
-			log.Warn(ctx, "failed to send traffic", key.Error.Field(err))
+			log.Warn(ctx, "failed to send keep alives", key.Error.Field(err))
 		}
 		return nil
 	})
@@ -91,7 +89,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	r.fnTraffic.Store(fn, time.Now())
+	r.keepAlives.Store(fn, time.Now())
 	go func() {
 		for {
 			select {
@@ -100,16 +98,14 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				if errors.Is(err, context.Canceled) {
 					err = nil
 				}
-				log.Debug(req.Context(), "request done", key.Function.Field(fn), slog.String("url", req.URL.String()), key.Error.Field(err))
 				return
 			case <-time.After(5 * time.Second):
-				log.Debug(req.Context(), "request active", key.Function.Field(fn), slog.String("url", req.URL.String()))
-				r.fnTraffic.Store(fn, time.Now())
+				r.keepAlives.Store(fn, time.Now())
 			}
 		}
 	}()
 
-	r.fnProxy.ServeHTTP(rw, req.WithContext(function.With(req.Context(), fn)))
+	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(req.Context(), fn)))
 }
 
 func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {

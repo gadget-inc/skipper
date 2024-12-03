@@ -114,9 +114,9 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 		ctx,
 		15*time.Second,
 		func(ctx context.Context) error {
-			c.fnTrafficMu.Lock()
-			fnTraffic := maps.Clone(c.fnTraffic)
-			c.fnTrafficMu.Unlock()
+			c.keepAlivesMu.Lock()
+			fnTraffic := maps.Clone(c.keepAlives)
+			c.keepAlivesMu.Unlock()
 
 			for _, namespace := range function.FlagNamespaces.Value {
 				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)

@@ -3,7 +3,6 @@ package controller
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,38 +13,39 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/goccy/go-json"
 )
 
-type TrafficEntry struct {
-	Function    function.Function `json:"function"`
-	LastRequest time.Time         `json:"lastRequest"`
+type KeepAlive struct {
+	Function  function.Function `json:"function"`
+	Timestamp time.Time         `json:"timestamp"`
 }
 
-func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
+func (c *Controller) handleKeepAlive(rw http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	var trafficEntries []TrafficEntry
-	err = json.Unmarshal(body, &trafficEntries)
+	var keepAlives []KeepAlive
+	err = json.Unmarshal(body, &keepAlives)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	c.fnTrafficMu.Lock()
-	for _, trafficEntry := range trafficEntries {
-		trafficEntry.Function.Metadata = "" // the idle function reaper doesn't have the function metadata, so we need to clear it to match the function in the map
-		lastRequest, ok := c.fnTraffic[trafficEntry.Function]
-		if !ok || trafficEntry.LastRequest.After(lastRequest) {
-			c.fnTraffic[trafficEntry.Function] = trafficEntry.LastRequest
+	c.keepAlivesMu.Lock()
+	for _, keepAlive := range keepAlives {
+		keepAlive.Function.Metadata = "" // the idle function reaper doesn't have the function metadata, so we need to clear it to match the function in the map
+		timestamp, ok := c.keepAlives[keepAlive.Function]
+		if !ok || keepAlive.Timestamp.After(timestamp) {
+			c.keepAlives[keepAlive.Function] = keepAlive.Timestamp
 		}
 	}
-	defer c.fnTrafficMu.Unlock()
+	c.keepAlivesMu.Unlock()
 
-	log.Trace(req.Context(), "received traffic", slog.Int("trafficEntries", len(trafficEntries)))
+	log.Trace(req.Context(), "received keep alives", slog.Int("count", len(keepAlives)))
 	rw.WriteHeader(http.StatusOK)
 
 	go func() {
@@ -58,9 +58,9 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 				defer cancel()
 
 				controllerPort := strconv.Itoa(FlagPort.Value)
-				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":"+controllerPort+"/traffic", bytes.NewBuffer(body))
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":"+controllerPort+"/keepalive", bytes.NewBuffer(body))
 				if err != nil {
-					log.Warn(ctx, "failed to create traffic request", key.Error.Field(err))
+					log.Warn(ctx, "failed to create keep alive request", key.Error.Field(err))
 					continue
 				}
 
@@ -69,15 +69,16 @@ func (c *Controller) handleTraffic(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Add(key.ForwardedFor.Header, forwardedForIP)
 				}
 
-				log.Trace(ctx, "forwarding traffic", slog.String("controllerIP", controllerIP), key.ForwardedFor.Field(forwardedFor))
+				log.Trace(ctx, "forwarding keep alives", slog.String("controllerIP", controllerIP), key.ForwardedFor.Field(forwardedFor))
 				res, err := http.DefaultClient.Do(req)
-				if err != nil {
-					log.Warn(ctx, "failed to forward traffic", key.Error.Field(err))
+				if err != nil || res.StatusCode != http.StatusOK {
+					log.Warn(ctx, "failed to forward keep alives", key.Error.Field(err))
 					continue
 				}
+				res.Body.Close()
 
 				if res.StatusCode != http.StatusOK {
-					log.Warn(ctx, "forwarded traffic failed", slog.String("status", res.Status))
+					log.Warn(ctx, "failed to forward keep alives", slog.Int("statusCode", res.StatusCode))
 				}
 			}
 		}

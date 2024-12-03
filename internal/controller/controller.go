@@ -64,8 +64,8 @@ type Controller struct {
 	podManager        *pod.Manager
 	controllerClients *xsync.MapOf[string, *Client]
 	assignmentLock    *xsync.MapOf[function.Function, struct{}]
-	fnTraffic         map[function.Function]time.Time
-	fnTrafficMu       sync.Mutex // guards fnTraffic
+	keepAlives        map[function.Function]time.Time
+	keepAlivesMu      sync.Mutex // guards keepAlives
 }
 
 func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interface, podManager *pod.Manager) *Controller {
@@ -76,7 +76,7 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 		podManager:        podManager,
 		controllerClients: xsync.NewMapOf[string, *Client](),
 		assignmentLock:    xsync.NewMapOf[function.Function, struct{}](),
-		fnTraffic:         make(map[function.Function]time.Time),
+		keepAlives:        make(map[function.Function]time.Time),
 	}
 }
 
@@ -102,8 +102,8 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusOK)
 	case "/assign":
 		c.handleAssign(rw, req)
-	case "/traffic":
-		c.handleTraffic(rw, req)
+	case "/keepalive":
+		c.handleKeepAlive(rw, req)
 	default:
 		http.Error(rw, "not found", http.StatusNotFound)
 	}

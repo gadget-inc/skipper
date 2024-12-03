@@ -3,11 +3,11 @@ package controller
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/goccy/go-json"
 )
 
 type Client struct {
@@ -41,29 +41,29 @@ func (c *Client) Assign(ctx context.Context, fn function.Function) error {
 	return nil
 }
 
-func (c *Client) Traffic(ctx context.Context, trafficEntries []TrafficEntry) error {
-	if len(trafficEntries) == 0 {
+func (c *Client) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
+	if len(keepAlives) == 0 {
 		return nil
 	}
 
-	body, err := json.Marshal(trafficEntries)
+	body, err := json.Marshal(keepAlives)
 	if err != nil {
-		return fmt.Errorf("failed to marshal traffic: %w", err)
+		return fmt.Errorf("failed to marshal keep alives: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/traffic", bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/keepalive", bytes.NewBuffer(body))
 	if err != nil {
-		return fmt.Errorf("failed to create traffic request: %w", err)
+		return fmt.Errorf("failed to create keep alive request: %w", err)
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send traffic request: %w", err)
+		return fmt.Errorf("failed to send keep alive request: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("traffic request failed: %s", res.Status)
+		return fmt.Errorf("keep alive request failed: %s", res.Status)
 	}
 
 	return nil
