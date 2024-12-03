@@ -115,7 +115,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 		15*time.Second,
 		func(ctx context.Context) error {
 			c.keepAlivesMu.Lock()
-			fnTraffic := maps.Clone(c.keepAlives)
+			keepAlives := maps.Clone(c.keepAlives)
 			c.keepAlivesMu.Unlock()
 
 			for _, namespace := range function.FlagNamespaces.Value {
@@ -126,18 +126,18 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 				}
 
 				now := time.Now()
-				for fn, metrics := range functionMetrics {
-					lastRequest, ok := fnTraffic[fn]
+				for fn, instanceMetrics := range functionMetrics {
+					timestamp, ok := keepAlives[fn]
 					if !ok {
-						log.Warn(ctx, "no traffic entry for function", key.Function.Field(fn))
-						for _, metric := range metrics {
-							if metric.AssignedAt.After(lastRequest) {
-								lastRequest = metric.AssignedAt
+						log.Warn(ctx, "no keep alive for function", key.Function.Field(fn))
+						for _, instanceMetric := range instanceMetrics {
+							if instanceMetric.AssignedAt.After(timestamp) {
+								timestamp = instanceMetric.AssignedAt
 							}
 						}
 					}
 
-					if time.Since(lastRequest) > 90*time.Second {
+					if time.Since(timestamp) > 90*time.Second {
 						delete(stabilizationWindows, fn)
 
 						controllerIP, ok := c.ring.Get(fn.RingKey())
@@ -153,7 +153,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 							continue
 						}
 
-						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(lastRequest))
+						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(timestamp))
 						err := c.scaleFunction(ctx, fn, 0)
 						if err != nil {
 							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
@@ -161,10 +161,10 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						continue
 					}
 
-					currentReplicas := len(metrics)
+					currentReplicas := len(instanceMetrics)
 					desiredReplicas, err := calculateDesiredReplicas(
 						currentReplicas,
-						metrics,
+						instanceMetrics,
 						int64(fn.TargetCPUUtilization),
 						int64(fn.TargetMemoryUtilization),
 						DefaultConfig,
