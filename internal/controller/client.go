@@ -47,31 +47,6 @@ func (c *Client) Get(ctx context.Context, fn function.Function) (instance functi
 	return instance, nil
 }
 
-func (c *Client) Assign(ctx context.Context, fn function.Function) (instance function.Instance, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/assign", nil)
-	if err != nil {
-		return instance, fmt.Errorf("failed to create assign request: %w", err)
-	}
-
-	fn.SetHeaders(req)
-
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return instance, fmt.Errorf("failed to send assign request: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return instance, fmt.Errorf("assign request failed: %s", res.Status)
-	}
-
-	if err := json.NewDecoder(res.Body).Decode(&instance); err != nil {
-		return instance, fmt.Errorf("failed to decode get response: %w", err)
-	}
-
-	return instance, nil
-}
-
 func (c *Client) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
 	if len(keepAlives) == 0 {
 		return nil

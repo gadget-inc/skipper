@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"maps"
+	"math/rand"
 	"net/http"
 	"slices"
 	"strconv"
@@ -16,251 +16,13 @@ import (
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/timer"
-	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/tools/cache"
+	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
-
-func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
-	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", function.FlagNamespaces.Value))
-
-	for _, namespace := range function.FlagNamespaces.Value {
-		informerFactory := informers.NewSharedInformerFactoryWithOptions(
-			c.clientset,
-			5*time.Minute,
-			informers.WithNamespace(namespace),
-			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-				options.LabelSelector = key.Deployment.Label
-			}),
-		)
-
-		replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()
-		replicaSetLister := replicaSetInformer.Lister()
-
-		_, err := replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj any) {
-				replicaSet := obj.(*appsv1.ReplicaSet)
-				log.Trace(ctx, "replica set added", key.ReplicaSet.Field(replicaSet))
-			},
-			UpdateFunc: func(_, newObj any) {
-				replicaSet := newObj.(*appsv1.ReplicaSet)
-				log.Trace(ctx, "replica set updated", key.ReplicaSet.Field(replicaSet))
-			},
-			DeleteFunc: func(obj any) {
-				replicaSet := obj.(*appsv1.ReplicaSet)
-				log.Trace(ctx, "replica set deleted", key.ReplicaSet.Field(replicaSet))
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("failed to add replica set event handler: %w", err)
-		}
-
-		informerFactory.Start(ctx.Done())
-
-		syncResults := informerFactory.WaitForCacheSync(ctx.Done())
-		for informer, synced := range syncResults {
-			if !synced {
-				return fmt.Errorf("failed to sync managed deployment informer cache: %v", informer)
-			}
-		}
-
-		go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-			pods, err := c.podManager.ListPods(namespace, hasTenantSelector)
-			if err != nil {
-				log.Warn(ctx, "failed to get all assigned pods for replica set check", key.Error.Field(err))
-				return nil
-			}
-
-			var defunctInstances []function.Instance
-			for _, pod := range pods {
-				instance, err := function.FromPod(pod)
-				if err != nil {
-					log.Warn(ctx, "failed to get function from pod", key.Error.Field(err), key.Pod.Field(pod))
-					continue
-				}
-
-				replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(instance.ReplicaSet)
-				if err != nil {
-					log.Warn(ctx, "failed to get replica set for pod", key.Pod.Field(pod), key.Error.Field(err))
-					continue
-				}
-
-				if replicaSet.Spec.Replicas == nil || *replicaSet.Spec.Replicas == 0 {
-					defunctInstances = append(defunctInstances, instance)
-				}
-			}
-
-			for _, instance := range defunctInstances {
-				func() {
-					scaleMu, _ := c.scaleMu.LoadOrStore(instance.Function, sync.Mutex{})
-					scaleMu.Lock()
-					defer scaleMu.Unlock()
-
-					log.Debug(ctx, "terminating defunct function", key.Pod.Field(instance.Pod), key.Function.Field(instance))
-					err = c.clientset.CoreV1().Pods(instance.Pod.Namespace).Delete(ctx, instance.Pod.Name, metav1.DeleteOptions{})
-					if err != nil {
-						log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(instance))
-					}
-				}()
-
-				time.Sleep(1 * time.Second)
-			}
-
-			return nil
-		})
-	}
-
-	return nil
-}
-
-func (c *Controller) startScalingTenantPods(ctx context.Context) error {
-	// TODO: garbage collect old stabilization windows
-	stabilizationWindows := make(map[function.Function]*StabilizationWindow)
-
-	go timer.Loop(
-		ctx,
-		15*time.Second,
-		func(ctx context.Context) error {
-			c.keepAlivesMu.Lock()
-			keepAlives := maps.Clone(c.keepAlives)
-			c.keepAlivesMu.Unlock()
-
-			for _, namespace := range function.FlagNamespaces.Value {
-				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)
-				if err != nil {
-					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
-					return nil
-				}
-
-				now := time.Now()
-				for fn, instanceMetrics := range functionMetrics {
-					timestamp, ok := keepAlives[fn]
-					if !ok {
-						log.Warn(ctx, "no keep alive for function", key.Function.Field(fn))
-						for _, instanceMetric := range instanceMetrics {
-							if instanceMetric.AssignedAt.After(timestamp) {
-								timestamp = instanceMetric.AssignedAt
-							}
-						}
-					}
-
-					if time.Since(timestamp) > 90*time.Second {
-						delete(stabilizationWindows, fn)
-
-						controllerIP, ok := c.ring.Get(fn.RingKey())
-						if !ok || controllerIP != FlagIP.Value {
-							log.Trace(
-								ctx,
-								"skipping scaling fn to 0, not assigned to this controller",
-								key.Function.Field(fn),
-								slog.String("controllerIP", controllerIP),
-								slog.String("ip", FlagIP.Value),
-								slog.Bool("ok", ok),
-							)
-							continue
-						}
-
-						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(timestamp))
-						_, err := c.scaleFunction(ctx, fn, 0)
-						if err != nil {
-							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
-						}
-						continue
-					}
-
-					currentReplicas := len(instanceMetrics)
-					desiredReplicas, err := calculateDesiredReplicas(
-						currentReplicas,
-						instanceMetrics,
-						int64(fn.TargetCPUUtilization),
-						int64(fn.TargetMemoryUtilization),
-						DefaultConfig,
-						now,
-					)
-					if err != nil {
-						log.Trace(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
-						continue
-					}
-
-					if desiredReplicas < fn.MinReplicas {
-						desiredReplicas = fn.MinReplicas
-					}
-
-					if desiredReplicas > fn.MaxReplicas {
-						desiredReplicas = fn.MaxReplicas
-					}
-
-					stabilizationWindow, exists := stabilizationWindows[fn]
-					if !exists {
-						stabilizationWindow = &StabilizationWindow{
-							Window: DefaultConfig.DownscaleStabilization,
-						}
-						stabilizationWindows[fn] = stabilizationWindow
-					}
-
-					log.Trace(ctx, "desired replicas",
-						key.Function.Field(fn),
-						key.CurrentReplicas.Field(currentReplicas),
-						key.DesiredInstances.Field(desiredReplicas),
-						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
-					)
-
-					stabilizationWindow.RecordRecommendation(desiredReplicas, now)
-
-					controllerIP, ok := c.ring.Get(fn.RingKey())
-					if !ok || controllerIP != FlagIP.Value {
-						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
-							key.Function.Field(fn),
-							slog.String("controllerIP", controllerIP),
-							slog.String("ip", FlagIP.Value),
-							slog.Bool("ok", ok),
-						)
-						continue
-					}
-
-					if desiredReplicas < currentReplicas {
-						maxRecommendedReplicas := stabilizationWindow.GetMaxRecommendation()
-						if maxRecommendedReplicas < currentReplicas {
-							desiredReplicas = maxRecommendedReplicas
-						} else {
-							desiredReplicas = currentReplicas
-						}
-					}
-
-					if desiredReplicas == 0 {
-						// we only scale to 0 if the last request was more than 90 seconds ago
-						log.Debug(ctx, "skipping scaling function to 0 based on hpa", key.Function.Field(fn))
-						continue
-					}
-
-					log.Trace(ctx, "scaling function",
-						key.Function.Field(fn),
-						key.CurrentReplicas.Field(currentReplicas),
-						key.DesiredInstances.Field(desiredReplicas),
-						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
-					)
-
-					_, err = c.scaleFunction(ctx, fn, desiredReplicas)
-					if err != nil {
-						log.Warn(ctx, "failed to scale function",
-							key.Error.Field(err),
-							key.Function.Field(fn),
-							key.CurrentReplicas.Field(currentReplicas),
-							key.DesiredInstances.Field(desiredReplicas),
-						)
-					}
-				}
-			}
-
-			return nil
-		},
-	)
-
-	return nil
-}
 
 func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (map[function.Function][]InstanceMetric, error) {
 	pods, err := c.podManager.ListPods(namespace, hasTenantSelector)
@@ -367,7 +129,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 
 	if desiredInstances > currentInstances {
 		for i := 0; i < desiredInstances-currentInstances; i++ {
-			pod, err := c.assign(ctx, fn)
+			pod, err := c.assignFunctionToPod(ctx, fn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
@@ -424,4 +186,117 @@ func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Error(req.Context(), "failed to encode scale response", key.Error.Field(err))
 	}
+}
+
+func (c *Controller) assignFunctionToPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
+	pod, err := timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
+		availablePods, err := c.getAvailablePodsForFunction(fn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list available pods: %w", err)
+		}
+		if len(availablePods) == 0 {
+			log.Trace(ctx, "no available pods", key.Function.Field(fn))
+			return nil, nil
+		}
+		return availablePods[rand.Intn(len(availablePods))], nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
+	}
+
+	assignPatches := []patchOperation{
+		{Op: "test", Path: "/metadata/ownerReferences/0/kind", Value: "ReplicaSet"},
+		{Op: "copy", From: "/metadata/ownerReferences/0/name", Path: key.ReplicaSet.PatchLabel},
+		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusPending},
+		{Op: "add", Path: key.Tenant.PatchLabel, Value: fn.Tenant},
+		{Op: "add", Path: key.Namespace.PatchLabel, Value: fn.Namespace},
+		{Op: "add", Path: key.Deployment.PatchLabel, Value: fn.Deployment},
+		{Op: "add", Path: key.MinReplicas.PatchLabel, Value: fn.MinReplicasStr},
+		{Op: "add", Path: key.MaxReplicas.PatchLabel, Value: fn.MaxReplicasStr},
+		{Op: "add", Path: key.TargetCPUUtilization.PatchLabel, Value: fn.TargetCPUUtilizationStr},
+		{Op: "add", Path: key.TargetMemoryUtilization.PatchLabel, Value: fn.TargetMemoryUtilizationStr},
+		{Op: "add", Path: key.AssignedAt.PatchLabel, Value: strconv.FormatInt(time.Now().Unix(), 10)},
+	}
+
+	patchBody, err := json.Marshal(assignPatches)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal assign patch: %w", err)
+	}
+
+	_, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	if err != nil {
+		return nil, fmt.Errorf("failed to assign pod: %w", err)
+	}
+
+	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value)
+	defer cancel()
+
+	assignURL := fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, function.FlagPort.Value, function.FlagAssignPath.Value)
+	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create assign request: %w", err)
+	}
+
+	req.Header.Set(key.Tenant.Header, fn.Tenant)
+	req.Header.Set(key.Metadata.Header, fn.Metadata)
+
+	log.Info(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send assign request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		// TODO: log response body
+		return nil, fmt.Errorf("assign request returned status %d", resp.StatusCode)
+	}
+
+	setReadyPatches := []patchOperation{
+		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusReady},
+		{Op: "add", Path: key.ReadyAt.PatchLabel, Value: strconv.FormatInt(time.Now().Unix(), 10)},
+	}
+
+	patchBody, err = json.Marshal(setReadyPatches)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal set ready patch: %w", err)
+	}
+
+	pod, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	if err != nil {
+		return nil, fmt.Errorf("failed to patch status: %w", err)
+	}
+
+	return pod, nil
+}
+
+func (c *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1.Pod, error) {
+	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
+	if err != nil {
+		return nil, err
+	}
+
+	pods, err := c.podManager.ListPods(fn.Namespace, doesNotHaveTenantSelector.Add(*equalDeploymentName))
+	if err != nil {
+		return nil, err
+	}
+
+	var availablePods []*v1.Pod
+	for _, pod := range pods {
+		if pod.Status.PodIP != "" {
+			for _, cond := range pod.Status.Conditions {
+				if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
+					availablePods = append(availablePods, pod)
+				}
+			}
+		}
+	}
+
+	return availablePods, nil
+}
+
+type patchOperation struct {
+	Op    string `json:"op"`
+	From  string `json:"from,omitempty"`
+	Path  string `json:"path"`
+	Value string `json:"value,omitempty"`
 }

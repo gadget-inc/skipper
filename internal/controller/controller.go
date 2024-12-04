@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -81,15 +83,15 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 }
 
 func (c *Controller) Start(ctx context.Context) error {
-	err := c.startControllerPodInformer(ctx)
+	err := c.startControllerInformer(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start controller pod informer: %w", err)
 	}
-	err = c.startManagedReplicaSetInformer(ctx)
+	err = c.startReplicaSetInformer(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start managed deployment informer: %w", err)
 	}
-	err = c.startScalingTenantPods(ctx)
+	err = c.startScalingInstances(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start scaling tenant pods: %w", err)
 	}
@@ -111,7 +113,7 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) startControllerPodInformer(ctx context.Context) error {
+func (c *Controller) startControllerInformer(ctx context.Context) error {
 	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		c.clientset,
 		10*time.Minute,
@@ -165,6 +167,244 @@ func (c *Controller) startControllerPodInformer(ctx context.Context) error {
 			return nil
 		})
 	}()
+
+	return nil
+}
+
+func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
+	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", function.FlagNamespaces.Value))
+
+	for _, namespace := range function.FlagNamespaces.Value {
+		informerFactory := informers.NewSharedInformerFactoryWithOptions(
+			c.clientset,
+			5*time.Minute,
+			informers.WithNamespace(namespace),
+			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+				options.LabelSelector = key.Deployment.Label
+			}),
+		)
+
+		replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()
+		replicaSetLister := replicaSetInformer.Lister()
+
+		_, err := replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj any) {
+				replicaSet := obj.(*appsv1.ReplicaSet)
+				log.Trace(ctx, "replica set added", key.ReplicaSet.Field(replicaSet))
+			},
+			UpdateFunc: func(_, newObj any) {
+				replicaSet := newObj.(*appsv1.ReplicaSet)
+				log.Trace(ctx, "replica set updated", key.ReplicaSet.Field(replicaSet))
+			},
+			DeleteFunc: func(obj any) {
+				replicaSet := obj.(*appsv1.ReplicaSet)
+				log.Trace(ctx, "replica set deleted", key.ReplicaSet.Field(replicaSet))
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add replica set event handler: %w", err)
+		}
+
+		informerFactory.Start(ctx.Done())
+
+		syncResults := informerFactory.WaitForCacheSync(ctx.Done())
+		for informer, synced := range syncResults {
+			if !synced {
+				return fmt.Errorf("failed to sync managed deployment informer cache: %v", informer)
+			}
+		}
+
+		go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
+			pods, err := c.podManager.ListPods(namespace, hasTenantSelector)
+			if err != nil {
+				log.Warn(ctx, "failed to get all assigned pods for replica set check", key.Error.Field(err))
+				return nil
+			}
+
+			var defunctInstances []function.Instance
+			for _, pod := range pods {
+				instance, err := function.FromPod(pod)
+				if err != nil {
+					log.Warn(ctx, "failed to get function from pod", key.Error.Field(err), key.Pod.Field(pod))
+					continue
+				}
+
+				replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(instance.ReplicaSet)
+				if err != nil {
+					log.Warn(ctx, "failed to get replica set for pod", key.Pod.Field(pod), key.Error.Field(err))
+					continue
+				}
+
+				if replicaSet.Spec.Replicas == nil || *replicaSet.Spec.Replicas == 0 {
+					defunctInstances = append(defunctInstances, instance)
+				}
+			}
+
+			for _, instance := range defunctInstances {
+				func() {
+					scaleMu, _ := c.scaleMu.LoadOrStore(instance.Function, sync.Mutex{})
+					scaleMu.Lock()
+					defer scaleMu.Unlock()
+
+					log.Debug(ctx, "terminating defunct function", key.Pod.Field(instance.Pod), key.Function.Field(instance))
+					err = c.clientset.CoreV1().Pods(instance.Pod.Namespace).Delete(ctx, instance.Pod.Name, metav1.DeleteOptions{})
+					if err != nil {
+						log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(instance))
+					}
+				}()
+
+				time.Sleep(1 * time.Second)
+			}
+
+			return nil
+		})
+	}
+
+	return nil
+}
+
+func (c *Controller) startScalingInstances(ctx context.Context) error {
+	// TODO: garbage collect old stabilization windows
+	stabilizationWindows := make(map[function.Function]*StabilizationWindow)
+
+	go timer.Loop(
+		ctx,
+		15*time.Second,
+		func(ctx context.Context) error {
+			c.keepAlivesMu.Lock()
+			keepAlives := maps.Clone(c.keepAlives)
+			c.keepAlivesMu.Unlock()
+
+			for _, namespace := range function.FlagNamespaces.Value {
+				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)
+				if err != nil {
+					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
+					return nil
+				}
+
+				now := time.Now()
+				for fn, instanceMetrics := range functionMetrics {
+					timestamp, ok := keepAlives[fn]
+					if !ok {
+						log.Warn(ctx, "no keep alive for function", key.Function.Field(fn))
+						for _, instanceMetric := range instanceMetrics {
+							if instanceMetric.AssignedAt.After(timestamp) {
+								timestamp = instanceMetric.AssignedAt
+							}
+						}
+					}
+
+					if time.Since(timestamp) > 90*time.Second {
+						delete(stabilizationWindows, fn)
+
+						controllerIP, ok := c.ring.Get(fn.RingKey())
+						if !ok || controllerIP != FlagIP.Value {
+							log.Trace(
+								ctx,
+								"skipping scaling fn to 0, not assigned to this controller",
+								key.Function.Field(fn),
+								slog.String("controllerIP", controllerIP),
+								slog.String("ip", FlagIP.Value),
+								slog.Bool("ok", ok),
+							)
+							continue
+						}
+
+						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(timestamp))
+						_, err := c.scaleFunction(ctx, fn, 0)
+						if err != nil {
+							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
+						}
+						continue
+					}
+
+					currentReplicas := len(instanceMetrics)
+					desiredReplicas, err := calculateDesiredReplicas(
+						currentReplicas,
+						instanceMetrics,
+						int64(fn.TargetCPUUtilization),
+						int64(fn.TargetMemoryUtilization),
+						DefaultConfig,
+						now,
+					)
+					if err != nil {
+						log.Trace(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
+						continue
+					}
+
+					if desiredReplicas < fn.MinReplicas {
+						desiredReplicas = fn.MinReplicas
+					}
+
+					if desiredReplicas > fn.MaxReplicas {
+						desiredReplicas = fn.MaxReplicas
+					}
+
+					stabilizationWindow, exists := stabilizationWindows[fn]
+					if !exists {
+						stabilizationWindow = &StabilizationWindow{
+							Window: DefaultConfig.DownscaleStabilization,
+						}
+						stabilizationWindows[fn] = stabilizationWindow
+					}
+
+					log.Trace(ctx, "desired replicas",
+						key.Function.Field(fn),
+						key.CurrentReplicas.Field(currentReplicas),
+						key.DesiredInstances.Field(desiredReplicas),
+						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
+					)
+
+					stabilizationWindow.RecordRecommendation(desiredReplicas, now)
+
+					controllerIP, ok := c.ring.Get(fn.RingKey())
+					if !ok || controllerIP != FlagIP.Value {
+						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
+							key.Function.Field(fn),
+							slog.String("controllerIP", controllerIP),
+							slog.String("ip", FlagIP.Value),
+							slog.Bool("ok", ok),
+						)
+						continue
+					}
+
+					if desiredReplicas < currentReplicas {
+						maxRecommendedReplicas := stabilizationWindow.GetMaxRecommendation()
+						if maxRecommendedReplicas < currentReplicas {
+							desiredReplicas = maxRecommendedReplicas
+						} else {
+							desiredReplicas = currentReplicas
+						}
+					}
+
+					if desiredReplicas == 0 {
+						// we only scale to 0 if the last request was more than 90 seconds ago
+						log.Debug(ctx, "skipping scaling function to 0 based on hpa", key.Function.Field(fn))
+						continue
+					}
+
+					log.Trace(ctx, "scaling function",
+						key.Function.Field(fn),
+						key.CurrentReplicas.Field(currentReplicas),
+						key.DesiredInstances.Field(desiredReplicas),
+						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
+					)
+
+					_, err = c.scaleFunction(ctx, fn, desiredReplicas)
+					if err != nil {
+						log.Warn(ctx, "failed to scale function",
+							key.Error.Field(err),
+							key.Function.Field(fn),
+							key.CurrentReplicas.Field(currentReplicas),
+							key.DesiredInstances.Field(desiredReplicas),
+						)
+					}
+				}
+			}
+
+			return nil
+		},
+	)
 
 	return nil
 }
