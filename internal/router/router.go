@@ -15,24 +15,21 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
-	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
 )
 
 type Router struct {
-	controllerClient *controller.Client
-	podManager       *pod.Manager
-	reverseProxy     *httputil.ReverseProxy
-	keepAlives       *xsync.MapOf[function.Function, time.Time]
-	transport        *http.Transport
+	controller   *controller.Client
+	keepAlives   *xsync.MapOf[function.Function, time.Time]
+	reverseProxy *httputil.ReverseProxy
+	transport    *http.Transport
 }
 
-func New(controllerClient *controller.Client, podManager *pod.Manager) *Router {
+func New(controllerClient *controller.Client) *Router {
 	r := &Router{
-		controllerClient: controllerClient,
-		podManager:       podManager,
-		keepAlives:       xsync.NewMapOf[function.Function, time.Time](),
+		controller: controllerClient,
+		keepAlives: xsync.NewMapOf[function.Function, time.Time](),
 		transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -58,16 +55,16 @@ func New(controllerClient *controller.Client, podManager *pod.Manager) *Router {
 
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, 3*time.Second, func(ctx context.Context) error {
-		keepAlives := r.keepAlives
+		keepAlivesSnapshot := r.keepAlives
 		r.keepAlives = xsync.NewMapOf[function.Function, time.Time]()
 
-		var keepAliveEntries []controller.KeepAlive
-		keepAlives.Range(func(fn function.Function, lastRequest time.Time) bool {
-			keepAliveEntries = append(keepAliveEntries, controller.KeepAlive{Function: fn, Timestamp: lastRequest})
+		var keepAlives []controller.KeepAlive
+		keepAlivesSnapshot.Range(func(fn function.Function, lastRequest time.Time) bool {
+			keepAlives = append(keepAlives, controller.KeepAlive{Function: fn, Timestamp: lastRequest})
 			return true
 		})
 
-		err := r.controllerClient.KeepAlive(ctx, keepAliveEntries)
+		err := r.controller.KeepAlive(ctx, keepAlives)
 		if err != nil {
 			log.Warn(ctx, "failed to send keep alives", key.Error.Field(err))
 		}
@@ -82,26 +79,15 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			return
 		}
-
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	r.keepAlives.Store(fn, time.Now())
-	go func() {
-		for {
-			select {
-			case <-req.Context().Done():
-				err := req.Context().Err()
-				if errors.Is(err, context.Canceled) {
-					err = nil
-				}
-				return
-			case <-time.After(5 * time.Second):
-				r.keepAlives.Store(fn, time.Now())
-			}
-		}
-	}()
+	go timer.Loop(req.Context(), 5*time.Second, func(ctx context.Context) error {
+		r.keepAlives.Store(fn, time.Now())
+		return nil
+	})
 
 	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(req.Context(), fn)))
 }
@@ -129,9 +115,9 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			time.Sleep(1 * time.Second * time.Duration(attempt))
 		}
 
-		instance, err := r.controllerClient.Get(ctx, fn)
+		instance, err := r.controller.Get(ctx, fn)
 		if err != nil {
-			log.Warn(ctx, "failed to get assigned pod for function", key.Error.Field(err), key.Function.Field(fn))
+			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Function.Field(fn))
 			attempt++
 			continue
 		}
