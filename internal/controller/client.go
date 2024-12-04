@@ -37,7 +37,7 @@ func (c *Client) Get(ctx context.Context, fn function.Function) (instance functi
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return instance, fmt.Errorf("get request failed: %s", res.Status)
+		return instance, fmt.Errorf("get request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&instance); err != nil {
@@ -69,7 +69,7 @@ func (c *Client) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("keep alive request failed: %s", res.Status)
+		return fmt.Errorf("keep alive request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
 	return nil
@@ -91,7 +91,7 @@ func (c *Client) Scale(ctx context.Context, fn function.Function, desiredInstanc
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("scale request failed: %s", res.Status)
+		return nil, fmt.Errorf("scale request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
 	var instances []function.Instance

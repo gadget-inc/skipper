@@ -26,12 +26,20 @@ const (
 )
 
 type Manager struct {
-	clientset  kubernetes.Interface
-	podListers map[string]listerv1.PodLister
+	clientset    kubernetes.Interface
+	podListerMap map[string]podListerEntry
+}
+
+type podListerEntry struct {
+	lister  listerv1.PodLister
+	indexer cache.Indexer
 }
 
 func NewManager(clientset kubernetes.Interface) *Manager {
-	return &Manager{clientset: clientset, podListers: make(map[string]listerv1.PodLister, len(function.FlagNamespaces.Value))}
+	return &Manager{
+		clientset:    clientset,
+		podListerMap: make(map[string]podListerEntry, len(function.FlagNamespaces.Value)),
+	}
 }
 
 func (pm *Manager) Start(ctx context.Context) error {
@@ -61,28 +69,12 @@ func (pm *Manager) Start(ctx context.Context) error {
 		)
 
 		podInformer := informerFactory.Core().V1().Pods()
-		podLister := podInformer.Lister()
-
-		_, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj any) {
-				pod := obj.(*v1.Pod)
-				log.Trace(ctx, "pod added", key.Pod.Field(pod))
-			},
-			UpdateFunc: func(_, newObj any) {
-				pod := newObj.(*v1.Pod)
-				log.Trace(ctx, "pod updated", key.Pod.Field(pod))
-			},
-			DeleteFunc: func(obj any) {
-				pod := obj.(*v1.Pod)
-				log.Trace(ctx, "pod deleted", key.Pod.Field(pod))
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("failed to add pod informer event handler: %w", err)
+		pm.podListerMap[namespace] = podListerEntry{
+			lister:  podInformer.Lister(),
+			indexer: podInformer.Informer().GetIndexer(),
 		}
 
 		informerFactory.Start(ctx.Done())
-		pm.podListers[namespace] = podLister
 
 		syncResults := informerFactory.WaitForCacheSync(ctx.Done())
 		for informer, synced := range syncResults {
@@ -122,12 +114,12 @@ func (pm *Manager) GetAssigned(fn function.Function) ([]function.Instance, error
 }
 
 func (pm *Manager) ListPods(namespace string, selector labels.Selector) ([]*v1.Pod, error) {
-	lister, found := pm.podListers[namespace]
+	podListerEntry, found := pm.podListerMap[namespace]
 	if !found {
 		return nil, fmt.Errorf("managed pod lister not started for namespace %s", namespace)
 	}
 
-	listedPods, err := lister.List(selector)
+	listedPods, err := podListerEntry.lister.List(selector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
@@ -140,4 +132,12 @@ func (pm *Manager) ListPods(namespace string, selector labels.Selector) ([]*v1.P
 		pods = append(pods, pod)
 	}
 	return pods, nil
+}
+
+func (pm *Manager) Update(pod *v1.Pod) error {
+	podListerEntry, found := pm.podListerMap[pod.Namespace]
+	if !found {
+		return fmt.Errorf("managed pod lister not started for namespace %s", pod.Namespace)
+	}
+	return podListerEntry.indexer.Update(pod)
 }

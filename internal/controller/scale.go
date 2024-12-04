@@ -84,7 +84,7 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 }
 
 func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]function.Instance, error) {
-	scaleMu, _ := c.scaleMu.LoadOrStore(fn, sync.Mutex{})
+	scaleMu, _ := c.scaleMu.LoadOrCompute(fn, func() *sync.Mutex { return new(sync.Mutex) })
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
 
@@ -123,28 +123,22 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 
 	log.Info(ctx, "scaling function",
 		slog.Int("current_instances", currentInstances),
-		slog.Int("desired_replicas", desiredInstances),
+		key.DesiredInstances.Field(desiredInstances),
 		key.Function.Field(fn),
 	)
 
 	if desiredInstances > currentInstances {
 		for i := 0; i < desiredInstances-currentInstances; i++ {
-			pod, err := c.assignFunctionToPod(ctx, fn)
+			instance, err := c.assignPodToFunction(ctx, fn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
-			log.Trace(ctx, "assigned pod", key.Pod.Field(pod), key.Function.Field(fn))
-			instance, err := function.FromPod(pod)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get function from pod: %w", err)
-			}
 			instances = append(instances, instance)
+			log.Trace(ctx, "assigned pod", key.Pod.Field(instance.Pod), key.Function.Field(fn))
 		}
 	} else {
 		// sort instances by assigned at,
-		slices.SortFunc(instances, func(a, b function.Instance) int {
-			return a.AssignedAt.Compare(b.AssignedAt)
-		})
+		slices.SortFunc(instances, func(a, b function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
 
 		// delete the oldest instances and remove them from the list
 		for i := len(instances) - 1; i >= desiredInstances; i-- {
@@ -188,7 +182,7 @@ func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) assignFunctionToPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
+func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Function) (function.Instance, error) {
 	pod, err := timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		availablePods, err := c.getAvailablePodsForFunction(fn)
 		if err != nil {
@@ -201,7 +195,7 @@ func (c *Controller) assignFunctionToPod(ctx context.Context, fn function.Functi
 		return availablePods[rand.Intn(len(availablePods))], nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
+		return function.Instance{}, fmt.Errorf("failed to poll for available pod: %w", err)
 	}
 
 	assignPatches := []patchOperation{
@@ -220,12 +214,12 @@ func (c *Controller) assignFunctionToPod(ctx context.Context, fn function.Functi
 
 	patchBody, err := json.Marshal(assignPatches)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal assign patch: %w", err)
+		return function.Instance{}, fmt.Errorf("failed to marshal assign patch: %w", err)
 	}
 
 	_, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
-		return nil, fmt.Errorf("failed to assign pod: %w", err)
+		return function.Instance{}, fmt.Errorf("failed to assign pod: %w", err)
 	}
 
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value)
@@ -234,21 +228,21 @@ func (c *Controller) assignFunctionToPod(ctx context.Context, fn function.Functi
 	assignURL := fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, function.FlagPort.Value, function.FlagAssignPath.Value)
 	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create assign request: %w", err)
+		return function.Instance{}, fmt.Errorf("failed to create assign request: %w", err)
 	}
 
 	req.Header.Set(key.Tenant.Header, fn.Tenant)
 	req.Header.Set(key.Metadata.Header, fn.Metadata)
 
-	log.Info(ctx, "assigning pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send assign request: %w", err)
+		return function.Instance{}, fmt.Errorf("failed to send assign request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		// TODO: log response body
-		return nil, fmt.Errorf("assign request returned status %d", resp.StatusCode)
+		return function.Instance{}, fmt.Errorf("assign request returned status %d", resp.StatusCode)
 	}
 
 	setReadyPatches := []patchOperation{
@@ -258,15 +252,20 @@ func (c *Controller) assignFunctionToPod(ctx context.Context, fn function.Functi
 
 	patchBody, err = json.Marshal(setReadyPatches)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal set ready patch: %w", err)
+		return function.Instance{}, fmt.Errorf("failed to marshal set ready patch: %w", err)
 	}
 
 	pod, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
-		return nil, fmt.Errorf("failed to patch status: %w", err)
+		return function.Instance{}, fmt.Errorf("failed to patch status: %w", err)
 	}
 
-	return pod, nil
+	err = c.podManager.Update(pod)
+	if err != nil {
+		return function.Instance{}, fmt.Errorf("failed to update pod: %w", err)
+	}
+
+	return function.FromPod(pod)
 }
 
 func (c *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1.Pod, error) {

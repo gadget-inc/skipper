@@ -4,6 +4,7 @@ import { sleep } from "npm:zx";
 const url = "http://fusion-router.fusion-development.svc.cluster.local";
 
 let i = 0;
+const failures: { requestId: number; status: number; body: string }[] = [];
 
 async function sendRequest() {
   const response = await fetch(url, {
@@ -25,18 +26,27 @@ async function sendRequest() {
   if (response.ok) {
     console.log("request", ++i, "status", response.status);
   } else {
-    console.error("request", ++i, "status", response.status, "error", await response.text());
+    console.error("request", ++i, "status", response.status, "error");
+    failures.push({ requestId: i, status: response.status, body: await response.text() });
   }
 }
 
-// await sendRequest();
+const abortController = new AbortController();
+Deno.addSignalListener("SIGINT", () => {
+  abortController.abort();
+});
 
 const responses = [];
-while (true) {
-  for (let i = 0; i < 1000; i++) {
-    responses.push(sendRequest());
-    await sleep(1);
-  }
-  await Promise.all(responses);
-  responses.length = 0;
+while (!abortController.signal.aborted) {
+  responses.push(sendRequest());
+  await sleep(1);
+}
+
+await Promise.all(responses);
+
+if (failures.length > 0) {
+  console.error("Failures:");
+  console.dir(failures, { depth: null });
+} else {
+  console.log("All requests succeeded");
 }

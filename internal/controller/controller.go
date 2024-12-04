@@ -65,7 +65,7 @@ type Controller struct {
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
 	controllerClients *xsync.MapOf[string, *Client]
-	scaleMu           *xsync.MapOf[function.Function, sync.Mutex]
+	scaleMu           *xsync.MapOf[function.Function, *sync.Mutex]
 	keepAlives        map[function.Function]time.Time
 	keepAlivesMu      sync.Mutex // guards keepAlives
 }
@@ -77,7 +77,7 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 		metricsClientset:  metricsClient,
 		podManager:        podManager,
 		controllerClients: xsync.NewMapOf[string, *Client](),
-		scaleMu:           xsync.NewMapOf[function.Function, sync.Mutex](),
+		scaleMu:           xsync.NewMapOf[function.Function, *sync.Mutex](),
 		keepAlives:        make(map[function.Function]time.Time),
 	}
 }
@@ -242,7 +242,7 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 
 			for _, instance := range defunctInstances {
 				func() {
-					scaleMu, _ := c.scaleMu.LoadOrStore(instance.Function, sync.Mutex{})
+					scaleMu, _ := c.scaleMu.LoadOrStore(instance.Function, &sync.Mutex{})
 					scaleMu.Lock()
 					defer scaleMu.Unlock()
 
