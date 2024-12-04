@@ -242,7 +242,7 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 
 			for _, instance := range defunctInstances {
 				func() {
-					scaleMu, _ := c.scaleMu.LoadOrStore(instance.Function, &sync.Mutex{})
+					scaleMu, _ := c.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
 					scaleMu.Lock()
 					defer scaleMu.Unlock()
 
