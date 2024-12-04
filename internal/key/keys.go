@@ -9,10 +9,13 @@ var (
 	Error                   = errorKey{new("error")}
 	ForwardedFor            = stringSliceKey{new("forwarded-for")}
 	Function                = groupValueKey{new("function")}
+	IP                      = stringKey{new("ip")}
+	Instance                = groupValueKey{new("instance")}
 	LastRequest             = timeKey{new("last-request")}
 	MaxReplicas             = intKey{new("max-replicas")}
 	Metadata                = stringKey{new("metadata")}
 	MinReplicas             = intKey{new("min-replicas")}
+	Name                    = stringKey{new("name")}
 	Namespace               = stringKey{new("namespace")}
 	Pod                     = podKey{new("pod")}
 	ReadyAt                 = timeKey{new("ready-at")}
