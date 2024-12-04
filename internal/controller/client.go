@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/goccy/go-json"
 )
 
@@ -20,25 +22,54 @@ func NewClient(host string, port int) *Client {
 	}
 }
 
-func (c *Client) Assign(ctx context.Context, fn function.Function) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/assign", nil)
+func (c *Client) Get(ctx context.Context, fn function.Function) (instance function.Instance, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/get", nil)
 	if err != nil {
-		return fmt.Errorf("failed to create assign request: %w", err)
+		return instance, fmt.Errorf("failed to create get request: %w", err)
 	}
 
 	fn.SetHeaders(req)
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send assign request: %w", err)
+		return instance, fmt.Errorf("failed to send get request: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("assign request failed: %s", res.Status)
+		return instance, fmt.Errorf("get request failed: %s", res.Status)
 	}
 
-	return nil
+	if err := json.NewDecoder(res.Body).Decode(&instance); err != nil {
+		return instance, fmt.Errorf("failed to decode get response: %w", err)
+	}
+
+	return instance, nil
+}
+
+func (c *Client) Assign(ctx context.Context, fn function.Function) (instance function.Instance, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/assign", nil)
+	if err != nil {
+		return instance, fmt.Errorf("failed to create assign request: %w", err)
+	}
+
+	fn.SetHeaders(req)
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return instance, fmt.Errorf("failed to send assign request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return instance, fmt.Errorf("assign request failed: %s", res.Status)
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&instance); err != nil {
+		return instance, fmt.Errorf("failed to decode get response: %w", err)
+	}
+
+	return instance, nil
 }
 
 func (c *Client) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
@@ -67,4 +98,31 @@ func (c *Client) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
 	}
 
 	return nil
+}
+
+func (c *Client) Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]function.Instance, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/scale", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create scale request: %w", err)
+	}
+
+	fn.SetHeaders(req)
+	req.Header[key.DesiredInstances.Header] = []string{strconv.Itoa(desiredInstances)}
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send scale request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("scale request failed: %s", res.Status)
+	}
+
+	var instances []function.Instance
+	if err := json.NewDecoder(res.Body).Decode(&instances); err != nil {
+		return nil, fmt.Errorf("failed to decode scale response: %w", err)
+	}
+
+	return instances, nil
 }

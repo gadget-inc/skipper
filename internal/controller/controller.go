@@ -63,7 +63,7 @@ type Controller struct {
 	metricsClientset  metricsclientset.Interface
 	podManager        *pod.Manager
 	controllerClients *xsync.MapOf[string, *Client]
-	assignmentLock    *xsync.MapOf[function.Function, struct{}]
+	scaleMu           *xsync.MapOf[function.Function, sync.Mutex]
 	keepAlives        map[function.Function]time.Time
 	keepAlivesMu      sync.Mutex // guards keepAlives
 }
@@ -75,7 +75,7 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 		metricsClientset:  metricsClient,
 		podManager:        podManager,
 		controllerClients: xsync.NewMapOf[string, *Client](),
-		assignmentLock:    xsync.NewMapOf[function.Function, struct{}](),
+		scaleMu:           xsync.NewMapOf[function.Function, sync.Mutex](),
 		keepAlives:        make(map[function.Function]time.Time),
 	}
 }
@@ -100,12 +100,14 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch req.URL.Path {
 	case "/healthz":
 		rw.WriteHeader(http.StatusOK)
-	case "/assign":
-		c.handleAssign(rw, req)
+	case "/get":
+		c.handleGet(rw, req)
+	case "/scale":
+		c.handleScale(rw, req)
 	case "/keepalive":
 		c.handleKeepAlive(rw, req)
 	default:
-		http.Error(rw, "not found", http.StatusNotFound)
+		http.NotFound(rw, req)
 	}
 }
 

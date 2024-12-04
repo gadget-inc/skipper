@@ -5,7 +5,7 @@ var (
 	Controller              = stringKey{new("controller")}
 	CurrentReplicas         = intKey{new("current-replicas")}
 	Deployment              = deploymentKey{new("deployment")}
-	DesiredReplicas         = intKey{new("desired-replicas")}
+	DesiredInstances        = intKey{new("desired-instances")}
 	Error                   = errorKey{new("error")}
 	ForwardedFor            = stringSliceKey{new("forwarded-for")}
 	Function                = groupValueKey{new("function")}

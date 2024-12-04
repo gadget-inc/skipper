@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -19,7 +18,6 @@ import (
 	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
-	v1 "k8s.io/api/core/v1"
 )
 
 type Router struct {
@@ -131,7 +129,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			time.Sleep(1 * time.Second * time.Duration(attempt))
 		}
 
-		pod, err := r.getAssignedPod(ctx, fn)
+		instance, err := r.controllerClient.Get(ctx, fn)
 		if err != nil {
 			log.Warn(ctx, "failed to get assigned pod for function", key.Error.Field(err), key.Function.Field(fn))
 			attempt++
@@ -139,44 +137,31 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		req.URL.Scheme = "http"
-		req.URL.Host = pod.Status.PodIP + ":" + strconv.Itoa(function.FlagPort.Value)
+		req.URL.Host = instance.Pod.Status.PodIP + ":" + strconv.Itoa(function.FlagPort.Value)
 
 		res, err := r.transport.RoundTrip(req)
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), key.Pod.Field(pod), key.Function.Field(fn))
+				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(fn))
 				attempt++
 				continue
 			}
 
 			if netOpErr.Timeout() {
-				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), key.Pod.Field(pod), key.Function.Field(fn))
+				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(fn))
 				attempt++
 				continue
 			}
 		}
 
 		if err != nil && err != context.Canceled {
-			log.Error(ctx, "unknown error", key.Error.Field(err), key.Pod.Field(pod), key.Function.Field(fn))
+			log.Error(ctx, "unknown error", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(fn))
 		}
 
 		return res, err
 	}
-}
-
-func (r *Router) getAssignedPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
-	return timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
-		pods, err := r.podManager.GetAssigned(fn)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list assigned pods: %w", err)
-		}
-		if len(pods) > 0 {
-			return pods[rand.Intn(len(pods))], nil
-		}
-		return nil, r.controllerClient.Assign(ctx, fn)
-	})
 }
 
 func rewriteHeaders(r *httputil.ProxyRequest) {

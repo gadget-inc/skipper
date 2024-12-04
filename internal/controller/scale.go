@@ -2,10 +2,14 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/http"
 	"slices"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
@@ -13,7 +17,6 @@ import (
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/timer"
 	appsv1 "k8s.io/api/apps/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
@@ -91,11 +94,18 @@ func (c *Controller) startManagedReplicaSetInformer(ctx context.Context) error {
 			}
 
 			for _, instance := range defunctInstances {
-				log.Debug(ctx, "terminating defunct function", key.Pod.Field(instance.Pod), key.Function.Field(instance))
-				err = c.clientset.CoreV1().Pods(instance.Pod.Namespace).Delete(ctx, instance.Pod.Name, metav1.DeleteOptions{})
-				if err != nil {
-					log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(instance))
-				}
+				func() {
+					scaleMu, _ := c.scaleMu.LoadOrStore(instance.Function, sync.Mutex{})
+					scaleMu.Lock()
+					defer scaleMu.Unlock()
+
+					log.Debug(ctx, "terminating defunct function", key.Pod.Field(instance.Pod), key.Function.Field(instance))
+					err = c.clientset.CoreV1().Pods(instance.Pod.Namespace).Delete(ctx, instance.Pod.Name, metav1.DeleteOptions{})
+					if err != nil {
+						log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(instance))
+					}
+				}()
+
 				time.Sleep(1 * time.Second)
 			}
 
@@ -154,7 +164,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 						}
 
 						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(timestamp))
-						err := c.scaleFunction(ctx, fn, 0)
+						_, err := c.scaleFunction(ctx, fn, 0)
 						if err != nil {
 							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 						}
@@ -194,7 +204,7 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 					log.Trace(ctx, "desired replicas",
 						key.Function.Field(fn),
 						key.CurrentReplicas.Field(currentReplicas),
-						key.DesiredReplicas.Field(desiredReplicas),
+						key.DesiredInstances.Field(desiredReplicas),
 						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
 					)
 
@@ -229,17 +239,17 @@ func (c *Controller) startScalingTenantPods(ctx context.Context) error {
 					log.Trace(ctx, "scaling function",
 						key.Function.Field(fn),
 						key.CurrentReplicas.Field(currentReplicas),
-						key.DesiredReplicas.Field(desiredReplicas),
+						key.DesiredInstances.Field(desiredReplicas),
 						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
 					)
 
-					err = c.scaleFunction(ctx, fn, desiredReplicas)
+					_, err = c.scaleFunction(ctx, fn, desiredReplicas)
 					if err != nil {
 						log.Warn(ctx, "failed to scale function",
 							key.Error.Field(err),
 							key.Function.Field(fn),
 							key.CurrentReplicas.Field(currentReplicas),
-							key.DesiredReplicas.Field(desiredReplicas),
+							key.DesiredInstances.Field(desiredReplicas),
 						)
 					}
 				}
@@ -311,57 +321,107 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 	return functionMetrics, nil
 }
 
-func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredReplicas int) error {
+func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]function.Instance, error) {
+	scaleMu, _ := c.scaleMu.LoadOrStore(fn, sync.Mutex{})
+	scaleMu.Lock()
+	defer scaleMu.Unlock()
+
 	assignedPods, err := c.podManager.ListPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
 	}))
 	if err != nil {
-		return fmt.Errorf("failed to get assigned pods: %w", err)
+		return nil, fmt.Errorf("failed to get assigned pods: %w", err)
 	}
 
-	currentReplicas := len(assignedPods)
-	if currentReplicas == desiredReplicas {
-		return nil
+	var instances []function.Instance
+	for _, pod := range assignedPods {
+		instance, err := function.FromPod(pod)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get function from labels: %w", err)
+		}
+		instances = append(instances, instance)
 	}
 
-	log.Info(ctx, "scaling function", slog.Int("currentReplicas", currentReplicas), slog.Int("desiredReplicas", desiredReplicas), key.Function.Field(fn))
+	currentInstances := len(instances)
+	if currentInstances == desiredInstances {
+		return instances, nil
+	}
 
-	if desiredReplicas > currentReplicas {
-		// TODO: lock assigning map
-		for i := 0; i < desiredReplicas-currentReplicas; i++ {
+	controllerIP, ok := c.ring.Get(fn.RingKey())
+	if !ok {
+		return nil, fmt.Errorf("no controller for function")
+	}
+
+	if controllerIP != FlagIP.Value {
+		log.Debug(ctx, "forwarding request", key.Function.Field(fn), slog.String("ip", controllerIP))
+		controllerClient, _ := c.controllerClients.LoadOrCompute(controllerIP, func() *Client { return NewClient(controllerIP, FlagPort.Value) })
+		return controllerClient.Scale(ctx, fn, desiredInstances)
+	}
+
+	log.Info(ctx, "scaling function",
+		slog.Int("current_instances", currentInstances),
+		slog.Int("desired_replicas", desiredInstances),
+		key.Function.Field(fn),
+	)
+
+	if desiredInstances > currentInstances {
+		for i := 0; i < desiredInstances-currentInstances; i++ {
 			pod, err := c.assign(ctx, fn)
 			if err != nil {
-				return fmt.Errorf("failed to assign pod: %w", err)
+				return nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
-			log.Trace(ctx, "assigned pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+			log.Trace(ctx, "assigned pod", key.Pod.Field(pod), key.Function.Field(fn))
+			instance, err := function.FromPod(pod)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get function from pod: %w", err)
+			}
+			instances = append(instances, instance)
 		}
 	} else {
-		slices.SortFunc(assignedPods, func(a, b *v1.Pod) int {
-			instanceA, err := function.FromPod(a)
-			if err != nil {
-				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", a.Name), slog.Any("labels", a.Labels))
-				return -1
-			}
-
-			instanceB, err := function.FromPod(b)
-			if err != nil {
-				log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), slog.String("pod", b.Name), slog.Any("labels", b.Labels))
-				return 1
-			}
-
-			return instanceA.AssignedAt.Compare(instanceB.AssignedAt)
+		// sort instances by assigned at,
+		slices.SortFunc(instances, func(a, b function.Instance) int {
+			return a.AssignedAt.Compare(b.AssignedAt)
 		})
 
-		for i := 0; i < currentReplicas-desiredReplicas; i++ {
-			pod := assignedPods[i]
+		// delete the oldest instances and remove them from the list
+		for i := len(instances) - 1; i >= desiredInstances; i-- {
+			pod := instances[i].Pod
 			err := c.clientset.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
-				return fmt.Errorf("failed to delete pod: %w", err)
+				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
-			log.Trace(ctx, "deleted pod", slog.Any("pod", pod.Name), key.Function.Field(fn))
+			instances = instances[:i]
+			log.Trace(ctx, "deleted pod", key.Pod.Field(pod), key.Function.Field(fn))
 		}
 	}
 
-	return nil
+	return instances, nil
+}
+
+func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
+	fn, err := function.FromHeaders(req)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	desiredInstances, err := strconv.Atoi(req.Header.Get(key.DesiredInstances.Header))
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	instances, err := c.scaleFunction(req.Context(), fn, desiredInstances)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(rw).Encode(instances)
+	if err != nil {
+		log.Error(req.Context(), "failed to encode scale response", key.Error.Field(err))
+	}
 }
