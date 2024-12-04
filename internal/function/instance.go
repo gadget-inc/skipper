@@ -14,8 +14,9 @@ var emptyInstance = Instance{Function: emptyFunction}
 
 type Instance struct {
 	Function
-	Pod        *v1.Pod
-	ReplicaSet string
+	Name       string // pod name
+	IP         string // pod IP
+	Version    string // replica set name
 	AssignedAt time.Time
 	ReadyAt    time.Time
 }
@@ -60,18 +61,20 @@ func FromPod(pod *v1.Pod) (Instance, error) {
 	}
 
 	return Instance{
-		Function:   fn,
-		Pod:        pod,
+		Function: fn,
+		// Pod:        pod,
+		Name:       pod.Name,
+		IP:         pod.Status.PodIP,
 		AssignedAt: time.Unix(assignedAt, 0),
 		ReadyAt:    readyAt,
-		ReplicaSet: replicaSet,
+		Version:    replicaSet,
 	}, nil
 }
 
 func (instance Instance) Fields() []slog.Attr {
 	return []slog.Attr{
-		key.Name.Field(instance.Pod.Name),
-		key.IP.Field(instance.Pod.Status.PodIP),
+		key.Name.Field(instance.Name),
+		key.IP.Field(instance.IP),
 		// key.AssignedAt.Field(instance.AssignedAt),
 		// key.ReadyAt.Field(instance.ReadyAt),
 		key.Function.Field(instance.Function),
@@ -80,8 +83,8 @@ func (instance Instance) Fields() []slog.Attr {
 
 func (instance Instance) Attributes() []attribute.KeyValue {
 	return append(key.Function.Attributes(instance.Function),
-		key.Name.Attribute(instance.Pod.Name),
-		key.IP.Attribute(instance.Pod.Status.PodIP),
+		key.Name.Attribute(instance.Name),
+		key.IP.Attribute(instance.IP),
 		key.AssignedAt.Attribute(instance.AssignedAt),
 		key.ReadyAt.Attribute(instance.ReadyAt),
 	)

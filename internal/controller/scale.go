@@ -134,7 +134,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
 			instances = append(instances, instance)
-			log.Trace(ctx, "assigned pod", key.Pod.Field(instance.Pod), key.Function.Field(fn))
+			log.Trace(ctx, "assigned pod", key.Instance.Field(instance))
 		}
 	} else {
 		// sort instances by assigned at,
@@ -142,13 +142,13 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 
 		// delete the oldest instances and remove them from the list
 		for i := len(instances) - 1; i >= desiredInstances; i-- {
-			pod := instances[i].Pod
-			err := c.clientset.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			instance := instances[i]
+			err := c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
 			instances = instances[:i]
-			log.Trace(ctx, "deleted pod", key.Pod.Field(pod), key.Function.Field(fn))
+			log.Trace(ctx, "deleted pod", key.Instance.Field(instance))
 		}
 	}
 

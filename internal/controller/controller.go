@@ -229,7 +229,7 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 					continue
 				}
 
-				replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(instance.ReplicaSet)
+				replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(instance.Version)
 				if err != nil {
 					log.Warn(ctx, "failed to get replica set for pod", key.Pod.Field(pod), key.Error.Field(err))
 					continue
@@ -246,10 +246,10 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 					scaleMu.Lock()
 					defer scaleMu.Unlock()
 
-					log.Debug(ctx, "terminating defunct function", key.Pod.Field(instance.Pod), key.Function.Field(instance))
-					err = c.clientset.CoreV1().Pods(instance.Pod.Namespace).Delete(ctx, instance.Pod.Name, metav1.DeleteOptions{})
+					log.Debug(ctx, "terminating defunct function", key.Function.Field(instance))
+					err = c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 					if err != nil {
-						log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(instance))
+						log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Instance.Field(instance))
 					}
 				}()
 

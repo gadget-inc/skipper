@@ -123,27 +123,27 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		req.URL.Scheme = "http"
-		req.URL.Host = instance.Pod.Status.PodIP + ":" + strconv.Itoa(function.FlagPort.Value)
+		req.URL.Host = instance.IP + ":" + strconv.Itoa(function.FlagPort.Value)
 
 		res, err := r.transport.RoundTrip(req)
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(fn))
+				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), key.Instance.Field(instance))
 				attempt++
 				continue
 			}
 
 			if netOpErr.Timeout() {
-				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(fn))
+				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), key.Instance.Field(instance))
 				attempt++
 				continue
 			}
 		}
 
 		if err != nil && err != context.Canceled {
-			log.Error(ctx, "unknown error", key.Error.Field(err), key.Pod.Field(instance.Pod), key.Function.Field(fn))
+			log.Error(ctx, "unknown error", key.Error.Field(err), key.Instance.Field(instance))
 		}
 
 		return res, err
