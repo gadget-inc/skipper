@@ -13,7 +13,6 @@ import (
 	"github.com/gadget-inc/fusion/internal/hashring"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
-	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
 	appsv1 "k8s.io/api/apps/v1"
@@ -63,19 +62,19 @@ type Controller struct {
 	ring              *hashring.HashRing
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
-	podManager        *pod.Manager
+	podListerMap      map[string]podListerEntry
 	controllerClients *xsync.MapOf[string, *Client]
 	scaleMu           *xsync.MapOf[function.Function, *sync.Mutex]
 	keepAlives        map[function.Function]time.Time
 	keepAlivesMu      sync.Mutex // guards keepAlives
 }
 
-func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interface, podManager *pod.Manager) *Controller {
+func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interface) *Controller {
 	return &Controller{
 		ring:              hashring.New(),
 		clientset:         clientset,
 		metricsClientset:  metricsClient,
-		podManager:        podManager,
+		podListerMap:      make(map[string]podListerEntry, len(function.FlagNamespaces.Value)),
 		controllerClients: xsync.NewMapOf[string, *Client](),
 		scaleMu:           xsync.NewMapOf[function.Function, *sync.Mutex](),
 		keepAlives:        make(map[function.Function]time.Time),
@@ -87,9 +86,13 @@ func (c *Controller) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to start controller pod informer: %w", err)
 	}
+	err = c.startPodInformers(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start managed pod informers: %w", err)
+	}
 	err = c.startReplicaSetInformer(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to start managed deployment informer: %w", err)
+		return fmt.Errorf("failed to start managed replica set informer: %w", err)
 	}
 	err = c.startScalingInstances(ctx)
 	if err != nil {
@@ -215,7 +218,7 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 		}
 
 		go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-			pods, err := c.podManager.ListPods(namespace, hasTenantSelector)
+			pods, err := c.listPods(namespace, hasTenantSelector)
 			if err != nil {
 				log.Warn(ctx, "failed to get all assigned pods for replica set check", key.Error.Field(err))
 				return nil

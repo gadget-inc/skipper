@@ -17,7 +17,6 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
-	"github.com/gadget-inc/fusion/internal/pod"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -55,13 +54,7 @@ func NewCmdController() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			podManager := pod.NewManager(clientset)
-			err = podManager.Start(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to start pod manager: %w", err)
-			}
-
-			ctrl := controller.New(clientset, metricsClientset, podManager)
+			ctrl := controller.New(clientset, metricsClientset)
 			err = ctrl.Start(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)

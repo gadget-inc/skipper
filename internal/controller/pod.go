@@ -1,4 +1,4 @@
-package pod
+package controller
 
 import (
 	"context"
@@ -14,41 +14,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 )
-
-const (
-	StatusPending    = "pending"
-	StatusReady      = "ready"
-	StatusUnassigned = "unassigned"
-)
-
-type Manager struct {
-	clientset    kubernetes.Interface
-	podListerMap map[string]podListerEntry
-}
 
 type podListerEntry struct {
 	lister  listerv1.PodLister
 	indexer cache.Indexer
 }
 
-func NewManager(clientset kubernetes.Interface) *Manager {
-	return &Manager{
-		clientset:    clientset,
-		podListerMap: make(map[string]podListerEntry, len(function.FlagNamespaces.Value)),
-	}
-}
-
-func (pm *Manager) Start(ctx context.Context) error {
+func (c *Controller) startPodInformers(ctx context.Context) error {
 	log.Info(ctx, "starting managed pod informers", slog.Any("namespaces", function.FlagNamespaces.Value))
 
 	// TODO: test all required permissions before starting informers
 	var validNamespaces []string
 	for _, namespace := range function.FlagNamespaces.Value {
-		_, err := pm.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
+		_, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
 			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value {
 				log.Warn(ctx, "skipping namespace", slog.String("namespace", namespace), key.Error.Field(err))
@@ -60,7 +41,7 @@ func (pm *Manager) Start(ctx context.Context) error {
 		validNamespaces = append(validNamespaces, namespace)
 
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
-			pm.clientset,
+			c.clientset,
 			5*time.Minute,
 			informers.WithNamespace(namespace),
 			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
@@ -69,7 +50,7 @@ func (pm *Manager) Start(ctx context.Context) error {
 		)
 
 		podInformer := informerFactory.Core().V1().Pods()
-		pm.podListerMap[namespace] = podListerEntry{
+		c.podListerMap[namespace] = podListerEntry{
 			lister:  podInformer.Lister(),
 			indexer: podInformer.Informer().GetIndexer(),
 		}
@@ -89,8 +70,8 @@ func (pm *Manager) Start(ctx context.Context) error {
 	return nil
 }
 
-func (pm *Manager) GetAssigned(fn function.Function) ([]*function.Instance, error) {
-	assignedPods, err := pm.ListPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
+func (c *Controller) getAssigned(fn function.Function) ([]*function.Instance, error) {
+	assignedPods, err := c.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
 		key.Status.Label:     StatusReady,
@@ -113,8 +94,8 @@ func (pm *Manager) GetAssigned(fn function.Function) ([]*function.Instance, erro
 	return instances, nil
 }
 
-func (pm *Manager) ListPods(namespace string, selector labels.Selector) ([]*v1.Pod, error) {
-	podListerEntry, found := pm.podListerMap[namespace]
+func (c *Controller) listPods(namespace string, selector labels.Selector) ([]*v1.Pod, error) {
+	podListerEntry, found := c.podListerMap[namespace]
 	if !found {
 		return nil, fmt.Errorf("managed pod lister not started for namespace %s", namespace)
 	}
@@ -134,10 +115,18 @@ func (pm *Manager) ListPods(namespace string, selector labels.Selector) ([]*v1.P
 	return pods, nil
 }
 
-func (pm *Manager) Update(pod *v1.Pod) error {
-	podListerEntry, found := pm.podListerMap[pod.Namespace]
+func (c *Controller) updatePodCache(pod *v1.Pod) error {
+	podListerEntry, found := c.podListerMap[pod.Namespace]
 	if !found {
 		return fmt.Errorf("managed pod lister not started for namespace %s", pod.Namespace)
 	}
 	return podListerEntry.indexer.Update(pod)
+}
+
+func (c *Controller) removeFromPodCache(pod *v1.Pod) error {
+	podListerEntry, found := c.podListerMap[pod.Namespace]
+	if !found {
+		return fmt.Errorf("managed pod lister not started for namespace %s", pod.Namespace)
+	}
+	return podListerEntry.indexer.Delete(pod)
 }

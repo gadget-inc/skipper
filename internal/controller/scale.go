@@ -25,7 +25,7 @@ import (
 )
 
 func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (map[function.Function][]InstanceMetric, error) {
-	pods, err := c.podManager.ListPods(namespace, hasTenantSelector)
+	pods, err := c.listPods(namespace, hasTenantSelector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
 	}
@@ -88,7 +88,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
 
-	assignedPods, err := c.podManager.ListPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
+	assignedPods, err := c.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
 	}))
@@ -260,7 +260,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to patch status: %w", err)
 	}
 
-	err = c.podManager.Update(pod)
+	err = c.updatePodCache(pod)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update pod: %w", err)
 	}
@@ -274,7 +274,7 @@ func (c *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1.Po
 		return nil, err
 	}
 
-	pods, err := c.podManager.ListPods(fn.Namespace, doesNotHaveTenantSelector.Add(*equalDeploymentName))
+	pods, err := c.listPods(fn.Namespace, doesNotHaveTenantSelector.Add(*equalDeploymentName))
 	if err != nil {
 		return nil, err
 	}

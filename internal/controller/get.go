@@ -17,7 +17,7 @@ func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	instances, err := c.podManager.GetAssigned(fn)
+	instances, err := c.getAssigned(fn)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
