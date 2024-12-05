@@ -24,5 +24,4 @@ var (
 	TargetCPUUtilization    = intKey{new("target-cpu-utilization")}
 	TargetMemoryUtilization = intKey{new("target-memory-utilization")}
 	Tenant                  = stringKey{new("tenant")}
-	Traffic                 = stringKey{new("traffic")}
 )
