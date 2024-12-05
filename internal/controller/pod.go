@@ -122,11 +122,3 @@ func (c *Controller) updatePodCache(pod *v1.Pod) error {
 	}
 	return podListerEntry.indexer.Update(pod)
 }
-
-func (c *Controller) removeFromPodCache(pod *v1.Pod) error {
-	podListerEntry, found := c.podListerMap[pod.Namespace]
-	if !found {
-		return fmt.Errorf("managed pod lister not started for namespace %s", pod.Namespace)
-	}
-	return podListerEntry.indexer.Delete(pod)
-}
