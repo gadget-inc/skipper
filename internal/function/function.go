@@ -11,18 +11,14 @@ import (
 var emptyFunction = Function{}
 
 type Function struct {
-	Deployment                 string `json:"deployment"`
-	MaxInstances               int    `json:"maxInstances"`
-	MaxInstancesStr            string `json:"maxInstancesStr"`
-	Metadata                   string `json:"-"`
-	MinInstances               int    `json:"minInstances"`
-	MinInstancesStr            string `json:"minInstancesStr"`
-	Namespace                  string `json:"namespace"`
-	TargetCPUUtilization       int    `json:"targetCPUUtilization"`
-	TargetCPUUtilizationStr    string `json:"targetCPUUtilizationStr"`
-	TargetMemoryUtilization    int    `json:"targetMemoryUtilization"`
-	TargetMemoryUtilizationStr string `json:"targetMemoryUtilizationStr"`
-	Tenant                     string `json:"tenant"`
+	Tenant                  string `json:"tenant"`
+	Metadata                string `json:"metadata"`
+	Namespace               string `json:"namespace"`
+	Deployment              string `json:"deployment"`
+	MinInstances            int    `json:"minInstances"`
+	MaxInstances            int    `json:"maxInstances"`
+	TargetCPUUtilization    int    `json:"targetCPUUtilization"`
+	TargetMemoryUtilization int    `json:"targetMemoryUtilization"`
 }
 
 func new(
@@ -84,29 +80,25 @@ func new(
 	}
 
 	return Function{
-		Deployment:                 deployment,
-		MaxInstances:               maxInstances,
-		MaxInstancesStr:            maxInstancesStr,
-		Metadata:                   metadata,
-		MinInstances:               minInstances,
-		MinInstancesStr:            minInstancesStr,
-		Namespace:                  namespace,
-		TargetCPUUtilization:       targetCPUUtilization,
-		TargetCPUUtilizationStr:    targetCPUUtilizationStr,
-		TargetMemoryUtilization:    targetMemoryUtilization,
-		TargetMemoryUtilizationStr: targetMemoryUtilizationStr,
-		Tenant:                     tenant,
+		Tenant:                  tenant,
+		Metadata:                metadata,
+		Namespace:               namespace,
+		Deployment:              deployment,
+		MinInstances:            minInstances,
+		MaxInstances:            maxInstances,
+		TargetCPUUtilization:    targetCPUUtilization,
+		TargetMemoryUtilization: targetMemoryUtilization,
 	}, nil
 }
 
 func (f Function) RingKey() string {
-	return f.Tenant + ":" +
-		f.Namespace + ":" +
-		f.Deployment + ":" +
-		f.MinInstancesStr + ":" +
-		f.MaxInstancesStr + ":" +
-		f.TargetCPUUtilizationStr + ":" +
-		f.TargetMemoryUtilizationStr
+	return f.Tenant +
+		f.Namespace +
+		f.Deployment +
+		strconv.Itoa(f.MinInstances) +
+		strconv.Itoa(f.MaxInstances) +
+		strconv.Itoa(f.TargetCPUUtilization) +
+		strconv.Itoa(f.TargetMemoryUtilization)
 }
 
 func (f Function) Fields() []slog.Attr {

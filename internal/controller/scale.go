@@ -205,10 +205,10 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		{Op: "add", Path: key.Tenant.PatchLabel, Value: fn.Tenant},
 		{Op: "add", Path: key.Namespace.PatchLabel, Value: fn.Namespace},
 		{Op: "add", Path: key.Deployment.PatchLabel, Value: fn.Deployment},
-		{Op: "add", Path: key.MinInstances.PatchLabel, Value: fn.MinInstancesStr},
-		{Op: "add", Path: key.MaxInstances.PatchLabel, Value: fn.MaxInstancesStr},
-		{Op: "add", Path: key.TargetCPUUtilization.PatchLabel, Value: fn.TargetCPUUtilizationStr},
-		{Op: "add", Path: key.TargetMemoryUtilization.PatchLabel, Value: fn.TargetMemoryUtilizationStr},
+		{Op: "add", Path: key.MinInstances.PatchLabel, Value: strconv.Itoa(fn.MinInstances)},
+		{Op: "add", Path: key.MaxInstances.PatchLabel, Value: strconv.Itoa(fn.MaxInstances)},
+		{Op: "add", Path: key.TargetCPUUtilization.PatchLabel, Value: strconv.Itoa(fn.TargetCPUUtilization)},
+		{Op: "add", Path: key.TargetMemoryUtilization.PatchLabel, Value: strconv.Itoa(fn.TargetMemoryUtilization)},
 		{Op: "add", Path: key.AssignedAt.PatchLabel, Value: strconv.FormatInt(time.Now().Unix(), 10)},
 	}
 

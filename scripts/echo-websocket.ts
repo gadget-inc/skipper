@@ -8,9 +8,9 @@ const url = "http://fusion-router.fusion-development.svc.cluster.local";
 const socket = new WebSocket(url, undefined, {
   headers: {
     "x-fusion-tenant": "123",
+    "x-fusion-metadata": "secret123",
     "x-fusion-namespace": "fusion-fixtures-development",
     "x-fusion-deployment": "echo",
-    "x-fusion-metadata": "secret123",
     "x-fusion-min-instances": "0",
     "x-fusion-max-instances": "5",
     "x-fusion-target-cpu-utilization": "100",

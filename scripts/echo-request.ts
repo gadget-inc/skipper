@@ -11,9 +11,9 @@ async function sendRequest() {
     method: "POST",
     headers: {
       "x-fusion-tenant": "123",
+      "x-fusion-metadata": "secret123",
       "x-fusion-namespace": "fusion-fixtures-development",
       "x-fusion-deployment": "echo",
-      "x-fusion-metadata": "secret123",
       "x-fusion-min-instances": "0",
       "x-fusion-max-instances": "5",
       "x-fusion-target-cpu-utilization": "100",

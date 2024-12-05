@@ -2,6 +2,7 @@ package function
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gadget-inc/fusion/internal/key"
 )
@@ -22,10 +23,10 @@ func (f Function) SetHeaders(r *http.Request) {
 	r.Header[key.Namespace.Header] = []string{f.Namespace}
 	r.Header[key.Deployment.Header] = []string{f.Deployment}
 	r.Header[key.Metadata.Header] = []string{f.Metadata}
-	r.Header[key.MinInstances.Header] = []string{f.MinInstancesStr}
-	r.Header[key.MaxInstances.Header] = []string{f.MaxInstancesStr}
-	r.Header[key.TargetCPUUtilization.Header] = []string{f.TargetCPUUtilizationStr}
-	r.Header[key.TargetMemoryUtilization.Header] = []string{f.TargetMemoryUtilizationStr}
+	r.Header[key.MinInstances.Header] = []string{strconv.Itoa(f.MinInstances)}
+	r.Header[key.MaxInstances.Header] = []string{strconv.Itoa(f.MaxInstances)}
+	r.Header[key.TargetCPUUtilization.Header] = []string{strconv.Itoa(f.TargetCPUUtilization)}
+	r.Header[key.TargetMemoryUtilization.Header] = []string{strconv.Itoa(f.TargetMemoryUtilization)}
 }
 
 func FromHeaders(req *http.Request) (Function, error) {
