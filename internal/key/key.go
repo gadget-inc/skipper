@@ -27,6 +27,6 @@ func new(kebabCasedName string) key {
 		Underscored: strings.ReplaceAll(kebabCasedName, "-", "_"),
 		Header:      "X-Fusion-" + textproto.CanonicalMIMEHeaderKey(kebabCasedName),
 		Label:       "fusion/" + kebabCasedName,
-		PatchLabel:  "/metadata/labels/" + "fusion~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
+		PatchLabel:  "/metadata/labels/fusion~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
 	}
 }

@@ -32,7 +32,7 @@ var DefaultConfig = Config{
 
 // InstanceMetric contains metrics and status information for a pod
 type InstanceMetric struct {
-	function.Instance
+	*function.Instance
 	CPUUsage    *int64
 	MemoryUsage *int64
 }

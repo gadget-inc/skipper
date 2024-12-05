@@ -89,7 +89,7 @@ func (pm *Manager) Start(ctx context.Context) error {
 	return nil
 }
 
-func (pm *Manager) GetAssigned(fn function.Function) ([]function.Instance, error) {
+func (pm *Manager) GetAssigned(fn function.Function) ([]*function.Instance, error) {
 	assignedPods, err := pm.ListPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
@@ -99,7 +99,7 @@ func (pm *Manager) GetAssigned(fn function.Function) ([]function.Instance, error
 		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
 	}
 
-	var instances []function.Instance
+	var instances []*function.Instance
 	for _, pod := range assignedPods {
 		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil {
 			continue

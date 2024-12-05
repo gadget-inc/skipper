@@ -221,7 +221,7 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 				return nil
 			}
 
-			var defunctInstances []function.Instance
+			var defunctInstances []*function.Instance
 			for _, pod := range pods {
 				instance, err := function.FromPod(pod)
 				if err != nil {
@@ -246,7 +246,7 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 					scaleMu.Lock()
 					defer scaleMu.Unlock()
 
-					log.Debug(ctx, "terminating defunct function", key.Function.Field(instance))
+					log.Debug(ctx, "terminating defunct function", key.Instance.Field(instance))
 					err = c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 					if err != nil {
 						log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Instance.Field(instance))

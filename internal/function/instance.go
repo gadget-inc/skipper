@@ -1,6 +1,7 @@
 package function
 
 import (
+	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -9,8 +10,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	v1 "k8s.io/api/core/v1"
 )
-
-var emptyInstance = Instance{Function: emptyFunction}
 
 type Instance struct {
 	Function
@@ -21,7 +20,7 @@ type Instance struct {
 	ReadyAt    time.Time
 }
 
-func FromPod(pod *v1.Pod) (Instance, error) {
+func FromPod(pod *v1.Pod) (*Instance, error) {
 	fn, err := new(
 		pod.Labels[key.Deployment.Label],
 		pod.Labels[key.MaxReplicas.Label],
@@ -33,45 +32,40 @@ func FromPod(pod *v1.Pod) (Instance, error) {
 		pod.Labels[key.Tenant.Label],
 	)
 	if err != nil {
-		return emptyInstance, err
+		return nil, fmt.Errorf("failed to get function from pod: %w", err)
 	}
 
-	assignedAtStr := pod.Labels[key.AssignedAt.Label]
-	if assignedAtStr == "" {
-		return emptyInstance, ErrMissingAssignedAt
+	assignedAtInt, err := strconv.ParseInt(pod.Labels[key.AssignedAt.Label], 10, 64)
+	if err != nil {
+		return nil, ErrInvalidAssignedAt
 	}
-
-	assignedAt, err := strconv.ParseInt(assignedAtStr, 10, 64)
-	if err != nil || assignedAt == 0 {
-		return emptyInstance, ErrInvalidAssignedAt
-	}
+	assignedAt := time.Unix(assignedAtInt, 0)
 
 	var readyAt time.Time
 	if readyAtStr, ok := pod.Labels[key.ReadyAt.Label]; ok {
 		readyAtInt, err := strconv.ParseInt(readyAtStr, 10, 64)
-		if err != nil || readyAtInt == 0 {
-			return emptyInstance, ErrInvalidReadyAt
+		if err != nil {
+			return nil, ErrInvalidReadyAt
 		}
 		readyAt = time.Unix(readyAtInt, 0)
 	}
 
 	replicaSet := pod.Labels[key.ReplicaSet.Label]
 	if replicaSet == "" {
-		return emptyInstance, ErrMissingReplicaSet
+		return nil, ErrMissingReplicaSet
 	}
 
-	return Instance{
-		Function: fn,
-		// Pod:        pod,
+	return &Instance{
+		Function:   fn,
 		Name:       pod.Name,
 		IP:         pod.Status.PodIP,
-		AssignedAt: time.Unix(assignedAt, 0),
-		ReadyAt:    readyAt,
 		Version:    replicaSet,
+		AssignedAt: assignedAt,
+		ReadyAt:    readyAt,
 	}, nil
 }
 
-func (instance Instance) Fields() []slog.Attr {
+func (instance *Instance) Fields() []slog.Attr {
 	return []slog.Attr{
 		key.Name.Field(instance.Name),
 		key.IP.Field(instance.IP),
@@ -81,7 +75,7 @@ func (instance Instance) Fields() []slog.Attr {
 	}
 }
 
-func (instance Instance) Attributes() []attribute.KeyValue {
+func (instance *Instance) Attributes() []attribute.KeyValue {
 	return append(key.Function.Attributes(instance.Function),
 		key.Name.Attribute(instance.Name),
 		key.IP.Attribute(instance.IP),

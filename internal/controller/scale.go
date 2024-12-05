@@ -83,7 +83,7 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 	return functionMetrics, nil
 }
 
-func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]function.Instance, error) {
+func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
 	scaleMu, _ := c.scaleMu.LoadOrCompute(fn, func() *sync.Mutex { return new(sync.Mutex) })
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
@@ -96,7 +96,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 		return nil, fmt.Errorf("failed to get assigned pods: %w", err)
 	}
 
-	var instances []function.Instance
+	var instances []*function.Instance
 	for _, pod := range assignedPods {
 		instance, err := function.FromPod(pod)
 		if err != nil {
@@ -138,7 +138,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 		}
 	} else {
 		// sort instances by assigned at,
-		slices.SortFunc(instances, func(a, b function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
+		slices.SortFunc(instances, func(a, b *function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
 
 		// delete the oldest instances and remove them from the list
 		for i := len(instances) - 1; i >= desiredInstances; i-- {
@@ -182,7 +182,7 @@ func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Function) (function.Instance, error) {
+func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Function) (*function.Instance, error) {
 	pod, err := timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		availablePods, err := c.getAvailablePodsForFunction(fn)
 		if err != nil {
@@ -195,7 +195,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return availablePods[rand.Intn(len(availablePods))], nil
 	})
 	if err != nil {
-		return function.Instance{}, fmt.Errorf("failed to poll for available pod: %w", err)
+		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
 	}
 
 	assignPatches := []patchOperation{
@@ -214,12 +214,12 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 
 	patchBody, err := json.Marshal(assignPatches)
 	if err != nil {
-		return function.Instance{}, fmt.Errorf("failed to marshal assign patch: %w", err)
+		return nil, fmt.Errorf("failed to marshal assign patch: %w", err)
 	}
 
 	_, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
-		return function.Instance{}, fmt.Errorf("failed to assign pod: %w", err)
+		return nil, fmt.Errorf("failed to assign pod: %w", err)
 	}
 
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value)
@@ -228,7 +228,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	assignURL := fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, function.FlagPort.Value, function.FlagAssignPath.Value)
 	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
-		return function.Instance{}, fmt.Errorf("failed to create assign request: %w", err)
+		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}
 
 	req.Header.Set(key.Tenant.Header, fn.Tenant)
@@ -237,12 +237,12 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return function.Instance{}, fmt.Errorf("failed to send assign request: %w", err)
+		return nil, fmt.Errorf("failed to send assign request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		// TODO: log response body
-		return function.Instance{}, fmt.Errorf("assign request returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("assign request returned status %d", resp.StatusCode)
 	}
 
 	setReadyPatches := []patchOperation{
@@ -252,17 +252,17 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 
 	patchBody, err = json.Marshal(setReadyPatches)
 	if err != nil {
-		return function.Instance{}, fmt.Errorf("failed to marshal set ready patch: %w", err)
+		return nil, fmt.Errorf("failed to marshal set ready patch: %w", err)
 	}
 
 	pod, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
-		return function.Instance{}, fmt.Errorf("failed to patch status: %w", err)
+		return nil, fmt.Errorf("failed to patch status: %w", err)
 	}
 
 	err = c.podManager.Update(pod)
 	if err != nil {
-		return function.Instance{}, fmt.Errorf("failed to update pod: %w", err)
+		return nil, fmt.Errorf("failed to update pod: %w", err)
 	}
 
 	return function.FromPod(pod)

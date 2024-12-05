@@ -22,7 +22,7 @@ func NewClient(host string, port int) *Client {
 	}
 }
 
-func (c *Client) Get(ctx context.Context, fn function.Function) (instance function.Instance, err error) {
+func (c *Client) Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/get", nil)
 	if err != nil {
 		return instance, fmt.Errorf("failed to create get request: %w", err)
@@ -75,7 +75,7 @@ func (c *Client) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
 	return nil
 }
 
-func (c *Client) Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]function.Instance, error) {
+func (c *Client) Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/scale", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scale request: %w", err)
@@ -94,7 +94,7 @@ func (c *Client) Scale(ctx context.Context, fn function.Function, desiredInstanc
 		return nil, fmt.Errorf("scale request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
-	var instances []function.Instance
+	var instances []*function.Instance
 	if err := json.NewDecoder(res.Body).Decode(&instances); err != nil {
 		return nil, fmt.Errorf("failed to decode scale response: %w", err)
 	}
