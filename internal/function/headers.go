@@ -11,8 +11,8 @@ func RemoveHeaders(r *http.Request) {
 	delete(r.Header, key.Namespace.Header)
 	delete(r.Header, key.Deployment.Header)
 	delete(r.Header, key.Metadata.Header)
-	delete(r.Header, key.MinReplicas.Header)
-	delete(r.Header, key.MaxReplicas.Header)
+	delete(r.Header, key.MinInstances.Header)
+	delete(r.Header, key.MaxInstances.Header)
 	delete(r.Header, key.TargetCPUUtilization.Header)
 	delete(r.Header, key.TargetMemoryUtilization.Header)
 }
@@ -22,8 +22,8 @@ func (f Function) SetHeaders(r *http.Request) {
 	r.Header[key.Namespace.Header] = []string{f.Namespace}
 	r.Header[key.Deployment.Header] = []string{f.Deployment}
 	r.Header[key.Metadata.Header] = []string{f.Metadata}
-	r.Header[key.MinReplicas.Header] = []string{f.MinReplicasStr}
-	r.Header[key.MaxReplicas.Header] = []string{f.MaxReplicasStr}
+	r.Header[key.MinInstances.Header] = []string{f.MinInstancesStr}
+	r.Header[key.MaxInstances.Header] = []string{f.MaxInstancesStr}
 	r.Header[key.TargetCPUUtilization.Header] = []string{f.TargetCPUUtilizationStr}
 	r.Header[key.TargetMemoryUtilization.Header] = []string{f.TargetMemoryUtilizationStr}
 }
@@ -36,9 +36,9 @@ func FromHeaders(req *http.Request) (Function, error) {
 
 	return new(
 		getHeaderValue(req, key.Deployment.Header),
-		getHeaderValue(req, key.MaxReplicas.Header),
+		getHeaderValue(req, key.MaxInstances.Header),
 		metadata[0],
-		getHeaderValue(req, key.MinReplicas.Header),
+		getHeaderValue(req, key.MinInstances.Header),
 		getHeaderValue(req, key.Namespace.Header),
 		getHeaderValue(req, key.TargetCPUUtilization.Header),
 		getHeaderValue(req, key.TargetMemoryUtilization.Header),

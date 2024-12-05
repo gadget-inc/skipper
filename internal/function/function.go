@@ -12,11 +12,11 @@ var emptyFunction = Function{}
 
 type Function struct {
 	Deployment                 string `json:"deployment"`
-	MaxReplicas                int    `json:"maxReplicas"`
-	MaxReplicasStr             string `json:"maxReplicasStr"`
+	MaxInstances               int    `json:"maxInstances"`
+	MaxInstancesStr            string `json:"maxInstancesStr"`
 	Metadata                   string `json:"-"`
-	MinReplicas                int    `json:"minReplicas"`
-	MinReplicasStr             string `json:"minReplicasStr"`
+	MinInstances               int    `json:"minInstances"`
+	MinInstancesStr            string `json:"minInstancesStr"`
 	Namespace                  string `json:"namespace"`
 	TargetCPUUtilization       int    `json:"targetCPUUtilization"`
 	TargetCPUUtilizationStr    string `json:"targetCPUUtilizationStr"`
@@ -27,9 +27,9 @@ type Function struct {
 
 func new(
 	deployment string,
-	maxReplicasStr string,
+	maxInstancesStr string,
 	metadata string,
-	minReplicasStr string,
+	minInstancesStr string,
 	namespace string,
 	targetCPUUtilizationStr string,
 	targetMemoryUtilizationStr string,
@@ -47,22 +47,22 @@ func new(
 		return emptyFunction, ErrMissingDeployment
 	}
 
-	if maxReplicasStr == "" {
-		return emptyFunction, ErrMissingMaxReplicas
+	if maxInstancesStr == "" {
+		return emptyFunction, ErrMissingMaxInstances
 	}
 
-	maxReplicas, err := strconv.Atoi(maxReplicasStr)
+	maxInstances, err := strconv.Atoi(maxInstancesStr)
 	if err != nil {
-		return emptyFunction, ErrInvalidMaxReplicas
+		return emptyFunction, ErrInvalidMaxInstances
 	}
 
-	if minReplicasStr == "" {
-		return emptyFunction, ErrMissingMinReplicas
+	if minInstancesStr == "" {
+		return emptyFunction, ErrMissingMinInstances
 	}
 
-	minReplicas, err := strconv.Atoi(minReplicasStr)
+	minInstances, err := strconv.Atoi(minInstancesStr)
 	if err != nil {
-		return emptyFunction, ErrInvalidMinReplicas
+		return emptyFunction, ErrInvalidMinInstances
 	}
 
 	if targetCPUUtilizationStr == "" {
@@ -85,11 +85,11 @@ func new(
 
 	return Function{
 		Deployment:                 deployment,
-		MaxReplicas:                maxReplicas,
-		MaxReplicasStr:             maxReplicasStr,
+		MaxInstances:               maxInstances,
+		MaxInstancesStr:            maxInstancesStr,
 		Metadata:                   metadata,
-		MinReplicas:                minReplicas,
-		MinReplicasStr:             minReplicasStr,
+		MinInstances:               minInstances,
+		MinInstancesStr:            minInstancesStr,
 		Namespace:                  namespace,
 		TargetCPUUtilization:       targetCPUUtilization,
 		TargetCPUUtilizationStr:    targetCPUUtilizationStr,
@@ -103,8 +103,8 @@ func (f Function) RingKey() string {
 	return f.Tenant + ":" +
 		f.Namespace + ":" +
 		f.Deployment + ":" +
-		f.MinReplicasStr + ":" +
-		f.MaxReplicasStr + ":" +
+		f.MinInstancesStr + ":" +
+		f.MaxInstancesStr + ":" +
 		f.TargetCPUUtilizationStr + ":" +
 		f.TargetMemoryUtilizationStr
 }
@@ -114,9 +114,8 @@ func (f Function) Fields() []slog.Attr {
 		key.Tenant.Field(f.Tenant),
 		// key.Namespace.Field(f.Namespace),
 		// key.Deployment.Field(f.Deployment),
-		// slog.String("deployment", f.Deployment),
-		// key.MinReplicas.Field(f.MinReplicas),
-		// key.MaxReplicas.Field(f.MaxReplicas),
+		// key.MinInstances.Field(f.MinInstances),
+		// key.MaxInstances.Field(f.MaxInstances),
 		// key.TargetCPUUtilization.Field(f.TargetCPUUtilization),
 		// key.TargetMemoryUtilization.Field(f.TargetMemoryUtilization),
 	}
@@ -126,10 +125,9 @@ func (f Function) Attributes() []attribute.KeyValue {
 	return []attribute.KeyValue{
 		key.Tenant.Attribute(f.Tenant),
 		key.Namespace.Attribute(f.Namespace),
-		// key.Deployment.Field(f.Deployment),
-		attribute.String("deployment", f.Deployment),
-		key.MinReplicas.Attribute(f.MinReplicas),
-		key.MaxReplicas.Attribute(f.MaxReplicas),
+		key.Deployment.Attribute(f.Deployment),
+		key.MinInstances.Attribute(f.MinInstances),
+		key.MaxInstances.Attribute(f.MaxInstances),
 		key.TargetCPUUtilization.Attribute(f.TargetCPUUtilization),
 		key.TargetMemoryUtilization.Attribute(f.TargetMemoryUtilization),
 	}

@@ -3,18 +3,18 @@ package key
 var (
 	AssignedAt              = timeKey{new("assigned-at")}
 	Controller              = stringKey{new("controller")}
-	CurrentReplicas         = intKey{new("current-replicas")}
-	Deployment              = deploymentKey{new("deployment")}
+	CurrentInstances        = intKey{new("current-instances")}
+	Deployment              = stringKey{new("deployment")}
 	DesiredInstances        = intKey{new("desired-instances")}
 	Error                   = errorKey{new("error")}
 	ForwardedFor            = stringSliceKey{new("forwarded-for")}
 	Function                = groupValueKey{new("function")}
 	IP                      = stringKey{new("ip")}
 	Instance                = groupValueKey{new("instance")}
-	LastRequest             = timeKey{new("last-request")}
-	MaxReplicas             = intKey{new("max-replicas")}
+	Timestamp               = timeKey{new("timestamp")}
+	MaxInstances            = intKey{new("max-instances")}
 	Metadata                = stringKey{new("metadata")}
-	MinReplicas             = intKey{new("min-replicas")}
+	MinInstances            = intKey{new("min-instances")}
 	Name                    = stringKey{new("name")}
 	Namespace               = stringKey{new("namespace")}
 	Pod                     = podKey{new("pod")}

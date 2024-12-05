@@ -310,7 +310,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 							continue
 						}
 
-						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.LastRequest.Field(timestamp))
+						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.Timestamp.Field(timestamp))
 						_, err := c.scaleFunction(ctx, fn, 0)
 						if err != nil {
 							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
@@ -318,9 +318,9 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						continue
 					}
 
-					currentReplicas := len(instanceMetrics)
-					desiredReplicas, err := calculateDesiredReplicas(
-						currentReplicas,
+					currentInstances := len(instanceMetrics)
+					desiredInstances, err := calculateDesiredInstances(
+						currentInstances,
 						instanceMetrics,
 						int64(fn.TargetCPUUtilization),
 						int64(fn.TargetMemoryUtilization),
@@ -328,16 +328,16 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						now,
 					)
 					if err != nil {
-						log.Trace(ctx, "failed to calculate desired replicas", key.Error.Field(err), key.Function.Field(fn))
+						log.Trace(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
 						continue
 					}
 
-					if desiredReplicas < fn.MinReplicas {
-						desiredReplicas = fn.MinReplicas
+					if desiredInstances < fn.MinInstances {
+						desiredInstances = fn.MinInstances
 					}
 
-					if desiredReplicas > fn.MaxReplicas {
-						desiredReplicas = fn.MaxReplicas
+					if desiredInstances > fn.MaxInstances {
+						desiredInstances = fn.MaxInstances
 					}
 
 					stabilizationWindow, exists := stabilizationWindows[fn]
@@ -348,14 +348,14 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						stabilizationWindows[fn] = stabilizationWindow
 					}
 
-					log.Trace(ctx, "desired replicas",
+					log.Trace(ctx, "desired instances",
 						key.Function.Field(fn),
-						key.CurrentReplicas.Field(currentReplicas),
-						key.DesiredInstances.Field(desiredReplicas),
+						key.CurrentInstances.Field(currentInstances),
+						key.DesiredInstances.Field(desiredInstances),
 						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
 					)
 
-					stabilizationWindow.RecordRecommendation(desiredReplicas, now)
+					stabilizationWindow.RecordRecommendation(desiredInstances, now)
 
 					controllerIP, ok := c.ring.Get(fn.RingKey())
 					if !ok || controllerIP != FlagIP.Value {
@@ -368,16 +368,16 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						continue
 					}
 
-					if desiredReplicas < currentReplicas {
-						maxRecommendedReplicas := stabilizationWindow.GetMaxRecommendation()
-						if maxRecommendedReplicas < currentReplicas {
-							desiredReplicas = maxRecommendedReplicas
+					if desiredInstances < currentInstances {
+						maxRecommendedInstances := stabilizationWindow.GetMaxRecommendation()
+						if maxRecommendedInstances < currentInstances {
+							desiredInstances = maxRecommendedInstances
 						} else {
-							desiredReplicas = currentReplicas
+							desiredInstances = currentInstances
 						}
 					}
 
-					if desiredReplicas == 0 {
+					if desiredInstances == 0 {
 						// we only scale to 0 if the last request was more than 90 seconds ago
 						log.Debug(ctx, "skipping scaling function to 0 based on hpa", key.Function.Field(fn))
 						continue
@@ -385,18 +385,18 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 
 					log.Trace(ctx, "scaling function",
 						key.Function.Field(fn),
-						key.CurrentReplicas.Field(currentReplicas),
-						key.DesiredInstances.Field(desiredReplicas),
+						key.CurrentInstances.Field(currentInstances),
+						key.DesiredInstances.Field(desiredInstances),
 						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
 					)
 
-					_, err = c.scaleFunction(ctx, fn, desiredReplicas)
+					_, err = c.scaleFunction(ctx, fn, desiredInstances)
 					if err != nil {
 						log.Warn(ctx, "failed to scale function",
 							key.Error.Field(err),
 							key.Function.Field(fn),
-							key.CurrentReplicas.Field(currentReplicas),
-							key.DesiredInstances.Field(desiredReplicas),
+							key.CurrentInstances.Field(currentInstances),
+							key.DesiredInstances.Field(desiredInstances),
 						)
 					}
 				}

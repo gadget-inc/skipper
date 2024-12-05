@@ -23,9 +23,9 @@ type Instance struct {
 func FromPod(pod *v1.Pod) (*Instance, error) {
 	fn, err := new(
 		pod.Labels[key.Deployment.Label],
-		pod.Labels[key.MaxReplicas.Label],
+		pod.Labels[key.MaxInstances.Label],
 		"", // we don't store metadata in labels because they may contain sensitive information
-		pod.Labels[key.MinReplicas.Label],
+		pod.Labels[key.MinInstances.Label],
 		pod.Labels[key.Namespace.Label],
 		pod.Labels[key.TargetCPUUtilization.Label],
 		pod.Labels[key.TargetMemoryUtilization.Label],

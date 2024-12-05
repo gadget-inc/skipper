@@ -39,7 +39,7 @@ type InstanceMetric struct {
 
 // Recommendation represents a scaling recommendation
 type Recommendation struct {
-	Replicas  int
+	Instances int
 	Timestamp time.Time
 }
 
@@ -50,9 +50,9 @@ type StabilizationWindow struct {
 }
 
 // RecordRecommendation adds a new recommendation and prunes old ones
-func (sw *StabilizationWindow) RecordRecommendation(replicas int, timestamp time.Time) {
+func (sw *StabilizationWindow) RecordRecommendation(instances int, timestamp time.Time) {
 	sw.Recommendations = append(sw.Recommendations, Recommendation{
-		Replicas:  replicas,
+		Instances: instances,
 		Timestamp: timestamp,
 	})
 
@@ -67,20 +67,20 @@ func (sw *StabilizationWindow) RecordRecommendation(replicas int, timestamp time
 	sw.Recommendations = newRecommendations
 }
 
-// GetMaxRecommendation returns the maximum recommended replicas in the window
+// GetMaxRecommendation returns the maximum recommended instances in the window
 func (sw *StabilizationWindow) GetMaxRecommendation() int {
-	var maxReplicas int
+	var maxInstances int
 	for _, rec := range sw.Recommendations {
-		if rec.Replicas > maxReplicas {
-			maxReplicas = rec.Replicas
+		if rec.Instances > maxInstances {
+			maxInstances = rec.Instances
 		}
 	}
-	return maxReplicas
+	return maxInstances
 }
 
-// calculateDesiredReplicasForMetric computes desired replicas based on a single metric
-func calculateDesiredReplicasForMetric(
-	currentReplicas int,
+// calculateDesiredInstancesForMetric computes desired instances based on a single metric
+func calculateDesiredInstancesForMetric(
+	currentInstances int,
 	metric Metric,
 	instanceMetrics []InstanceMetric,
 	targetUtilization int64,
@@ -129,23 +129,23 @@ func calculateDesiredReplicasForMetric(
 	}
 
 	if len(instancesWithMetrics) == 0 {
-		return currentReplicas, fmt.Errorf("no metrics available for metric %v", metric)
+		return currentInstances, fmt.Errorf("no metrics available for metric %v", metric)
 	}
 
 	currentAverageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
 	usageRatio := currentAverageUsage / float64(targetUtilization)
 
 	if math.Abs(1.0-usageRatio) <= hpaConfig.Tolerance {
-		return currentReplicas, nil
+		return currentInstances, nil
 	}
 
-	desiredReplicas := int(math.Ceil(float64(currentReplicas) * usageRatio))
+	desiredInstances := int(math.Ceil(float64(currentInstances) * usageRatio))
 
 	if len(instancesWithoutMetrics) > 0 || len(notReadyInstances) > 0 {
 		totalInstances := len(instancesWithMetrics) + len(instancesWithoutMetrics) + len(notReadyInstances)
 
 		adjustedTotalUsage := totalUsage
-		if desiredReplicas < currentReplicas {
+		if desiredInstances < currentInstances {
 			adjustedTotalUsage += int64(len(instancesWithoutMetrics)) * targetUtilization
 		}
 
@@ -155,26 +155,26 @@ func calculateDesiredReplicasForMetric(
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
 			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance {
-			// If the adjusted usage ratio is within tolerance of the target utilization, return the current replicas
-			return currentReplicas, nil
+			// If the adjusted usage ratio is within tolerance of the target utilization, return the current instances
+			return currentInstances, nil
 		}
 
-		desiredReplicas = int(math.Ceil(float64(currentReplicas) * adjustedUsageRatio))
+		desiredInstances = int(math.Ceil(float64(currentInstances) * adjustedUsageRatio))
 	}
 
-	return desiredReplicas, nil
+	return desiredInstances, nil
 }
 
-// calculateDesiredReplicas computes desired replicas based on multiple metrics
-func calculateDesiredReplicas(
-	currentReplicas int,
+// calculateDesiredInstances computes desired instances based on multiple metrics
+func calculateDesiredInstances(
+	currentInstances int,
 	instanceMetrics []InstanceMetric,
 	targetCPUUtilization int64,
 	targetMemoryUtilization int64,
 	hpaConfig Config,
 	timestamp time.Time,
 ) (int, error) {
-	maxDesiredReplicas := 0
+	maxDesiredInstances := 0
 	metricsToCalculate := []struct {
 		name              Metric
 		targetUtilization int64
@@ -187,8 +187,8 @@ func calculateDesiredReplicas(
 	scaleDownSuggested := false
 
 	for _, metric := range metricsToCalculate {
-		desiredReplicas, err := calculateDesiredReplicasForMetric(
-			currentReplicas,
+		desiredInstances, err := calculateDesiredInstancesForMetric(
+			currentInstances,
 			metric.name,
 			instanceMetrics,
 			metric.targetUtilization,
@@ -196,28 +196,28 @@ func calculateDesiredReplicas(
 			timestamp,
 		)
 		if err != nil {
-			if desiredReplicas < currentReplicas {
+			if desiredInstances < currentInstances {
 				scaleDownErrors++
 			}
 			continue
 		}
 
-		if desiredReplicas > maxDesiredReplicas {
-			maxDesiredReplicas = desiredReplicas
+		if desiredInstances > maxDesiredInstances {
+			maxDesiredInstances = desiredInstances
 		}
 
-		if desiredReplicas < currentReplicas {
+		if desiredInstances < currentInstances {
 			scaleDownSuggested = true
 		}
 	}
 
-	if maxDesiredReplicas == 0 {
-		return currentReplicas, fmt.Errorf("no metrics available")
+	if maxDesiredInstances == 0 {
+		return currentInstances, fmt.Errorf("no metrics available")
 	}
 
 	if scaleDownSuggested && scaleDownErrors > 0 {
-		return currentReplicas, nil
+		return currentInstances, nil
 	}
 
-	return maxDesiredReplicas, nil
+	return maxDesiredInstances, nil
 }
