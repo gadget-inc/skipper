@@ -326,7 +326,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						currentInstances,
 						instanceMetrics,
 						int64(fn.TargetCPUUtilization),
-						int64(fn.TargetMemoryUtilization),
+						// int64(fn.TargetMemoryUtilization),
 						DefaultConfig,
 						now,
 					)

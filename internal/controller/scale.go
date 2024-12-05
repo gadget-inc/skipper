@@ -137,10 +137,10 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 			log.Trace(ctx, "assigned pod", key.Instance.Field(instance))
 		}
 	} else {
-		// sort instances by assigned at,
+		// sort instances by assigned at in ascending order
 		slices.SortFunc(instances, func(a, b *function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
 
-		// delete the oldest instances and remove them from the list
+		// iterate over instances in reverse order, deleting the oldest ones first
 		for i := len(instances) - 1; i >= desiredInstances; i-- {
 			instance := instances[i]
 			err := c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})

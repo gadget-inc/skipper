@@ -170,7 +170,7 @@ func calculateDesiredInstances(
 	currentInstances int,
 	instanceMetrics []InstanceMetric,
 	targetCPUUtilization int64,
-	targetMemoryUtilization int64,
+	// targetMemoryUtilization int64,
 	hpaConfig Config,
 	timestamp time.Time,
 ) (int, error) {

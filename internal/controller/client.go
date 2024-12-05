@@ -25,23 +25,23 @@ func NewClient(host string, port int) *Client {
 func (c *Client) Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/get", nil)
 	if err != nil {
-		return instance, fmt.Errorf("failed to create get request: %w", err)
+		return nil, fmt.Errorf("failed to create get request: %w", err)
 	}
 
 	fn.SetHeaders(req)
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return instance, fmt.Errorf("failed to send get request: %w", err)
+		return nil, fmt.Errorf("failed to send get request: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return instance, fmt.Errorf("get request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
+		return nil, fmt.Errorf("get request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&instance); err != nil {
-		return instance, fmt.Errorf("failed to decode get response: %w", err)
+		return nil, fmt.Errorf("failed to decode get response: %w", err)
 	}
 
 	return instance, nil
