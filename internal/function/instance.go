@@ -69,8 +69,8 @@ func (instance *Instance) Fields() []slog.Attr {
 	return []slog.Attr{
 		key.Name.Field(instance.Name),
 		key.IP.Field(instance.IP),
-		// key.AssignedAt.Field(instance.AssignedAt),
-		// key.ReadyAt.Field(instance.ReadyAt),
+		key.AssignedAt.Field(instance.AssignedAt),
+		key.ReadyAt.Field(instance.ReadyAt),
 		key.Function.Field(instance.Function),
 	}
 }
