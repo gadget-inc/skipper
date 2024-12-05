@@ -225,7 +225,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value)
 	defer cancel()
 
-	assignURL := fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, function.FlagPort.Value, function.FlagAssignPath.Value)
+	assignURL := "http://" + pod.Status.PodIP + ":" + strconv.Itoa(function.FlagPort.Value) + function.FlagAssignPath.Value
 	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
@@ -235,14 +235,13 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	req.Header.Set(key.Metadata.Header, fn.Metadata)
 
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
-	resp, err := http.DefaultClient.Do(req)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send assign request: %w", err)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		// TODO: log response body
-		return nil, fmt.Errorf("assign request returned status %d", resp.StatusCode)
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("assign request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
 	setReadyPatches := []patchOperation{
