@@ -2,20 +2,129 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/fixture"
+	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
 func TestHealthz(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rw := httptest.NewRecorder()
+
+	router := New(fixture.NewMockControllerClient(t))
+	router.ServeHTTP(rw, req)
+
+	require.Equal(t, http.StatusOK, rw.Code)
+	require.Empty(t, rw.Body)
+}
+
+func TestSimple(t *testing.T) {
+	fn := fixture.NewFunction()
+	testServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+		fmt.Fprintf(rw, "Hello, %s", fn.Tenant)
+	}))
+	defer testServer.Close()
+
+	mockControllerClient := fixture.NewMockControllerClient(t)
+	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+		return &function.Instance{
+			Function:   fn,
+			Name:       uuid.NewString(),
+			Addr:       testServer.Listener.Addr().String(),
+			Version:    uuid.NewString(),
+			AssignedAt: time.Now(),
+			ReadyAt:    time.Now(),
+		}, nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	fn.SetHeaders(req)
+
+	router := New(mockControllerClient)
+	router.ServeHTTP(rw, req)
+
+	require.Equal(t, http.StatusOK, rw.Code)
+	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+}
+
+func TestControllerGetRetries(t *testing.T) {
+	fn := fixture.NewFunction()
+	testServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+		fmt.Fprintf(rw, "Hello, %s", fn.Tenant)
+	}))
+	defer testServer.Close()
+
+	attempts := 0
+
+	mockControllerClient := fixture.NewMockControllerClient(t)
+	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+		if attempts < 2 {
+			attempts++
+			return nil, fmt.Errorf("controller get error")
+		}
+
+		return &function.Instance{
+			Function:   fn,
+			Name:       uuid.NewString(),
+			Addr:       testServer.Listener.Addr().String(),
+			Version:    uuid.NewString(),
+			AssignedAt: time.Now(),
+			ReadyAt:    time.Now(),
+		}, nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	fn.SetHeaders(req)
+
+	router := New(mockControllerClient)
+	router.ServeHTTP(rw, req)
+
+	require.Equal(t, http.StatusOK, rw.Code)
+	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+}
+
+func TestKeepAlives(t *testing.T) {
+	fn := fixture.NewFunction()
+
+	mockControllerClient := fixture.NewMockControllerClient(t)
+	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("Hello, " + fn.Tenant))
+		}), nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	fn.SetHeaders(req)
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	f := fixture.New(t)
-	res, err := f.SendRouterRequest(ctx, http.MethodGet, "/healthz", nil)
-	require.NoError(t, err, "failed to send router healthz request")
-	require.Equal(t, http.StatusOK, res.StatusCode, "unexpected status code")
+	testStartTime := time.Now()
+	router := New(mockControllerClient)
+	router.Start(ctx)
+	router.ServeHTTP(rw, req)
+
+	require.Equal(t, http.StatusOK, rw.Code)
+	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+
+	require.Eventually(t, func() bool {
+		return len(mockControllerClient.KeepAlives()) > 0
+	}, 6*time.Second, time.Second)
+
+	keepAlive := mockControllerClient.KeepAlives()[0]
+	require.Equal(t, fn, keepAlive.Function)
+	require.True(t, keepAlive.Timestamp.After(testStartTime))
 }

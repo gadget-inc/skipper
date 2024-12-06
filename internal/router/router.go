@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"strconv"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/buffer"
@@ -20,13 +19,13 @@ import (
 )
 
 type Router struct {
-	controller   *controller.Client
+	controller   controller.Client
 	keepAlives   *xsync.MapOf[function.Function, time.Time]
 	reverseProxy *httputil.ReverseProxy
 	transport    *http.Transport
 }
 
-func New(controllerClient *controller.Client) *Router {
+func New(controllerClient controller.Client) *Router {
 	r := &Router{
 		controller: controllerClient,
 		keepAlives: xsync.NewMapOf[function.Function, time.Time](),
@@ -123,7 +122,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		req.URL.Scheme = "http"
-		req.URL.Host = instance.IP + ":" + strconv.Itoa(function.FlagPort.Value)
+		req.URL.Host = instance.Addr
 
 		res, err := r.transport.RoundTrip(req)
 

@@ -2,3 +2,4 @@ linters-settings:
   errcheck:
     exclude-functions:
       - github.com/gadget-inc/fusion/internal/timer.Loop
+      - (net/http.ResponseWriter).Write

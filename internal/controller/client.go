@@ -12,17 +12,25 @@ import (
 	"github.com/goccy/go-json"
 )
 
-type Client struct {
+type Client interface {
+	Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error)
+	KeepAlive(ctx context.Context, keepAlives []KeepAlive) error
+	Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
+}
+
+type httpClient struct {
 	addr string
 }
 
-func NewClient(host string, port int) *Client {
-	return &Client{
+var _ Client = &httpClient{}
+
+func NewHTTPClient(host string, port int) Client {
+	return &httpClient{
 		addr: fmt.Sprintf("http://%s:%d", host, port),
 	}
 }
 
-func (c *Client) Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
+func (c *httpClient) Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/get", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create get request: %w", err)
@@ -47,7 +55,7 @@ func (c *Client) Get(ctx context.Context, fn function.Function) (instance *funct
 	return instance, nil
 }
 
-func (c *Client) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
+func (c *httpClient) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
 	if len(keepAlives) == 0 {
 		return nil
 	}
@@ -75,7 +83,7 @@ func (c *Client) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
 	return nil
 }
 
-func (c *Client) Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+func (c *httpClient) Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/scale", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scale request: %w", err)

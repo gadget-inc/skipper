@@ -1,0 +1,91 @@
+package fixture
+
+import (
+	"context"
+	"sync"
+	"testing"
+
+	"github.com/gadget-inc/fusion/internal/controller"
+	"github.com/gadget-inc/fusion/internal/function"
+)
+
+type (
+	GetHandler   func(ctx context.Context, fn function.Function) (*function.Instance, error)
+	ScaleHandler func(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
+)
+
+type MockControllerClient struct {
+	t             *testing.T
+	mu            sync.Mutex
+	keepAlives    []controller.KeepAlive
+	getHandlers   map[function.Function]GetHandler
+	scaleHandlers map[function.Function]ScaleHandler
+}
+
+var _ controller.Client = &MockControllerClient{}
+
+func NewMockControllerClient(t *testing.T) *MockControllerClient {
+	return &MockControllerClient{
+		t: t,
+	}
+}
+
+func (f *MockControllerClient) HandleGet(fn function.Function, h GetHandler) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.getHandlers == nil {
+		f.getHandlers = make(map[function.Function]GetHandler)
+	}
+	f.getHandlers[fn] = h
+}
+
+func (f *MockControllerClient) HandleScale(fn function.Function, h ScaleHandler) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.scaleHandlers == nil {
+		f.scaleHandlers = make(map[function.Function]ScaleHandler)
+	}
+	f.scaleHandlers[fn] = h
+}
+
+func (f *MockControllerClient) KeepAlives() []controller.KeepAlive {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.keepAlives
+}
+
+// Get implements controller.Client.
+func (f *MockControllerClient) Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if h, ok := f.getHandlers[fn]; ok {
+		return h(ctx, fn)
+	}
+
+	f.t.Fatalf("no get handler for function: %v", fn)
+
+	return nil, nil
+}
+
+// KeepAlive implements controller.Client.
+func (f *MockControllerClient) KeepAlive(ctx context.Context, keepAlives []controller.KeepAlive) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.keepAlives = append(f.keepAlives, keepAlives...)
+	return nil
+}
+
+// Scale implements controller.Client.
+func (f *MockControllerClient) Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if h, ok := f.scaleHandlers[fn]; ok {
+		return h(ctx, fn, desiredInstances)
+	}
+
+	f.t.Fatalf("no scale handler for function: %v", fn)
+
+	return nil, nil
+}

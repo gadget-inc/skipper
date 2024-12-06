@@ -63,7 +63,7 @@ type Controller struct {
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
 	podListerMap      map[string]podListerEntry
-	controllerClients *xsync.MapOf[string, *Client]
+	controllerClients *xsync.MapOf[string, Client]
 	scaleMu           *xsync.MapOf[function.Function, *sync.Mutex]
 	keepAlives        map[function.Function]time.Time
 	keepAlivesMu      sync.Mutex // guards keepAlives
@@ -75,7 +75,7 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 		clientset:         clientset,
 		metricsClientset:  metricsClient,
 		podListerMap:      make(map[string]podListerEntry, len(function.FlagNamespaces.Value)),
-		controllerClients: xsync.NewMapOf[string, *Client](),
+		controllerClients: xsync.NewMapOf[string, Client](),
 		scaleMu:           xsync.NewMapOf[function.Function, *sync.Mutex](),
 		keepAlives:        make(map[function.Function]time.Time),
 	}

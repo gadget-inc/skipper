@@ -14,7 +14,7 @@ import (
 type Instance struct {
 	Function
 	Name       string // pod name
-	IP         string // pod IP
+	Addr       string // pod IP : function port
 	Version    string // replica set name
 	AssignedAt time.Time
 	ReadyAt    time.Time
@@ -58,7 +58,7 @@ func FromPod(pod *v1.Pod) (*Instance, error) {
 	return &Instance{
 		Function:   fn,
 		Name:       pod.Name,
-		IP:         pod.Status.PodIP,
+		Addr:       pod.Status.PodIP + ":" + strconv.Itoa(FlagPort.Value),
 		Version:    replicaSet,
 		AssignedAt: assignedAt,
 		ReadyAt:    readyAt,
@@ -68,7 +68,7 @@ func FromPod(pod *v1.Pod) (*Instance, error) {
 func (instance *Instance) Fields() []slog.Attr {
 	return []slog.Attr{
 		key.Name.Field(instance.Name),
-		key.IP.Field(instance.IP),
+		key.Addr.Field(instance.Addr),
 		key.AssignedAt.Field(instance.AssignedAt),
 		key.ReadyAt.Field(instance.ReadyAt),
 		key.Function.Field(instance.Function),
@@ -78,7 +78,7 @@ func (instance *Instance) Fields() []slog.Attr {
 func (instance *Instance) Attributes() []attribute.KeyValue {
 	return append(key.Function.Attributes(instance.Function),
 		key.Name.Attribute(instance.Name),
-		key.IP.Attribute(instance.IP),
+		key.Addr.Attribute(instance.Addr),
 		key.AssignedAt.Attribute(instance.AssignedAt),
 		key.ReadyAt.Attribute(instance.ReadyAt),
 	)

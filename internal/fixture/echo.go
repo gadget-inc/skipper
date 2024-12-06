@@ -2,13 +2,13 @@ package fixture
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/goccy/go-json"
 	"github.com/google/uuid"
 )
 
@@ -23,14 +23,14 @@ func NewEcho(t *testing.T, name string) *EchoFixture {
 		Fixture: New(t),
 		Name:    name,
 		Function: function.Function{
-			Deployment:              "echo",
-			MaxInstances:            1,
+			Tenant:                  name + "-" + uuid.NewString(),
 			Metadata:                uuid.NewString(),
-			MinInstances:            0,
 			Namespace:               "fusion-fixtures-test",
+			Deployment:              "echo",
+			MinInstances:            0,
+			MaxInstances:            1,
 			TargetCPUUtilization:    100,
 			TargetMemoryUtilization: 200,
-			Tenant:                  name + "-" + uuid.NewString(),
 		},
 	}
 }

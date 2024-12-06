@@ -9,7 +9,7 @@ var (
 	Error                   = errorKey{new("error")}
 	ForwardedFor            = stringSliceKey{new("forwarded-for")}
 	Function                = groupValueKey{new("function")}
-	IP                      = stringKey{new("ip")}
+	Addr                    = stringKey{new("address")}
 	Instance                = groupValueKey{new("instance")}
 	Timestamp               = timeKey{new("timestamp")}
 	MaxInstances            = intKey{new("max-instances")}

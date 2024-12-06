@@ -117,7 +117,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 
 	if controllerIP != FlagIP.Value {
 		log.Debug(ctx, "forwarding request", key.Function.Field(fn), slog.String("ip", controllerIP))
-		controllerClient, _ := c.controllerClients.LoadOrCompute(controllerIP, func() *Client { return NewClient(controllerIP, FlagPort.Value) })
+		controllerClient, _ := c.controllerClients.LoadOrCompute(controllerIP, func() Client { return NewHTTPClient(controllerIP, FlagPort.Value) })
 		return controllerClient.Scale(ctx, fn, desiredInstances)
 	}
 

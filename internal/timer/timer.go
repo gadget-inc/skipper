@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-const (
-	JITTER = 200 * time.Millisecond
-)
-
 // Poll polls the given function until it returns a non-nil result or the timeout is reached.
 func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
 	result, err := fn(ctx)
@@ -57,17 +53,25 @@ func Loop(ctx context.Context, interval time.Duration, fn func(context.Context) 
 		return fmt.Errorf("loop context must be cancellable")
 	}
 
-	tick := time.Tick(interval + time.Duration(rand.Int63n(2*int64(JITTER))) - JITTER)
+	err := fn(ctx)
+	if err != nil {
+		return err
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-tick:
+		case <-time.After(addJitter(interval)):
 			err := fn(ctx)
 			if err != nil {
 				return err
 			}
 		}
 	}
+}
+
+func addJitter(interval time.Duration) time.Duration {
+	const jitter = 200 * time.Millisecond
+	return interval + time.Duration(rand.Int63n(2*int64(jitter))) - jitter
 }
