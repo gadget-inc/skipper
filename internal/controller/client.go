@@ -62,22 +62,22 @@ func (c *httpClient) Heartbeat(ctx context.Context, heartbeats []Heartbeat) erro
 
 	body, err := json.Marshal(heartbeats)
 	if err != nil {
-		return fmt.Errorf("failed to marshal keep alives: %w", err)
+		return fmt.Errorf("failed to marshal heartbeats: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/keepalive", bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/heartbeat", bytes.NewBuffer(body))
 	if err != nil {
-		return fmt.Errorf("failed to create keep alive request: %w", err)
+		return fmt.Errorf("failed to create heartbeat request: %w", err)
 	}
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send keep alive request: %w", err)
+		return fmt.Errorf("failed to send heartbeat request: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("keep alive request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
+		return fmt.Errorf("heartbeat request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
 	return nil

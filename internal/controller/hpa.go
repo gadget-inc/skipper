@@ -50,9 +50,9 @@ type StabilizationWindow struct {
 }
 
 // RecordRecommendation adds a new recommendation and prunes old ones
-func (sw *StabilizationWindow) RecordRecommendation(instances int, timestamp time.Time) {
+func (sw *StabilizationWindow) RecordRecommendation(desiredInstances int, timestamp time.Time) {
 	sw.Recommendations = append(sw.Recommendations, Recommendation{
-		Instances: instances,
+		Instances: desiredInstances,
 		Timestamp: timestamp,
 	})
 

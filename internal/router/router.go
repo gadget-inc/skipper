@@ -63,7 +63,7 @@ func (r *Router) Start(ctx context.Context) {
 
 		err := r.controller.Heartbeat(ctx, heartbeats)
 		if err != nil {
-			log.Warn(ctx, "failed to send keep alives", key.Error.Field(err))
+			log.Warn(ctx, "failed to send heartbeats", key.Error.Field(err))
 		}
 		return nil
 	})

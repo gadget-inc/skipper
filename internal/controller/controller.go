@@ -109,7 +109,7 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		c.handleGet(rw, req)
 	case "/scale":
 		c.handleScale(rw, req)
-	case "/keepalive":
+	case "/heartbeat":
 		c.handleHeartbeat(rw, req)
 	default:
 		http.NotFound(rw, req)
@@ -289,7 +289,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 				for fn, instanceMetrics := range functionMetrics {
 					timestamp, ok := heartbeats[fn]
 					if !ok {
-						log.Warn(ctx, "no keep alive for function", key.Function.Field(fn))
+						log.Warn(ctx, "no heartbeat for function", key.Function.Field(fn))
 						for _, instanceMetric := range instanceMetrics {
 							if instanceMetric.AssignedAt.After(timestamp) {
 								timestamp = instanceMetric.AssignedAt
