@@ -94,7 +94,7 @@ func TestControllerGetRetries(t *testing.T) {
 	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
 }
 
-func TestKeepAlives(t *testing.T) {
+func TestHeartbeats(t *testing.T) {
 	fn := fixture.NewFunction()
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
@@ -121,10 +121,10 @@ func TestKeepAlives(t *testing.T) {
 	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
 
 	require.Eventually(t, func() bool {
-		return len(mockControllerClient.KeepAlives()) > 0
+		return len(mockControllerClient.Heartbeats()) > 0
 	}, 6*time.Second, time.Second)
 
-	keepAlive := mockControllerClient.KeepAlives()[0]
-	require.Equal(t, fn, keepAlive.Function)
-	require.True(t, keepAlive.Timestamp.After(testStartTime))
+	heartbeat := mockControllerClient.Heartbeats()[0]
+	require.Equal(t, fn, heartbeat.Function)
+	require.True(t, heartbeat.Timestamp.After(testStartTime))
 }

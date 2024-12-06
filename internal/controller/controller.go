@@ -65,8 +65,8 @@ type Controller struct {
 	podListerMap      map[string]podListerEntry
 	controllerClients *xsync.MapOf[string, Client]
 	scaleMu           *xsync.MapOf[function.Function, *sync.Mutex]
-	keepAlives        map[function.Function]time.Time
-	keepAlivesMu      sync.Mutex // guards keepAlives
+	heartbeats        map[function.Function]time.Time
+	heartbeatsMu      sync.Mutex // guards heartbeats
 }
 
 func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interface) *Controller {
@@ -77,7 +77,7 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 		podListerMap:      make(map[string]podListerEntry, len(function.FlagNamespaces.Value)),
 		controllerClients: xsync.NewMapOf[string, Client](),
 		scaleMu:           xsync.NewMapOf[function.Function, *sync.Mutex](),
-		keepAlives:        make(map[function.Function]time.Time),
+		heartbeats:        make(map[function.Function]time.Time),
 	}
 }
 
@@ -110,7 +110,7 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	case "/scale":
 		c.handleScale(rw, req)
 	case "/keepalive":
-		c.handleKeepAlive(rw, req)
+		c.handleHeartbeat(rw, req)
 	default:
 		http.NotFound(rw, req)
 	}
@@ -274,9 +274,9 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 		ctx,
 		15*time.Second,
 		func(ctx context.Context) error {
-			c.keepAlivesMu.Lock()
-			keepAlives := maps.Clone(c.keepAlives)
-			c.keepAlivesMu.Unlock()
+			c.heartbeatsMu.Lock()
+			heartbeats := maps.Clone(c.heartbeats)
+			c.heartbeatsMu.Unlock()
 
 			for _, namespace := range function.FlagNamespaces.Value {
 				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)
@@ -287,7 +287,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 
 				now := time.Now()
 				for fn, instanceMetrics := range functionMetrics {
-					timestamp, ok := keepAlives[fn]
+					timestamp, ok := heartbeats[fn]
 					if !ok {
 						log.Warn(ctx, "no keep alive for function", key.Function.Field(fn))
 						for _, instanceMetric := range instanceMetrics {

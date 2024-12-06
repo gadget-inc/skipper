@@ -16,36 +16,36 @@ import (
 	"github.com/goccy/go-json"
 )
 
-type KeepAlive struct {
+type Heartbeat struct {
 	Function  function.Function `json:"function"`
 	Timestamp time.Time         `json:"timestamp"`
 }
 
-func (c *Controller) handleKeepAlive(rw http.ResponseWriter, req *http.Request) {
+func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	var keepAlives []KeepAlive
-	err = json.Unmarshal(body, &keepAlives)
+	var heartbeats []Heartbeat
+	err = json.Unmarshal(body, &heartbeats)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	c.keepAlivesMu.Lock()
-	for _, keepAlive := range keepAlives {
-		keepAlive.Function.Metadata = "" // the idle function reaper doesn't have the function metadata, so we need to clear it to match the function in the map
-		timestamp, ok := c.keepAlives[keepAlive.Function]
-		if !ok || keepAlive.Timestamp.After(timestamp) {
-			c.keepAlives[keepAlive.Function] = keepAlive.Timestamp
+	c.heartbeatsMu.Lock()
+	for _, heartbeat := range heartbeats {
+		heartbeat.Function.Metadata = "" // the idle function reaper doesn't have the function metadata, so we need to clear it to match the function in the map
+		timestamp, ok := c.heartbeats[heartbeat.Function]
+		if !ok || heartbeat.Timestamp.After(timestamp) {
+			c.heartbeats[heartbeat.Function] = heartbeat.Timestamp
 		}
 	}
-	c.keepAlivesMu.Unlock()
+	c.heartbeatsMu.Unlock()
 
-	log.Trace(req.Context(), "received keep alives", slog.Int("count", len(keepAlives)))
+	log.Trace(req.Context(), "received keep alives", slog.Int("count", len(heartbeats)))
 	rw.WriteHeader(http.StatusOK)
 
 	go func() {

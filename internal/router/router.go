@@ -20,7 +20,7 @@ import (
 
 type Router struct {
 	controller   controller.Client
-	keepAlives   *xsync.MapOf[function.Function, time.Time]
+	heartbeats   *xsync.MapOf[function.Function, time.Time]
 	reverseProxy *httputil.ReverseProxy
 	transport    *http.Transport
 }
@@ -28,7 +28,7 @@ type Router struct {
 func New(controllerClient controller.Client) *Router {
 	r := &Router{
 		controller: controllerClient,
-		keepAlives: xsync.NewMapOf[function.Function, time.Time](),
+		heartbeats: xsync.NewMapOf[function.Function, time.Time](),
 		transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -54,16 +54,16 @@ func New(controllerClient controller.Client) *Router {
 
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, 3*time.Second, func(ctx context.Context) error {
-		keepAlivesSnapshot := r.keepAlives
-		r.keepAlives = xsync.NewMapOf[function.Function, time.Time]()
+		heartbeatsSnapshot := r.heartbeats
+		r.heartbeats = xsync.NewMapOf[function.Function, time.Time]()
 
-		var keepAlives []controller.KeepAlive
-		keepAlivesSnapshot.Range(func(fn function.Function, lastRequest time.Time) bool {
-			keepAlives = append(keepAlives, controller.KeepAlive{Function: fn, Timestamp: lastRequest})
+		var heartbeats []controller.Heartbeat
+		heartbeatsSnapshot.Range(func(fn function.Function, lastRequest time.Time) bool {
+			heartbeats = append(heartbeats, controller.Heartbeat{Function: fn, Timestamp: lastRequest})
 			return true
 		})
 
-		err := r.controller.KeepAlive(ctx, keepAlives)
+		err := r.controller.Heartbeat(ctx, heartbeats)
 		if err != nil {
 			log.Warn(ctx, "failed to send keep alives", key.Error.Field(err))
 		}
@@ -82,9 +82,9 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	r.keepAlives.Store(fn, time.Now())
+	r.heartbeats.Store(fn, time.Now())
 	go timer.Loop(req.Context(), 5*time.Second, func(ctx context.Context) error {
-		r.keepAlives.Store(fn, time.Now())
+		r.heartbeats.Store(fn, time.Now())
 		return nil
 	})
 

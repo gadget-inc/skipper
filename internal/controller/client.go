@@ -14,7 +14,7 @@ import (
 
 type Client interface {
 	Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error)
-	KeepAlive(ctx context.Context, keepAlives []KeepAlive) error
+	Heartbeat(ctx context.Context, heartbeats []Heartbeat) error
 	Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
 }
 
@@ -55,12 +55,12 @@ func (c *httpClient) Get(ctx context.Context, fn function.Function) (instance *f
 	return instance, nil
 }
 
-func (c *httpClient) KeepAlive(ctx context.Context, keepAlives []KeepAlive) error {
-	if len(keepAlives) == 0 {
+func (c *httpClient) Heartbeat(ctx context.Context, heartbeats []Heartbeat) error {
+	if len(heartbeats) == 0 {
 		return nil
 	}
 
-	body, err := json.Marshal(keepAlives)
+	body, err := json.Marshal(heartbeats)
 	if err != nil {
 		return fmt.Errorf("failed to marshal keep alives: %w", err)
 	}

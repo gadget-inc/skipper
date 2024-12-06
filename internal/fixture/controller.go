@@ -17,7 +17,7 @@ type (
 type MockControllerClient struct {
 	t             *testing.T
 	mu            sync.Mutex
-	keepAlives    []controller.KeepAlive
+	heartbeats    []controller.Heartbeat
 	getHandlers   map[function.Function]GetHandler
 	scaleHandlers map[function.Function]ScaleHandler
 }
@@ -48,10 +48,10 @@ func (f *MockControllerClient) HandleScale(fn function.Function, h ScaleHandler)
 	f.scaleHandlers[fn] = h
 }
 
-func (f *MockControllerClient) KeepAlives() []controller.KeepAlive {
+func (f *MockControllerClient) Heartbeats() []controller.Heartbeat {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.keepAlives
+	return f.heartbeats
 }
 
 // Get implements controller.Client.
@@ -68,11 +68,11 @@ func (f *MockControllerClient) Get(ctx context.Context, fn function.Function) (i
 	return nil, nil
 }
 
-// KeepAlive implements controller.Client.
-func (f *MockControllerClient) KeepAlive(ctx context.Context, keepAlives []controller.KeepAlive) error {
+// Heartbeat implements controller.Client.
+func (f *MockControllerClient) Heartbeat(ctx context.Context, heartbeats []controller.Heartbeat) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.keepAlives = append(f.keepAlives, keepAlives...)
+	f.heartbeats = append(f.heartbeats, heartbeats...)
 	return nil
 }
 
