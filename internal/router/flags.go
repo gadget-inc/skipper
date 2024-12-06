@@ -4,6 +4,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gadget-inc/fusion/internal/flag"
 )
@@ -20,6 +21,18 @@ var (
 			}
 			return strconv.Atoi(s)
 		},
+	}
+
+	FlagGetAttempts = flag.Flag[int]{
+		Name:        "router-get-attempts",
+		Description: "The number of times to attempt to get an instance from the controller.",
+		Default:     6,
+	}
+
+	FlagHeartbeatInterval = flag.Flag[time.Duration]{
+		Name:        "router-heartbeat-interval",
+		Description: "The interval at which to send heartbeats to the controller.",
+		Default:     5 * time.Second,
 	}
 
 	FlagControllerServiceHost = flag.Flag[string]{

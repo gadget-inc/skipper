@@ -53,7 +53,7 @@ func New(controllerClient controller.Client) *Router {
 }
 
 func (r *Router) Start(ctx context.Context) {
-	go timer.Loop(ctx, 3*time.Second, func(ctx context.Context) error {
+	go timer.Loop(ctx, FlagHeartbeatInterval.Value, func(ctx context.Context) error {
 		heartbeatsSnapshot := r.heartbeats
 		r.heartbeats = xsync.NewMapOf[function.Function, time.Time]()
 
@@ -74,7 +74,7 @@ func (r *Router) Start(ctx context.Context) {
 func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	fn, err := function.FromHeaders(req)
 	if err != nil {
-		if req.URL.Path == "/healthz" {
+		if req.Method == http.MethodGet && req.URL.Path == "/healthz" {
 			rw.WriteHeader(http.StatusOK)
 			return
 		}
@@ -106,7 +106,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		default:
 		}
 
-		if attempt > 2 {
+		if attempt > FlagGetAttempts.Value {
 			return nil, fmt.Errorf("failed to get a pod after %d attempts", attempt)
 		}
 
@@ -128,14 +128,8 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
-			if netOpErr.Op == "dial" {
-				log.Warn(ctx, "failed to dial pod", key.Error.Field(err), key.Instance.Field(instance))
-				attempt++
-				continue
-			}
-
-			if netOpErr.Timeout() {
-				log.Warn(ctx, "timeout dialing pod", key.Error.Field(err), key.Instance.Field(instance))
+			if netOpErr.Op == "dial" || netOpErr.Timeout() {
+				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err), key.Instance.Field(instance))
 				attempt++
 				continue
 			}

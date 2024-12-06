@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,60 +27,13 @@ func TestHealthz(t *testing.T) {
 
 func TestSimple(t *testing.T) {
 	fn := fixture.NewFunction()
-	testServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.WriteHeader(http.StatusOK)
-		fmt.Fprintf(rw, "Hello, %s", fn.Tenant)
-	}))
-	defer testServer.Close()
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
 	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
-		return &function.Instance{
-			Function:   fn,
-			Name:       uuid.NewString(),
-			Addr:       testServer.Listener.Addr().String(),
-			Version:    uuid.NewString(),
-			AssignedAt: time.Now(),
-			ReadyAt:    time.Now(),
-		}, nil
-	})
-
-	rw := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	fn.SetHeaders(req)
-
-	router := New(mockControllerClient)
-	router.ServeHTTP(rw, req)
-
-	require.Equal(t, http.StatusOK, rw.Code)
-	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
-}
-
-func TestControllerGetRetries(t *testing.T) {
-	fn := fixture.NewFunction()
-	testServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.WriteHeader(http.StatusOK)
-		fmt.Fprintf(rw, "Hello, %s", fn.Tenant)
-	}))
-	defer testServer.Close()
-
-	attempts := 0
-
-	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
-		if attempts < 2 {
-			attempts++
-			return nil, fmt.Errorf("controller get error")
-		}
-
-		return &function.Instance{
-			Function:   fn,
-			Name:       uuid.NewString(),
-			Addr:       testServer.Listener.Addr().String(),
-			Version:    uuid.NewString(),
-			AssignedAt: time.Now(),
-			ReadyAt:    time.Now(),
-		}, nil
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("Hello, " + fn.Tenant))
+		}), nil
 	})
 
 	rw := httptest.NewRecorder()
@@ -97,6 +50,8 @@ func TestControllerGetRetries(t *testing.T) {
 func TestHeartbeats(t *testing.T) {
 	fn := fixture.NewFunction()
 
+	fixture.SetFlag(t, &FlagHeartbeatInterval, 1*time.Second)
+
 	mockControllerClient := fixture.NewMockControllerClient(t)
 	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
@@ -109,10 +64,10 @@ func TestHeartbeats(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	fn.SetHeaders(req)
 
+	testStartTime := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	testStartTime := time.Now()
 	router := New(mockControllerClient)
 	router.Start(ctx)
 	router.ServeHTTP(rw, req)
@@ -122,9 +77,73 @@ func TestHeartbeats(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return len(mockControllerClient.Heartbeats()) > 0
-	}, 6*time.Second, time.Second)
+	}, 3*time.Second, time.Second)
 
 	heartbeat := mockControllerClient.Heartbeats()[0]
 	require.Equal(t, fn, heartbeat.Function)
 	require.True(t, heartbeat.Timestamp.After(testStartTime))
+}
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string { return "timeout error" }
+
+func (timeoutError) Timeout() bool { return true }
+
+func TestRetries(t *testing.T) {
+	fn := fixture.NewFunction()
+
+	errs := []error{
+		&net.OpError{Op: "dial", Err: fmt.Errorf("dial error")},
+		&net.OpError{Op: "dial", Err: timeoutError{}},
+		fmt.Errorf("arbitrary error"),
+	}
+
+	fixture.SetFlag(t, &FlagGetAttempts, len(errs)+1)
+
+	attempt := 0
+
+	mockControllerClient := fixture.NewMockControllerClient(t)
+	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+		if attempt < len(errs) {
+			attempt++
+			return nil, errs[attempt-1]
+		}
+
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("Hello, " + fn.Tenant))
+		}), nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	fn.SetHeaders(req)
+
+	router := New(mockControllerClient)
+	router.ServeHTTP(rw, req)
+
+	require.Equal(t, http.StatusOK, rw.Code)
+	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+}
+
+func TestTooManyRetries(t *testing.T) {
+	fn := fixture.NewFunction()
+
+	fixture.SetFlag(t, &FlagGetAttempts, 1)
+
+	mockControllerClient := fixture.NewMockControllerClient(t)
+	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+		return nil, fmt.Errorf("arbitrary error")
+	})
+
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	fn.SetHeaders(req)
+
+	router := New(mockControllerClient)
+	router.ServeHTTP(rw, req)
+
+	require.Equal(t, http.StatusBadGateway, rw.Code)
+	require.Empty(t, rw.Body)
 }
