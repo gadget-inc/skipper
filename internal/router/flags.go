@@ -25,7 +25,7 @@ var (
 
 	FlagGetAttempts = flag.Flag[int]{
 		Name:        "router-get-attempts",
-		Description: "The number of times to attempt to get an instance from the controller.",
+		Description: "The number of maximum amount of attempts to get an instance from the controller.",
 		Default:     6,
 	}
 

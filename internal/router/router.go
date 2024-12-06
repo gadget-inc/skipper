@@ -54,12 +54,10 @@ func New(controllerClient controller.Client) *Router {
 
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value, func(ctx context.Context) error {
-		heartbeatsSnapshot := r.heartbeats
-		r.heartbeats = xsync.NewMapOf[function.Function, time.Time]()
-
 		var heartbeats []controller.Heartbeat
-		heartbeatsSnapshot.Range(func(fn function.Function, lastRequest time.Time) bool {
-			heartbeats = append(heartbeats, controller.Heartbeat{Function: fn, Timestamp: lastRequest})
+		r.heartbeats.Range(func(fn function.Function, timestamp time.Time) bool {
+			r.heartbeats.Delete(fn)
+			heartbeats = append(heartbeats, controller.Heartbeat{Function: fn, Timestamp: timestamp})
 			return true
 		})
 
@@ -83,7 +81,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	r.heartbeats.Store(fn, time.Now())
-	go timer.Loop(req.Context(), 5*time.Second, func(ctx context.Context) error {
+	go timer.Loop(req.Context(), FlagHeartbeatInterval.Value, func(ctx context.Context) error {
 		r.heartbeats.Store(fn, time.Now())
 		return nil
 	})
