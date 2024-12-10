@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -22,7 +24,7 @@ type Router struct {
 	controller   controller.Client
 	heartbeats   *xsync.MapOf[function.Function, time.Time]
 	reverseProxy *httputil.ReverseProxy
-	transport    *http.Transport
+	transport    http.RoundTripper
 }
 
 func New(controllerClient controller.Client) *Router {
@@ -32,7 +34,7 @@ func New(controllerClient controller.Client) *Router {
 		transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
-				Timeout:   2 * time.Second, // this is the only change from the default transport
+				Timeout:   2 * time.Second, // this is the only difference from http.DefaultTransport
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 			ForceAttemptHTTP2:     true,
@@ -80,7 +82,6 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	r.heartbeats.Store(fn, time.Now())
 	go timer.Loop(req.Context(), FlagHeartbeatInterval.Value, func(ctx context.Context) error {
 		r.heartbeats.Store(fn, time.Now())
 		return nil
@@ -96,25 +97,41 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	attempt := 0
+	attempt := 1
 	for {
+		if attempt > FlagMaxRoundTripAttempts.Value {
+			return nil, fmt.Errorf("failed to proxy request after %d attempts", FlagMaxRoundTripAttempts.Value)
+		}
+
+		if attempt > 1 {
+			const (
+				minTimeout = 100 * time.Millisecond
+				maxTimeout = 5 * time.Second
+			)
+
+			// Random factor between 1 and 2
+			randomFactor := 1 + rand.Float64()
+
+			// Calculate exponential backoff duration
+			delay := time.Duration(randomFactor * float64(minTimeout) * math.Pow(2, float64(attempt)))
+
+			// Cap the delay at maxTimeout
+			if delay > maxTimeout {
+				delay = maxTimeout
+			}
+
+			time.Sleep(delay)
+		}
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		default:
 		}
 
-		if attempt > FlagGetAttempts.Value {
-			return nil, fmt.Errorf("failed to get a pod after %d attempts", attempt)
-		}
-
-		if attempt > 0 {
-			time.Sleep(1 * time.Second * time.Duration(attempt))
-		}
-
 		instance, err := r.controller.Get(ctx, fn)
 		if err != nil {
-			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Function.Field(fn))
+			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Function.Field(fn), key.Attempt.Field(attempt))
 			attempt++
 			continue
 		}
@@ -127,14 +144,14 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" || netOpErr.Timeout() {
-				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err), key.Instance.Field(instance))
+				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt))
 				attempt++
 				continue
 			}
 		}
 
 		if err != nil && err != context.Canceled {
-			log.Error(ctx, "unknown error", key.Error.Field(err), key.Instance.Field(instance))
+			log.Error(ctx, "unknown error", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt))
 		}
 
 		return res, err

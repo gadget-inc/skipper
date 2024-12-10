@@ -23,16 +23,16 @@ var (
 		},
 	}
 
-	FlagGetAttempts = flag.Flag[int]{
-		Name:        "router-get-attempts",
-		Description: "The number of maximum amount of attempts to get an instance from the controller.",
-		Default:     6,
-	}
-
 	FlagHeartbeatInterval = flag.Flag[time.Duration]{
 		Name:        "router-heartbeat-interval",
 		Description: "The interval at which to send heartbeats to the controller.",
 		Default:     5 * time.Second,
+	}
+
+	FlagMaxRoundTripAttempts = flag.Flag[int]{
+		Name:        "router-max-round-trip-attempts",
+		Description: "The maximum number of attempts to proxy a request to a function.",
+		Default:     6,
 	}
 
 	FlagControllerServiceHost = flag.Flag[string]{

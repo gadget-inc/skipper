@@ -1,17 +1,18 @@
 package key
 
 var (
+	Addr                    = stringKey{new("address")}
 	AssignedAt              = timeKey{new("assigned-at")}
+	Attempt                 = intKey{new("attempt")}
 	Controller              = stringKey{new("controller")}
 	CurrentInstances        = intKey{new("current-instances")}
 	Deployment              = stringKey{new("deployment")}
 	DesiredInstances        = intKey{new("desired-instances")}
+	Duration                = durationKey{new("duration")}
 	Error                   = errorKey{new("error")}
 	ForwardedFor            = stringSliceKey{new("forwarded-for")}
 	Function                = groupValueKey{new("function")}
-	Addr                    = stringKey{new("address")}
 	Instance                = groupValueKey{new("instance")}
-	Timestamp               = timeKey{new("timestamp")}
 	MaxInstances            = intKey{new("max-instances")}
 	Metadata                = stringKey{new("metadata")}
 	MinInstances            = intKey{new("min-instances")}
@@ -24,4 +25,5 @@ var (
 	TargetCPUUtilization    = intKey{new("target-cpu-utilization")}
 	TargetMemoryUtilization = intKey{new("target-memory-utilization")}
 	Tenant                  = stringKey{new("tenant")}
+	Timestamp               = timeKey{new("timestamp")}
 )

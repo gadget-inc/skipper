@@ -53,10 +53,6 @@ func Error(ctx context.Context, msg string, fields ...slog.Attr) {
 	slog.LogAttrs(ctx, slog.LevelError, msg, fields...)
 }
 
-func Fatal(ctx context.Context, msg string, fields ...slog.Attr) {
-	slog.LogAttrs(ctx, slog.LevelError, msg, fields...)
-}
-
 func With(ctx context.Context, fields ...slog.Attr) context.Context {
 	existingFields, ok := ctx.Value(key).([]slog.Attr)
 	if ok {

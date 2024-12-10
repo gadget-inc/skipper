@@ -75,7 +75,7 @@ func NewCmdRouter() *cobra.Command {
 	function.FlagSkipForbiddenNamespaces.Bind(cmd)
 	router.FlagControllerServiceHost.Bind(cmd)
 	router.FlagControllerServicePort.Bind(cmd)
-	router.FlagGetAttempts.Bind(cmd)
+	router.FlagMaxRoundTripAttempts.Bind(cmd)
 	router.FlagHeartbeatInterval.Bind(cmd)
 	router.FlagPort.Bind(cmd)
 

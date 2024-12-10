@@ -1,11 +1,19 @@
 version: 3
 
 tasks:
+  lint:
+    sources:
+      - "{cmd,internal,pkg}/**/*.go"
+      - .goreleaser.yaml
+      - go.mod
+      - go.sum
+      - main.go
+    cmds:
+      - golangci-lint run
+
   build:
     sources:
-      - cmd/**/*.go
-      - internal/**/*.go
-      - pkg/**/*.go
+      - "{cmd,internal,pkg}/**/*.go"
       - .goreleaser.yaml
       - go.mod
       - go.sum

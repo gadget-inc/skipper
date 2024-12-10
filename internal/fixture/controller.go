@@ -26,25 +26,21 @@ var _ controller.Client = &MockControllerClient{}
 
 func NewMockControllerClient(t *testing.T) *MockControllerClient {
 	return &MockControllerClient{
-		t: t,
+		t:             t,
+		getHandlers:   make(map[function.Function]GetHandler),
+		scaleHandlers: make(map[function.Function]ScaleHandler),
 	}
 }
 
 func (f *MockControllerClient) HandleGet(fn function.Function, h GetHandler) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.getHandlers == nil {
-		f.getHandlers = make(map[function.Function]GetHandler)
-	}
 	f.getHandlers[fn] = h
 }
 
 func (f *MockControllerClient) HandleScale(fn function.Function, h ScaleHandler) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.scaleHandlers == nil {
-		f.scaleHandlers = make(map[function.Function]ScaleHandler)
-	}
 	f.scaleHandlers[fn] = h
 }
 
