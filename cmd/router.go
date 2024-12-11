@@ -27,12 +27,12 @@ func NewCmdRouter() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			controllerClient := controller.NewHTTPClient(router.FlagControllerServiceHost.Value, router.FlagControllerServicePort.Value)
+			controllerClient := controller.NewHTTPClient(router.FlagControllerServiceHost.Value(), router.FlagControllerServicePort.Value())
 			r := router.New(controllerClient)
 			r.Start(ctx)
 
 			httpServer := &http.Server{
-				Addr:    ":" + strconv.Itoa(router.FlagPort.Value),
+				Addr:    ":" + strconv.Itoa(router.FlagPort.Value()),
 				Handler: r,
 			}
 

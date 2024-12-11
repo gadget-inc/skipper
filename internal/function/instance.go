@@ -58,7 +58,7 @@ func FromPod(pod *v1.Pod) (*Instance, error) {
 	return &Instance{
 		Function:   fn,
 		Name:       pod.Name,
-		Addr:       pod.Status.PodIP + ":" + strconv.Itoa(FlagPort.Value),
+		Addr:       pod.Status.PodIP + ":" + strconv.Itoa(FlagPort.Value()),
 		Version:    replicaSet,
 		AssignedAt: assignedAt,
 		ReadyAt:    readyAt,

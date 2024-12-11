@@ -115,9 +115,9 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 		return nil, fmt.Errorf("no controller for function")
 	}
 
-	if controllerIP != FlagIP.Value {
+	if controllerIP != FlagIP.Value() {
 		log.Debug(ctx, "forwarding request", key.Function.Field(fn), slog.String("ip", controllerIP))
-		controllerClient, _ := c.controllerClients.LoadOrCompute(controllerIP, func() Client { return NewHTTPClient(controllerIP, FlagPort.Value) })
+		controllerClient, _ := c.controllerClients.LoadOrCompute(controllerIP, func() Client { return NewHTTPClient(controllerIP, FlagPort.Value()) })
 		return controllerClient.Scale(ctx, fn, desiredInstances)
 	}
 
@@ -222,10 +222,10 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to assign pod: %w", err)
 	}
 
-	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value)
+	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
 	defer cancel()
 
-	assignURL := "http://" + pod.Status.PodIP + ":" + strconv.Itoa(function.FlagPort.Value) + function.FlagAssignPath.Value
+	assignURL := "http://" + pod.Status.PodIP + ":" + strconv.Itoa(function.FlagPort.Value()) + function.FlagAssignPath.Value()
 	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)

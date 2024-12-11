@@ -74,7 +74,7 @@ func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interfac
 		ring:              hashring.New(),
 		clientset:         clientset,
 		metricsClientset:  metricsClient,
-		podListerMap:      make(map[string]podListerEntry, len(function.FlagNamespaces.Value)),
+		podListerMap:      make(map[string]podListerEntry, len(function.FlagNamespaces.Value())),
 		controllerClients: xsync.NewMapOf[string, Client](),
 		scaleMu:           xsync.NewMapOf[function.Function, *sync.Mutex](),
 		heartbeats:        make(map[function.Function]time.Time),
@@ -120,7 +120,7 @@ func (c *Controller) startControllerInformer(ctx context.Context) error {
 	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		c.clientset,
 		10*time.Minute,
-		informers.WithNamespace(FlagNamespace.Value),
+		informers.WithNamespace(FlagNamespace.Value()),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = "app.kubernetes.io/name=fusion,app.kubernetes.io/component=controller"
 		}),
@@ -177,7 +177,7 @@ func (c *Controller) startControllerInformer(ctx context.Context) error {
 func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", function.FlagNamespaces.Value))
 
-	for _, namespace := range function.FlagNamespaces.Value {
+	for _, namespace := range function.FlagNamespaces.Value() {
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
 			c.clientset,
 			5*time.Minute,
@@ -278,7 +278,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 			heartbeats := maps.Clone(c.heartbeats)
 			c.heartbeatsMu.Unlock()
 
-			for _, namespace := range function.FlagNamespaces.Value {
+			for _, namespace := range function.FlagNamespaces.Value() {
 				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)
 				if err != nil {
 					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
@@ -301,13 +301,13 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						delete(stabilizationWindows, fn)
 
 						controllerIP, ok := c.ring.Get(fn.RingKey())
-						if !ok || controllerIP != FlagIP.Value {
+						if !ok || controllerIP != FlagIP.Value() {
 							log.Trace(
 								ctx,
 								"skipping scaling fn to 0, not assigned to this controller",
 								key.Function.Field(fn),
 								slog.String("controllerIP", controllerIP),
-								slog.String("ip", FlagIP.Value),
+								slog.String("ip", FlagIP.Value()),
 								slog.Bool("ok", ok),
 							)
 							continue
@@ -361,11 +361,11 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 					stabilizationWindow.RecordRecommendation(desiredInstances, now)
 
 					controllerIP, ok := c.ring.Get(fn.RingKey())
-					if !ok || controllerIP != FlagIP.Value {
+					if !ok || controllerIP != FlagIP.Value() {
 						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
 							key.Function.Field(fn),
 							slog.String("controllerIP", controllerIP),
-							slog.String("ip", FlagIP.Value),
+							slog.String("ip", FlagIP.Value()),
 							slog.Bool("ok", ok),
 						)
 						continue

@@ -24,14 +24,14 @@ type Router struct {
 	controller   controller.Client
 	heartbeats   *xsync.MapOf[function.Function, time.Time]
 	reverseProxy *httputil.ReverseProxy
-	transport    http.RoundTripper
+	roundTripper http.RoundTripper
 }
 
 func New(controllerClient controller.Client) *Router {
 	r := &Router{
 		controller: controllerClient,
 		heartbeats: xsync.NewMapOf[function.Function, time.Time](),
-		transport: &http.Transport{
+		roundTripper: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
 				Timeout:   2 * time.Second, // this is the only difference from http.DefaultTransport
@@ -55,7 +55,7 @@ func New(controllerClient controller.Client) *Router {
 }
 
 func (r *Router) Start(ctx context.Context) {
-	go timer.Loop(ctx, FlagHeartbeatInterval.Value, func(ctx context.Context) error {
+	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
 		var heartbeats []controller.Heartbeat
 		r.heartbeats.Range(func(fn function.Function, timestamp time.Time) bool {
 			r.heartbeats.Delete(fn)
@@ -82,7 +82,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	go timer.Loop(req.Context(), FlagHeartbeatInterval.Value, func(ctx context.Context) error {
+	go timer.Loop(req.Context(), FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
 		r.heartbeats.Store(fn, time.Now())
 		return nil
 	})
@@ -99,8 +99,8 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	attempt := 1
 	for {
-		if attempt > FlagMaxRoundTripAttempts.Value {
-			return nil, fmt.Errorf("failed to proxy request after %d attempts", FlagMaxRoundTripAttempts.Value)
+		if attempt > FlagMaxRoundTripAttempts.Value() {
+			return nil, fmt.Errorf("failed to proxy request after %d attempts", FlagMaxRoundTripAttempts.Value())
 		}
 
 		if attempt > 1 {
@@ -139,7 +139,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.URL.Scheme = "http"
 		req.URL.Host = instance.Addr
 
-		res, err := r.transport.RoundTrip(req)
+		res, err := r.roundTripper.RoundTrip(req)
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {

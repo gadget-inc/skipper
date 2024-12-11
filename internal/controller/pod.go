@@ -28,10 +28,10 @@ func (c *Controller) startPodInformers(ctx context.Context) error {
 
 	// TODO: test all required permissions before starting informers
 	var validNamespaces []string
-	for _, namespace := range function.FlagNamespaces.Value {
+	for _, namespace := range function.FlagNamespaces.Value() {
 		_, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
-			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value {
+			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value() {
 				log.Warn(ctx, "skipping namespace", slog.String("namespace", namespace), key.Error.Field(err))
 				continue
 			}
@@ -65,7 +65,7 @@ func (c *Controller) startPodInformers(ctx context.Context) error {
 		}
 	}
 
-	function.FlagNamespaces.Value = validNamespaces
+	_ = function.FlagNamespaces.SetValue(validNamespaces)
 
 	return nil
 }

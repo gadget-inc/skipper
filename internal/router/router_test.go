@@ -18,7 +18,8 @@ import (
 )
 
 func init() {
-	FlagMaxRoundTripAttempts.Value = 1
+	FlagHeartbeatInterval.Init()
+	FlagMaxRoundTripAttempts.Init()
 }
 
 func TestHealthz(t *testing.T) {
@@ -333,10 +334,10 @@ func TestRetries(t *testing.T) {
 
 		router := New(mcc)
 
-		originalTransport := router.transport
+		originalTransport := router.roundTripper
 
 		roundTripperErrsIndex := 0
-		router.transport = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			if len(tc.roundTripErrs) > 0 && roundTripperErrsIndex < len(tc.roundTripErrs) {
 				roundTripperErrsIndex++
 				return nil, tc.roundTripErrs[roundTripperErrsIndex-1]

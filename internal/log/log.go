@@ -12,7 +12,7 @@ const (
 
 func Init() {
 	logOptions := slog.HandlerOptions{
-		Level: FlagLogLevel.Value,
+		Level: FlagLogLevel.Value(),
 		ReplaceAttr: func(groups []string, field slog.Attr) slog.Attr {
 			if field.Key == slog.LevelKey {
 				if field.Value.Any().(slog.Level) == LevelTrace {
@@ -24,7 +24,7 @@ func Init() {
 	}
 
 	var handler slog.Handler
-	if FlagLogFormat.Value == "json" {
+	if FlagLogFormat.Value() == "json" {
 		handler = slog.NewJSONHandler(os.Stderr, &logOptions)
 	} else {
 		handler = slog.NewTextHandler(os.Stderr, &logOptions)

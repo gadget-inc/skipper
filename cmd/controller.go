@@ -61,7 +61,7 @@ func NewCmdController() *cobra.Command {
 			}
 
 			srv := &http.Server{
-				Addr:    ":" + strconv.Itoa(controller.FlagPort.Value),
+				Addr:    ":" + strconv.Itoa(controller.FlagPort.Value()),
 				Handler: ctrl,
 			}
 

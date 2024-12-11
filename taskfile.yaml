@@ -11,6 +11,16 @@ tasks:
     cmds:
       - golangci-lint run
 
+  test:
+    sources:
+      - "{cmd,internal,pkg}/**/*.go"
+      - .goreleaser.yaml
+      - go.mod
+      - go.sum
+      - main.go
+    cmds:
+      - go test -v ./...
+
   build:
     sources:
       - "{cmd,internal,pkg}/**/*.go"

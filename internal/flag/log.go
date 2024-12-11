@@ -14,7 +14,7 @@ func (f Flag[T]) Fields() []slog.Attr {
 			slog.String("description", f.Description),
 			slog.Bool("required", f.Required),
 			slog.String("separator", f.Separator),
-			slog.Bool("was_set", f.WasSet),
+			slog.Bool("was_set", f.WasProvided),
 		}
 	}
 
@@ -24,7 +24,7 @@ func (f Flag[T]) Fields() []slog.Attr {
 		slog.String("description", f.Description),
 		slog.Bool("required", f.Required),
 		slog.String("separator", f.Separator),
-		slog.Bool("was_set", f.WasSet),
+		slog.Bool("was_set", f.WasProvided),
 		slog.String("value", f.String()),
 	}
 }
@@ -37,7 +37,7 @@ func (f Flag[T]) Attributes() []attribute.KeyValue {
 			attribute.String("description", f.Description),
 			attribute.Bool("required", f.Required),
 			attribute.String("separator", f.Separator),
-			attribute.Bool("was_set", f.WasSet),
+			attribute.Bool("was_set", f.WasProvided),
 		}
 	}
 
@@ -47,7 +47,7 @@ func (f Flag[T]) Attributes() []attribute.KeyValue {
 		attribute.String("description", f.Description),
 		attribute.Bool("required", f.Required),
 		attribute.String("separator", f.Separator),
-		attribute.Bool("was_set", f.WasSet),
+		attribute.Bool("was_set", f.WasProvided),
 		attribute.String("value", f.String()),
 	}
 }

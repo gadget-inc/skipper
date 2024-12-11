@@ -50,14 +50,14 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 
 	go func() {
 		forwardedFor := req.Header.Values(key.ForwardedFor.Header)
-		forwardedFor = append(forwardedFor, FlagIP.Value)
+		forwardedFor = append(forwardedFor, FlagIP.Value())
 
 		for _, controllerIP := range c.ring.List() {
 			if !slices.Contains(forwardedFor, controllerIP) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 
-				controllerPort := strconv.Itoa(FlagPort.Value)
+				controllerPort := strconv.Itoa(FlagPort.Value())
 				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":"+controllerPort+"/keepalive", bytes.NewBuffer(body))
 				if err != nil {
 					log.Warn(ctx, "failed to create heartbeat request", key.Error.Field(err))
