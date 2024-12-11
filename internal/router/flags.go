@@ -35,6 +35,18 @@ var (
 		Default:     6,
 	}
 
+	FlagRoundTripRetryMinTimeout = flag.Flag[time.Duration]{
+		Name:        "router-round-trip-retry-min-timeout",
+		Description: "The minimum timeout between round trip attempts.",
+		Default:     100 * time.Millisecond,
+	}
+
+	FlagRoundTripRetryMaxTimeout = flag.Flag[time.Duration]{
+		Name:        "router-round-trip-retry-max-timeout",
+		Description: "The maximum timeout between round trip attempts.",
+		Default:     5 * time.Second,
+	}
+
 	FlagControllerServiceHost = flag.Flag[string]{
 		Name:        "controller-service-host",
 		Description: "The hostname of the controller service.",

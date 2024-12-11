@@ -104,23 +104,14 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		if attempt > 1 {
-			const (
-				minTimeout = 100 * time.Millisecond
-				maxTimeout = 5 * time.Second
-			)
-
-			// Random factor between 1 and 2
-			randomFactor := 1 + rand.Float64()
-
-			// Calculate exponential backoff duration
-			delay := time.Duration(randomFactor * float64(minTimeout) * math.Pow(2, float64(attempt)))
-
-			// Cap the delay at maxTimeout
+			minTimeout := float64(FlagRoundTripRetryMinTimeout.Value())
+			maxTimeout := float64(FlagRoundTripRetryMaxTimeout.Value())
+			factor := 1 + rand.Float64() // randomize the factor between 1 and 2 to add jitter
+			delay := factor * float64(minTimeout) * math.Pow(2, float64(attempt))
 			if delay > maxTimeout {
 				delay = maxTimeout
 			}
-
-			time.Sleep(delay)
+			time.Sleep(time.Duration(delay))
 		}
 
 		select {

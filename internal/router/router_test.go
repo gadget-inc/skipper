@@ -18,8 +18,10 @@ import (
 )
 
 func init() {
-	FlagHeartbeatInterval.Init()
+	FlagHeartbeatInterval.SetValue(time.Millisecond)
 	FlagMaxRoundTripAttempts.Init()
+	FlagRoundTripRetryMaxTimeout.SetValue(time.Millisecond)
+	FlagRoundTripRetryMinTimeout.Init()
 }
 
 func TestHealthz(t *testing.T) {
@@ -204,8 +206,6 @@ func TestBody(t *testing.T) {
 }
 
 func TestHeartbeats(t *testing.T) {
-	fixture.SetFlag(t, &FlagHeartbeatInterval, time.Millisecond)
-
 	fn := fixture.NewFunction()
 
 	mcc := fixture.NewMockControllerClient(t)

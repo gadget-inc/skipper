@@ -3,8 +3,10 @@ version: 3
 tasks:
   lint:
     sources:
-      - "{cmd,internal,pkg}/**/*.go"
-      - .goreleaser.yaml
+      - cmd/**/*.go
+      - internal/**/*.go
+      - pkg/**/*.go
+      - .golangci.yaml
       - go.mod
       - go.sum
       - main.go
@@ -13,8 +15,9 @@ tasks:
 
   test:
     sources:
-      - "{cmd,internal,pkg}/**/*.go"
-      - .goreleaser.yaml
+      - cmd/**/*.go
+      - internal/**/*.go
+      - pkg/**/*.go
       - go.mod
       - go.sum
       - main.go
@@ -23,7 +26,9 @@ tasks:
 
   build:
     sources:
-      - "{cmd,internal,pkg}/**/*.go"
+      - cmd/**/*.go
+      - internal/**/*.go
+      - pkg/**/*.go
       - .goreleaser.yaml
       - go.mod
       - go.sum
