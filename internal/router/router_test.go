@@ -288,7 +288,7 @@ func TestRetries(t *testing.T) {
 			getErrs:     []error{fmt.Errorf("arbitrary error")},
 			roundTripErrs: []error{
 				&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")},
-				&net.OpError{Op: "dial", Err: timeoutError{}},
+				&net.OpError{Op: "foo", Err: timeoutError{}},
 			},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusOK, rw.Code)
