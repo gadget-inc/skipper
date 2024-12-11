@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
@@ -24,7 +23,7 @@ type podListerEntry struct {
 }
 
 func (c *Controller) startPodInformers(ctx context.Context) error {
-	log.Info(ctx, "starting managed pod informers", slog.Any("namespaces", function.FlagNamespaces.Value))
+	log.Info(ctx, "starting managed pod informers", key.Namespaces.Field(function.FlagNamespaces.Value()))
 
 	// TODO: test all required permissions before starting informers
 	var validNamespaces []string
@@ -32,7 +31,7 @@ func (c *Controller) startPodInformers(ctx context.Context) error {
 		_, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
 			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value() {
-				log.Warn(ctx, "skipping namespace", slog.String("namespace", namespace), key.Error.Field(err))
+				log.Warn(ctx, "skipping namespace", key.Namespace.Field(namespace), key.Error.Field(err))
 				continue
 			}
 			return fmt.Errorf("failed to list pods in namespace %s: %w", namespace, err)

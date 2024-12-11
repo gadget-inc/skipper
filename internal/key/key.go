@@ -13,6 +13,11 @@ type Key[v any] interface {
 	Attribute(value v) attribute.KeyValue
 }
 
+type GroupKey[v any] interface {
+	Field(value v) slog.Attr
+	Attributes(value v) []attribute.KeyValue
+}
+
 type key struct {
 	KebabCased  string
 	Underscored string

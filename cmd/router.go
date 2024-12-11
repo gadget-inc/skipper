@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -46,7 +45,7 @@ func NewCmdRouter() *cobra.Command {
 				}
 			}()
 
-			log.Info(ctx, "server started", slog.String("address", httpServer.Addr))
+			log.Info(ctx, "server started", key.Addr.Field(httpServer.Addr))
 			quit := make(chan os.Signal, 1)
 			signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -54,7 +53,7 @@ func NewCmdRouter() *cobra.Command {
 			case err := <-httpServerErrors:
 				return fmt.Errorf("server error: %w", err)
 			case sig := <-quit:
-				log.Info(ctx, "received signal, shutting down", slog.String("signal", sig.String()))
+				log.Info(ctx, "received signal, shutting down", key.Signal.Field(sig.String()))
 			}
 
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

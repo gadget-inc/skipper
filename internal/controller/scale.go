@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"math/rand"
 	"net/http"
 	"slices"
@@ -47,7 +46,7 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 	for _, pod := range pods {
 		instance, err := function.FromPod(pod)
 		if err != nil {
-			log.Warn(ctx, "failed to get function from labels", key.Error.Field(err), key.Pod.Field(pod), slog.Any("labels", pod.Labels))
+			log.Warn(ctx, "failed to get instance from labels", key.Error.Field(err), key.Pod.Field(pod), key.Labels.Field(pod.Labels))
 			continue
 		}
 
@@ -116,15 +115,15 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	}
 
 	if controllerIP != FlagIP.Value() {
-		log.Debug(ctx, "forwarding request", key.Function.Field(fn), slog.String("ip", controllerIP))
+		log.Debug(ctx, "forwarding scale request", key.Function.Field(fn), key.ControllerIP.Field(controllerIP))
 		controllerClient, _ := c.controllerClients.LoadOrCompute(controllerIP, func() Client { return NewHTTPClient(controllerIP, FlagPort.Value()) })
 		return controllerClient.Scale(ctx, fn, desiredInstances)
 	}
 
 	log.Info(ctx, "scaling function",
-		slog.Int("current_instances", currentInstances),
-		key.DesiredInstances.Field(desiredInstances),
 		key.Function.Field(fn),
+		key.CurrentInstances.Field(currentInstances),
+		key.DesiredInstances.Field(desiredInstances),
 	)
 
 	if desiredInstances > currentInstances {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -45,7 +44,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 	}
 	c.heartbeatsMu.Unlock()
 
-	log.Trace(req.Context(), "received heartbeats", slog.Int("count", len(heartbeats)))
+	log.Trace(req.Context(), "received heartbeats", key.Count.Field(len(heartbeats)))
 	rw.WriteHeader(http.StatusOK)
 
 	go func() {
@@ -58,7 +57,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 				defer cancel()
 
 				controllerPort := strconv.Itoa(FlagPort.Value())
-				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":"+controllerPort+"/keepalive", bytes.NewBuffer(body))
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+controllerIP+":"+controllerPort+"/heartbeat", bytes.NewBuffer(body))
 				if err != nil {
 					log.Warn(ctx, "failed to create heartbeat request", key.Error.Field(err))
 					continue
@@ -69,16 +68,16 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 					req.Header.Add(key.ForwardedFor.Header, forwardedForIP)
 				}
 
-				log.Trace(ctx, "forwarding heartbeats", slog.String("controllerIP", controllerIP), key.ForwardedFor.Field(forwardedFor))
+				log.Trace(ctx, "forwarding heartbeats", key.ControllerIP.Field(controllerIP), key.ForwardedFor.Field(forwardedFor))
 				res, err := http.DefaultClient.Do(req)
-				if err != nil || res.StatusCode != http.StatusOK {
+				if err != nil {
 					log.Warn(ctx, "failed to forward heartbeats", key.Error.Field(err))
 					continue
 				}
 				res.Body.Close()
 
 				if res.StatusCode != http.StatusOK {
-					log.Warn(ctx, "failed to forward heartbeats", slog.Int("statusCode", res.StatusCode))
+					log.Warn(ctx, "failed to forward heartbeats", key.StatusCode.Field(res.StatusCode), key.Body.Field(getResponseBody(res)))
 				}
 			}
 		}

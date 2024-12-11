@@ -165,8 +165,7 @@ func (c *Controller) startControllerInformer(ctx context.Context) error {
 
 	go func() {
 		timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-			controllerIPs := c.ring.List()
-			log.Trace(ctx, "controller pods", slog.Any("ips", controllerIPs))
+			log.Trace(ctx, "controller ips", key.ControllerIPs.Field(c.ring.List()))
 			return nil
 		})
 	}()
@@ -175,7 +174,7 @@ func (c *Controller) startControllerInformer(ctx context.Context) error {
 }
 
 func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
-	log.Info(ctx, "starting managed replica set informers", slog.Any("namespaces", function.FlagNamespaces.Value))
+	log.Info(ctx, "starting managed replica set informers", key.Namespaces.Field(function.FlagNamespaces.Value()))
 
 	for _, namespace := range function.FlagNamespaces.Value() {
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
@@ -234,7 +233,7 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 
 				replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(instance.Version)
 				if err != nil {
-					log.Warn(ctx, "failed to get replica set for pod", key.Pod.Field(pod), key.Error.Field(err))
+					log.Warn(ctx, "failed to get replica set for pod", key.Error.Field(err), key.Pod.Field(pod))
 					continue
 				}
 
@@ -252,7 +251,7 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 					log.Debug(ctx, "terminating defunct function", key.Instance.Field(instance))
 					err = c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 					if err != nil {
-						log.Warn(ctx, "failed to terminate pod", key.Error.Field(err), key.Instance.Field(instance))
+						log.Warn(ctx, "failed to terminate instance", key.Error.Field(err), key.Instance.Field(instance))
 					}
 				}()
 
@@ -302,12 +301,10 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 
 						controllerIP, ok := c.ring.Get(fn.RingKey())
 						if !ok || controllerIP != FlagIP.Value() {
-							log.Trace(
-								ctx,
-								"skipping scaling fn to 0, not assigned to this controller",
+							log.Trace(ctx, "skipping scaling fn to 0, not assigned to this controller",
 								key.Function.Field(fn),
-								slog.String("controllerIP", controllerIP),
-								slog.String("ip", FlagIP.Value()),
+								key.ControllerIP.Field(controllerIP),
+								key.IP.Field(FlagIP.Value()),
 								slog.Bool("ok", ok),
 							)
 							continue
@@ -345,9 +342,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 
 					stabilizationWindow, exists := stabilizationWindows[fn]
 					if !exists {
-						stabilizationWindow = &StabilizationWindow{
-							Window: DefaultConfig.DownscaleStabilization,
-						}
+						stabilizationWindow = &StabilizationWindow{Window: DefaultConfig.DownscaleStabilization}
 						stabilizationWindows[fn] = stabilizationWindow
 					}
 
@@ -355,7 +350,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						key.Function.Field(fn),
 						key.CurrentInstances.Field(currentInstances),
 						key.DesiredInstances.Field(desiredInstances),
-						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
+						key.MaxRecommendedInstances.Field(stabilizationWindow.GetMaxRecommendation()),
 					)
 
 					stabilizationWindow.RecordRecommendation(desiredInstances, now)
@@ -364,8 +359,8 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 					if !ok || controllerIP != FlagIP.Value() {
 						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
 							key.Function.Field(fn),
-							slog.String("controllerIP", controllerIP),
-							slog.String("ip", FlagIP.Value()),
+							key.Controller.Field(controllerIP),
+							key.IP.Field(FlagIP.Value()),
 							slog.Bool("ok", ok),
 						)
 						continue
@@ -390,7 +385,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						key.Function.Field(fn),
 						key.CurrentInstances.Field(currentInstances),
 						key.DesiredInstances.Field(desiredInstances),
-						slog.Any("maxRecommendation", stabilizationWindow.GetMaxRecommendation()),
+						key.MaxRecommendedInstances.Field(stabilizationWindow.GetMaxRecommendation()),
 					)
 
 					_, err = c.scaleFunction(ctx, fn, desiredInstances)

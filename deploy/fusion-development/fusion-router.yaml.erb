@@ -4,28 +4,6 @@ kind: ServiceAccount
 metadata:
   name: fusion-router
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: fusion-router
-rules:
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get", "list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: fusion-router
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: fusion-router
-subjects:
-  - kind: ServiceAccount
-    name: fusion-router
-    namespace: fusion-development
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:

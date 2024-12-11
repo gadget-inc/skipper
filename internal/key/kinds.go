@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 )
 
 type boolKey struct{ key }
@@ -23,11 +25,11 @@ func (k boolKey) Attribute(value bool) attribute.KeyValue {
 type stringKey struct{ key }
 
 func (k stringKey) Field(value string) slog.Attr {
-	return slog.String(string(k.Underscored), value)
+	return slog.String(k.Underscored, value)
 }
 
 func (k stringKey) Attribute(value string) attribute.KeyValue {
-	return attribute.String(string(k.Underscored), value)
+	return attribute.String(k.Underscored, value)
 }
 
 type stringSliceKey struct{ key }
@@ -35,11 +37,11 @@ type stringSliceKey struct{ key }
 var _ Key[[]string] = stringSliceKey{}
 
 func (k stringSliceKey) Field(value []string) slog.Attr {
-	return slog.Any(string(k.Underscored), value)
+	return slog.Any(k.Underscored, value)
 }
 
 func (k stringSliceKey) Attribute(value []string) attribute.KeyValue {
-	return attribute.StringSlice(string(k.Underscored), value)
+	return attribute.StringSlice(k.Underscored, value)
 }
 
 type intKey struct{ key }
@@ -47,11 +49,11 @@ type intKey struct{ key }
 var _ Key[int] = intKey{}
 
 func (k intKey) Field(value int) slog.Attr {
-	return slog.Int(string(k.Underscored), value)
+	return slog.Int(k.Underscored, value)
 }
 
 func (k intKey) Attribute(value int) attribute.KeyValue {
-	return attribute.Int(string(k.Underscored), value)
+	return attribute.Int(k.Underscored, value)
 }
 
 type int64Key struct{ key }
@@ -59,11 +61,11 @@ type int64Key struct{ key }
 var _ Key[int64] = int64Key{}
 
 func (k int64Key) Field(value int64) slog.Attr {
-	return slog.Int64(string(k.Underscored), value)
+	return slog.Int64(k.Underscored, value)
 }
 
 func (k int64Key) Attribute(value int64) attribute.KeyValue {
-	return attribute.Int64(string(k.Underscored), value)
+	return attribute.Int64(k.Underscored, value)
 }
 
 type durationKey struct{ key }
@@ -71,11 +73,11 @@ type durationKey struct{ key }
 var _ Key[time.Duration] = durationKey{}
 
 func (k durationKey) Field(value time.Duration) slog.Attr {
-	return slog.Duration(string(k.Underscored), value)
+	return slog.Duration(k.Underscored, value)
 }
 
 func (k durationKey) Attribute(value time.Duration) attribute.KeyValue {
-	return attribute.Float64(string(k.Underscored), float64(value.Milliseconds()))
+	return attribute.Float64(k.Underscored, float64(value.Milliseconds()))
 }
 
 type float64Key struct{ key }
@@ -83,11 +85,11 @@ type float64Key struct{ key }
 var _ Key[float64] = float64Key{}
 
 func (k float64Key) Field(value float64) slog.Attr {
-	return slog.Float64(string(k.Underscored), value)
+	return slog.Float64(k.Underscored, value)
 }
 
 func (k float64Key) Attribute(value float64) attribute.KeyValue {
-	return attribute.Float64(string(k.Underscored), value)
+	return attribute.Float64(k.Underscored, value)
 }
 
 type timeKey struct{ key }
@@ -95,11 +97,11 @@ type timeKey struct{ key }
 var _ Key[time.Time] = timeKey{}
 
 func (k timeKey) Field(value time.Time) slog.Attr {
-	return slog.Time(string(k.Underscored), value)
+	return slog.Time(k.Underscored, value)
 }
 
 func (k timeKey) Attribute(value time.Time) attribute.KeyValue {
-	return attribute.String(string(k.Underscored), value.Format(time.RFC3339))
+	return attribute.String(k.Underscored, value.Format(time.RFC3339))
 }
 
 type stringerKey struct{ key }
@@ -107,11 +109,11 @@ type stringerKey struct{ key }
 var _ Key[fmt.Stringer] = stringerKey{}
 
 func (k stringerKey) Field(value fmt.Stringer) slog.Attr {
-	return slog.String(string(k.Underscored), value.String())
+	return slog.String(k.Underscored, value.String())
 }
 
 func (k stringerKey) Attribute(value fmt.Stringer) attribute.KeyValue {
-	return attribute.String(string(k.Underscored), value.String())
+	return attribute.String(k.Underscored, value.String())
 }
 
 type errorKey struct{ key }
@@ -122,26 +124,129 @@ func (k errorKey) Field(value error) slog.Attr {
 	if value == nil {
 		return slog.Attr{}
 	}
-	return slog.String(string(k.Underscored), value.Error())
+	return slog.String(k.Underscored, value.Error())
 }
 
 func (k errorKey) Attribute(value error) attribute.KeyValue {
-	return attribute.String(string(k.Underscored), value.Error())
+	return attribute.String(k.Underscored, value.Error())
 }
 
-type Value interface {
-	LogValue() slog.Value
-	AttributeValue() attribute.Value
+type GroupValue interface {
+	Fields() []slog.Attr
+	Attributes() []attribute.KeyValue
 }
 
-type valueKey struct{ key }
+type groupValueKey struct{ key }
 
-var _ Key[Value] = valueKey{}
+var _ GroupKey[GroupValue] = groupValueKey{}
 
-func (k valueKey) Field(value Value) slog.Attr {
-	return slog.Any(string(k.Underscored), value.LogValue())
+func (k groupValueKey) Field(value GroupValue) slog.Attr {
+	return slog.Attr{Key: k.Underscored, Value: slog.GroupValue(value.Fields()...)}
 }
 
-func (k valueKey) Attribute(value Value) attribute.KeyValue {
-	return attribute.KeyValue{Key: attribute.Key(k.Underscored), Value: value.AttributeValue()}
+func (k groupValueKey) Attributes(value GroupValue) []attribute.KeyValue {
+	attrs := value.Attributes()
+	for i := range attrs {
+		attrs[i].Key = attribute.Key(k.Underscored) + "." + attrs[i].Key
+	}
+	return attrs
+}
+
+type podKey struct{ key }
+
+var _ GroupKey[*v1.Pod] = podKey{}
+
+func (k podKey) Field(value *v1.Pod) slog.Attr {
+	return slog.Attr{
+		Key: k.Underscored,
+		Value: slog.GroupValue(
+			Name.Field(value.Name),
+			Namespace.Field(value.Namespace),
+		),
+	}
+}
+
+func (k podKey) Attributes(value *v1.Pod) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String(k.Underscored+".name", value.Name),
+		attribute.String(k.Underscored+".namespace", value.Namespace),
+	}
+}
+
+type deploymentKey struct{ key }
+
+var _ GroupKey[*appsv1.Deployment] = deploymentKey{}
+
+func (k deploymentKey) Field(value *appsv1.Deployment) slog.Attr {
+	return slog.Attr{
+		Key: k.Underscored,
+		Value: slog.GroupValue(
+			Name.Field(value.Name),
+			Namespace.Field(value.Namespace),
+		),
+	}
+}
+
+func (k deploymentKey) Attributes(value *appsv1.Deployment) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String(k.Underscored+".name", value.Name),
+		attribute.String(k.Underscored+".namespace", value.Namespace),
+	}
+}
+
+type replicaSetKey struct{ key }
+
+var _ GroupKey[*appsv1.ReplicaSet] = replicaSetKey{}
+
+func (k replicaSetKey) Field(value *appsv1.ReplicaSet) slog.Attr {
+	var desiredReplicas int64
+	if value.Spec.Replicas != nil {
+		desiredReplicas = int64(*value.Spec.Replicas)
+	}
+
+	return slog.Attr{
+		Key: k.Underscored,
+		Value: slog.GroupValue(
+			slog.String("name", value.Name),
+			slog.String("namespace", value.Namespace),
+			slog.Int64("desired_replicas", desiredReplicas),
+		),
+	}
+}
+
+func (k replicaSetKey) Attributes(value *appsv1.ReplicaSet) []attribute.KeyValue {
+	var desiredReplicas int64
+	if value.Spec.Replicas != nil {
+		desiredReplicas = int64(*value.Spec.Replicas)
+	}
+
+	return []attribute.KeyValue{
+		attribute.String(k.Underscored+".name", value.Name),
+		attribute.String(k.Underscored+".namespace", value.Namespace),
+		attribute.Int64(k.Underscored+".desired_replicas", desiredReplicas),
+	}
+}
+
+type mapStringString struct{ key }
+
+var _ GroupKey[map[string]string] = mapStringString{}
+
+func (k mapStringString) Field(value map[string]string) slog.Attr {
+	keyValues := make([]slog.Attr, 0, len(value))
+	for k, v := range value {
+		keyValues = append(keyValues, slog.String(k, v))
+	}
+
+	return slog.Attr{
+		Key:   k.Underscored,
+		Value: slog.GroupValue(keyValues...),
+	}
+}
+
+func (k mapStringString) Attributes(value map[string]string) []attribute.KeyValue {
+	attributes := make([]attribute.KeyValue, 0, len(value))
+	for mapKey, v := range value {
+		attributes = append(attributes, attribute.String(k.Underscored+"."+mapKey, v))
+	}
+	return attributes
 }
