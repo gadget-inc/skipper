@@ -97,8 +97,10 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	attempt := 1
+	attempt := 0
 	for {
+		attempt++
+
 		if attempt > FlagMaxRoundTripAttempts.Value() {
 			return nil, fmt.Errorf("failed to proxy request after %d attempts", FlagMaxRoundTripAttempts.Value())
 		}
@@ -123,7 +125,6 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		instance, err := r.controller.Get(ctx, fn)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Function.Field(fn), key.Attempt.Field(attempt))
-			attempt++
 			continue
 		}
 
@@ -134,15 +135,10 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
-			if netOpErr.Op == "dial" || netOpErr.Timeout() {
+			if netOpErr.Op == "dial" {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt))
-				attempt++
 				continue
 			}
-		}
-
-		if err != nil && err != context.Canceled {
-			log.Error(ctx, "unknown error", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt))
 		}
 
 		return res, err

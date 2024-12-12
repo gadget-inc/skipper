@@ -265,18 +265,9 @@ func TestRetries(t *testing.T) {
 			},
 		},
 		{
-			name:          "round trip net op dial error",
+			name:          "round trip dial error",
 			maxAttempts:   2,
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")}},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusOK, rw.Code)
-				require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
-			},
-		},
-		{
-			name:          "round trip net op timeout error",
-			maxAttempts:   2,
-			roundTripErrs: []error{&net.OpError{Op: "foo", Err: timeoutError{}}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusOK, rw.Code)
 				require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
@@ -288,7 +279,6 @@ func TestRetries(t *testing.T) {
 			getErrs:     []error{fmt.Errorf("arbitrary error")},
 			roundTripErrs: []error{
 				&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")},
-				&net.OpError{Op: "foo", Err: timeoutError{}},
 			},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusOK, rw.Code)
@@ -296,13 +286,10 @@ func TestRetries(t *testing.T) {
 			},
 		},
 		{
-			name:        "controller.get and round trip errors exceed max attempts",
-			maxAttempts: 3,
-			getErrs:     []error{fmt.Errorf("arbitrary error")},
-			roundTripErrs: []error{
-				&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")},
-				&net.OpError{Op: "dial", Err: timeoutError{}},
-			},
+			name:          "controller.get and round trip errors exceed max attempts",
+			maxAttempts:   2,
+			getErrs:       []error{fmt.Errorf("arbitrary error")},
+			roundTripErrs: []error{&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				require.Equal(t, http.StatusBadGateway, rw.Code)
 				require.Empty(t, rw.Body)
@@ -350,12 +337,6 @@ func TestRetries(t *testing.T) {
 		tc.check(t, fn, rw)
 	}
 }
-
-type timeoutError struct{}
-
-func (timeoutError) Error() string { return "timeout error" }
-
-func (timeoutError) Timeout() bool { return true }
 
 type roundTripperFunc func(req *http.Request) (*http.Response, error)
 
