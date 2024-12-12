@@ -118,63 +118,63 @@ var _ pflag.Value = (*Flag[any])(nil)
 // This is called automatically by Bind/BindPersistent and is only
 // needed when you want to access the flag's value without binding it to
 // a command (e.g. in a test).
-func (self *Flag[T]) Init() {
-	if self.isInitialized {
+func (f *Flag[T]) Init() {
+	if f.isInitialized {
 		return
 	}
 
-	self.ptr = any(&self.value)
-	self.value = self.Default
-	if self.EnvVarName == "" {
-		self.EnvVarName = "FUSION_" + strings.ToUpper(strings.ReplaceAll(self.Name, "-", "_"))
+	f.ptr = any(&f.value)
+	f.value = f.Default
+	if f.EnvVarName == "" {
+		f.EnvVarName = "FUSION_" + strings.ToUpper(strings.ReplaceAll(f.Name, "-", "_"))
 	}
-	self.Description += " (env " + self.EnvVarName + ")"
-	self.isInitialized = true
+	f.Description += " (env " + f.EnvVarName + ")"
+	f.isInitialized = true
 }
 
 // Value returns the flag's value.
 //
-// If the flag was not set or initialized via Bind/BindPersistent,
-// this will panic.
-func (self *Flag[T]) Value() T {
-	if !self.isInitialized {
-		panic(fmt.Sprintf("flag --%s was not initialized", self.Name))
+// If the flag was not initialized (e.g. via Bind/BindPersistent), this
+// will panic.
+func (f *Flag[T]) Value() T {
+	if !f.isInitialized {
+		panic(fmt.Sprintf("flag --%s was not initialized", f.Name))
 	}
-	return self.value
+	return f.value
 }
 
 // SetValue sets the flag's value.
-func (self *Flag[T]) SetValue(value T) error {
-	self.Init()
-	self.WasProvided = true
-	self.value = value
-	self.ptr = any(&self.value)
-	if self.Action != nil {
-		return self.Action(value)
+func (f *Flag[T]) SetValue(value T) error {
+	f.Init()
+	f.WasProvided = true
+	f.value = value
+	f.ptr = any(&f.value)
+	if f.Action != nil {
+		return f.Action(value)
 	}
 	return nil
 }
 
 // Set implements pflag.Value.Set.
-func (self *Flag[T]) Set(s string) error {
-	self.Init()
-	self.WasProvided = true
+func (f *Flag[T]) Set(s string) error {
+	f.Init()
+	f.WasProvided = true
 
 	var err error
-	if self.Parse != nil {
-		self.value, err = self.Parse(s)
-		if err == nil && self.Action != nil {
-			err = self.Action(self.value)
+	if f.Parse != nil {
+		f.value, err = f.Parse(s)
+		if err == nil && f.Action != nil {
+			err = f.Action(f.value)
 		}
 		return err
 	}
 
-	sep := self.Separator
+	sep := f.Separator
 	if sep == "" {
 		sep = ","
 	}
 
-	switch value := self.ptr.(type) {
+	switch value := f.ptr.(type) {
 	case *string:
 		*value = s
 	case *[]string:
@@ -213,31 +213,31 @@ func (self *Flag[T]) Set(s string) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("invalid value for flag --%s: %w", self.Name, err)
+		return fmt.Errorf("invalid value for flag --%s: %w", f.Name, err)
 	}
 
-	if self.Action != nil {
-		err = self.Action(self.value)
+	if f.Action != nil {
+		err = f.Action(f.value)
 	}
 
 	return err
 }
 
 // String implements pflag.Value.String.
-func (self *Flag[T]) String() string {
-	if self.ptr == nil {
+func (f *Flag[T]) String() string {
+	if f.ptr == nil {
 		return ""
 	}
 
-	if self.Display != nil {
-		return self.Display(self.value)
+	if f.Display != nil {
+		return f.Display(f.value)
 	}
 
-	if stringer, ok := self.ptr.(fmt.Stringer); ok {
+	if stringer, ok := f.ptr.(fmt.Stringer); ok {
 		return stringer.String()
 	}
 
-	sep := self.Separator
+	sep := f.Separator
 	if sep == "" {
 		sep = ","
 	}
@@ -246,7 +246,7 @@ func (self *Flag[T]) String() string {
 		sep = sep + " "
 	}
 
-	switch value := self.ptr.(type) {
+	switch value := f.ptr.(type) {
 	case *string:
 		return *value
 	case *[]string:
@@ -284,7 +284,7 @@ func (self *Flag[T]) String() string {
 }
 
 // Type implements pflag.Value.Type.
-func (self *Flag[T]) Type() string {
+func (f *Flag[T]) Type() string {
 	return ""
 }
 
@@ -293,8 +293,8 @@ func (self *Flag[T]) Type() string {
 // Once the command is executed and Run/RunE is called, the flag's value
 // will be set to the value provided by the command line, environment
 // variable, or default value.
-func (self *Flag[T]) Bind(cmd *cobra.Command) {
-	self.bind(cmd, false)
+func (f *Flag[T]) Bind(cmd *cobra.Command) {
+	f.bind(cmd, false)
 }
 
 // Bind binds the flag to the given command.
@@ -302,26 +302,26 @@ func (self *Flag[T]) Bind(cmd *cobra.Command) {
 // Once the command is executed and Run/RunE is called, the flag's value
 // will be set to the value provided by the command line, environment
 // variable, or default value.
-func (self *Flag[T]) BindPersistent(cmd *cobra.Command) {
-	self.bind(cmd, true)
+func (f *Flag[T]) BindPersistent(cmd *cobra.Command) {
+	f.bind(cmd, true)
 }
 
-func (self *Flag[T]) bind(cmd *cobra.Command, persistent bool) {
-	self.Init()
+func (f *Flag[T]) bind(cmd *cobra.Command, persistent bool) {
+	f.Init()
 
 	if persistent {
-		cmd.PersistentFlags().VarP(self, self.Name, self.Shorthand, self.Description)
+		cmd.PersistentFlags().VarP(f, f.Name, f.Shorthand, f.Description)
 	} else {
-		cmd.Flags().VarP(self, self.Name, self.Shorthand, self.Description)
+		cmd.Flags().VarP(f, f.Name, f.Shorthand, f.Description)
 	}
 
 	// FIXME: we can't use MarkFlagRequired or MarkFlagsRequiredTogether because they don't know about environment variables but we want these when we generate our completion scripts
-	// if self.Required {
-	//  _ = cmd.MarkFlagRequired(self.Name)
+	// if f.Required {
+	//  _ = cmd.MarkFlagRequired(f.Name)
 	// }
 
-	// if len(self.Requires) > 0 {
-	// 	cmd.MarkFlagsRequiredTogether(append(self.Requires, self.Name)...)
+	// if len(f.Requires) > 0 {
+	// 	cmd.MarkFlagsRequiredTogether(append(f.Requires, f.Name)...)
 	// }
 
 	var nextPreRunE func(cmd *cobra.Command, args []string) error
@@ -332,26 +332,26 @@ func (self *Flag[T]) bind(cmd *cobra.Command, persistent bool) {
 	}
 
 	preRunE := func(cmd *cobra.Command, args []string) error {
-		if !self.WasProvided {
+		if !f.WasProvided {
 			// the flag wasn't set from the command line, check the environment
-			envValue, ok := os.LookupEnv(self.EnvVarName)
+			envValue, ok := os.LookupEnv(f.EnvVarName)
 			if ok {
-				err := self.Set(envValue)
+				err := f.Set(envValue)
 				if err != nil {
-					return fmt.Errorf("error parsing environment variable %s: %w", self.EnvVarName, err)
+					return fmt.Errorf("error parsing environment variable %s: %w", f.EnvVarName, err)
 				}
 			}
 		}
 
-		if !self.WasProvided {
+		if !f.WasProvided {
 			// the flag wasn't set from the command line or environment
-			if self.Required {
-				return fmt.Errorf("flag --%s is required", self.Name)
+			if f.Required {
+				return fmt.Errorf("flag --%s is required", f.Name)
 			}
 
-			if self.Action != nil {
+			if f.Action != nil {
 				// the flag wasn't set, so the action was never called, call it now with the default value
-				err := self.Action(self.value)
+				err := f.Action(f.value)
 				if err != nil {
 					return err
 				}
