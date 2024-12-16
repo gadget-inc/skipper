@@ -154,33 +154,6 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	return instances, nil
 }
 
-func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
-	fn, err := function.FromHeaders(req)
-	if err != nil {
-		http.Error(rw, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	desiredInstances, err := strconv.Atoi(req.Header.Get(key.DesiredInstances.Header))
-	if err != nil {
-		http.Error(rw, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	instances, err := c.scaleFunction(req.Context(), fn, desiredInstances)
-	if err != nil {
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	rw.Header().Set("Content-Type", "application/json")
-	rw.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(rw).Encode(instances)
-	if err != nil {
-		log.Error(req.Context(), "failed to encode scale response", key.Error.Field(err))
-	}
-}
-
 func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Function) (*function.Instance, error) {
 	pod, err := timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		availablePods, err := c.getAvailablePodsForFunction(fn)

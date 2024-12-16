@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math/rand"
 	"net/http"
 	"slices"
 	"strconv"
@@ -14,6 +15,79 @@ import (
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/goccy/go-json"
 )
+
+func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	switch req.URL.Path {
+	case "/healthz":
+		rw.WriteHeader(http.StatusOK)
+	case "/get":
+		c.handleGet(rw, req)
+	case "/scale":
+		c.handleScale(rw, req)
+	case "/heartbeat":
+		c.handleHeartbeat(rw, req)
+	default:
+		http.NotFound(rw, req)
+	}
+}
+
+func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
+	fn, err := function.FromHeaders(req)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	instances, err := c.getAssigned(fn)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for len(instances) == 0 {
+		instances, err = c.scaleFunction(req.Context(), fn, 1)
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	instance := instances[rand.Intn(len(instances))]
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(rw).Encode(instance)
+	if err != nil {
+		log.Error(req.Context(), "failed to encode get response", key.Error.Field(err))
+	}
+}
+
+func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
+	fn, err := function.FromHeaders(req)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	desiredInstances, err := strconv.Atoi(req.Header.Get(key.DesiredInstances.Header))
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	instances, err := c.scaleFunction(req.Context(), fn, desiredInstances)
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusOK)
+	err = json.NewEncoder(rw).Encode(instances)
+	if err != nil {
+		log.Error(req.Context(), "failed to encode scale response", key.Error.Field(err))
+	}
+}
 
 type Heartbeat struct {
 	Function  function.Function `json:"function"`

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"net/http"
 	"sync"
 	"time"
 
@@ -99,21 +98,6 @@ func (c *Controller) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start scaling tenant pods: %w", err)
 	}
 	return nil
-}
-
-func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	switch req.URL.Path {
-	case "/healthz":
-		rw.WriteHeader(http.StatusOK)
-	case "/get":
-		c.handleGet(rw, req)
-	case "/scale":
-		c.handleScale(rw, req)
-	case "/heartbeat":
-		c.handleHeartbeat(rw, req)
-	default:
-		http.NotFound(rw, req)
-	}
 }
 
 func (c *Controller) startControllerInformer(ctx context.Context) error {
