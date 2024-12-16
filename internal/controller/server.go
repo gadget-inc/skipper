@@ -89,11 +89,6 @@ func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-type Heartbeat struct {
-	Function  function.Function `json:"function"`
-	Timestamp time.Time         `json:"timestamp"`
-}
-
 func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {

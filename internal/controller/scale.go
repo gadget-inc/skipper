@@ -29,16 +29,14 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
 	}
 
-	podMetricsList, err := c.metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label,
-	})
+	metrics, err := c.metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{LabelSelector: key.Tenant.Label})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod metrics: %w", err)
 	}
 
-	podMetricsMap := make(map[string]metricsv1beta1.PodMetrics)
-	for _, podMetric := range podMetricsList.Items {
-		podMetricsMap[podMetric.Name] = podMetric
+	podNameToMetric := make(map[string]metricsv1beta1.PodMetrics, len(metrics.Items))
+	for _, metric := range metrics.Items {
+		podNameToMetric[metric.Name] = metric
 	}
 
 	functionMetrics := make(map[function.Function][]InstanceMetric)
@@ -52,7 +50,7 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 
 		instanceMetric := InstanceMetric{Instance: instance}
 
-		if m, exists := podMetricsMap[pod.Name]; exists {
+		if m, exists := podNameToMetric[pod.Name]; exists {
 			for _, container := range m.Containers {
 				if container.Usage.Cpu() != nil {
 					cpuUsage := container.Usage.Cpu().MilliValue()
@@ -70,10 +68,6 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 					*instanceMetric.MemoryUsage += memUsage
 				}
 			}
-		} else {
-			// metrics missing for this instance
-			instanceMetric.CPUUsage = nil
-			instanceMetric.MemoryUsage = nil
 		}
 
 		functionMetrics[instance.Function] = append(functionMetrics[instance.Function], instanceMetric)
