@@ -2,6 +2,7 @@ package hashring
 
 import (
 	"hash/crc32"
+	"maps"
 	"slices"
 	"sort"
 
@@ -89,9 +90,9 @@ func (h *HashRing) Remove(ip string) {
 // Example:
 //
 //	ip := ring.Get("my-cache-key")
-func (h *HashRing) Get(key string) (string, bool) {
+func (h *HashRing) Get(key string) string {
 	if len(h.hashes) == 0 {
-		return "", false
+		panic("hash ring is empty")
 	}
 
 	rt := h.mu.RLock()
@@ -109,7 +110,7 @@ func (h *HashRing) Get(key string) (string, bool) {
 
 	ipHash := h.hashes[index]
 
-	return h.ips[ipHash], true
+	return h.ips[ipHash]
 }
 
 // List returns a sorted slice of all the IPs in the hash ring.
@@ -119,12 +120,5 @@ func (h *HashRing) List() []string {
 	rt := h.mu.RLock()
 	defer h.mu.RUnlock(rt)
 
-	ips := make([]string, 0, len(h.ips))
-	for _, ip := range h.ips {
-		ips = append(ips, ip)
-	}
-
-	slices.Sort(ips)
-
-	return ips
+	return slices.Sorted(maps.Values(h.ips))
 }

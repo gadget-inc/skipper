@@ -134,8 +134,8 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 					if time.Since(timestamp) > 90*time.Second {
 						delete(stabilizationWindows, fn)
 
-						controllerIP, ok := c.ring.Get(fn.RingKey())
-						if !ok || controllerIP != FlagIP.Value() {
+						controllerIP := c.ring.Get(fn.RingKey())
+						if controllerIP != FlagIP.Value() {
 							log.Trace(ctx, "skipping scaling fn to 0, not assigned to this controller",
 								key.Function.Field(fn),
 								key.ControllerIP.Field(controllerIP),
@@ -190,8 +190,8 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 
 					stabilizationWindow.RecordRecommendation(desiredInstances, now)
 
-					controllerIP, ok := c.ring.Get(fn.RingKey())
-					if !ok || controllerIP != FlagIP.Value() {
+					controllerIP := c.ring.Get(fn.RingKey())
+					if controllerIP != FlagIP.Value() {
 						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
 							key.Function.Field(fn),
 							key.Controller.Field(controllerIP),

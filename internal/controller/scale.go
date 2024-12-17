@@ -103,11 +103,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 		return instances, nil
 	}
 
-	controllerIP, ok := c.ring.Get(fn.RingKey())
-	if !ok {
-		return nil, fmt.Errorf("no controller for function")
-	}
-
+	controllerIP := c.ring.Get(fn.RingKey())
 	if controllerIP != FlagIP.Value() {
 		log.Debug(ctx, "forwarding scale request", key.Function.Field(fn), key.ControllerIP.Field(controllerIP))
 		controllerClient, _ := c.controllerClients.LoadOrCompute(controllerIP, func() Client { return NewHTTPClient(controllerIP, FlagPort.Value()) })
