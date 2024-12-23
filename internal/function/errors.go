@@ -13,6 +13,7 @@ var (
 	ErrMissingMetadata                = errors.New("missing " + key.Metadata.Underscored)
 	ErrMissingMinInstances            = errors.New("missing " + key.MinInstances.Underscored)
 	ErrMissingNamespace               = errors.New("missing " + key.Namespace.Underscored)
+	ErrMissingPort                    = errors.New("missing " + key.Port.Underscored)
 	ErrMissingReplicaSet              = errors.New("missing " + key.ReplicaSet.Underscored)
 	ErrMissingTargetCPUUtilization    = errors.New("missing " + key.TargetCPUUtilization.Underscored)
 	ErrMissingTargetMemoryUtilization = errors.New("missing " + key.TargetMemoryUtilization.Underscored)

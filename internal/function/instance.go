@@ -55,10 +55,21 @@ func FromPod(pod *v1.Pod) (*Instance, error) {
 		return nil, ErrMissingReplicaSet
 	}
 
+	var port string
+	for _, container := range pod.Spec.Containers {
+		for _, containerPort := range container.Ports {
+			port = strconv.Itoa(int(containerPort.ContainerPort))
+			break
+		}
+	}
+	if port == "" {
+		return nil, ErrMissingPort
+	}
+
 	return &Instance{
 		Function:   fn,
 		Name:       pod.Name,
-		Addr:       pod.Status.PodIP + ":" + strconv.Itoa(FlagPort.Value()),
+		Addr:       pod.Status.PodIP + ":" + port,
 		Version:    replicaSet,
 		AssignedAt: assignedAt,
 		ReadyAt:    readyAt,

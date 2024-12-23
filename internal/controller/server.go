@@ -96,7 +96,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	var heartbeats []Heartbeat
+	var heartbeats []function.Heartbeat
 	err = json.Unmarshal(body, &heartbeats)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)

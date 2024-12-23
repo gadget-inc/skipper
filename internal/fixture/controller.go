@@ -5,7 +5,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/gadget-inc/fusion/internal/controller"
 	"github.com/gadget-inc/fusion/internal/function"
 )
 
@@ -17,12 +16,12 @@ type (
 type MockControllerClient struct {
 	t             *testing.T
 	mu            sync.Mutex
-	heartbeats    []controller.Heartbeat
+	heartbeats    []function.Heartbeat
 	getHandlers   map[function.Function]GetHandler
 	scaleHandlers map[function.Function]ScaleHandler
 }
 
-var _ controller.Client = &MockControllerClient{}
+// var _ controller.Client = &MockControllerClient{}
 
 func NewMockControllerClient(t *testing.T) *MockControllerClient {
 	return &MockControllerClient{
@@ -44,7 +43,7 @@ func (f *MockControllerClient) HandleScale(fn function.Function, h ScaleHandler)
 	f.scaleHandlers[fn] = h
 }
 
-func (f *MockControllerClient) Heartbeats() []controller.Heartbeat {
+func (f *MockControllerClient) Heartbeats() []function.Heartbeat {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.heartbeats
@@ -65,7 +64,7 @@ func (f *MockControllerClient) Get(ctx context.Context, fn function.Function) (i
 }
 
 // Heartbeat implements controller.Client.
-func (f *MockControllerClient) Heartbeat(ctx context.Context, heartbeats []controller.Heartbeat) error {
+func (f *MockControllerClient) Heartbeat(ctx context.Context, heartbeats []function.Heartbeat) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.heartbeats = append(f.heartbeats, heartbeats...)

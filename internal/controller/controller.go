@@ -52,11 +52,6 @@ func init() {
 	doesNotHaveTenantSelector = labels.NewSelector().Add(doesNotHaveTenantRequirement)
 }
 
-type Heartbeat struct {
-	Function  function.Function `json:"function"`
-	Timestamp time.Time         `json:"timestamp"`
-}
-
 type Controller struct {
 	ring              *hashring.HashRing
 	clientset         kubernetes.Interface

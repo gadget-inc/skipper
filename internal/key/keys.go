@@ -27,6 +27,7 @@ var (
 	Namespace               = stringKey{new("namespace")}
 	Namespaces              = stringSliceKey{new("namespaces")}
 	Pod                     = podKey{new("pod")}
+	Port                    = intKey{new("port")}
 	ReadyAt                 = timeKey{new("ready-at")}
 	ReplicaSet              = replicaSetKey{new("replica-set")}
 	Signal                  = stringKey{new("signal")}

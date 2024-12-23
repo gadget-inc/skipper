@@ -86,7 +86,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 		key.Deployment.Label: fn.Deployment,
 	}))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get assigned pods: %w", err)
+		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
 	}
 
 	var instances []*function.Instance
@@ -151,7 +151,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 			return nil, fmt.Errorf("failed to list available pods: %w", err)
 		}
 		if len(availablePods) == 0 {
-			log.Trace(ctx, "no available pods", key.Function.Field(fn))
+			log.Warn(ctx, "no available pods", key.Function.Field(fn))
 			return nil, nil
 		}
 		return availablePods[rand.Intn(len(availablePods))], nil
@@ -187,14 +187,24 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
 	defer cancel()
 
-	assignURL := "http://" + pod.Status.PodIP + ":" + strconv.Itoa(function.FlagPort.Value()) + function.FlagAssignPath.Value()
+	var port string
+	for _, container := range pod.Spec.Containers {
+		for _, containerPort := range container.Ports {
+			port = strconv.Itoa(int(containerPort.ContainerPort))
+			break
+		}
+	}
+	if port == "" {
+		return nil, fmt.Errorf("failed to get port for pod: %w", err)
+	}
+
+	assignURL := "http://" + pod.Status.PodIP + ":" + port + function.FlagAssignPath.Value()
 	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}
 
-	req.Header.Set(key.Tenant.Header, fn.Tenant)
-	req.Header.Set(key.Metadata.Header, fn.Metadata)
+	fn.SetHeaders(req)
 
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
 	res, err := http.DefaultClient.Do(req)

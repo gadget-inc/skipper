@@ -56,10 +56,10 @@ func New(controllerClient controller.Client) *Router {
 
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
-		var heartbeats []controller.Heartbeat
+		var heartbeats []function.Heartbeat
 		r.heartbeats.Range(func(fn function.Function, timestamp time.Time) bool {
 			r.heartbeats.Delete(fn)
-			heartbeats = append(heartbeats, controller.Heartbeat{Function: fn, Timestamp: timestamp})
+			heartbeats = append(heartbeats, function.Heartbeat{Function: fn, Timestamp: timestamp})
 			return true
 		})
 

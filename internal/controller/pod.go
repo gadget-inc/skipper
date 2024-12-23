@@ -26,6 +26,8 @@ type podListerEntry struct {
 }
 
 func (c *Controller) startControllerInformer(ctx context.Context) error {
+	log.Info(ctx, "starting controller informer", key.Namespace.Field(FlagNamespace.Value()))
+
 	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		c.clientset,
 		10*time.Minute,
