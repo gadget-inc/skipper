@@ -179,9 +179,14 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to marshal assign patch: %w", err)
 	}
 
-	_, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	pod, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		return nil, fmt.Errorf("failed to assign pod: %w", err)
+	}
+
+	err = c.updatePodCache(pod)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update pod: %w", err)
 	}
 
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())

@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -12,12 +13,22 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	DefaultFunctionNamespace = "fusion-fixtures-test"
+	DefaultDeployment        = "test"
+)
+
 func NewFunction() function.Function {
+	counterMu.Lock()
+	defer counterMu.Unlock()
+
+	tenantCounter++
+
 	return function.Function{
-		Tenant:                  "test-" + uuid.NewString(),
+		Tenant:                  "tenant-" + strconv.Itoa(tenantCounter),
 		Metadata:                uuid.NewString(),
-		Namespace:               "fusion-fixtures-test",
-		Deployment:              "test",
+		Namespace:               DefaultFunctionNamespace,
+		Deployment:              DefaultDeployment,
 		MinInstances:            0,
 		MaxInstances:            1,
 		TargetCPUUtilization:    100,
@@ -29,11 +40,14 @@ func NewInstance(t *testing.T, fn function.Function, handler http.HandlerFunc) *
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
+	counterMu.Lock()
+	defer counterMu.Unlock()
+
 	return &function.Instance{
 		Function:   fn,
 		Name:       uuid.NewString(),
 		Addr:       testServer.Listener.Addr().String(),
-		Version:    uuid.NewString(),
+		Version:    fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter),
 		AssignedAt: time.Now(),
 		ReadyAt:    time.Now(),
 	}

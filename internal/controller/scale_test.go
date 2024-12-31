@@ -2,16 +2,14 @@ package controller
 
 import (
 	"context"
-	"net/http"
 	"testing"
+	"time"
 
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/stretchr/testify/require"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
-	fakemetricsclientset "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
 
 func init() {
@@ -20,59 +18,115 @@ func init() {
 	function.FlagNamespaces.Init()
 	function.FlagPort.Init()
 
-	FlagIP.SetValue("127.0.0.1")
-	FlagNamespace.SetValue("fusion-test")
-
-	// log.FlagLogLevel.SetValue(log.LevelTrace)
-	// log.FlagLogFormat.SetValue("text")
-	// log.Init()
+	FlagIP.SetValue(fixture.DefaultControllerIP)
+	FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
 }
 
 func TestScaleFunction(t *testing.T) {
-	fn := fixture.NewFunction()
-	fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
-
-	controllerPod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "controller",
-			Namespace: FlagNamespace.Value(),
-			Labels: map[string]string{
-				"app.kubernetes.io/name":      "fusion",
-				"app.kubernetes.io/component": "controller",
-			},
+	testCases := []struct {
+		name              string
+		availablePods     int
+		desiredInstances  int
+		expectedInstances int
+		err               error
+	}{
+		{
+			name:              "smoke",
+			availablePods:     1,
+			desiredInstances:  1,
+			expectedInstances: 1,
+			err:               nil,
 		},
-		Status: v1.PodStatus{
-			Phase: v1.PodRunning,
-			PodIP: FlagIP.Value(),
+		{
+			name:              "none",
+			availablePods:     0,
+			desiredInstances:  1,
+			expectedInstances: 0,
+			err:               context.DeadlineExceeded,
 		},
 	}
 
-	availablePod := fixture.AvailablePod(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-		require.Equal(t, http.MethodPost, req.Method)
-		require.Equal(t, function.FlagAssignPath.Value(), req.URL.Path)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			t.Cleanup(cancel)
 
-		assignedFn, err := function.FromHeaders(req)
-		require.NoError(t, err)
-		require.Equal(t, fn, assignedFn)
+			fn := fixture.NewFunction()
+			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
 
-		rw.WriteHeader(http.StatusOK)
-	})
+			objects := []runtime.Object{fixture.ControllerPod()}
+			for i := 0; i < tc.availablePods; i++ {
+				objects = append(objects, fixture.AvailablePod(t, fn, nil))
+			}
 
-	clientset := fake.NewClientset(controllerPod, availablePod)
-	metricsClientset := fakemetricsclientset.NewSimpleClientset()
+			c := New(fake.NewClientset(objects...), nil)
 
-	c := New(clientset, metricsClientset)
+			err := c.startControllerInformer(ctx)
+			require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+			err = c.startPodInformers(ctx)
+			require.NoError(t, err)
 
-	err := c.startControllerInformer(ctx)
-	require.NoError(t, err)
+			instances, err := c.scaleFunction(ctx, fn, tc.desiredInstances)
+			if tc.err != nil {
+				require.Error(t, err)
+				return
+			}
 
-	err = c.startPodInformers(ctx)
-	require.NoError(t, err)
+			require.NoError(t, err)
+			require.Len(t, instances, tc.expectedInstances)
+		})
+	}
+}
 
-	instances, err := c.scaleFunction(ctx, fn, 1)
-	require.NoError(t, err)
-	require.Len(t, instances, 1)
+func TestAssignPodToFunction(t *testing.T) {
+	testCases := []struct {
+		name          string
+		availablePods int
+		err           error
+	}{
+		{
+			name:          "smoke",
+			availablePods: 1,
+			err:           nil,
+		},
+		{
+			name:          "none",
+			availablePods: 0,
+			err:           context.DeadlineExceeded,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			t.Cleanup(cancel)
+
+			fn := fixture.NewFunction()
+			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
+
+			k8sObjects := []runtime.Object{fixture.ControllerPod()}
+			for i := 0; i < tc.availablePods; i++ {
+				k8sObjects = append(k8sObjects, fixture.AvailablePod(t, fn, nil))
+			}
+
+			c := New(fake.NewClientset(k8sObjects...), nil)
+
+			err := c.startControllerInformer(ctx)
+			require.NoError(t, err)
+
+			err = c.startPodInformers(ctx)
+			require.NoError(t, err)
+
+			instance, err := c.assignPodToFunction(ctx, fn)
+			if tc.err != nil {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			instance.Function.Metadata = fn.Metadata // TODO: remove this line
+			require.Equal(t, fn, instance.Function)
+		})
+	}
 }

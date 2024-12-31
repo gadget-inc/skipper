@@ -16,12 +16,17 @@ import (
 )
 
 var (
+	counterMu           = new(sync.Mutex)
 	availablePodCounter = 0
 	replicaSetCounter   = 0
-	availablePodMu      = new(sync.Mutex)
+	tenantCounter       = 0
 )
 
 func AvailablePod(t *testing.T, fn function.Function, handler http.HandlerFunc) *v1.Pod {
+	if handler == nil {
+		handler = defaultAvailablePodHandler(t, fn)
+	}
+
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
@@ -31,8 +36,8 @@ func AvailablePod(t *testing.T, fn function.Function, handler http.HandlerFunc) 
 	port, err := strconv.Atoi(portStr)
 	require.NoError(t, err)
 
-	availablePodMu.Lock()
-	defer availablePodMu.Unlock()
+	counterMu.Lock()
+	defer counterMu.Unlock()
 
 	availablePodCounter++
 
@@ -59,5 +64,18 @@ func AvailablePod(t *testing.T, fn function.Function, handler http.HandlerFunc) 
 				{Ports: []v1.ContainerPort{{ContainerPort: int32(port)}}},
 			},
 		},
+	}
+}
+
+func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.HandlerFunc {
+	return func(rw http.ResponseWriter, req *http.Request) {
+		require.Equal(t, http.MethodPost, req.Method)
+		require.Equal(t, function.FlagAssignPath.Value(), req.URL.Path)
+
+		assignedFn, err := function.FromHeaders(req)
+		require.NoError(t, err)
+		require.Equal(t, fn, assignedFn)
+
+		rw.WriteHeader(http.StatusOK)
 	}
 }

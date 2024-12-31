@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/gadget-inc/fusion/internal/function"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type (
@@ -83,4 +85,26 @@ func (f *MockControllerClient) Scale(ctx context.Context, fn function.Function, 
 	f.t.Fatalf("no scale handler for function: %v", fn)
 
 	return nil, nil
+}
+
+const (
+	DefaultControllerIP        = "127.0.0.1"
+	DefaultControllerNamespace = "fusion-test"
+)
+
+func ControllerPod() *v1.Pod {
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "controller",
+			Namespace: DefaultControllerNamespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/name":      "fusion",
+				"app.kubernetes.io/component": "controller",
+			},
+		},
+		Status: v1.PodStatus{
+			Phase: v1.PodRunning,
+			PodIP: DefaultControllerIP,
+		},
+	}
 }
