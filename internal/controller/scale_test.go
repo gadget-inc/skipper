@@ -54,9 +54,9 @@ func TestScaleFunction(t *testing.T) {
 			fn := fixture.NewFunction()
 			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
 
-			objects := []runtime.Object{fixture.ControllerPod()}
+			objects := []runtime.Object{fixture.NewControllerPod()}
 			for i := 0; i < tc.availablePods; i++ {
-				objects = append(objects, fixture.AvailablePod(t, fn, nil))
+				objects = append(objects, fixture.NewAvailablePod(t, fn, nil))
 			}
 
 			c := New(fake.NewClientset(objects...), nil)
@@ -105,9 +105,9 @@ func TestAssignPodToFunction(t *testing.T) {
 			fn := fixture.NewFunction()
 			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
 
-			k8sObjects := []runtime.Object{fixture.ControllerPod()}
+			k8sObjects := []runtime.Object{fixture.NewControllerPod()}
 			for i := 0; i < tc.availablePods; i++ {
-				k8sObjects = append(k8sObjects, fixture.AvailablePod(t, fn, nil))
+				k8sObjects = append(k8sObjects, fixture.NewAvailablePod(t, fn, nil))
 			}
 
 			c := New(fake.NewClientset(k8sObjects...), nil)

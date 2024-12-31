@@ -223,7 +223,7 @@ func (c *Controller) startPodInformers(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) getAssigned(fn function.Function) ([]*function.Instance, error) {
+func (c *Controller) getInstances(fn function.Function) ([]*function.Instance, error) {
 	assignedPods, err := c.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,

@@ -38,7 +38,7 @@ func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	instances, err := c.getAssigned(fn)
+	instances, err := c.getInstances(fn)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return

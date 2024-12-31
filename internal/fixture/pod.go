@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
@@ -16,13 +17,13 @@ import (
 )
 
 var (
-	counterMu           = new(sync.Mutex)
-	availablePodCounter = 0
-	replicaSetCounter   = 0
-	tenantCounter       = 0
+	counterMu         = new(sync.Mutex)
+	podCounter        = 0
+	replicaSetCounter = 0
+	tenantCounter     = 0
 )
 
-func AvailablePod(t *testing.T, fn function.Function, handler http.HandlerFunc) *v1.Pod {
+func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *v1.Pod {
 	if handler == nil {
 		handler = defaultAvailablePodHandler(t, fn)
 	}
@@ -39,11 +40,11 @@ func AvailablePod(t *testing.T, fn function.Function, handler http.HandlerFunc) 
 	counterMu.Lock()
 	defer counterMu.Unlock()
 
-	availablePodCounter++
+	podCounter++
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + strconv.Itoa(availablePodCounter),
+			Name:      fn.Deployment + "-" + strconv.Itoa(podCounter),
 			Namespace: fn.Namespace,
 			Labels: map[string]string{
 				key.Deployment.Label: fn.Deployment,
@@ -77,5 +78,53 @@ func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.Handler
 		require.Equal(t, fn, assignedFn)
 
 		rw.WriteHeader(http.StatusOK)
+	}
+}
+
+func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v1.Pod {
+	testServer := httptest.NewServer(handler)
+	t.Cleanup(testServer.Close)
+
+	ip, portStr, err := net.SplitHostPort(testServer.Listener.Addr().String())
+	require.NoError(t, err)
+
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+
+	counterMu.Lock()
+	defer counterMu.Unlock()
+
+	podCounter++
+
+	return &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fn.Deployment + "-" + strconv.Itoa(podCounter),
+			Namespace: fn.Namespace,
+			Labels: map[string]string{
+				key.ReplicaSet.Label:              fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter),
+				key.Status.Label:                  "ready", // controller.StatusReady,
+				key.Tenant.Label:                  fn.Tenant,
+				key.Namespace.Label:               fn.Namespace,
+				key.Deployment.Label:              fn.Deployment,
+				key.Metadata.Label:                fn.Metadata,
+				key.MinInstances.Label:            strconv.Itoa(fn.MinInstances),
+				key.MaxInstances.Label:            strconv.Itoa(fn.MaxInstances),
+				key.TargetCPUUtilization.Label:    strconv.Itoa(fn.TargetCPUUtilization),
+				key.TargetMemoryUtilization.Label: strconv.Itoa(fn.TargetMemoryUtilization),
+				key.AssignedAt.Label:              strconv.FormatInt(time.Now().Unix(), 10),
+			},
+		},
+		Status: v1.PodStatus{
+			PodIP: ip,
+			Phase: v1.PodRunning,
+			Conditions: []v1.PodCondition{
+				{Type: v1.PodReady, Status: v1.ConditionTrue},
+			},
+		},
+		Spec: v1.PodSpec{
+			Containers: []v1.Container{
+				{Ports: []v1.ContainerPort{{ContainerPort: int32(port)}}},
+			},
+		},
 	}
 }

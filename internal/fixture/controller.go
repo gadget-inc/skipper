@@ -92,7 +92,7 @@ const (
 	DefaultControllerNamespace = "fusion-test"
 )
 
-func ControllerPod() *v1.Pod {
+func NewControllerPod() *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "controller",
