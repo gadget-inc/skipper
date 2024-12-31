@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/google/uuid"
@@ -18,13 +17,15 @@ const (
 	DefaultDeployment        = "test"
 )
 
-func NewFunction() function.Function {
+type FunctionOption func(*function.Function)
+
+func NewFunction(opts ...FunctionOption) function.Function {
 	counterMu.Lock()
 	defer counterMu.Unlock()
 
 	tenantCounter++
 
-	return function.Function{
+	fn := function.Function{
 		Tenant:                  "tenant-" + strconv.Itoa(tenantCounter),
 		Metadata:                uuid.NewString(),
 		Namespace:               DefaultFunctionNamespace,
@@ -34,22 +35,17 @@ func NewFunction() function.Function {
 		TargetCPUUtilization:    100,
 		TargetMemoryUtilization: 200,
 	}
+
+	for _, opt := range opts {
+		opt(&fn)
+	}
+
+	return fn
 }
 
-func NewInstance(t *testing.T, fn function.Function, handler http.HandlerFunc) *function.Instance {
-	testServer := httptest.NewServer(handler)
-	t.Cleanup(testServer.Close)
-
-	counterMu.Lock()
-	defer counterMu.Unlock()
-
-	return &function.Instance{
-		Function:   fn,
-		Name:       uuid.NewString(),
-		Addr:       testServer.Listener.Addr().String(),
-		Version:    fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter),
-		AssignedAt: time.Now(),
-		ReadyAt:    time.Now(),
+func WithMetadata(metadata string) FunctionOption {
+	return func(fn *function.Function) {
+		fn.Metadata = metadata
 	}
 }
 

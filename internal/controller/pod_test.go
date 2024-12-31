@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,12 +16,22 @@ import (
 func TestGetAssigned(t *testing.T) {
 	testCases := []struct {
 		name              string
+		fn                function.Function
 		setupPods         func(t *testing.T, fn function.Function) []runtime.Object
 		expectedInstances int
 		err               error
 	}{
 		{
 			name: "smoke",
+			fn:   fixture.NewFunction(),
+			setupPods: func(t *testing.T, fn function.Function) []runtime.Object {
+				return []runtime.Object{fixture.NewAssignedPod(t, fn, nil)}
+			},
+			expectedInstances: 1,
+		},
+		{
+			name: "long metadata",
+			fn:   fixture.NewFunction(fixture.WithMetadata(strings.Repeat("a", 1024))),
 			setupPods: func(t *testing.T, fn function.Function) []runtime.Object {
 				return []runtime.Object{fixture.NewAssignedPod(t, fn, nil)}
 			},
@@ -33,10 +44,9 @@ func TestGetAssigned(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			t.Cleanup(cancel)
 
-			fn := fixture.NewFunction()
-			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
+			fixture.SetFlag(t, &function.FlagNamespaces, []string{tc.fn.Namespace})
 
-			c := New(fake.NewClientset(tc.setupPods(t, fn)...), nil)
+			c := New(fake.NewClientset(tc.setupPods(t, tc.fn)...), nil)
 
 			err := c.startControllerInformer(ctx)
 			require.NoError(t, err)
@@ -44,7 +54,7 @@ func TestGetAssigned(t *testing.T) {
 			err = c.startPodInformers(ctx)
 			require.NoError(t, err)
 
-			instances, err := c.getInstances(fn)
+			instances, err := c.getInstances(tc.fn)
 			if tc.err != nil {
 				require.Error(t, err)
 				return
