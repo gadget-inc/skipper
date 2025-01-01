@@ -14,15 +14,8 @@ tasks:
       - golangci-lint run
 
   test:
-    sources:
-      - cmd/**/*.go
-      - internal/**/*.go
-      - pkg/**/*.go
-      - go.mod
-      - go.sum
-      - main.go
     cmds:
-      - go test -v ./...
+      - go test -v ./... {{.CLI_ARGS}}
 
   build:
     sources:

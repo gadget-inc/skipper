@@ -67,7 +67,7 @@ func (er *EchoResponse) Header() http.Header {
 	return er.header
 }
 
-func (f *EchoFixture) ParseFunctionResponse(res *http.Response) (EchoResponse, error) {
+func ParseEchoResponse(res *http.Response) (EchoResponse, error) {
 	var response EchoResponse
 	err := json.NewDecoder(res.Body).Decode(&response)
 	return response, err

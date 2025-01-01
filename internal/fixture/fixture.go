@@ -37,7 +37,7 @@ func New(t *testing.T) *Fixture {
 
 func (f *Fixture) NewRouterRequest(ctx context.Context, method, path string, body io.Reader) *http.Request {
 	req, err := http.NewRequestWithContext(ctx, method, RouterURL+path, body)
-	require.NoError(f.t, err, "failed to create request")
+	require.NoError(f.t, err)
 	return req
 }
 

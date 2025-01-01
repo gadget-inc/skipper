@@ -13,7 +13,6 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,7 +58,7 @@ func TestSimple(t *testing.T) {
 	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
 }
 
-func TestMethod(t *testing.T) {
+func TestMethods(t *testing.T) {
 	testCases := []struct {
 		method string
 	}{
@@ -72,14 +71,15 @@ func TestMethod(t *testing.T) {
 		{http.MethodTrace},
 	}
 
-	fn := fixture.NewFunction()
-
 	for _, tc := range testCases {
+		// unit tests
 		t.Run(tc.method, func(t *testing.T) {
+			fn := fixture.NewFunction()
+
 			mcc := fixture.NewMockControllerClient(t)
 			mcc.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-					assert.Equal(t, req.Method, tc.method)
+					require.Equal(t, req.Method, tc.method)
 				}), nil
 			})
 
@@ -88,6 +88,23 @@ func TestMethod(t *testing.T) {
 
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
+			require.Equal(t, http.StatusOK, rw.Code)
+		})
+
+		// integration tests
+		t.Run(tc.method+" integration", func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			t.Cleanup(cancel)
+
+			f := fixture.NewEcho(t, "methods")
+
+			res, err := f.SendFunctionRequest(ctx, tc.method, "/", nil)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, res.StatusCode)
+
+			echoResponse, err := fixture.ParseEchoResponse(res)
+			require.NoError(t, err)
+			require.Equal(t, tc.method, echoResponse.Method)
 		})
 	}
 }
@@ -102,8 +119,22 @@ func TestHeaders(t *testing.T) {
 			name:       "default",
 			setHeaders: func(req *http.Request) {},
 			checkHeaders: func(t *testing.T, headers http.Header) {
-				// accept-encoding, x-forwarded-for, x-forwarded-host, x-forwarded-proto
-				assert.Len(t, headers, 4, "unexpected number of headers")
+				// host, x-forwarded-for, x-forwarded-host, x-forwarded-proto
+
+				// verify the Host and User-Agent headers were received by the function
+				// require.Equal(t, "echo.example.com", echoResponseHeaders.Get("Host"))
+				// require.Equal(t, "echo-client", echoResponseHeaders.Get("User-Agent"))
+
+				// verify the correct forwarded headers were received by the function
+				// require.NotEmpty(t, echoResponseHeaders.Get("X-Forwarded-For"))
+				// require.Equal(t, "echo.example.com", echoResponseHeaders.Get("X-Forwarded-Host"))
+				// require.Equal(t, "http", echoResponseHeaders.Get("X-Forwarded-Proto"))
+
+				// the default go http client will add the Accept-Encoding header
+				// require.Equal(t, "gzip", echoResponseHeaders.Get("Accept-Encoding"))
+
+				// verify the test case headers were received by the function
+				require.Len(t, headers, 4)
 			},
 		},
 		{
@@ -114,33 +145,85 @@ func TestHeaders(t *testing.T) {
 				req.Header.Add("X-Custom-Multi-Header", "multi-value-2")
 			},
 			checkHeaders: func(t *testing.T, headers http.Header) {
-				assert.Equal(t, "custom-value", headers.Get("X-Custom-Header"))
-				assert.Equal(t, []string{"multi-value-1", "multi-value-2"}, headers.Values("X-Custom-Multi-Header"))
-				assert.Len(t, headers, 6, "unexpected number of headers")
+				require.Equal(t, "custom-value", headers.Get("X-Custom-Header"))
+				require.Equal(t, []string{"multi-value-1", "multi-value-2"}, headers.Values("X-Custom-Multi-Header"))
+				require.Len(t, headers, 6)
 			},
 		},
 	}
 
-	fn := fixture.NewFunction()
-
 	for _, tc := range testCases {
+		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			t.Cleanup(cancel)
+
+			fn := fixture.NewFunction()
 			host := fn.Tenant + ".example.com"
 
 			mcc := fixture.NewMockControllerClient(t)
 			mcc.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-					assert.Equal(t, host, req.Host)
+					require.Equal(t, host, req.Host)
+					req.Header.Set("Host", host) // go removes the Host header, so we manually set it back
 					tc.checkHeaders(t, req.Header)
 				}), nil
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "http://"+host, nil)
+			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "http://"+host, nil).WithContext(ctx)
 			tc.setHeaders(req)
 
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
+			require.Equal(t, http.StatusOK, rw.Code)
+		})
+
+		// integration tests
+		t.Run(tc.name+" integration", func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			t.Cleanup(cancel)
+
+			// echo := fixture.NewEcho(t, "headers")
+			// req := echo.NewFunctionRequest(ctx, http.MethodGet, "/", nil)
+
+			fn := fixture.NewEchoFunction()
+			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, fixture.RouterURL, nil).WithContext(ctx)
+			req.Host = fn.Tenant + ".example.com"
+			req.Header.Set("User-Agent", "") // remove the default User-Agent header
+
+			// set the test case headers
+			tc.setHeaders(req)
+
+			// disable the default Accept-Encoding header
+			transport := &http.Transport{DisableCompression: true}
+
+			// send the request
+			res, err := transport.RoundTrip(req)
+
+			// verify the response
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, res.StatusCode)
+
+			// parse the response
+			echoResponse, err := fixture.ParseEchoResponse(res)
+			require.NoError(t, err)
+
+			tc.checkHeaders(t, echoResponse.Header())
+
+			// verify the Host and User-Agent headers were received by the function
+			// require.Equal(t, "echo.example.com", echoResponseHeaders.Get("Host"))
+			// require.Equal(t, "echo-client", echoResponseHeaders.Get("User-Agent"))
+
+			// verify the correct forwarded headers were received by the function
+			// require.NotEmpty(t, echoResponseHeaders.Get("X-Forwarded-For"))
+			// require.Equal(t, "echo.example.com", echoResponseHeaders.Get("X-Forwarded-Host"))
+			// require.Equal(t, "http", echoResponseHeaders.Get("X-Forwarded-Proto"))
+
+			// the default go http client will add the Accept-Encoding header
+			// require.Equal(t, "gzip", echoResponseHeaders.Get("Accept-Encoding"))
+
+			// verify the test case headers were received by the function
 		})
 	}
 }
@@ -157,7 +240,7 @@ func TestBody(t *testing.T) {
 				return "", nil
 			},
 			checkBody: func(t *testing.T, body string) {
-				assert.Empty(t, body)
+				require.Empty(t, body)
 			},
 		},
 		{
@@ -166,7 +249,7 @@ func TestBody(t *testing.T) {
 				return "text/plain", strings.NewReader("hello, world!")
 			},
 			checkBody: func(t *testing.T, body string) {
-				assert.Equal(t, "hello, world!", body)
+				require.Equal(t, "hello, world!", body)
 			},
 		},
 		{
@@ -175,7 +258,7 @@ func TestBody(t *testing.T) {
 				return "application/json", strings.NewReader(`{"key":"value"}`)
 			},
 			checkBody: func(t *testing.T, body string) {
-				assert.Equal(t, `{"key":"value"}`, body)
+				require.Equal(t, `{"key":"value"}`, body)
 			},
 		},
 	}
@@ -188,7 +271,7 @@ func TestBody(t *testing.T) {
 			mcc.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
-					assert.NoError(t, err)
+					require.NoError(t, err)
 					tc.checkBody(t, string(content))
 				}), nil
 			})
@@ -221,7 +304,7 @@ func TestHeartbeats(t *testing.T) {
 	defer cancel()
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequestWithContext(t, ctx, fn, http.MethodGet, "/", nil)
+	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil).WithContext(ctx)
 
 	router := New(mcc)
 	router.Start(ctx)

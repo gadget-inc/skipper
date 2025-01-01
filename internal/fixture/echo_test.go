@@ -35,7 +35,7 @@ func TestEchoMethods(t *testing.T) {
 			require.NoError(t, err, "failed to send function request")
 			require.Equal(t, http.StatusOK, res.StatusCode, "unexpected status code")
 
-			echoResponse, err := f.ParseFunctionResponse(res)
+			echoResponse, err := ParseEchoResponse(res)
 			require.NoError(t, err, "failed to decode response")
 			require.Equal(t, tc.method, echoResponse.Method, "unexpected method")
 		})
@@ -93,7 +93,7 @@ func TestEchoHeaders(t *testing.T) {
 			require.Equal(t, http.StatusOK, res.StatusCode)
 
 			// parse the response
-			echoResponse, err := f.ParseFunctionResponse(res)
+			echoResponse, err := ParseEchoResponse(res)
 			echoResponseHeaders := echoResponse.Header()
 			require.NoError(t, err)
 
@@ -165,7 +165,7 @@ func TestEchoBody(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, res.StatusCode)
 
-			echoResponse, err := f.ParseFunctionResponse(res)
+			echoResponse, err := ParseEchoResponse(res)
 			require.NoError(t, err)
 
 			require.Equal(t, contentEncoding, echoResponse.Header().Get("Content-Encoding"))

@@ -34,7 +34,7 @@ func New(controllerClient controller.Client) *Router {
 		roundTripper: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
-				Timeout:   2 * time.Second, // this is the only difference from http.DefaultTransport
+				Timeout:   2 * time.Second, // default is 30 seconds
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 			ForceAttemptHTTP2:     true,
@@ -42,6 +42,7 @@ func New(controllerClient controller.Client) *Router {
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
+			DisableCompression:    true, // disable the Accept-Encoding header
 		},
 	}
 

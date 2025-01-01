@@ -9,7 +9,7 @@ import (
 func init() {
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
-		logLevel = "info"
+		logLevel = "error"
 	}
 
 	err := log.FlagLogLevel.Set(logLevel)
