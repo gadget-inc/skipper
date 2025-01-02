@@ -120,7 +120,7 @@ func TestAssignPodToFunction(t *testing.T) {
 
 			instance, err := c.assignPodToFunction(ctx, fn)
 			if tc.err != nil {
-				must.Error(t, err)
+				must.ErrorIs(t, err, tc.err)
 				return
 			}
 
