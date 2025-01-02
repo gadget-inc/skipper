@@ -11,7 +11,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
-	"github.com/stretchr/testify/require"
+	"github.com/shoenig/test/must"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -32,10 +32,10 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 	t.Cleanup(testServer.Close)
 
 	ip, portStr, err := net.SplitHostPort(testServer.Listener.Addr().String())
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	port, err := strconv.Atoi(portStr)
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	counterMu.Lock()
 	defer counterMu.Unlock()
@@ -70,12 +70,12 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 
 func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
-		require.Equal(t, http.MethodPost, req.Method)
-		require.Equal(t, function.FlagAssignPath.Value(), req.URL.Path)
+		must.Eq(t, http.MethodPost, req.Method)
+		must.Eq(t, function.FlagAssignPath.Value(), req.URL.Path)
 
 		assignedFn, err := function.FromHeaders(req)
-		require.NoError(t, err)
-		require.Equal(t, fn, assignedFn)
+		must.NoError(t, err)
+		must.Eq(t, fn, assignedFn)
 
 		rw.WriteHeader(http.StatusOK)
 	}
@@ -86,10 +86,10 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 	t.Cleanup(testServer.Close)
 
 	ip, portStr, err := net.SplitHostPort(testServer.Listener.Addr().String())
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	port, err := strconv.Atoi(portStr)
-	require.NoError(t, err)
+	must.NoError(t, err)
 
 	counterMu.Lock()
 	defer counterMu.Unlock()

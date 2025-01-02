@@ -3,7 +3,7 @@ package flag
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/shoenig/test/must"
 )
 
 func TestFlag(t *testing.T) {
@@ -11,9 +11,9 @@ func TestFlag(t *testing.T) {
 		flag := Flag[string]{}
 
 		err := flag.Set("foo")
-		assert.NoError(t, err)
-		assert.Equal(t, "foo", flag.Value())
-		assert.Equal(t, "foo", flag.String())
+		must.NoError(t, err)
+		must.Eq(t, "foo", flag.Value())
+		must.Eq(t, "foo", flag.String())
 	})
 
 	t.Run("strings", func(t *testing.T) {
@@ -59,9 +59,9 @@ func TestFlag(t *testing.T) {
 				flag := Flag[[]string]{Separator: tc.separator}
 
 				err := flag.Set(tc.input)
-				assert.NoError(t, err)
-				assert.Equal(t, tc.expected, flag.Value())
-				assert.Equal(t, tc.expectedString, flag.String())
+				must.NoError(t, err)
+				must.Eq(t, tc.expected, flag.Value())
+				must.Eq(t, tc.expectedString, flag.String())
 			})
 		}
 	})

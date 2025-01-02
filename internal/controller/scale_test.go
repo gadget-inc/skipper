@@ -7,7 +7,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/stretchr/testify/require"
+	"github.com/shoenig/test/must"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -62,19 +62,19 @@ func TestScaleFunction(t *testing.T) {
 			c := New(fake.NewClientset(objects...), nil)
 
 			err := c.startControllerInformer(ctx)
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 			err = c.startPodInformers(ctx)
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 			instances, err := c.scaleFunction(ctx, fn, tc.desiredInstances)
 			if tc.err != nil {
-				require.Error(t, err)
+				must.Error(t, err)
 				return
 			}
 
-			require.NoError(t, err)
-			require.Len(t, instances, tc.expectedInstances)
+			must.NoError(t, err)
+			must.Len(t, tc.expectedInstances, instances)
 		})
 	}
 }
@@ -113,20 +113,20 @@ func TestAssignPodToFunction(t *testing.T) {
 			c := New(fake.NewClientset(k8sObjects...), nil)
 
 			err := c.startControllerInformer(ctx)
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 			err = c.startPodInformers(ctx)
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 			instance, err := c.assignPodToFunction(ctx, fn)
 			if tc.err != nil {
-				require.Error(t, err)
+				must.Error(t, err)
 				return
 			}
 
-			require.NoError(t, err)
+			must.NoError(t, err)
 			instance.Function.Metadata = fn.Metadata // TODO: remove this line
-			require.Equal(t, fn, instance.Function)
+			must.Eq(t, fn, instance.Function)
 		})
 	}
 }

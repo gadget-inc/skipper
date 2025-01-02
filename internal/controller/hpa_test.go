@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/shoenig/test/must"
 )
 
 func ptrInt64(val int64) *int64 {
@@ -19,7 +20,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		CPUInitializationPeriod: 5 * time.Minute,
 	}
 
-	tests := []struct {
+	testCases := []struct {
 		name              string
 		currentInstances  int
 		metricName        Metric
@@ -115,31 +116,24 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			instances, err := calculateDesiredInstancesForMetric(
-				tt.currentInstances,
-				tt.metricName,
-				tt.podMetrics,
-				tt.targetUtilization,
+				tc.currentInstances,
+				tc.metricName,
+				tc.podMetrics,
+				tc.targetUtilization,
 				hpaConfig,
 				now,
 			)
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("expected error, got none")
-				}
+
+			if tc.expectError {
+				must.Error(t, err)
 				return
-			} else {
-				if err != nil {
-					t.Errorf("unexpected error: %v", err)
-					return
-				}
 			}
 
-			if instances != tt.expectedInstances {
-				t.Errorf("expected instances: %d, got: %d", tt.expectedInstances, instances)
-			}
+			must.NoError(t, err)
+			must.Eq(t, tc.expectedInstances, instances)
 		})
 	}
 }

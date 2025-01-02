@@ -8,7 +8,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/stretchr/testify/require"
+	"github.com/shoenig/test/must"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -49,19 +49,19 @@ func TestGetAssigned(t *testing.T) {
 			c := New(fake.NewClientset(tc.setupPods(t, tc.fn)...), nil)
 
 			err := c.startControllerInformer(ctx)
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 			err = c.startPodInformers(ctx)
-			require.NoError(t, err)
+			must.NoError(t, err)
 
 			instances, err := c.getInstances(tc.fn)
 			if tc.err != nil {
-				require.Error(t, err)
+				must.Error(t, err)
 				return
 			}
 
-			require.NoError(t, err)
-			require.Len(t, instances, tc.expectedInstances)
+			must.NoError(t, err)
+			must.Len(t, tc.expectedInstances, instances)
 		})
 	}
 }

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/shoenig/test/must"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
@@ -24,10 +24,10 @@ type Fixture struct {
 
 func New(t *testing.T) *Fixture {
 	config, err := clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
-	require.NoError(t, err, "failed to load kubernetes config")
+	must.NoError(t, err)
 
 	clientset, err := kubernetes.NewForConfig(config)
-	require.NoError(t, err, "failed to create kubernetes clientset")
+	must.NoError(t, err)
 
 	return &Fixture{
 		t:         t,
@@ -37,7 +37,7 @@ func New(t *testing.T) *Fixture {
 
 func (f *Fixture) NewRouterRequest(ctx context.Context, method, path string, body io.Reader) *http.Request {
 	req, err := http.NewRequestWithContext(ctx, method, RouterURL+path, body)
-	require.NoError(f.t, err)
+	must.NoError(f.t, err)
 	return req
 }
 
