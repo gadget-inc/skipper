@@ -33,7 +33,7 @@ func NewMockControllerClient(t *testing.T) *MockControllerClient {
 	}
 }
 
-func (f *MockControllerClient) HandleGet(fn function.Function, h GetHandler) {
+func (f *MockControllerClient) MockGet(fn function.Function, h GetHandler) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.getHandlers[fn] = h

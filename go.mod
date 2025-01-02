@@ -4,6 +4,7 @@ go 1.23.2
 
 require (
 	github.com/goccy/go-json v0.10.3
+	github.com/shoenig/test v1.12.0
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.10.0
 	k8s.io/api v0.31.3

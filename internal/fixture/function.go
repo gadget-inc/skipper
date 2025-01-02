@@ -42,10 +42,6 @@ func NewFunction(opts ...FunctionOption) function.Function {
 	return fn
 }
 
-func NewEchoFunction(opts ...FunctionOption) function.Function {
-	return NewFunction(append(opts, WithDeployment("echo"), WithNamespace(DefaultFunctionNamespace))...)
-}
-
 func NewFunctionRequest(t *testing.T, fn function.Function, method string, path string, body io.Reader) *http.Request {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)

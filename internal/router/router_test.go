@@ -13,7 +13,8 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/stretchr/testify/require"
+	"github.com/shoenig/test/must"
+	"github.com/shoenig/test/wait"
 )
 
 func init() {
@@ -30,18 +31,18 @@ func TestHealthz(t *testing.T) {
 	router := New(fixture.NewMockControllerClient(t))
 	router.ServeHTTP(rw, req)
 
-	require.Equal(t, http.StatusOK, rw.Code)
-	require.Empty(t, rw.Body)
+	must.Eq(t, http.StatusOK, rw.Code)
+	must.Length(t, 0, rw.Body)
 }
 
 func TestSimple(t *testing.T) {
 	fn := fixture.NewFunction()
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	mockControllerClient.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-			require.Equal(t, req.Method, http.MethodGet)
-			require.Equal(t, req.URL.Path, "/")
+			must.Eq(t, req.Method, http.MethodGet)
+			must.Eq(t, req.URL.Path, "/")
 
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
@@ -54,8 +55,8 @@ func TestSimple(t *testing.T) {
 	router := New(mockControllerClient)
 	router.ServeHTTP(rw, req)
 
-	require.Equal(t, http.StatusOK, rw.Code)
-	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+	must.Eq(t, http.StatusOK, rw.Code)
+	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 }
 
 func TestMethods(t *testing.T) {
@@ -77,9 +78,9 @@ func TestMethods(t *testing.T) {
 			fn := fixture.NewFunction()
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-					require.Equal(t, req.Method, tc.method)
+					must.Eq(t, req.Method, tc.method)
 				}), nil
 			})
 
@@ -88,23 +89,22 @@ func TestMethods(t *testing.T) {
 
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
-			require.Equal(t, http.StatusOK, rw.Code)
+
+			must.Eq(t, http.StatusOK, rw.Code)
 		})
 
 		// integration tests
 		t.Run(tc.method+" integration", func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			t.Cleanup(cancel)
+			fn := fixture.NewEchoFunction()
+			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterURL, nil)
 
-			f := fixture.NewEcho(t, "methods")
-
-			res, err := f.SendFunctionRequest(ctx, tc.method, "/", nil)
-			require.NoError(t, err)
-			require.Equal(t, http.StatusOK, res.StatusCode)
+			res, err := http.DefaultTransport.RoundTrip(req)
+			must.NoError(t, err)
+			must.Eq(t, http.StatusOK, res.StatusCode)
 
 			echoResponse, err := fixture.ParseEchoResponse(res)
-			require.NoError(t, err)
-			require.Equal(t, tc.method, echoResponse.Method)
+			must.NoError(t, err)
+			must.Eq(t, tc.method, echoResponse.Method)
 		})
 	}
 }
@@ -112,42 +112,33 @@ func TestMethods(t *testing.T) {
 func TestHeaders(t *testing.T) {
 	testCases := []struct {
 		name         string
-		setHeaders   func(req *http.Request)
-		checkHeaders func(t *testing.T, headers http.Header)
+		setHeaders   func(fn function.Function, req *http.Request)
+		checkHeaders func(t *testing.T, fn function.Function, headers http.Header)
 	}{
 		{
-			name:       "default",
-			setHeaders: func(req *http.Request) {},
-			checkHeaders: func(t *testing.T, headers http.Header) {
-				// host, x-forwarded-for, x-forwarded-host, x-forwarded-proto
-
-				// verify the Host and User-Agent headers were received by the function
-				// require.Equal(t, "echo.example.com", echoResponseHeaders.Get("Host"))
-				// require.Equal(t, "echo-client", echoResponseHeaders.Get("User-Agent"))
-
-				// verify the correct forwarded headers were received by the function
-				// require.NotEmpty(t, echoResponseHeaders.Get("X-Forwarded-For"))
-				// require.Equal(t, "echo.example.com", echoResponseHeaders.Get("X-Forwarded-Host"))
-				// require.Equal(t, "http", echoResponseHeaders.Get("X-Forwarded-Proto"))
-
-				// the default go http client will add the Accept-Encoding header
-				// require.Equal(t, "gzip", echoResponseHeaders.Get("Accept-Encoding"))
-
-				// verify the test case headers were received by the function
-				require.Len(t, headers, 4)
+			name: "smoke",
+			setHeaders: func(fn function.Function, req *http.Request) {
+				req.Host = fn.Tenant + ".example.com"
+			},
+			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
+				must.Eq(t, []string{fn.Tenant + ".example.com"}, headers.Values("Host"))
+				must.SliceNotEmpty(t, headers.Values("X-Forwarded-For")) // TODO: check the actual value
+				must.Eq(t, []string{fn.Tenant + ".example.com"}, headers.Values("X-Forwarded-Host"))
+				must.Eq(t, []string{"http"}, headers.Values("X-Forwarded-Proto"))
+				must.MapLen(t, 4, headers)
 			},
 		},
 		{
 			name: "custom",
-			setHeaders: func(req *http.Request) {
+			setHeaders: func(fn function.Function, req *http.Request) {
 				req.Header.Set("X-Custom-Header", "custom-value")
 				req.Header.Add("X-Custom-Multi-Header", "multi-value-1")
 				req.Header.Add("X-Custom-Multi-Header", "multi-value-2")
 			},
-			checkHeaders: func(t *testing.T, headers http.Header) {
-				require.Equal(t, "custom-value", headers.Get("X-Custom-Header"))
-				require.Equal(t, []string{"multi-value-1", "multi-value-2"}, headers.Values("X-Custom-Multi-Header"))
-				require.Len(t, headers, 6)
+			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
+				must.Eq(t, []string{"custom-value"}, headers.Values("X-Custom-Header"))
+				must.Eq(t, []string{"multi-value-1", "multi-value-2"}, headers.Values("X-Custom-Multi-Header"))
+				must.MapLen(t, 6, headers)
 			},
 		},
 	}
@@ -155,75 +146,43 @@ func TestHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			t.Cleanup(cancel)
-
 			fn := fixture.NewFunction()
-			host := fn.Tenant + ".example.com"
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-					require.Equal(t, host, req.Host)
-					req.Header.Set("Host", host) // go removes the Host header, so we manually set it back
-					tc.checkHeaders(t, req.Header)
+					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
+					tc.checkHeaders(t, fn, req.Header)
 				}), nil
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "http://"+host, nil).WithContext(ctx)
-			tc.setHeaders(req)
+			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+			tc.setHeaders(fn, req)
 
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
-			require.Equal(t, http.StatusOK, rw.Code)
+
+			must.Eq(t, http.StatusOK, rw.Code)
+			must.Length(t, 0, rw.Body)
 		})
 
 		// integration tests
 		t.Run(tc.name+" integration", func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			t.Cleanup(cancel)
-
-			// echo := fixture.NewEcho(t, "headers")
-			// req := echo.NewFunctionRequest(ctx, http.MethodGet, "/", nil)
-
 			fn := fixture.NewEchoFunction()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, fixture.RouterURL, nil).WithContext(ctx)
-			req.Host = fn.Tenant + ".example.com"
-			req.Header.Set("User-Agent", "") // remove the default User-Agent header
+			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, fixture.RouterURL, nil)
+			req.Header.Set("User-Agent", "") // disable the default User-Agent header
+			tc.setHeaders(fn, req)
 
-			// set the test case headers
-			tc.setHeaders(req)
-
-			// disable the default Accept-Encoding header
-			transport := &http.Transport{DisableCompression: true}
-
-			// send the request
+			transport := &http.Transport{DisableCompression: true} // disable the default "Accept-Encoding: gzip" header
 			res, err := transport.RoundTrip(req)
+			must.NoError(t, err)
+			must.Eq(t, http.StatusOK, res.StatusCode)
 
-			// verify the response
-			require.NoError(t, err)
-			require.Equal(t, http.StatusOK, res.StatusCode)
-
-			// parse the response
 			echoResponse, err := fixture.ParseEchoResponse(res)
-			require.NoError(t, err)
+			must.NoError(t, err)
 
-			tc.checkHeaders(t, echoResponse.Header())
-
-			// verify the Host and User-Agent headers were received by the function
-			// require.Equal(t, "echo.example.com", echoResponseHeaders.Get("Host"))
-			// require.Equal(t, "echo-client", echoResponseHeaders.Get("User-Agent"))
-
-			// verify the correct forwarded headers were received by the function
-			// require.NotEmpty(t, echoResponseHeaders.Get("X-Forwarded-For"))
-			// require.Equal(t, "echo.example.com", echoResponseHeaders.Get("X-Forwarded-Host"))
-			// require.Equal(t, "http", echoResponseHeaders.Get("X-Forwarded-Proto"))
-
-			// the default go http client will add the Accept-Encoding header
-			// require.Equal(t, "gzip", echoResponseHeaders.Get("Accept-Encoding"))
-
-			// verify the test case headers were received by the function
+			tc.checkHeaders(t, fn, echoResponse.Header())
 		})
 	}
 }
@@ -240,7 +199,7 @@ func TestBody(t *testing.T) {
 				return "", nil
 			},
 			checkBody: func(t *testing.T, body string) {
-				require.Empty(t, body)
+				must.Zero(t, len(body))
 			},
 		},
 		{
@@ -249,7 +208,7 @@ func TestBody(t *testing.T) {
 				return "text/plain", strings.NewReader("hello, world!")
 			},
 			checkBody: func(t *testing.T, body string) {
-				require.Equal(t, "hello, world!", body)
+				must.Eq(t, "hello, world!", body)
 			},
 		},
 		{
@@ -258,7 +217,7 @@ func TestBody(t *testing.T) {
 				return "application/json", strings.NewReader(`{"key":"value"}`)
 			},
 			checkBody: func(t *testing.T, body string) {
-				require.Equal(t, `{"key":"value"}`, body)
+				must.Eq(t, `{"key":"value"}`, body)
 			},
 		},
 	}
@@ -266,12 +225,13 @@ func TestBody(t *testing.T) {
 	fn := fixture.NewFunction()
 
 	for _, tc := range testCases {
+		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
-					require.NoError(t, err)
+					must.NoError(t, err)
 					tc.checkBody(t, string(content))
 				}), nil
 			})
@@ -284,6 +244,26 @@ func TestBody(t *testing.T) {
 
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
+
+			must.Eq(t, http.StatusOK, rw.Code)
+		})
+
+		// integration tests
+		t.Run(tc.name+" integration", func(t *testing.T) {
+			fn := fixture.NewEchoFunction()
+
+			contentType, body := tc.getBody()
+			req := fixture.NewFunctionRequest(t, fn, http.MethodPost, fixture.RouterURL, body)
+			req.Header.Set("Content-Type", contentType)
+
+			res, err := http.DefaultTransport.RoundTrip(req)
+			must.NoError(t, err)
+			must.Eq(t, http.StatusOK, res.StatusCode)
+
+			echoResponse, err := fixture.ParseEchoResponse(res)
+			must.NoError(t, err)
+
+			tc.checkBody(t, echoResponse.Body)
 		})
 	}
 }
@@ -292,7 +272,7 @@ func TestHeartbeats(t *testing.T) {
 	fn := fixture.NewFunction()
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
@@ -310,16 +290,16 @@ func TestHeartbeats(t *testing.T) {
 	router.Start(ctx)
 	router.ServeHTTP(rw, req)
 
-	require.Equal(t, http.StatusOK, rw.Code)
-	require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+	must.Eq(t, http.StatusOK, rw.Code)
+	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 
-	require.Eventually(t, func() bool {
+	must.Wait(t, wait.InitialSuccess(wait.BoolFunc(func() bool {
 		return len(mcc.Heartbeats()) > 0
-	}, time.Second, time.Millisecond)
+	})))
 
 	heartbeat := mcc.Heartbeats()[0]
-	require.Equal(t, fn, heartbeat.Function)
-	require.True(t, heartbeat.Timestamp.After(testStartTime))
+	must.Eq(t, fn, heartbeat.Function)
+	must.True(t, heartbeat.Timestamp.After(testStartTime))
 }
 
 func TestRetries(t *testing.T) {
@@ -334,8 +314,8 @@ func TestRetries(t *testing.T) {
 			name:        "no errors",
 			maxAttempts: 1,
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusOK, rw.Code)
-				require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+				must.Eq(t, http.StatusOK, rw.Code)
+				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 			},
 		},
 		{
@@ -343,8 +323,8 @@ func TestRetries(t *testing.T) {
 			maxAttempts: 2,
 			getErrs:     []error{fmt.Errorf("arbitrary error")},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusOK, rw.Code)
-				require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+				must.Eq(t, http.StatusOK, rw.Code)
+				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 			},
 		},
 		{
@@ -352,8 +332,8 @@ func TestRetries(t *testing.T) {
 			maxAttempts:   2,
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusOK, rw.Code)
-				require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+				must.Eq(t, http.StatusOK, rw.Code)
+				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 			},
 		},
 		{
@@ -364,8 +344,8 @@ func TestRetries(t *testing.T) {
 				&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")},
 			},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusOK, rw.Code)
-				require.Equal(t, "Hello, "+fn.Tenant, rw.Body.String())
+				must.Eq(t, http.StatusOK, rw.Code)
+				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 			},
 		},
 		{
@@ -374,50 +354,52 @@ func TestRetries(t *testing.T) {
 			getErrs:       []error{fmt.Errorf("arbitrary error")},
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				require.Equal(t, http.StatusBadGateway, rw.Code)
-				require.Empty(t, rw.Body)
+				must.Eq(t, http.StatusBadGateway, rw.Code)
+				must.Length(t, 0, rw.Body)
 			},
 		},
 	}
 
 	for _, tc := range testCases {
-		fixture.SetFlag(t, &FlagMaxRoundTripAttempts, tc.maxAttempts)
+		t.Run(tc.name, func(t *testing.T) {
+			fixture.SetFlag(t, &FlagMaxRoundTripAttempts, tc.maxAttempts)
 
-		fn := fixture.NewFunction()
+			fn := fixture.NewFunction()
 
-		getErrsIndex := 0
-		mcc := fixture.NewMockControllerClient(t)
-		mcc.HandleGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
-			if len(tc.getErrs) > 0 && getErrsIndex < len(tc.getErrs) {
-				getErrsIndex++
-				return nil, tc.getErrs[getErrsIndex-1]
-			}
+			getErrsIndex := 0
+			mcc := fixture.NewMockControllerClient(t)
+			mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+				if len(tc.getErrs) > 0 && getErrsIndex < len(tc.getErrs) {
+					getErrsIndex++
+					return nil, tc.getErrs[getErrsIndex-1]
+				}
 
-			return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-				rw.WriteHeader(http.StatusOK)
-				rw.Write([]byte("Hello, " + fn.Tenant))
-			}), nil
+				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+					rw.WriteHeader(http.StatusOK)
+					rw.Write([]byte("Hello, " + fn.Tenant))
+				}), nil
+			})
+
+			rw := httptest.NewRecorder()
+			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+
+			router := New(mcc)
+
+			originalTransport := router.roundTripper
+
+			roundTripperErrsIndex := 0
+			router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				if len(tc.roundTripErrs) > 0 && roundTripperErrsIndex < len(tc.roundTripErrs) {
+					roundTripperErrsIndex++
+					return nil, tc.roundTripErrs[roundTripperErrsIndex-1]
+				}
+				return originalTransport.RoundTrip(req)
+			})
+
+			router.ServeHTTP(rw, req)
+
+			tc.check(t, fn, rw)
 		})
-
-		rw := httptest.NewRecorder()
-		req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
-
-		router := New(mcc)
-
-		originalTransport := router.roundTripper
-
-		roundTripperErrsIndex := 0
-		router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-			if len(tc.roundTripErrs) > 0 && roundTripperErrsIndex < len(tc.roundTripErrs) {
-				roundTripperErrsIndex++
-				return nil, tc.roundTripErrs[roundTripperErrsIndex-1]
-			}
-			return originalTransport.RoundTrip(req)
-		})
-
-		router.ServeHTTP(rw, req)
-
-		tc.check(t, fn, rw)
 	}
 }
 
