@@ -128,3 +128,9 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 		},
 	}
 }
+
+func CurrentReplicaSet(fn function.Function) string {
+	counterMu.Lock()
+	defer counterMu.Unlock()
+	return fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter)
+}
