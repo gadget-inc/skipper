@@ -69,7 +69,7 @@ func TestScaleFunction(t *testing.T) {
 
 			instances, err := c.scaleFunction(ctx, fn, tc.desiredInstances)
 			if tc.err != nil {
-				must.Error(t, err)
+				must.ErrorIs(t, err, tc.err)
 				return
 			}
 
