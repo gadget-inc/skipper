@@ -81,19 +81,23 @@ func TestScaleFunction(t *testing.T) {
 
 func TestAssignPodToFunction(t *testing.T) {
 	testCases := []struct {
-		name          string
-		availablePods int
-		err           error
+		name      string
+		setupPods func(t *testing.T, fn function.Function) []runtime.Object
+		err       error
 	}{
 		{
-			name:          "smoke",
-			availablePods: 1,
-			err:           nil,
+			name: "smoke",
+			setupPods: func(t *testing.T, fn function.Function) []runtime.Object {
+				return []runtime.Object{fixture.NewAvailablePod(t, fn, nil)}
+			},
+			err: nil,
 		},
 		{
-			name:          "none",
-			availablePods: 0,
-			err:           context.DeadlineExceeded,
+			name: "none",
+			setupPods: func(t *testing.T, fn function.Function) []runtime.Object {
+				return []runtime.Object{} // no pods
+			},
+			err: context.DeadlineExceeded,
 		},
 	}
 
@@ -105,12 +109,8 @@ func TestAssignPodToFunction(t *testing.T) {
 			fn := fixture.NewFunction()
 			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
 
-			k8sObjects := []runtime.Object{fixture.NewControllerPod()}
-			for i := 0; i < tc.availablePods; i++ {
-				k8sObjects = append(k8sObjects, fixture.NewAvailablePod(t, fn, nil))
-			}
-
-			c := New(fake.NewClientset(k8sObjects...), nil)
+			pods := append(tc.setupPods(t, fn), fixture.NewControllerPod())
+			c := New(fake.NewClientset(pods...), nil)
 
 			err := c.startControllerInformer(ctx)
 			must.NoError(t, err)
