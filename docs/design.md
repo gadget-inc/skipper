@@ -1,5 +1,7 @@
 # Fusion
 
+TODO: https://philipptanlak.com/web-frontends-in-go/#how-i-structure-my-templates
+
 ## Scaling
 
 - Need to scale to 0 when a tenant hasn't received any requests for a while
