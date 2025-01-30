@@ -2,7 +2,7 @@ package controller
 
 import (
 	"context"
-	"net"
+	"encoding/json"
 	"strconv"
 	"testing"
 	"time"
@@ -89,41 +89,29 @@ func TestAssignPodToFunction(t *testing.T) {
 		name  string
 		err   error
 		setup func(*testing.T, function.Function) []runtime.Object
-		check func(*testing.T, function.Function, *function.Instance, []v1.Pod)
+		check func(*testing.T, *function.Instance, []v1.Pod)
 	}{
 		{
 			name: "smoke",
 			setup: func(t *testing.T, fn function.Function) []runtime.Object {
 				return []runtime.Object{fixture.NewAvailablePod(t, fn, nil)}
 			},
-			check: func(t *testing.T, fn function.Function, instance *function.Instance, pods []v1.Pod) {
+			check: func(t *testing.T, instance *function.Instance, pods []v1.Pod) {
 				must.Len(t, 1, pods)
 				pod := pods[0]
 
-				instance.Function.Metadata = fn.Metadata // TODO: remove this line
-				must.Eq(t, fn, instance.Function)
-				must.Eq(t, instance.Name, pod.Name)
-				must.Eq(t, instance.Namespace, pod.Namespace)
-				must.Eq(t, instance.Version, fixture.CurrentReplicaSet(fn))
+				must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
+				must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
 
-				instanceIP, instancePort, err := net.SplitHostPort(instance.Addr)
+				fnJSON, err := json.Marshal(instance.Function)
 				must.NoError(t, err)
-				must.Eq(t, instanceIP, pod.Status.PodIP)
-				must.Eq(t, instancePort, strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
+				must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
 
-				must.Eq(t, pod.Labels, map[string]string{
-					key.ReplicaSet.Label:              instance.Version,
-					key.Status.Label:                  StatusReady,
-					key.Tenant.Label:                  fn.Tenant,
-					key.Namespace.Label:               fn.Namespace,
-					key.Deployment.Label:              fn.Deployment,
-					key.MinInstances.Label:            strconv.Itoa(fn.MinInstances),
-					key.MaxInstances.Label:            strconv.Itoa(fn.MaxInstances),
-					key.TargetCPUUtilization.Label:    strconv.Itoa(fn.TargetCPUUtilization),
-					key.TargetMemoryUtilization.Label: strconv.Itoa(fn.TargetMemoryUtilization),
-					key.AssignedAt.Label:              strconv.FormatInt(instance.AssignedAt.Unix(), 10),
-					key.ReadyAt.Label:                 strconv.FormatInt(instance.ReadyAt.Unix(), 10),
-				})
+				must.Eq(t, instance.Name, pod.Name)
+				must.Eq(t, instance.Addr, pod.Status.PodIP+":"+strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
+				must.Eq(t, instance.Version, pod.Annotations[key.ReplicaSet.Label])
+				must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
+				must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
 			},
 		},
 		{
@@ -163,7 +151,7 @@ func TestAssignPodToFunction(t *testing.T) {
 			pods, err := clientset.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{})
 			must.NoError(t, err)
 
-			tc.check(t, fn, instance, pods.Items)
+			tc.check(t, instance, pods.Items)
 		})
 	}
 }

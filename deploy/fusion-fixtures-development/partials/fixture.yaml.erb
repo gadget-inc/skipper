@@ -11,12 +11,13 @@ spec:
   selector:
     matchLabels:
       fusion/deployment: <%= name %>
-      fusion/status: unassigned
+    matchExpressions:
+      - key: fusion/tenant
+        operator: DoesNotExist
   template:
     metadata:
       labels:
         fusion/deployment: <%= name %>
-        fusion/status: unassigned
     spec:
       volumes:
         - name: empty-dir

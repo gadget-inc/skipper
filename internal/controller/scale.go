@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -15,6 +14,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/timer"
+	"github.com/goccy/go-json"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -160,18 +160,17 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
 	}
 
+	fnBytes, err := json.Marshal(fn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal function: %w", err)
+	}
+
 	assignPatches := []patchOperation{
-		{Op: "test", Path: "/metadata/ownerReferences/0/kind", Value: "ReplicaSet"},
-		{Op: "copy", From: "/metadata/ownerReferences/0/name", Path: key.ReplicaSet.PatchLabel},
-		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusPending},
-		{Op: "add", Path: key.Tenant.PatchLabel, Value: fn.Tenant},
-		{Op: "add", Path: key.Namespace.PatchLabel, Value: fn.Namespace},
-		{Op: "add", Path: key.Deployment.PatchLabel, Value: fn.Deployment},
-		{Op: "add", Path: key.MinInstances.PatchLabel, Value: strconv.Itoa(fn.MinInstances)},
-		{Op: "add", Path: key.MaxInstances.PatchLabel, Value: strconv.Itoa(fn.MaxInstances)},
-		{Op: "add", Path: key.TargetCPUUtilization.PatchLabel, Value: strconv.Itoa(fn.TargetCPUUtilization)},
-		{Op: "add", Path: key.TargetMemoryUtilization.PatchLabel, Value: strconv.Itoa(fn.TargetMemoryUtilization)},
-		{Op: "add", Path: key.AssignedAt.PatchLabel, Value: strconv.FormatInt(time.Now().Unix(), 10)},
+		{Op: "test", Path: "/metadata/ownerReferences/0/kind", Value: "ReplicaSet"},                     // ensure the pod is assigned to a replica set
+		{Op: "copy", From: "/metadata/ownerReferences/0/name", Path: key.ReplicaSet.PatchAnnotation},    // copy its name so we know which replica set the pod belonged to before it was assigned
+		{Op: "add", Path: key.Tenant.PatchLabel, Value: fn.Tenant},                                      // label the pod with the tenant it belongs to
+		{Op: "add", Path: key.Function.PatchAnnotation, Value: string(fnBytes)},                         // annotate the pod with the function it is assigned to
+		{Op: "add", Path: key.AssignedAt.PatchAnnotation, Value: time.Now().UTC().Format(time.RFC3339)}, // annotate the pod with the time it was assigned
 	}
 
 	patchBody, err := json.Marshal(assignPatches)
@@ -222,8 +221,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	}
 
 	setReadyPatches := []patchOperation{
-		{Op: "replace", Path: key.Status.PatchLabel, Value: StatusReady},
-		{Op: "add", Path: key.ReadyAt.PatchLabel, Value: strconv.FormatInt(time.Now().Unix(), 10)},
+		{Op: "add", Path: key.ReadyAt.PatchAnnotation, Value: time.Now().UTC().Format(time.RFC3339)},
 	}
 
 	patchBody, err = json.Marshal(setReadyPatches)

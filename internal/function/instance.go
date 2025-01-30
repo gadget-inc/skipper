@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/goccy/go-json"
 	"go.opentelemetry.io/otel/attribute"
 	v1 "k8s.io/api/core/v1"
 )
@@ -21,38 +22,30 @@ type Instance struct {
 }
 
 func FromPod(pod *v1.Pod) (*Instance, error) {
-	fn, err := new(
-		pod.Labels[key.Deployment.Label],
-		pod.Labels[key.MaxInstances.Label],
-		"", // we don't store metadata in labels because they may contain sensitive information
-		pod.Labels[key.MinInstances.Label],
-		pod.Labels[key.Namespace.Label],
-		pod.Labels[key.TargetCPUUtilization.Label],
-		pod.Labels[key.TargetMemoryUtilization.Label],
-		pod.Labels[key.Tenant.Label],
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get function from pod: %w", err)
+	instance := &Instance{}
+
+	instance.Name = pod.Name
+
+	instance.Version = pod.Annotations[key.ReplicaSet.Label]
+	if instance.Version == "" {
+		return nil, ErrMissingReplicaSet
 	}
 
-	assignedAtInt, err := strconv.ParseInt(pod.Labels[key.AssignedAt.Label], 10, 64)
+	err := json.Unmarshal([]byte(pod.Annotations[key.Function.Label]), &instance.Function)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
+	}
+
+	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Label])
 	if err != nil {
 		return nil, ErrInvalidAssignedAt
 	}
-	assignedAt := time.Unix(assignedAtInt, 0)
 
-	var readyAt time.Time
-	if readyAtStr, ok := pod.Labels[key.ReadyAt.Label]; ok {
-		readyAtInt, err := strconv.ParseInt(readyAtStr, 10, 64)
+	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Label]; ok {
+		instance.ReadyAt, err = time.Parse(time.RFC3339, readyAtStr)
 		if err != nil {
 			return nil, ErrInvalidReadyAt
 		}
-		readyAt = time.Unix(readyAtInt, 0)
-	}
-
-	replicaSet := pod.Labels[key.ReplicaSet.Label]
-	if replicaSet == "" {
-		return nil, ErrMissingReplicaSet
 	}
 
 	var port string
@@ -66,14 +59,9 @@ func FromPod(pod *v1.Pod) (*Instance, error) {
 		return nil, ErrMissingPort
 	}
 
-	return &Instance{
-		Function:   fn,
-		Name:       pod.Name,
-		Addr:       pod.Status.PodIP + ":" + port,
-		Version:    replicaSet,
-		AssignedAt: assignedAt,
-		ReadyAt:    readyAt,
-	}, nil
+	instance.Addr = pod.Status.PodIP + ":" + port
+
+	return instance, nil
 }
 
 func (instance *Instance) Fields() []slog.Attr {

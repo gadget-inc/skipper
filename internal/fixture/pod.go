@@ -11,6 +11,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/goccy/go-json"
 	"github.com/shoenig/test/must"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,6 +49,9 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 			Namespace: fn.Namespace,
 			Labels: map[string]string{
 				key.Deployment.Label: fn.Deployment,
+			},
+			Annotations: map[string]string{
+				"": "", // needed to avoid "add operation does not apply: doc is missing path: /metadata/annotations/...: missing value"
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{Kind: "ReplicaSet", Name: fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter)},
@@ -91,6 +95,9 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 	port, err := strconv.Atoi(portStr)
 	must.NoError(t, err)
 
+	fnJSON, err := json.Marshal(fn)
+	must.NoError(t, err)
+
 	counterMu.Lock()
 	defer counterMu.Unlock()
 
@@ -101,17 +108,14 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 			Name:      fn.Deployment + "-" + strconv.Itoa(podCounter),
 			Namespace: fn.Namespace,
 			Labels: map[string]string{
-				key.ReplicaSet.Label:              fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter),
-				key.Status.Label:                  "ready", // controller.StatusReady,
-				key.Tenant.Label:                  fn.Tenant,
-				key.Namespace.Label:               fn.Namespace,
-				key.Deployment.Label:              fn.Deployment,
-				key.Metadata.Label:                fn.Metadata,
-				key.MinInstances.Label:            strconv.Itoa(fn.MinInstances),
-				key.MaxInstances.Label:            strconv.Itoa(fn.MaxInstances),
-				key.TargetCPUUtilization.Label:    strconv.Itoa(fn.TargetCPUUtilization),
-				key.TargetMemoryUtilization.Label: strconv.Itoa(fn.TargetMemoryUtilization),
-				key.AssignedAt.Label:              strconv.FormatInt(time.Now().Unix(), 10),
+				key.Deployment.Label: fn.Deployment,
+				key.Tenant.Label:     fn.Tenant,
+			},
+			Annotations: map[string]string{
+				key.Function.Label:   string(fnJSON),
+				key.ReplicaSet.Label: fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter),
+				key.AssignedAt.Label: time.Now().UTC().Format(time.RFC3339),
+				key.ReadyAt.Label:    time.Now().UTC().Format(time.RFC3339),
 			},
 		},
 		Status: v1.PodStatus{

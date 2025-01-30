@@ -227,7 +227,6 @@ func (c *Controller) getInstances(fn function.Function) ([]*function.Instance, e
 	assignedPods, err := c.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
-		key.Status.Label:     StatusReady,
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
@@ -238,10 +237,17 @@ func (c *Controller) getInstances(fn function.Function) ([]*function.Instance, e
 		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil {
 			continue
 		}
+
 		instance, err := function.FromPod(pod)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert pod to instance: %w", err)
 		}
+
+		if instance.ReadyAt.IsZero() {
+			// pod is still being assigned
+			continue
+		}
+
 		instances = append(instances, instance)
 	}
 	return instances, nil

@@ -11,10 +11,10 @@ import (
 var emptyFunction = Function{}
 
 type Function struct {
-	Tenant                  string `json:"tenant"`
-	Metadata                string `json:"metadata"`
 	Namespace               string `json:"namespace"`
 	Deployment              string `json:"deployment"`
+	Tenant                  string `json:"tenant"`
+	Metadata                string `json:"metadata"`
 	MinInstances            int    `json:"minInstances"`
 	MaxInstances            int    `json:"maxInstances"`
 	TargetCPUUtilization    int    `json:"targetCPUUtilization"`
