@@ -188,9 +188,6 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to update pod: %w", err)
 	}
 
-	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
-	defer cancel()
-
 	var port string
 	for _, container := range pod.Spec.Containers {
 		for _, containerPort := range container.Ports {
@@ -203,6 +200,9 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	}
 
 	assignURL := "http://" + pod.Status.PodIP + ":" + port + function.FlagAssignPath.Value()
+	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)

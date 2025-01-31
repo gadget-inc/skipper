@@ -27,6 +27,21 @@ func init() {
 }
 
 func TestAssignPodToFunction(t *testing.T) {
+	ensureInstanceMatchesPod := func(t *testing.T, instance *function.Instance, pod v1.Pod) {
+		must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
+		must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
+
+		fnJSON, err := json.Marshal(instance.Function)
+		must.NoError(t, err)
+		must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
+
+		must.Eq(t, instance.Name, pod.Name)
+		must.Eq(t, instance.Addr, pod.Status.PodIP+":"+strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
+		must.Eq(t, instance.Version, pod.Annotations[key.ReplicaSet.Label])
+		must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
+		must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
+	}
+
 	testCases := []struct {
 		name  string
 		err   error
@@ -207,19 +222,4 @@ func TestScaleFunction(t *testing.T) {
 			tc.check(t, clientset, instances)
 		})
 	}
-}
-
-func ensureInstanceMatchesPod(t *testing.T, instance *function.Instance, pod v1.Pod) {
-	must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
-	must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
-
-	fnJSON, err := json.Marshal(instance.Function)
-	must.NoError(t, err)
-	must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
-
-	must.Eq(t, instance.Name, pod.Name)
-	must.Eq(t, instance.Addr, pod.Status.PodIP+":"+strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
-	must.Eq(t, instance.Version, pod.Annotations[key.ReplicaSet.Label])
-	must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
-	must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
 }
