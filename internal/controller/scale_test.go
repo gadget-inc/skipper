@@ -13,7 +13,6 @@ import (
 	"github.com/shoenig/test/must"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -27,98 +26,64 @@ func init() {
 	FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
 }
 
-func TestScaleFunction(t *testing.T) {
-	testCases := []struct {
-		name              string
-		availablePods     int
-		desiredInstances  int
-		expectedInstances int
-		err               error
-	}{
-		{
-			name:              "smoke",
-			availablePods:     1,
-			desiredInstances:  1,
-			expectedInstances: 1,
-			err:               nil,
-		},
-		{
-			name:              "none",
-			availablePods:     0,
-			desiredInstances:  1,
-			expectedInstances: 0,
-			err:               context.DeadlineExceeded,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			t.Cleanup(cancel)
-
-			fn := fixture.NewFunction()
-			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
-
-			objects := []runtime.Object{fixture.NewControllerPod()}
-			for i := 0; i < tc.availablePods; i++ {
-				objects = append(objects, fixture.NewAvailablePod(t, fn, nil))
-			}
-
-			c := New(fake.NewClientset(objects...), nil)
-
-			err := c.startControllerInformer(ctx)
-			must.NoError(t, err)
-
-			err = c.startPodInformers(ctx)
-			must.NoError(t, err)
-
-			instances, err := c.scaleFunction(ctx, fn, tc.desiredInstances)
-			if tc.err != nil {
-				must.ErrorIs(t, err, tc.err)
-				return
-			}
-
-			must.NoError(t, err)
-			must.Len(t, tc.expectedInstances, instances)
-		})
-	}
-}
-
 func TestAssignPodToFunction(t *testing.T) {
+	ensureInstanceMatchesPod := func(instance *function.Instance, pod v1.Pod) {
+		must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
+		must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
+
+		fnJSON, err := json.Marshal(instance.Function)
+		must.NoError(t, err)
+		must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
+
+		must.Eq(t, instance.Name, pod.Name)
+		must.Eq(t, instance.Addr, pod.Status.PodIP+":"+strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
+		must.Eq(t, instance.Version, pod.Annotations[key.ReplicaSet.Label])
+		must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
+		must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
+	}
+
 	testCases := []struct {
 		name  string
 		err   error
-		setup func(*testing.T, function.Function) []runtime.Object
-		check func(*testing.T, *function.Instance, []v1.Pod)
+		setup func(*testing.T, *fake.Clientset, function.Function)
+		check func(*testing.T, *fake.Clientset, *function.Instance)
 	}{
 		{
 			name: "smoke",
-			setup: func(t *testing.T, fn function.Function) []runtime.Object {
-				return []runtime.Object{fixture.NewAvailablePod(t, fn, nil)}
-			},
-			check: func(t *testing.T, instance *function.Instance, pods []v1.Pod) {
-				must.Len(t, 1, pods)
-				pod := pods[0]
-
-				must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
-				must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
-
-				fnJSON, err := json.Marshal(instance.Function)
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				err := clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 				must.NoError(t, err)
-				must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
-
-				must.Eq(t, instance.Name, pod.Name)
-				must.Eq(t, instance.Addr, pod.Status.PodIP+":"+strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
-				must.Eq(t, instance.Version, pod.Annotations[key.ReplicaSet.Label])
-				must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
-				must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
+			},
+			check: func(t *testing.T, clientset *fake.Clientset, instance *function.Instance) {
+				pods, err := clientset.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 1, pods.Items)
+				ensureInstanceMatchesPod(instance, pods.Items[0])
 			},
 		},
 		{
-			name: "none",
+			name: "no available pods",
 			err:  context.DeadlineExceeded,
-			setup: func(t *testing.T, fn function.Function) []runtime.Object {
-				return []runtime.Object{} // no pods
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				// no pods
+			},
+		},
+		{
+			name: "eventually available pod",
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				go func() {
+					time.Sleep(100 * time.Millisecond)
+					err := clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+					must.NoError(t, err)
+				}()
+
+				// initially no pods
+			},
+			check: func(t *testing.T, clientset *fake.Clientset, instance *function.Instance) {
+				pods, err := clientset.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 1, pods.Items)
+				ensureInstanceMatchesPod(instance, pods.Items[0])
 			},
 		},
 	}
@@ -131,7 +96,9 @@ func TestAssignPodToFunction(t *testing.T) {
 			fn := fixture.NewFunction()
 			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
 
-			clientset := fake.NewClientset(append(tc.setup(t, fn), fixture.NewControllerPod())...)
+			clientset := fake.NewClientset(fixture.NewControllerPod())
+			tc.setup(t, clientset, fn)
+
 			c := New(clientset, nil)
 
 			err := c.startControllerInformer(ctx)
@@ -148,10 +115,102 @@ func TestAssignPodToFunction(t *testing.T) {
 
 			must.NoError(t, err)
 
-			pods, err := clientset.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{})
+			tc.check(t, clientset, instance)
+		})
+	}
+}
+
+func TestScaleFunction(t *testing.T) {
+	testCases := []struct {
+		name              string
+		desiredInstances  int
+		expectedInstances int
+		err               error
+		setup             func(*testing.T, *fake.Clientset, function.Function)
+		// check func(*testing.T, *fake.Clientset, *function.Instance)
+	}{
+		{
+			name:              "smoke",
+			desiredInstances:  1,
+			expectedInstances: 1,
+			err:               nil,
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				err := clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+				must.NoError(t, err)
+			},
+		},
+		{
+			name:              "extra available pods",
+			desiredInstances:  1,
+			expectedInstances: 1,
+			err:               nil,
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				for i := 0; i < 5; i++ {
+					err := clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+					must.NoError(t, err)
+				}
+			},
+		},
+		{
+			name:              "no available pods",
+			desiredInstances:  1,
+			expectedInstances: 0,
+			err:               context.DeadlineExceeded,
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				// no pods
+			},
+		},
+		{
+			name:              "already has desired instances",
+			desiredInstances:  1,
+			expectedInstances: 1,
+			err:               nil,
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				err := clientset.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				must.NoError(t, err)
+			},
+		},
+		{
+			name:              "scale down",
+			desiredInstances:  1,
+			expectedInstances: 1,
+			err:               nil,
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				for i := 0; i < 5; i++ {
+					err := clientset.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					must.NoError(t, err)
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			t.Cleanup(cancel)
+
+			fn := fixture.NewFunction()
+			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
+
+			clientset := fake.NewClientset(fixture.NewControllerPod())
+			tc.setup(t, clientset, fn)
+
+			c := New(clientset, nil)
+
+			err := c.startControllerInformer(ctx)
 			must.NoError(t, err)
 
-			tc.check(t, instance, pods.Items)
+			err = c.startPodInformers(ctx)
+			must.NoError(t, err)
+
+			instances, err := c.scaleFunction(ctx, fn, tc.desiredInstances)
+			if tc.err != nil {
+				must.ErrorIs(t, err, tc.err)
+				return
+			}
+
+			must.NoError(t, err)
+			must.Len(t, tc.expectedInstances, instances)
 		})
 	}
 }
