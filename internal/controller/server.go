@@ -105,7 +105,6 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 
 	c.heartbeatsMu.Lock()
 	for _, heartbeat := range heartbeats {
-		heartbeat.Function.Metadata = "" // the idle function reaper doesn't have the function metadata, so we need to clear it to match the function in the map
 		timestamp, ok := c.heartbeats[heartbeat.Function]
 		if !ok || heartbeat.Timestamp.After(timestamp) {
 			c.heartbeats[heartbeat.Function] = heartbeat.Timestamp
