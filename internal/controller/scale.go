@@ -208,7 +208,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}
 
-	fn.SetHeaders(req)
+	fn.SetHeader(req)
 
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
 	res, err := http.DefaultClient.Do(req)

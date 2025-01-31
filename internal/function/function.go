@@ -8,87 +8,15 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-var emptyFunction = Function{}
-
 type Function struct {
 	Namespace               string `json:"namespace"`
 	Deployment              string `json:"deployment"`
 	Tenant                  string `json:"tenant"`
 	Metadata                string `json:"metadata"`
-	MinInstances            int    `json:"minInstances"`
-	MaxInstances            int    `json:"maxInstances"`
-	TargetCPUUtilization    int    `json:"targetCPUUtilization"`
-	TargetMemoryUtilization int    `json:"targetMemoryUtilization"`
-}
-
-func new(
-	deployment string,
-	maxInstancesStr string,
-	metadata string,
-	minInstancesStr string,
-	namespace string,
-	targetCPUUtilizationStr string,
-	targetMemoryUtilizationStr string,
-	tenant string,
-) (Function, error) {
-	if tenant == "" {
-		return emptyFunction, ErrMissingTenant
-	}
-
-	if namespace == "" {
-		return emptyFunction, ErrMissingNamespace
-	}
-
-	if deployment == "" {
-		return emptyFunction, ErrMissingDeployment
-	}
-
-	if maxInstancesStr == "" {
-		return emptyFunction, ErrMissingMaxInstances
-	}
-
-	maxInstances, err := strconv.Atoi(maxInstancesStr)
-	if err != nil {
-		return emptyFunction, ErrInvalidMaxInstances
-	}
-
-	if minInstancesStr == "" {
-		return emptyFunction, ErrMissingMinInstances
-	}
-
-	minInstances, err := strconv.Atoi(minInstancesStr)
-	if err != nil {
-		return emptyFunction, ErrInvalidMinInstances
-	}
-
-	if targetCPUUtilizationStr == "" {
-		return emptyFunction, ErrMissingTargetCPUUtilization
-	}
-
-	targetCPUUtilization, err := strconv.Atoi(targetCPUUtilizationStr)
-	if err != nil {
-		return emptyFunction, ErrInvalidTargetCPUUtilization
-	}
-
-	if targetMemoryUtilizationStr == "" {
-		return emptyFunction, ErrMissingTargetMemoryUtilization
-	}
-
-	targetMemoryUtilization, err := strconv.Atoi(targetMemoryUtilizationStr)
-	if err != nil {
-		return emptyFunction, ErrInvalidTargetMemoryUtilization
-	}
-
-	return Function{
-		Tenant:                  tenant,
-		Metadata:                metadata,
-		Namespace:               namespace,
-		Deployment:              deployment,
-		MinInstances:            minInstances,
-		MaxInstances:            maxInstances,
-		TargetCPUUtilization:    targetCPUUtilization,
-		TargetMemoryUtilization: targetMemoryUtilization,
-	}, nil
+	MinInstances            int    `json:"min_instances"`
+	MaxInstances            int    `json:"max_instances"`
+	TargetCPUUtilization    int    `json:"target_cpu_utilization"`
+	TargetMemoryUtilization int    `json:"target_memory_utilization"`
 }
 
 func (f Function) RingKey() string {

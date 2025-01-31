@@ -36,7 +36,7 @@ func (c *httpClient) Get(ctx context.Context, fn function.Function) (instance *f
 		return nil, fmt.Errorf("failed to create get request: %w", err)
 	}
 
-	fn.SetHeaders(req)
+	fn.SetHeader(req)
 
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -89,7 +89,7 @@ func (c *httpClient) Scale(ctx context.Context, fn function.Function, desiredIns
 		return nil, fmt.Errorf("failed to create scale request: %w", err)
 	}
 
-	fn.SetHeaders(req)
+	fn.SetHeader(req)
 	req.Header[key.DesiredInstances.Header] = []string{strconv.Itoa(desiredInstances)}
 
 	res, err := http.DefaultClient.Do(req)

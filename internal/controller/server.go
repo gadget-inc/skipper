@@ -32,7 +32,7 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
-	fn, err := function.FromHeaders(req)
+	fn, err := function.FromHeader(req)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
@@ -63,7 +63,7 @@ func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
-	fn, err := function.FromHeaders(req)
+	fn, err := function.FromHeader(req)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return

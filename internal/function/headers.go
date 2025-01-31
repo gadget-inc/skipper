@@ -1,55 +1,60 @@
 package function
 
 import (
+	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/goccy/go-json"
 )
 
-func RemoveHeaders(r *http.Request) {
-	delete(r.Header, key.Tenant.Header)
-	delete(r.Header, key.Namespace.Header)
-	delete(r.Header, key.Deployment.Header)
-	delete(r.Header, key.Metadata.Header)
-	delete(r.Header, key.MinInstances.Header)
-	delete(r.Header, key.MaxInstances.Header)
-	delete(r.Header, key.TargetCPUUtilization.Header)
-	delete(r.Header, key.TargetMemoryUtilization.Header)
+func RemoveHeader(r *http.Request) {
+	delete(r.Header, key.Function.Header)
 }
 
-func (f Function) SetHeaders(r *http.Request) {
-	r.Header[key.Tenant.Header] = []string{f.Tenant}
-	r.Header[key.Namespace.Header] = []string{f.Namespace}
-	r.Header[key.Deployment.Header] = []string{f.Deployment}
-	r.Header[key.Metadata.Header] = []string{f.Metadata}
-	r.Header[key.MinInstances.Header] = []string{strconv.Itoa(f.MinInstances)}
-	r.Header[key.MaxInstances.Header] = []string{strconv.Itoa(f.MaxInstances)}
-	r.Header[key.TargetCPUUtilization.Header] = []string{strconv.Itoa(f.TargetCPUUtilization)}
-	r.Header[key.TargetMemoryUtilization.Header] = []string{strconv.Itoa(f.TargetMemoryUtilization)}
+func (f Function) SetHeader(r *http.Request) {
+	fnJSON, err := json.Marshal(f)
+	if err != nil {
+		// this should never happen
+		panic(fmt.Errorf("failed to marshal function: %w", err))
+	}
+	r.Header[key.Function.Header] = []string{string(fnJSON)}
 }
 
-func FromHeaders(req *http.Request) (Function, error) {
-	metadata, ok := req.Header[key.Metadata.Header]
-	if !ok || len(metadata) == 0 {
-		return emptyFunction, ErrMissingMetadata
+func FromHeader(req *http.Request) (Function, error) {
+	var fn Function
+
+	header, ok := req.Header[key.Function.Header]
+	if !ok || len(header) == 0 {
+		return fn, fmt.Errorf("missing %s header", key.Function.Header)
 	}
 
-	return new(
-		getHeaderValue(req, key.Deployment.Header),
-		getHeaderValue(req, key.MaxInstances.Header),
-		metadata[0],
-		getHeaderValue(req, key.MinInstances.Header),
-		getHeaderValue(req, key.Namespace.Header),
-		getHeaderValue(req, key.TargetCPUUtilization.Header),
-		getHeaderValue(req, key.TargetMemoryUtilization.Header),
-		getHeaderValue(req, key.Tenant.Header),
-	)
-}
-
-func getHeaderValue(req *http.Request, header string) string {
-	if values, ok := req.Header[header]; ok && len(values) > 0 {
-		return values[0]
+	err := json.Unmarshal([]byte(header[0]), &fn)
+	if err != nil {
+		return fn, fmt.Errorf("failed to unmarshal function header: %w", err)
 	}
-	return ""
+
+	if fn.Namespace == "" {
+		return fn, fmt.Errorf("missing function namespace")
+	}
+	if fn.Deployment == "" {
+		return fn, fmt.Errorf("missing function deployment")
+	}
+	if fn.Tenant == "" {
+		return fn, fmt.Errorf("missing function tenant")
+	}
+	if fn.MinInstances < 0 {
+		return fn, fmt.Errorf("min instances must be greater than or equal to 0")
+	}
+	if fn.MaxInstances < 0 {
+		return fn, fmt.Errorf("max instances must be greater than or equal to 0")
+	}
+	if fn.TargetCPUUtilization < 0 {
+		return fn, fmt.Errorf("target CPU utilization must be greater than or equal to 0")
+	}
+	if fn.TargetMemoryUtilization < 0 {
+		return fn, fmt.Errorf("target memory utilization must be greater than or equal to 0")
+	}
+
+	return fn, nil
 }

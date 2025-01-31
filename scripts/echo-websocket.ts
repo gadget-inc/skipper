@@ -3,18 +3,22 @@ import WebSocket from "npm:ws";
 import { delay } from "jsr:@std/async";
 
 // const url = "http://127.0.0.1:31020";
-const url = "http://fusion-router.fusion-development.svc.cluster.local";
+const routerUrl = "http://fusion-router.fusion-development.svc.cluster.local";
 
-const socket = new WebSocket(url, undefined, {
+const echoFunction = {
+  namespace: "fusion-fixtures-development",
+  deployment: "echo",
+  tenant: "123",
+  metadata: JSON.stringify({ foo: "bar" }),
+  min_instances: 0,
+  max_instances: 5,
+  target_cpu_utilization: 100,
+  target_memory_utilization: 200,
+};
+
+const socket = new WebSocket(routerUrl, undefined, {
   headers: {
-    "x-fusion-tenant": "123",
-    "x-fusion-metadata": "secret123",
-    "x-fusion-namespace": "fusion-fixtures-development",
-    "x-fusion-deployment": "echo",
-    "x-fusion-min-instances": "0",
-    "x-fusion-max-instances": "5",
-    "x-fusion-target-cpu-utilization": "100",
-    "x-fusion-target-memory-utilization": "200",
+    "x-fusion-function": JSON.stringify(echoFunction),
   },
 });
 

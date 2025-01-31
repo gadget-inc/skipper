@@ -22,13 +22,13 @@ type Instance struct {
 }
 
 func FromPod(pod *v1.Pod) (*Instance, error) {
-	instance := &Instance{}
-
-	instance.Name = pod.Name
+	instance := &Instance{
+		Name: pod.Name,
+	}
 
 	instance.Version = pod.Annotations[key.ReplicaSet.Label]
 	if instance.Version == "" {
-		return nil, ErrMissingReplicaSet
+		return nil, fmt.Errorf("missing replica set annotation")
 	}
 
 	err := json.Unmarshal([]byte(pod.Annotations[key.Function.Label]), &instance.Function)
@@ -38,13 +38,13 @@ func FromPod(pod *v1.Pod) (*Instance, error) {
 
 	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Label])
 	if err != nil {
-		return nil, ErrInvalidAssignedAt
+		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
 	}
 
 	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Label]; ok {
 		instance.ReadyAt, err = time.Parse(time.RFC3339, readyAtStr)
 		if err != nil {
-			return nil, ErrInvalidReadyAt
+			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)
 		}
 	}
 
@@ -56,7 +56,7 @@ func FromPod(pod *v1.Pod) (*Instance, error) {
 		}
 	}
 	if port == "" {
-		return nil, ErrMissingPort
+		return nil, fmt.Errorf("missing container port")
 	}
 
 	instance.Addr = pod.Status.PodIP + ":" + port

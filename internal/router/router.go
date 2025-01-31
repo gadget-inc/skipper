@@ -73,7 +73,7 @@ func (r *Router) Start(ctx context.Context) {
 }
 
 func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	fn, err := function.FromHeaders(req)
+	fn, err := function.FromHeader(req)
 	if err != nil {
 		if req.Method == http.MethodGet && req.URL.Path == "/healthz" {
 			rw.WriteHeader(http.StatusOK)
@@ -147,7 +147,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func rewriteHeaders(r *httputil.ProxyRequest) {
-	function.RemoveHeaders(r.Out)
+	function.RemoveHeader(r.Out)
 	r.Out.Host = r.In.Host
 	r.Out.Header["X-Forwarded-For"] = r.In.Header["X-Forwarded-For"]
 	r.SetXForwarded()

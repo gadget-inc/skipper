@@ -77,7 +77,7 @@ func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.Handler
 		must.Eq(t, http.MethodPost, req.Method)
 		must.Eq(t, function.FlagAssignPath.Value(), req.URL.Path)
 
-		assignedFn, err := function.FromHeaders(req)
+		assignedFn, err := function.FromHeader(req)
 		must.NoError(t, err)
 		must.Eq(t, fn, assignedFn)
 

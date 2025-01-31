@@ -46,7 +46,7 @@ func NewFunctionRequest(t *testing.T, fn function.Function, method string, path 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	t.Cleanup(cancel)
 	req := httptest.NewRequestWithContext(ctx, method, path, body)
-	fn.SetHeaders(req)
+	fn.SetHeader(req)
 	return req
 }
 
