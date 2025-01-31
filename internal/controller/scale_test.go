@@ -68,6 +68,9 @@ func TestAssignPodToFunction(t *testing.T) {
 			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
 				// no pods
 			},
+			check: func(t *testing.T, clientset *fake.Clientset, instance *function.Instance) {
+				must.Nil(t, instance)
+			},
 		},
 		{
 			name: "eventually available pod",
@@ -110,10 +113,9 @@ func TestAssignPodToFunction(t *testing.T) {
 			instance, err := c.assignPodToFunction(ctx, fn)
 			if tc.err != nil {
 				must.ErrorIs(t, err, tc.err)
-				return
+			} else {
+				must.NoError(t, err)
 			}
-
-			must.NoError(t, err)
 
 			tc.check(t, clientset, instance)
 		})
