@@ -19,9 +19,10 @@ import (
 func init() {
 	function.FlagAssignPath.Init()
 	function.FlagAssignTimeout.Init()
-	function.FlagNamespaces.Init()
 	function.FlagPort.Init()
+	function.FlagNamespaces.SetValue([]string{fixture.DefaultFunctionNamespace})
 
+	FlagPort.Init()
 	FlagIP.SetValue(fixture.DefaultControllerIP)
 	FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
 }
@@ -93,13 +94,12 @@ func TestAssignPodToFunction(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			t.Cleanup(cancel)
 
-			fn := fixture.NewFunction()
-			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
-
 			clientset := fake.NewClientset(fixture.NewControllerPod())
+			fn := fixture.NewFunction()
+
 			tc.setup(t, clientset, fn)
 
-			c := New(clientset, nil)
+			c := New(nil, clientset, nil)
 
 			err := c.startControllerInformer(ctx)
 			must.NoError(t, err)
@@ -198,13 +198,12 @@ func TestScaleFunction(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			t.Cleanup(cancel)
 
-			fn := fixture.NewFunction()
-			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
-
 			clientset := fake.NewClientset(fixture.NewControllerPod())
+			fn := fixture.NewFunction()
+
 			tc.setup(t, clientset, fn)
 
-			c := New(clientset, nil)
+			c := New(nil, clientset, nil)
 
 			err := c.startControllerInformer(ctx)
 			must.NoError(t, err)
@@ -222,4 +221,37 @@ func TestScaleFunction(t *testing.T) {
 			tc.check(t, clientset, instances)
 		})
 	}
+}
+
+func TestScaleFunctionForwarding(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	t.Cleanup(cancel)
+
+	ctrlPod := fixture.NewControllerPod()
+	ctrlPod.Status.PodIP = "127.0.0.2" // different IP so we can test forwarding
+	clientset := fake.NewClientset(ctrlPod)
+
+	fn := fixture.NewFunction()
+
+	var mccWasCalled bool
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleScale(fn, func(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+		mccWasCalled = true
+		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
+	})
+
+	c := New(func(host string, port int) Client { return mcc }, clientset, nil)
+
+	err := c.startControllerInformer(ctx)
+	must.NoError(t, err)
+
+	err = c.startPodInformers(ctx)
+	must.NoError(t, err)
+
+	instances, err := c.scaleFunction(ctx, fn, 1)
+	must.NoError(t, err)
+
+	must.True(t, mccWasCalled)
+	must.Len(t, 1, instances)
 }

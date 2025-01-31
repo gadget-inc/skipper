@@ -53,7 +53,7 @@ func NewCmdController() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			ctrl := controller.New(clientset, metricsClientset)
+			ctrl := controller.New(controller.NewHTTPClient, clientset, metricsClientset)
 			err = ctrl.Start(ctx)
 			if err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)

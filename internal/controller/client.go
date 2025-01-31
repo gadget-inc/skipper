@@ -18,6 +18,8 @@ type Client interface {
 	Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
 }
 
+type NewClientFunc func(host string, port int) Client
+
 type httpClient struct {
 	addr string
 }

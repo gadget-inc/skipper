@@ -54,22 +54,24 @@ func init() {
 
 type Controller struct {
 	ring              *hashring.HashRing
+	newClientFunc     NewClientFunc
+	controllerClients *xsync.MapOf[string, Client]
 	clientset         kubernetes.Interface
 	metricsClientset  metricsclientset.Interface
 	podListerMap      map[string]podListerEntry
-	controllerClients *xsync.MapOf[string, Client]
 	scaleMu           *xsync.MapOf[function.Function, *sync.Mutex]
 	heartbeats        map[function.Function]time.Time
 	heartbeatsMu      sync.Mutex // guards heartbeats
 }
 
-func New(clientset kubernetes.Interface, metricsClient metricsclientset.Interface) *Controller {
+func New(newClientFunc NewClientFunc, clientset kubernetes.Interface, metricsClient metricsclientset.Interface) *Controller {
 	return &Controller{
 		ring:              hashring.New(),
+		newClientFunc:     newClientFunc,
+		controllerClients: xsync.NewMapOf[string, Client](),
 		clientset:         clientset,
 		metricsClientset:  metricsClient,
 		podListerMap:      make(map[string]podListerEntry, len(function.FlagNamespaces.Value())),
-		controllerClients: xsync.NewMapOf[string, Client](),
 		scaleMu:           xsync.NewMapOf[function.Function, *sync.Mutex](),
 		heartbeats:        make(map[function.Function]time.Time),
 	}

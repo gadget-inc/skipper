@@ -63,7 +63,7 @@ func TestGetInstances(t *testing.T) {
 			fn := fixture.NewFunction()
 			fixture.SetFlag(t, &function.FlagNamespaces, []string{fn.Namespace})
 
-			c := New(fake.NewClientset(tc.setupPods(t, fn)...), nil)
+			c := New(NewHTTPClient, fake.NewClientset(tc.setupPods(t, fn)...), nil)
 
 			err := c.startControllerInformer(ctx)
 			must.NoError(t, err)
