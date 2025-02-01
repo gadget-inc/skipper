@@ -14,7 +14,7 @@ import (
 
 type Client interface {
 	Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error)
-	Heartbeat(ctx context.Context, heartbeats []function.Heartbeat) error
+	Heartbeat(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
 }
 
@@ -57,7 +57,7 @@ func (c *httpClient) Get(ctx context.Context, fn function.Function) (instance *f
 	return instance, nil
 }
 
-func (c *httpClient) Heartbeat(ctx context.Context, heartbeats []function.Heartbeat) error {
+func (c *httpClient) Heartbeat(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 	if len(heartbeats) == 0 {
 		return nil
 	}
@@ -70,6 +70,10 @@ func (c *httpClient) Heartbeat(ctx context.Context, heartbeats []function.Heartb
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/heartbeat", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("failed to create heartbeat request: %w", err)
+	}
+
+	for _, forwardedForIP := range forwardedFor {
+		req.Header.Add(key.ForwardedFor.Header, forwardedForIP)
 	}
 
 	res, err := http.DefaultClient.Do(req)

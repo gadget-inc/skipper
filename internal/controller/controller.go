@@ -3,8 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"maps"
 	"sync"
 	"time"
 
@@ -14,9 +12,13 @@ import (
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
@@ -97,144 +99,66 @@ func (c *Controller) Start(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) startScalingInstances(ctx context.Context) error {
-	// TODO: garbage collect old stabilization windows
-	stabilizationWindows := make(map[function.Function]*StabilizationWindow)
+func (c *Controller) startControllerInformer(ctx context.Context) error {
+	log.Info(ctx, "starting controller informer", key.Namespace.Field(FlagNamespace.Value()))
 
-	go timer.Loop(
-		ctx,
-		15*time.Second,
-		func(ctx context.Context) error {
-			c.heartbeatsMu.Lock()
-			heartbeats := maps.Clone(c.heartbeats)
-			c.heartbeatsMu.Unlock()
-
-			for _, namespace := range function.FlagNamespaces.Value() {
-				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)
-				if err != nil {
-					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
-					return nil
-				}
-
-				now := time.Now()
-				for fn, instanceMetrics := range functionMetrics {
-					timestamp, ok := heartbeats[fn]
-					if !ok {
-						log.Warn(ctx, "no heartbeat for function", key.Function.Field(fn))
-						for _, instanceMetric := range instanceMetrics {
-							if instanceMetric.AssignedAt.After(timestamp) {
-								timestamp = instanceMetric.AssignedAt
-							}
-						}
-					}
-
-					if time.Since(timestamp) > 90*time.Second {
-						delete(stabilizationWindows, fn)
-
-						controllerIP := c.ring.Get(fn.RingKey())
-						if controllerIP != FlagIP.Value() {
-							log.Trace(ctx, "skipping scaling fn to 0, not assigned to this controller",
-								key.Function.Field(fn),
-								key.ControllerIP.Field(controllerIP),
-								key.IP.Field(FlagIP.Value()),
-								slog.Bool("ok", ok),
-							)
-							continue
-						}
-
-						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.Timestamp.Field(timestamp))
-						_, err := c.scaleFunction(ctx, fn, 0)
-						if err != nil {
-							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
-						}
-						continue
-					}
-
-					currentInstances := len(instanceMetrics)
-					desiredInstances, err := calculateDesiredInstances(
-						currentInstances,
-						instanceMetrics,
-						int64(fn.TargetCPUUtilization),
-						// int64(fn.TargetMemoryUtilization),
-						DefaultConfig,
-						now,
-					)
-					if err != nil {
-						log.Trace(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
-						continue
-					}
-
-					if desiredInstances < fn.MinInstances {
-						desiredInstances = fn.MinInstances
-					}
-
-					if desiredInstances > fn.MaxInstances {
-						desiredInstances = fn.MaxInstances
-					}
-
-					stabilizationWindow, exists := stabilizationWindows[fn]
-					if !exists {
-						stabilizationWindow = &StabilizationWindow{Window: DefaultConfig.DownscaleStabilization}
-						stabilizationWindows[fn] = stabilizationWindow
-					}
-
-					log.Trace(ctx, "desired instances",
-						key.Function.Field(fn),
-						key.CurrentInstances.Field(currentInstances),
-						key.DesiredInstances.Field(desiredInstances),
-						key.MaxRecommendedInstances.Field(stabilizationWindow.GetMaxRecommendation()),
-					)
-
-					stabilizationWindow.RecordRecommendation(desiredInstances, now)
-
-					controllerIP := c.ring.Get(fn.RingKey())
-					if controllerIP != FlagIP.Value() {
-						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
-							key.Function.Field(fn),
-							key.Controller.Field(controllerIP),
-							key.IP.Field(FlagIP.Value()),
-							slog.Bool("ok", ok),
-						)
-						continue
-					}
-
-					if desiredInstances < currentInstances {
-						maxRecommendedInstances := stabilizationWindow.GetMaxRecommendation()
-						if maxRecommendedInstances < currentInstances {
-							desiredInstances = maxRecommendedInstances
-						} else {
-							desiredInstances = currentInstances
-						}
-					}
-
-					if desiredInstances == 0 {
-						// we only scale to 0 if the last request was more than 90 seconds ago
-						log.Debug(ctx, "skipping scaling function to 0 based on hpa", key.Function.Field(fn))
-						continue
-					}
-
-					log.Trace(ctx, "scaling function",
-						key.Function.Field(fn),
-						key.CurrentInstances.Field(currentInstances),
-						key.DesiredInstances.Field(desiredInstances),
-						key.MaxRecommendedInstances.Field(stabilizationWindow.GetMaxRecommendation()),
-					)
-
-					_, err = c.scaleFunction(ctx, fn, desiredInstances)
-					if err != nil {
-						log.Warn(ctx, "failed to scale function",
-							key.Error.Field(err),
-							key.Function.Field(fn),
-							key.CurrentInstances.Field(currentInstances),
-							key.DesiredInstances.Field(desiredInstances),
-						)
-					}
-				}
-			}
-
-			return nil
-		},
+	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
+		c.clientset,
+		10*time.Minute,
+		informers.WithNamespace(FlagNamespace.Value()),
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			options.LabelSelector = "app.kubernetes.io/name=fusion,app.kubernetes.io/component=controller"
+		}),
 	)
 
+	controllerPodInformer := controllerPodInformerFactory.Core().V1().Pods().Informer()
+
+	controllerPodHandler, err := controllerPodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj any) {
+			pod := obj.(*v1.Pod)
+			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
+				c.ring.Add(pod.Status.PodIP)
+				log.Trace(ctx, "added controller", key.Pod.Field(pod))
+			}
+		},
+		UpdateFunc: func(_, newObj any) {
+			pod := newObj.(*v1.Pod)
+			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
+				c.ring.Add(pod.Status.PodIP)
+				log.Trace(ctx, "updated controller", key.Pod.Field(pod))
+			} else {
+				c.ring.Remove(pod.Status.PodIP)
+				log.Trace(ctx, "removed updated controller", key.Pod.Field(pod))
+			}
+		},
+		DeleteFunc: func(obj any) {
+			pod := obj.(*v1.Pod)
+			c.ring.Remove(pod.Status.PodIP)
+			log.Trace(ctx, "removed deleted controller", key.Pod.Field(pod))
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add event handler: %w", err)
+	}
+
+	controllerPodInformerFactory.Start(ctx.Done())
+
+	synced := cache.WaitForCacheSync(ctx.Done(), controllerPodHandler.HasSynced)
+	if !synced {
+		return fmt.Errorf("failed to sync controller pod informer")
+	}
+
+	go func() {
+		timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
+			log.Trace(ctx, "controller ips", key.ControllerIPs.Field(c.ring.List()))
+			return nil
+		})
+	}()
+
 	return nil
+}
+
+func (c *Controller) getControllerClient(host string) Client {
+	controllerClient, _ := c.controllerClients.LoadOrCompute(host, func() Client { return c.newClientFunc(host, FlagPort.Value()) })
+	return controllerClient
 }

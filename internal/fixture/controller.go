@@ -66,7 +66,7 @@ func (f *MockControllerClient) Get(ctx context.Context, fn function.Function) (i
 }
 
 // Heartbeat implements controller.Client.
-func (f *MockControllerClient) Heartbeat(ctx context.Context, heartbeats []function.Heartbeat) error {
+func (f *MockControllerClient) Heartbeat(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.heartbeats = append(f.heartbeats, heartbeats...)

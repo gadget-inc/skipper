@@ -25,65 +25,6 @@ type podListerEntry struct {
 	indexer cache.Indexer
 }
 
-func (c *Controller) startControllerInformer(ctx context.Context) error {
-	log.Info(ctx, "starting controller informer", key.Namespace.Field(FlagNamespace.Value()))
-
-	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
-		c.clientset,
-		10*time.Minute,
-		informers.WithNamespace(FlagNamespace.Value()),
-		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.LabelSelector = "app.kubernetes.io/name=fusion,app.kubernetes.io/component=controller"
-		}),
-	)
-
-	controllerPodInformer := controllerPodInformerFactory.Core().V1().Pods().Informer()
-
-	controllerPodHandler, err := controllerPodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			pod := obj.(*v1.Pod)
-			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
-				c.ring.Add(pod.Status.PodIP)
-				log.Trace(ctx, "added controller", key.Pod.Field(pod))
-			}
-		},
-		UpdateFunc: func(_, newObj any) {
-			pod := newObj.(*v1.Pod)
-			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
-				c.ring.Add(pod.Status.PodIP)
-				log.Trace(ctx, "updated controller", key.Pod.Field(pod))
-			} else {
-				c.ring.Remove(pod.Status.PodIP)
-				log.Trace(ctx, "removed updated controller", key.Pod.Field(pod))
-			}
-		},
-		DeleteFunc: func(obj any) {
-			pod := obj.(*v1.Pod)
-			c.ring.Remove(pod.Status.PodIP)
-			log.Trace(ctx, "removed deleted controller", key.Pod.Field(pod))
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to add event handler: %w", err)
-	}
-
-	controllerPodInformerFactory.Start(ctx.Done())
-
-	synced := cache.WaitForCacheSync(ctx.Done(), controllerPodHandler.HasSynced)
-	if !synced {
-		return fmt.Errorf("failed to sync controller pod informer")
-	}
-
-	go func() {
-		timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-			log.Trace(ctx, "controller ips", key.ControllerIPs.Field(c.ring.List()))
-			return nil
-		})
-	}()
-
-	return nil
-}
-
 func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 	log.Info(ctx, "starting managed replica set informers", key.Namespaces.Field(function.FlagNamespaces.Value()))
 
