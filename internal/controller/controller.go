@@ -158,7 +158,7 @@ func (c *Controller) startControllerInformer(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) getControllerClient(host string) Client {
-	controllerClient, _ := c.controllerClients.LoadOrCompute(host, func() Client { return c.newClientFunc(host, FlagPort.Value()) })
+func (c *Controller) getControllerClient(ip string) Client {
+	controllerClient, _ := c.controllerClients.LoadOrCompute(ip, func() Client { return c.newClientFunc(ip, FlagPort.Value()) })
 	return controllerClient
 }

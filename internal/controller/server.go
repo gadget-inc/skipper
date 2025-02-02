@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"io"
 	"math/rand"
 	"net/http"
 	"slices"
@@ -89,14 +88,8 @@ func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) {
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
-		http.Error(rw, err.Error(), http.StatusBadRequest)
-		return
-	}
-
 	var heartbeats []function.Heartbeat
-	err = json.Unmarshal(body, &heartbeats)
+	err := json.NewDecoder(req.Body).Decode(&heartbeats)
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
@@ -128,7 +121,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 
 			err := c.getControllerClient(controllerIP).Heartbeat(ctx, heartbeats, forwardedFor...)
 			if err != nil {
-				log.Warn(req.Context(), "failed to forward heartbeats", key.ControllerIP.Field(controllerIP), key.Error.Field(err))
+				log.Warn(req.Context(), "failed to forward heartbeats", key.Error.Field(err), key.ControllerIP.Field(controllerIP))
 			}
 		}()
 	}
