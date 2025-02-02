@@ -28,30 +28,30 @@ func TestHealthz(t *testing.T) {
 func TestHandleHeartbeat(t *testing.T) {
 	testCases := []struct {
 		name  string
-		setup func(*testing.T, *Controller) []function.Heartbeat
-		check func(*testing.T, *Controller, []function.Heartbeat)
+		setup func(*testing.T, *fixture.MockControllerClient, *Controller) []function.Heartbeat
+		check func(*testing.T, *fixture.MockControllerClient, *Controller, []function.Heartbeat)
 	}{
 		{
 			name: "one",
-			setup: func(t *testing.T, ctrl *Controller) []function.Heartbeat {
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				return []function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
 				must.Eq(t, 1, len(ctrl.heartbeats))
 				must.Eq(t, heartbeats[0].Timestamp, ctrl.heartbeats[heartbeats[0].Function])
 			},
 		},
 		{
 			name: "multiple",
-			setup: func(t *testing.T, ctrl *Controller) []function.Heartbeat {
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				return []function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
 				must.Eq(t, 2, len(ctrl.heartbeats))
 				for _, hb := range heartbeats {
 					must.Eq(t, hb.Timestamp, ctrl.heartbeats[hb.Function])
@@ -59,34 +59,53 @@ func TestHandleHeartbeat(t *testing.T) {
 			},
 		},
 		{
-			name: "old",
-			setup: func(t *testing.T, ctrl *Controller) []function.Heartbeat {
+			name: "keeps most recent",
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				// seed the controller with a recent heartbeat
 				fn := fixture.NewFunction()
 				ctrl.heartbeats[fn] = time.Now()
 
 				// send an old heartbeat
 				return []function.Heartbeat{
-					{Function: fn, Timestamp: time.Now().Add(-time.Hour)},
+					{Function: fn, Timestamp: ctrl.heartbeats[fn].Add(-time.Hour)},
 				}
 			},
-			check: func(t *testing.T, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
 				must.Eq(t, 1, len(ctrl.heartbeats))
 
 				sentTimestamp := heartbeats[0].Timestamp
-				recordedTimestamp := ctrl.heartbeats[heartbeats[0].Function]
+				keptTimestamp := ctrl.heartbeats[heartbeats[0].Function]
 
-				must.NotEq(t, sentTimestamp, recordedTimestamp)
-				must.True(t, recordedTimestamp.After(sentTimestamp))
+				must.NotEq(t, keptTimestamp, sentTimestamp)
+				must.Eq(t, keptTimestamp, sentTimestamp.Add(time.Hour))
+			},
+		},
+		{
+			name: "forwards heartbeats",
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+				ctrl.ring.Add("127.0.0.2")
+
+				return []function.Heartbeat{
+					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+				}
+			},
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+				time.Sleep(100 * time.Millisecond) // wait heartbeat to be forwarded
+				forwardedHeartbeats := mcc.Heartbeats()
+				must.Len(t, len(heartbeats), forwardedHeartbeats)
+				for i, hb := range heartbeats {
+					forwardedHeartbeats[i].Timestamp = hb.Timestamp
+				}
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctrl := New(nil, fake.NewClientset(), nil)
+			mcc := fixture.NewMockControllerClient(t)
+			ctrl := New(func(host string, port int) Client { return mcc }, fake.NewClientset(), nil)
 
-			heartbeats := tc.setup(t, ctrl)
+			heartbeats := tc.setup(t, mcc, ctrl)
 			heartbeatBytes, err := json.Marshal(heartbeats)
 			must.NoError(t, err)
 
@@ -99,7 +118,7 @@ func TestHandleHeartbeat(t *testing.T) {
 
 			ctrl.heartbeatsMu.Lock()
 			defer ctrl.heartbeatsMu.Unlock()
-			tc.check(t, ctrl, heartbeats)
+			tc.check(t, mcc, ctrl, heartbeats)
 		})
 	}
 }
