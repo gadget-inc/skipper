@@ -80,8 +80,6 @@ func TestAssignPodToFunction(t *testing.T) {
 					err := clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 					must.NoError(t, err)
 				}()
-
-				// initially no pods
 			},
 			check: func(t *testing.T, clientset *fake.Clientset, instance *function.Instance) {
 				pods, err := clientset.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
@@ -99,7 +97,6 @@ func TestAssignPodToFunction(t *testing.T) {
 
 			clientset := fake.NewClientset(fixture.NewControllerPod())
 			fn := fixture.NewFunction()
-
 			tc.setup(t, clientset, fn)
 
 			c := New(nil, clientset, nil)
@@ -154,6 +151,12 @@ func TestScaleFunction(t *testing.T) {
 			},
 			check: func(t *testing.T, clientset *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 1, instances)
+				instance := instances[0]
+				pods, err := clientset.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{
+					LabelSelector: doesNotHaveTenantRequirement.String(),
+				})
+				must.NoError(t, err)
+				must.Len(t, 4, pods.Items)
 			},
 		},
 		{
