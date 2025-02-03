@@ -14,7 +14,6 @@ import (
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/shoenig/test/must"
-	"github.com/shoenig/test/wait"
 )
 
 func init() {
@@ -270,6 +269,7 @@ func TestBody(t *testing.T) {
 
 func TestHeartbeats(t *testing.T) {
 	fn := fixture.NewFunction()
+	testStartTime := time.Now()
 
 	mcc := fixture.NewMockControllerClient(t)
 	mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
@@ -278,8 +278,15 @@ func TestHeartbeats(t *testing.T) {
 			rw.Write([]byte("Hello, " + fn.Tenant))
 		}), nil
 	})
+	mcc.HandleHeartbeat(func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+		must.Eq(t, 1, len(heartbeats))
+		must.Eq(t, fn, heartbeats[0].Function)
+		must.True(t, heartbeats[0].Timestamp.After(testStartTime))
+		must.Len(t, 1, forwardedFor)
+		must.Eq(t, fixture.DefaultControllerIP, forwardedFor[0])
+		return nil
+	})
 
-	testStartTime := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -292,14 +299,6 @@ func TestHeartbeats(t *testing.T) {
 
 	must.Eq(t, http.StatusOK, rw.Code)
 	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
-
-	must.Wait(t, wait.InitialSuccess(wait.BoolFunc(func() bool {
-		return len(mcc.Heartbeats()) > 0
-	})))
-
-	heartbeat := mcc.Heartbeats()[0]
-	must.Eq(t, fn, heartbeat.Function)
-	must.True(t, heartbeat.Timestamp.After(testStartTime))
 }
 
 func TestRetries(t *testing.T) {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -84,18 +85,18 @@ func TestHandleHeartbeat(t *testing.T) {
 			name: "forwards heartbeats",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				ctrl.ring.Add("127.0.0.2")
+				hbs := []function.Heartbeat{{Function: fixture.NewFunction(), Timestamp: time.Now()}}
 
-				return []function.Heartbeat{
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
-				}
+				mcc.HandleHeartbeat(func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+					must.Eq(t, hbs, heartbeats)
+					must.Eq(t, []string{fixture.DefaultControllerIP}, forwardedFor)
+					return nil
+				})
+
+				return hbs
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				time.Sleep(100 * time.Millisecond) // wait heartbeat to be forwarded
-				forwardedHeartbeats := mcc.Heartbeats()
-				must.Len(t, len(heartbeats), forwardedHeartbeats)
-				for i, hb := range heartbeats {
-					forwardedHeartbeats[i].Timestamp = hb.Timestamp
-				}
+				time.Sleep(10 * time.Millisecond)
 			},
 		},
 	}
