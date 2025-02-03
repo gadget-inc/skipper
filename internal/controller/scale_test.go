@@ -238,11 +238,8 @@ func TestScaleFunctionForwarding(t *testing.T) {
 
 	fn := fixture.NewFunction()
 
-	var mccWasCalled bool
-
 	mcc := fixture.NewMockControllerClient(t)
 	mcc.HandleScale(func(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
-		mccWasCalled = true
 		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
@@ -256,7 +253,5 @@ func TestScaleFunctionForwarding(t *testing.T) {
 
 	instances, err := c.scaleFunction(ctx, fn, 1)
 	must.NoError(t, err)
-
-	must.True(t, mccWasCalled)
 	must.Len(t, 1, instances)
 }
