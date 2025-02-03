@@ -38,7 +38,7 @@ func TestSimple(t *testing.T) {
 	fn := fixture.NewFunction()
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	mockControllerClient.HandleGet(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			must.Eq(t, req.Method, http.MethodGet)
 			must.Eq(t, req.URL.Path, "/")
@@ -77,7 +77,7 @@ func TestMethods(t *testing.T) {
 			fn := fixture.NewFunction()
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleGet(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					must.Eq(t, req.Method, tc.method)
 				}), nil
@@ -148,7 +148,7 @@ func TestHeaders(t *testing.T) {
 			fn := fixture.NewFunction()
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleGet(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
 					tc.checkHeaders(t, fn, req.Header)
@@ -227,7 +227,7 @@ func TestBody(t *testing.T) {
 		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleGet(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
 					must.NoError(t, err)
@@ -268,27 +268,30 @@ func TestBody(t *testing.T) {
 }
 
 func TestHeartbeats(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	fn := fixture.NewFunction()
 	testStartTime := time.Now()
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	mcc.HandleGet(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
 		}), nil
 	})
 	mcc.HandleHeartbeat(func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+		if len(heartbeats) == 0 {
+			// ignore the initial heartbeats
+			return nil
+		}
+
 		must.Eq(t, 1, len(heartbeats))
 		must.Eq(t, fn, heartbeats[0].Function)
 		must.True(t, heartbeats[0].Timestamp.After(testStartTime))
-		must.Len(t, 1, forwardedFor)
-		must.Eq(t, fixture.DefaultControllerIP, forwardedFor[0])
+		must.Len(t, 0, forwardedFor)
+		cancel()
 		return nil
 	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	rw := httptest.NewRecorder()
 	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil).WithContext(ctx)
@@ -299,6 +302,9 @@ func TestHeartbeats(t *testing.T) {
 
 	must.Eq(t, http.StatusOK, rw.Code)
 	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+
+	<-ctx.Done()
+	must.ErrorIs(t, ctx.Err(), context.Canceled) // ensure context was canceled by heartbeat
 }
 
 func TestRetries(t *testing.T) {
@@ -367,7 +373,7 @@ func TestRetries(t *testing.T) {
 
 			getErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.MockGet(fn, func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleGet(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 				if len(tc.getErrs) > 0 && getErrsIndex < len(tc.getErrs) {
 					getErrsIndex++
 					return nil, tc.getErrs[getErrsIndex-1]

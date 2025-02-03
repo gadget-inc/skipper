@@ -96,6 +96,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				return hbs
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+				// give the goroutine that forwards the heartbeats a chance to run
 				time.Sleep(10 * time.Millisecond)
 			},
 		},
