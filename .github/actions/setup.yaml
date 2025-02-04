@@ -1,0 +1,29 @@
+name: "Setup environment"
+description: ""
+inputs: {}
+outputs: {}
+runs:
+  using: "composite"
+  steps:
+    - name: Install nix
+      uses: DeterminateSystems/nix-installer-action@main
+
+    - name: Cache nix
+      uses: DeterminateSystems/magic-nix-cache-action@main
+
+    - name: Check nix flake
+      uses: DeterminateSystems/flake-checker-action@main
+      with:
+        flake-lock-path: "nix/flake.lock"
+
+    - name: Setup nix environment
+      run: cd nix && echo "source <(nix print-dev-env --show-trace)" >> "$GITHUB_ENV"
+
+    - name: Cache deno dependencies
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DENO_DIR }}
+        key: ${{ hashFiles('deno.lock') }}
+
+    - name: Install deno dependencies
+      run: deno install

@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  workflow_call:
+  pull_request:
+
+env:
+  DENO_DIR: ${{ runner.workspace }}/.deno
+
+jobs:
+  deno-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      - name: Run lint
+        run: deno lint
