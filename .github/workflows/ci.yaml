@@ -28,7 +28,7 @@ jobs:
           key: ${{ hashFiles('.golangci.yaml', 'go.sum', '**/*.go') }}
 
       - name: Run lint
-        run: golangci-lint run
+        run: golangci-lint run --modules-download-mode=readonly
 
   deno-lint:
     runs-on: ubuntu-latest
