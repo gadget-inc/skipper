@@ -18,6 +18,7 @@ runs:
 
     - name: Setup nix environment
       run: cd nix && echo "source <(nix print-dev-env --show-trace)" >> "$GITHUB_ENV"
+      shell: bash
 
     - name: Cache deno dependencies
       uses: actions/cache@v4
@@ -27,3 +28,4 @@ runs:
 
     - name: Install deno dependencies
       run: deno install
+      shell: bash
