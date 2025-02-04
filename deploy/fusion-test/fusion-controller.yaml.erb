@@ -71,6 +71,8 @@ spec:
               value: "debug"
             - name: FUSION_LOG_FORMAT
               value: "text"
+            - name: FUSION_CONTROLLER_PASETO_PRIVATE_KEY
+              value: <%= File.read("#{workspace_dir}/tmp/paseto/private.pem").to_json %>
             - name: GOMAXPROCS
               value: "1"
             - name: GOMEMLIMIT

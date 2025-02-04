@@ -25,6 +25,7 @@ func init() {
 	FlagPort.Init()
 	FlagIP.SetValue(fixture.DefaultControllerIP)
 	FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
+	FlagPasetoPrivateKey.SetValue(fixture.DefaultControllerPasetoSecretKey)
 }
 
 func TestAssignPodToFunction(t *testing.T) {

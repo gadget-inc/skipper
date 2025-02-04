@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"aidanwoods.dev/go-paseto"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
@@ -346,11 +348,20 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
+	token := paseto.NewToken()
+	token.SetSubject(fn.Tenant)
+	token.Set("function", fn)
+	token.SetIssuedAt(time.Now())
+	token.SetNotBefore(time.Now())
+	token.SetExpiration(time.Now().Add(7 * 24 * time.Hour))
+	signed := token.V2Sign(FlagPasetoPrivateKey.Value())
+
+	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, strings.NewReader(signed))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}
 
+	req.Header.Set("Content-Type", "text/plain")
 	fn.SetHeader(req)
 
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))

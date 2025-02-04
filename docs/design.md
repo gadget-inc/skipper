@@ -9,8 +9,7 @@ TODO: https://philipptanlak.com/web-frontends-in-go/#how-i-structure-my-template
 - Need to scale to up/down when cpu or memory utilization is high/low
   - The cpu and memory utilization of a tenant is provided via the `x-fusion-cpu` and `x-fusion-memory` headers.
   - N is provided via the `x-fusion-replicas` header.
-  - The headers are stored as labels on the tenant's pod. The controller
-    uses the labels on the pod with the latest `fusion/assigned-at`
+  - The headers are stored as labels on the tenant's pod. The controller uses the labels on the pod with the latest `fusion/assigned-at`
     timestamp.
 
 ## Components

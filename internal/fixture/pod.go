@@ -1,6 +1,7 @@
 package fixture
 
 import (
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"aidanwoods.dev/go-paseto"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/goccy/go-json"
@@ -80,6 +82,14 @@ func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.Handler
 		assignedFn, err := function.FromHeader(req)
 		must.NoError(t, err)
 		must.Eq(t, fn, assignedFn)
+
+		bytes, err := io.ReadAll(req.Body)
+		must.NoError(t, err)
+
+		parser := paseto.NewParserForValidNow()
+		parser.AddRule(paseto.Subject(fn.Tenant))
+		_, err = parser.ParseV2Public(DefaultControllerPasetoPublicKey, string(bytes))
+		must.NoError(t, err)
 
 		rw.WriteHeader(http.StatusOK)
 	}

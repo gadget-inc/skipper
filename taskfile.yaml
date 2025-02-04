@@ -1,6 +1,15 @@
 version: 3
 
 tasks:
+  generate-paseto-keypair:
+    sources:
+      - scripts/generate-paseto-keypair.ts
+    generates:
+      - tmp/paseto/public.pem
+      - tmp/paseto/private.pem
+    cmds:
+      - deno run -A scripts/generate-paseto-keypair.ts
+
   lint:
     sources:
       - cmd/**/*.go
@@ -49,6 +58,7 @@ tasks:
 
   deploy:
     deps:
+      - generate-paseto-keypair
       - docker-build
     cmds:
       - deno run -A scripts/deploy.ts
@@ -62,6 +72,7 @@ tasks:
 
   fixtures-deploy:
     deps:
+      - generate-paseto-keypair
       - fixtures-docker-build
     cmds:
       - deno run -A scripts/fixtures-deploy.ts
@@ -81,3 +92,9 @@ tasks:
   echo-websocket:
     cmds:
       - deno run -A scripts/echo-websocket.ts
+
+  deploy-all:
+    deps:
+      - deploy
+      - fixtures-deploy
+      - metrics-server-deploy

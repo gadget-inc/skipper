@@ -225,6 +225,10 @@ func (f *Flag[T]) Set(s string) error {
 
 // String implements pflag.Value.String.
 func (f *Flag[T]) String() string {
+	if f.Sensitive {
+		return "********"
+	}
+
 	if f.ptr == nil {
 		return ""
 	}

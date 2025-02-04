@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"aidanwoods.dev/go-paseto"
 	"github.com/gadget-inc/fusion/internal/function"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -14,6 +15,16 @@ type (
 	GetHandler       func(ctx context.Context, fn function.Function) (*function.Instance, error)
 	ScaleHandler     func(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
 	HeartbeatHandler func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error
+)
+
+const (
+	DefaultControllerIP        = "127.0.0.1"
+	DefaultControllerNamespace = "fusion-test"
+)
+
+var (
+	DefaultControllerPasetoSecretKey = paseto.NewV2AsymmetricSecretKey()
+	DefaultControllerPasetoPublicKey = DefaultControllerPasetoSecretKey.Public()
 )
 
 type MockControllerClient struct {
@@ -83,11 +94,6 @@ func (f *MockControllerClient) Heartbeat(ctx context.Context, heartbeats []funct
 	f.heartbeatWasCalled = true
 	return f.heartbeatHandler(ctx, heartbeats, forwardedFor...)
 }
-
-const (
-	DefaultControllerIP        = "127.0.0.1"
-	DefaultControllerNamespace = "fusion-test"
-)
 
 func NewControllerPod() *v1.Pod {
 	return &v1.Pod{

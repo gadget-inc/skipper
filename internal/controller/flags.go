@@ -1,10 +1,15 @@
 package controller
 
 import (
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
+	"aidanwoods.dev/go-paseto"
 	"github.com/gadget-inc/fusion/internal/flag"
 )
 
@@ -31,6 +36,31 @@ var (
 				return 8080, nil
 			}
 			return strconv.Atoi(s)
+		},
+	}
+
+	FlagPasetoPrivateKey = flag.Flag[paseto.V2AsymmetricSecretKey]{
+		Name:        "controller-paseto-private-key",
+		Description: "The private key used to sign PASETO tokens for assigned pods.",
+		Required:    true,
+		Sensitive:   true,
+		Parse: func(s string) (paseto.V2AsymmetricSecretKey, error) {
+			block, _ := pem.Decode([]byte(s))
+			if block == nil {
+				return paseto.NewV2AsymmetricSecretKey(), fmt.Errorf("invalid PEM block")
+			}
+			if block.Type != "PRIVATE KEY" {
+				return paseto.NewV2AsymmetricSecretKey(), fmt.Errorf("invalid PEM block type: %s", block.Type)
+			}
+			key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+			if err != nil {
+				return paseto.NewV2AsymmetricSecretKey(), fmt.Errorf("failed to parse pkcs8 private key: %w", err)
+			}
+			ed25519PrivateKey, ok := key.(ed25519.PrivateKey)
+			if !ok {
+				return paseto.NewV2AsymmetricSecretKey(), fmt.Errorf("invalid private key type")
+			}
+			return paseto.NewV2AsymmetricSecretKeyFromEd25519(ed25519PrivateKey)
 		},
 	}
 )

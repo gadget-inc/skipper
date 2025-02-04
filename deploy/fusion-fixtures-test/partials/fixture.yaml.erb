@@ -32,6 +32,8 @@ spec:
           env:
             - name: DENO_V8_FLAGS
               value: "--max-old-space-size=256"
+            - name: FUSION_PUBLIC_KEY
+              value: <%= File.read("#{workspace_dir}/tmp/paseto/public.pem").to_json %>
           volumeMounts:
             - name: empty-dir
               mountPath: /tmp

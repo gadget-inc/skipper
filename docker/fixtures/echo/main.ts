@@ -1,12 +1,15 @@
 import { pino } from "npm:pino";
 import pretty from "npm:pino-pretty";
+import { V2 } from "npm:paseto";
 const log = pino(pretty());
 
 const assignPath = new URLPattern({ pathname: "/__fusion/assign" });
 const healthzPath = new URLPattern({ pathname: "/healthz" });
 
-const assignedPath = "/tmp/assigned";
-let assigned = await Deno.stat(assignedPath).then(() => true).catch(() => false);
+const tokenFilepath = "/tmp/token";
+let assigned = await Deno.stat(tokenFilepath)
+  .then(() => true)
+  .catch(() => false);
 
 const server = Deno.serve({ port: 8888 }, async (request) => {
   if (request.method === "GET" && healthzPath.test(request.url)) {
@@ -21,8 +24,12 @@ const server = Deno.serve({ port: 8888 }, async (request) => {
       return new Response("already assigned", { status: 409 });
     }
 
+    const token = await request.text();
+    const payload = await V2.verify(token, Deno.env.get("FUSION_PUBLIC_KEY")!);
+    log.info({ payload }, "assigned");
+
+    await Deno.writeTextFile(tokenFilepath, token);
     assigned = true;
-    await Deno.writeTextFile(assignedPath, "");
 
     return new Response();
   }
