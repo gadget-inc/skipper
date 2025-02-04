@@ -38,3 +38,22 @@ jobs:
 
       - name: Run lint
         run: deno lint
+
+  go-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      - name: Deploy test environment
+        env:
+          KUBECTL_CONTEXT: kind-kind
+        run: |
+          kind create cluster
+          task deploy-all
+
+      - name: Run tests
+        run: go test -v ./...

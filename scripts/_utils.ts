@@ -31,8 +31,9 @@ export const renderKraneNamespace = async (namespace: string, bindings: Record<s
 };
 
 export const deployKraneNamespace = async (namespace: string, bindings: Record<string, unknown> = {}) => {
+  $.env.KUBECTL_CONTEXT ??= "orbstack";
   const renderDir = await renderKraneNamespace(namespace, bindings);
-  await $`kubectl --context=orbstack create namespace ${namespace} || true`;
-  await $`krane deploy ${namespace} orbstack -f ${renderDir}/*`;
-  await $`krane restart ${namespace} orbstack`;
+  await $`kubectl --context="$KUBECTL_CONTEXT" create namespace ${namespace} || true`;
+  await $`krane deploy ${namespace} "$KUBECTL_CONTEXT" -f ${renderDir}/*`;
+  await $`krane restart ${namespace} "$KUBECTL_CONTEXT"`;
 };

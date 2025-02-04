@@ -95,6 +95,6 @@ tasks:
 
   deploy-all:
     deps:
-      - deploy
-      - fixtures-deploy
       - metrics-server-deploy
+      - fixtures-deploy
+      - deploy

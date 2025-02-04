@@ -9,4 +9,8 @@ for (const fixture of await glob(abs("docker/fixtures/*"), { onlyDirectories: tr
   const name = path.basename(fixture);
   await $`docker buildx build . --tag=fusion-fixture-${name}:${amd64Tag} --platform=linux/amd64`;
   await $`docker buildx build . --tag=fusion-fixture-${name}:${arm64Tag} --platform=linux/arm64/v8`;
+
+  if (Deno.env.has("CI")) {
+    await $`kind load docker-image fusion-fixture-${name}:${amd64Tag} fusion-fixture-${name}:${arm64Tag}`;
+  }
 }
