@@ -11,11 +11,6 @@ runs:
     - name: Cache nix
       uses: DeterminateSystems/magic-nix-cache-action@main
 
-    - name: Check nix flake
-      uses: DeterminateSystems/flake-checker-action@main
-      with:
-        flake-lock-path: "nix/flake.lock"
-
     - name: Setup nix environment
       run: |
         cd nix

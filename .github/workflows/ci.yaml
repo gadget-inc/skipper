@@ -12,12 +12,20 @@ env:
 jobs:
   go-lint:
     runs-on: ubuntu-latest
+    env:
+      GOLANGCI_LINT_CACHE: /home/runner/.cache/golangci-lint
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup environment
         uses: ./.github/actions/setup
+
+      - name: Restore and cache golangci-lint
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.GOLANGCI_LINT_CACHE }}
+          key: ${{ hashFiles('.golangci.yaml', 'go.sum', '**/*.go') }}
 
       - name: Run lint
         run: golangci-lint run
