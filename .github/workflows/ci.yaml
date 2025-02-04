@@ -27,18 +27,6 @@ jobs:
           install-mode: "none"
           args: "--timeout 10m"
 
-  deno-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup environment
-        uses: ./.github/actions/setup
-
-      - name: Run lint
-        run: deno lint
-
   go-test:
     runs-on: ubuntu-latest
     steps:
@@ -53,7 +41,19 @@ jobs:
           KUBECTL_CONTEXT: kind-kind
         run: |
           kind create cluster
-          task deploy-all
+          task deploy-all --concurrency=1
 
       - name: Run tests
         run: go test -v ./...
+
+  deno-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      - name: Run lint
+        run: deno lint
