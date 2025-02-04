@@ -6,7 +6,7 @@ on:
   pull_request:
 
 env:
-  DENO_DIR: ${{ runner.workspace }}/.deno
+  DENO_DIR: /home/runner/.deno
 
 jobs:
   deno-lint:
