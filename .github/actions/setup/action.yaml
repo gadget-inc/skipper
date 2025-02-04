@@ -38,7 +38,17 @@ runs:
         cat nix-env.txt >> "$GITHUB_ENV"
       shell: bash
 
-    - name: Cache deno dependencies
+    - name: Restore and cache go dependencies
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.GOPATH }}/pkg/mod
+        key: ${{ hashFiles('go.sum') }}
+
+    - name: Install go dependencies
+      run: go mod download
+      shell: bash
+
+    - name: Restore and cache deno dependencies
       uses: actions/cache@v4
       with:
         path: ${{ env.DENO_DIR }}

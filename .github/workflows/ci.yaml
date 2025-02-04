@@ -6,6 +6,7 @@ on:
   pull_request:
 
 env:
+  GOPATH: /home/runner/go
   DENO_DIR: /home/runner/.deno
 
 jobs:
