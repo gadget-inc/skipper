@@ -9,6 +9,18 @@ env:
   DENO_DIR: /home/runner/.deno
 
 jobs:
+  go-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
+      - name: Run lint
+        run: golangci-lint run
+
   deno-lint:
     runs-on: ubuntu-latest
     steps:
