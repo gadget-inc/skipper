@@ -1,5 +1,7 @@
 import { $, fs, path } from "npm:zx";
 
+export const isCI = Deno.env.get("CI") === "1" || Deno.env.get("CI") === "true";
+
 export const workspaceDir = new URL("..", import.meta.url).pathname;
 
 export const abs = (...segments: string[]) => path.join(workspaceDir, ...segments);

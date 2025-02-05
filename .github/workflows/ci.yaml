@@ -11,7 +11,7 @@ env:
 
 jobs:
   go-lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-l
     env:
       GOLANGCI_LINT_CACHE: /home/runner/.cache/golangci-lint
     steps:
