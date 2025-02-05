@@ -40,10 +40,10 @@ tasks:
       - scripts/deploy-metrics-server.ts
 
   deploy-all:
-    deps:
-      - deploy-metrics-server
-      - deploy-fixtures
-      - deploy
+    cmds:
+      - task: deploy-metrics-server
+      - task: deploy-fixtures
+      - task: deploy
 
   echo-request:
     cmds:

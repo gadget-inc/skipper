@@ -108,7 +108,7 @@ jobs:
       - name: Deploy
         env:
           KUBECTL_CONTEXT: kind-kind
-        run: task deploy-all --concurrency=1
+        run: task deploy-all
 
       - name: Run tests
         run: task test
