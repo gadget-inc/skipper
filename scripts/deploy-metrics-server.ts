@@ -1,6 +1,8 @@
+#!/usr/bin/env -S deno run -A
 import { $ } from "npm:zx";
-import { renderKraneNamespace } from "./_utils.ts";
+import { abs, renderKraneNamespace } from "./_utils.ts";
 
+$.cwd = abs();
 $.env.KUBECTL_CONTEXT ??= "orbstack";
 
 const clusterRenderDir = await renderKraneNamespace("cluster");

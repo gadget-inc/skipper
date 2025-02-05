@@ -1,6 +1,58 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
 version: 3
 
 tasks:
+  test:
+    cmds:
+      - go test -v ./... {{.CLI_ARGS}}
+
+  build:
+    cmds:
+      - scripts/build.ts
+
+  build-fixtures:
+    sources:
+      - fixtures/**/*
+      - scripts/build-fixtures.ts
+    cmds:
+      - scripts/build-fixtures.ts
+
+  deploy:
+    deps:
+      - generate-paseto-keypair
+      - build
+    cmds:
+      - scripts/deploy.ts
+
+  deploy-fixtures:
+    deps:
+      - generate-paseto-keypair
+      - build-fixtures
+    cmds:
+      - scripts/deploy-fixtures.ts
+
+  deploy-metrics-server:
+    sources:
+      - deploy/cluster/metrics-server.yaml
+      - deploy/kube-system/metrics-server.yaml
+      - scripts/deploy-metrics-server.ts
+    cmds:
+      - scripts/deploy-metrics-server.ts
+
+  deploy-all:
+    deps:
+      - deploy-metrics-server
+      - deploy-fixtures
+      - deploy
+
+  echo-request:
+    cmds:
+      - scripts/echo-request.ts
+
+  echo-websocket:
+    cmds:
+      - scripts/echo-websocket.ts
+
   generate-paseto-keypair:
     sources:
       - scripts/generate-paseto-keypair.ts
@@ -8,7 +60,7 @@ tasks:
       - tmp/paseto/public.pem
       - tmp/paseto/private.pem
     cmds:
-      - deno run -A scripts/generate-paseto-keypair.ts
+      - scripts/generate-paseto-keypair.ts
 
   lint:
     sources:
@@ -21,80 +73,3 @@ tasks:
       - main.go
     cmds:
       - golangci-lint run
-
-  test:
-    cmds:
-      - go test -v ./... {{.CLI_ARGS}}
-
-  build:
-    sources:
-      - cmd/**/*.go
-      - internal/**/*.go
-      - pkg/**/*.go
-      - .goreleaser.yaml
-      - go.mod
-      - go.sum
-      - main.go
-    generates:
-      - dist/*
-    cmds:
-      - goreleaser build --clean --snapshot
-
-  docker-build:
-    deps:
-      - build
-    sources:
-      - dist/**/*
-      - docker/fusion/**/*
-      - scripts/docker-build.ts
-    cmds:
-      - deno run -A scripts/docker-build.ts
-
-  docker-push:
-    deps:
-      - docker-build
-    cmds:
-      - deno run -A scripts/docker-push.ts
-
-  deploy:
-    deps:
-      - generate-paseto-keypair
-      - docker-build
-    cmds:
-      - deno run -A scripts/deploy.ts
-
-  fixtures-docker-build:
-    sources:
-      - docker/fixtures/**/*
-      - scripts/fixtures-docker-build.ts
-    cmds:
-      - deno run -A scripts/fixtures-docker-build.ts
-
-  fixtures-deploy:
-    deps:
-      - generate-paseto-keypair
-      - fixtures-docker-build
-    cmds:
-      - deno run -A scripts/fixtures-deploy.ts
-
-  metrics-server-deploy:
-    sources:
-      - deploy/cluster/metrics-server.yaml
-      - deploy/kube-system/metrics-server.yaml
-      - scripts/metrics-server-deploy.ts
-    cmds:
-      - deno run -A scripts/metrics-server-deploy.ts
-
-  echo-request:
-    cmds:
-      - deno run -A scripts/echo-request.ts
-
-  echo-websocket:
-    cmds:
-      - deno run -A scripts/echo-websocket.ts
-
-  deploy-all:
-    deps:
-      - metrics-server-deploy
-      - fixtures-deploy
-      - deploy

@@ -13,16 +13,11 @@
       in
       {
         packages = {
-          buf = pkgs.buf;
           deno = pkgs.deno;
-          direnv = pkgs.direnv;
           git = pkgs.git;
           go = pkgs.go;
           golangci-lint = pkgs.golangci-lint;
-          goreleaser = pkgs.goreleaser;
           krane = pkgs.krane;
-          nix-direnv = pkgs.nix-direnv;
-          nixpkgs-fmt = pkgs.nixpkgs-fmt;
           task = pkgs.go-task;
         };
 

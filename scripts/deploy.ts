@@ -1,6 +1,6 @@
-import { arm64DockerImageTag, deployKraneNamespace } from "./_utils.ts";
+#!/usr/bin/env -S deno run -A
+import { deployKraneNamespace, gitSha } from "./_utils.ts";
 
-const imageTag = await arm64DockerImageTag();
-
-await deployKraneNamespace("fusion-development", { imageTag });
-await deployKraneNamespace("fusion-test", { imageTag });
+const sha = await gitSha();
+await deployKraneNamespace("fusion-development", { imageTag: sha });
+await deployKraneNamespace("fusion-test", { imageTag: sha });

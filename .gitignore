@@ -1,5 +1,3 @@
 .direnv/
 .task/
-dist/
-docker/fusion/fusion
 tmp/

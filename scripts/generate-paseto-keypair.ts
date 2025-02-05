@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run -A
 import crypto from "node:crypto";
 import { abs } from "./_utils.ts";
 

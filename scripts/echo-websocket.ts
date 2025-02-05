@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run -A
 // @deno-types="npm:@types/ws"
 import WebSocket from "npm:ws";
 import { delay } from "jsr:@std/async";

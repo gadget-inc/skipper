@@ -1,0 +1,9 @@
+# Ignore everything by default
+*
+
+!cmd/
+!internal/
+!pkg/
+!go.mod
+!go.sum
+!main.go

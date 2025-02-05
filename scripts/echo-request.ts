@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run -A
 import { sleep } from "npm:zx";
 
 // const url = "http://127.0.0.1:31020";
