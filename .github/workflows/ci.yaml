@@ -89,12 +89,26 @@ jobs:
             }
           skip-extraction: ${{ steps.apt-mounts-cache.outputs.cache-hit }}
 
-      - name: Deploy test environment
+      - name: Create kind cluster
+        run: |
+          cat << EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            extraPortMappings:
+            - containerPort: 31020
+              hostPort: 31020
+            - containerPort: 31021
+              hostPort: 31021
+          EOF
+
+          kind create cluster --config=kind-config.yaml
+
+      - name: Deploy
         env:
           KUBECTL_CONTEXT: kind-kind
-        run: |
-          kind create cluster
-          task deploy-all --concurrency=1
+        run: task deploy-all --concurrency=1
 
       - name: Run tests
         run: task test
