@@ -33,6 +33,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup environment
+        uses: ./.github/actions/setup
+
       - name: Set up Docker
         uses: docker/setup-docker-action@v4
         with:
@@ -50,8 +53,41 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Setup environment
-        uses: ./.github/actions/setup
+      - name: Restore and cache go mounts
+        uses: actions/cache@v4
+        id: go-mounts-cache
+        with:
+          path: |
+            go-pkg-mod
+          key: go-mounts-cache-${{ hashFiles('go.sum') }}
+
+      - name: Inject go mounts cache
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: |
+            {
+              "go-pkg-mod": "/go/pkg/mod"
+            }
+          skip-extraction: ${{ steps.go-mounts-cache.outputs.cache-hit }}
+
+      - name: Restore and cache apt mounts
+        uses: actions/cache@v3
+        id: apt-mounts-cache
+        with:
+          path: |
+            var-cache-apt
+            var-lib-apt
+          key: apt-mounts-cache-${{ hashFiles('Dockerfile') }}
+
+      - name: Inject apt mounts cache
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: |
+            {
+              "var-cache-apt": "/var/cache/apt",
+              "var-lib-apt": "/var/lib/apt"
+            }
+          skip-extraction: ${{ steps.apt-mounts-cache.outputs.cache-hit }}
 
       - name: Deploy test environment
         env:
@@ -61,7 +97,7 @@ jobs:
           task deploy-all --concurrency=1
 
       - name: Run tests
-        run: go test -v ./...
+        run: task test
 
   deno-lint:
     runs-on: ubuntu-latest
