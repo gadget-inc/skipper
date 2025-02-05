@@ -11,7 +11,7 @@ env:
 
 jobs:
   go-lint:
-    runs-on: ubuntu-latest-l
+    runs-on: ubuntu-latest
     env:
       GOLANGCI_LINT_CACHE: /home/runner/.cache/golangci-lint
     steps:
@@ -28,7 +28,7 @@ jobs:
           args: "--timeout 10m"
 
   go-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-l
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
