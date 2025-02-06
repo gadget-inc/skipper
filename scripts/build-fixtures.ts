@@ -17,7 +17,7 @@ if (isCI) {
 for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) {
   $.cwd = fixture;
   const name = path.basename(fixture);
-  await $`docker buildx build . --tag=fusion-fixture-${name}:${sha} --platform=${platforms.join(",")} --load ${cacheFromTo}`;
+  await $`docker buildx build . --load --tag=fusion-fixture-${name}:${sha} --platform=${platforms.join(",")} ${cacheFromTo}`;
   if (isCI) {
     await $`kind load docker-image fusion-fixture-${name}:${sha}`;
   }

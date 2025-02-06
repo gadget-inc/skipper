@@ -34,5 +34,7 @@ export const deployKraneNamespace = async (namespace: string, bindings: Record<s
   const renderDir = await renderKraneNamespace(namespace, bindings);
   await $`kubectl --context="$KUBECTL_CONTEXT" create namespace ${namespace} || true`;
   await $`krane deploy ${namespace} "$KUBECTL_CONTEXT" -f ${renderDir}/*`;
-  await $`krane restart ${namespace} "$KUBECTL_CONTEXT"`;
+  if (!isCI) {
+    await $`krane restart ${namespace} "$KUBECTL_CONTEXT"`;
+  }
 };

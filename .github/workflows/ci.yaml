@@ -53,42 +53,6 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Restore and cache go mounts
-        uses: actions/cache@v4
-        id: go-mounts-cache
-        with:
-          path: |
-            go-pkg-mod
-          key: go-mounts-cache-${{ hashFiles('go.sum') }}
-
-      - name: Inject go mounts cache
-        uses: reproducible-containers/buildkit-cache-dance@v3
-        with:
-          cache-map: |
-            {
-              "go-pkg-mod": "/go/pkg/mod"
-            }
-          skip-extraction: ${{ steps.go-mounts-cache.outputs.cache-hit }}
-
-      - name: Restore and cache apt mounts
-        uses: actions/cache@v3
-        id: apt-mounts-cache
-        with:
-          path: |
-            var-cache-apt
-            var-lib-apt
-          key: apt-mounts-cache-${{ hashFiles('Dockerfile') }}
-
-      - name: Inject apt mounts cache
-        uses: reproducible-containers/buildkit-cache-dance@v3
-        with:
-          cache-map: |
-            {
-              "var-cache-apt": "/var/cache/apt",
-              "var-lib-apt": "/var/lib/apt"
-            }
-          skip-extraction: ${{ steps.apt-mounts-cache.outputs.cache-hit }}
-
       - name: Create kind cluster
         run: |
           cat << EOF > kind-config.yaml
@@ -102,7 +66,6 @@ jobs:
             - containerPort: 31021
               hostPort: 31021
           EOF
-
           kind create cluster --config=kind-config.yaml
 
       - name: Deploy

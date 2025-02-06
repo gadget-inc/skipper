@@ -15,7 +15,7 @@ if (isCI) {
   cacheFromTo = "--cache-from=type=gha --cache-to=type=gha,mode=max";
 }
 
-await $`docker buildx build . --tag=fusion:${sha} --platform=${platforms.join(",")} --load ${cacheFromTo}`;
+await $`docker buildx build . --load --tag=fusion:${sha} --platform=${platforms.join(",")} ${cacheFromTo}`;
 if (isCI) {
   await $`kind load docker-image fusion:${sha}`;
 }
