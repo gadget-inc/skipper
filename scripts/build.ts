@@ -1,9 +1,18 @@
 #!/usr/bin/env -S deno run -A
 import { $ } from "npm:zx";
 import { abs, currentDockerPlatform, defaultImageTag, isCI } from "./_utils.ts";
-import { minimist } from "npm:zx";
+import { parseArgs } from "jsr:@std/cli/parse-args";
 
-const { tag = await defaultImageTag(), platform = await currentDockerPlatform(), kind = isCI } = minimist(Deno.args, { boolean: ["kind"] });
+const flags = parseArgs(Deno.args, {
+  string: ["tag", "platform"],
+  boolean: ["kind"],
+  negatable: ["kind"],
+  default: {
+    tag: await defaultImageTag(),
+    platform: await currentDockerPlatform(),
+    kind: isCI,
+  },
+});
 
 let cacheFromTo = "";
 if (isCI) {
@@ -12,8 +21,8 @@ if (isCI) {
 
 $.cwd = abs();
 
-await $`docker buildx build . --load --tag=fusion:${tag} --platform=${platform} ${cacheFromTo}`;
+await $`docker buildx build . --load --tag=fusion:${flags.tag} --platform=${flags.platform} ${cacheFromTo}`;
 
-if (kind) {
-  await $`kind load docker-image fusion:${tag}`;
+if (flags.kind) {
+  await $`kind load docker-image fusion:${flags.tag}`;
 }
