@@ -10,7 +10,12 @@ if (!isCI) {
   platforms.push("linux/arm64");
 }
 
-await $`docker buildx build . --tag=fusion:${sha} --platform=${platforms.join(",")} --load`;
+let cacheFromTo = "";
+if (isCI) {
+  cacheFromTo = "--cache-from=type=gha --cache-to=type=gha,mode=max";
+}
+
+await $`docker buildx build . --tag=fusion:${sha} --platform=${platforms.join(",")} --load ${cacheFromTo}`;
 if (isCI) {
   await $`kind load docker-image fusion:${sha}`;
 }
