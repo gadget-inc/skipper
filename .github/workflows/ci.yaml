@@ -76,7 +76,7 @@ jobs:
       - name: Watch and persist logs
         run: |
           mkdir -p tmp/logs/
-          nohup stern . --all-namespaces | tee tmp/logs/stern.log &
+          nohup stern . --timestamps --namespace=fusion-test,fusion-fixtures-test | tee tmp/logs/stern.log &
 
       - name: Run tests
         run: task test
