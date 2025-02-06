@@ -353,10 +353,14 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 
 	token := paseto.NewToken()
 	token.SetSubject(fn.Tenant)
-	token.Set("function", fn)
 	token.SetIssuedAt(time.Now())
 	token.SetNotBefore(time.Now())
 	token.SetExpiration(time.Now().Add(7 * 24 * time.Hour))
+	err = token.Set("function", fn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set function claim: %w", err)
+	}
+
 	signed := token.V2Sign(FlagPasetoPrivateKey.Value())
 
 	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, strings.NewReader(signed))

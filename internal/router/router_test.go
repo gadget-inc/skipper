@@ -17,9 +17,9 @@ import (
 )
 
 func init() {
-	FlagHeartbeatInterval.SetValue(time.Millisecond)
+	_ = FlagHeartbeatInterval.SetValue(time.Millisecond)
 	FlagMaxRoundTripAttempts.Init()
-	FlagRoundTripRetryMaxTimeout.SetValue(time.Millisecond)
+	_ = FlagRoundTripRetryMaxTimeout.SetValue(time.Millisecond)
 	FlagRoundTripRetryMinTimeout.Init()
 }
 

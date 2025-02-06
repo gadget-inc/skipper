@@ -20,12 +20,12 @@ func init() {
 	function.FlagAssignPath.Init()
 	function.FlagAssignTimeout.Init()
 	function.FlagPort.Init()
-	function.FlagNamespaces.SetValue([]string{fixture.DefaultFunctionNamespace})
+	_ = function.FlagNamespaces.SetValue([]string{fixture.DefaultFunctionNamespace})
 
 	FlagPort.Init()
-	FlagIP.SetValue(fixture.DefaultControllerIP)
-	FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
-	FlagPasetoPrivateKey.SetValue(fixture.DefaultControllerPasetoSecretKey)
+	_ = FlagIP.SetValue(fixture.DefaultControllerIP)
+	_ = FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
+	_ = FlagPasetoPrivateKey.SetValue(fixture.DefaultControllerPasetoSecretKey)
 }
 
 func TestAssignPodToFunction(t *testing.T) {

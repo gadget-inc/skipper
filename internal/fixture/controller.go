@@ -2,7 +2,6 @@ package fixture
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"aidanwoods.dev/go-paseto"
@@ -29,7 +28,6 @@ var (
 
 type MockControllerClient struct {
 	t                  *testing.T
-	mu                 sync.Mutex
 	getHandler         GetHandler
 	getWasCalled       bool
 	scaleHandler       ScaleHandler

@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	function.FlagNamespaces.SetValue([]string{fixture.DefaultFunctionNamespace})
+	_ = function.FlagNamespaces.SetValue([]string{fixture.DefaultFunctionNamespace})
 }
 
 func TestGetInstances(t *testing.T) {
