@@ -2,7 +2,6 @@
 
 FROM golang:1.23 AS build
 WORKDIR /build
-RUN go env -w GOMODCACHE=/go/pkg/mod
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
