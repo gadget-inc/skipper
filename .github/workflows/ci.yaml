@@ -76,7 +76,7 @@ jobs:
       - name: Watch and persist logs
         run: |
           mkdir -p tmp/logs/
-          nohup stern . --timestamps --namespace=fusion-test,fusion-fixtures-test | tee tmp/logs/stern.log &
+          nohup stern . --namespace=fusion-test,fusion-fixtures-test --template='{{ printf "%s/%s: %s\n" .Namespace .PodName .Message }}' | tee tmp/logs/stern.log &
 
       - name: Run tests
         run: task test
@@ -86,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: logs
-          path: tmp/logs/
+          path: tmp/logs/stern.log
 
   deno-lint:
     runs-on: ubuntu-latest
