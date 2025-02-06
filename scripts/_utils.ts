@@ -8,6 +8,8 @@ export const abs = (...segments: string[]) => path.join(workspaceDir, ...segment
 
 export const gitSha = async () => await $`git rev-parse --short HEAD`.then((res) => res.stdout.trim());
 
+export const defaultImageTag = async () => `sha-${await gitSha()}`;
+
 export const currentDockerPlatform = async () =>
   await $`docker version --format '{{.Server.Os}}/{{.Server.Arch}}'`.then((res) => res.stdout.trim());
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env -S deno run -A
-import { deployKraneNamespace, gitSha, isCI } from "./_utils.ts";
+import { minimist } from "npm:zx";
+import { defaultImageTag, deployKraneNamespace, isCI } from "./_utils.ts";
 
-const sha = await gitSha();
+const { tag = await defaultImageTag() } = minimist(Deno.args);
 
 if (!isCI) {
-  await deployKraneNamespace("fusion-development", { imageTag: `sha-${sha}` });
+  await deployKraneNamespace("fusion-development", { image_tag: tag });
 }
 
-await deployKraneNamespace("fusion-test", { imageTag: `sha-${sha}` });
+await deployKraneNamespace("fusion-test", { image_tag: tag });

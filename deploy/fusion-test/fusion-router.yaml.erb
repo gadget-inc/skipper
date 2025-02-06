@@ -28,7 +28,7 @@ spec:
       serviceAccountName: fusion-router
       containers:
         - name: router
-          image: fusion:<%= imageTag %>
+          image: fusion:<%= image_tag %>
           imagePullPolicy: Never
           args: ["router"]
           ports:

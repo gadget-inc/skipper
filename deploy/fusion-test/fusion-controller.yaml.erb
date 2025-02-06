@@ -50,7 +50,7 @@ spec:
       serviceAccountName: fusion-controller
       containers:
         - name: controller
-          image: fusion:<%= imageTag %>
+          image: fusion:<%= image_tag %>
           imagePullPolicy: Never
           args: ["controller"]
           ports:

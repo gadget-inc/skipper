@@ -26,7 +26,7 @@ spec:
           emptyDir: {}
       containers:
         - name: <%= name %>
-          image: fusion-fixture-<%= name %>:<%= imageTag %>
+          image: fusion-fixtures-<%= name %>:<%= image_tag %>
           imagePullPolicy: Never
           ports:
             - name: http-port
