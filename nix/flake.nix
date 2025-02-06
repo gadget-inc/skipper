@@ -18,6 +18,7 @@
           go = pkgs.go;
           golangci-lint = pkgs.golangci-lint;
           krane = pkgs.krane;
+          stern = pkgs.stern;
           task = pkgs.go-task;
         };
 

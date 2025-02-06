@@ -73,8 +73,19 @@ jobs:
           KUBECTL_CONTEXT: kind-kind
         run: task deploy-all
 
+      - name: Watch and persist logs
+        run: |
+          mkdir -p tmp
+          stern . --all-namespaces | tee tmp/logs/stern.log &
+
       - name: Run tests
         run: task test
+
+      - if: always()
+        name: Upload logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: kind.log
 
   deno-lint:
     runs-on: ubuntu-latest
