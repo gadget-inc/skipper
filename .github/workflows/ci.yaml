@@ -75,7 +75,7 @@ jobs:
 
       - name: Watch and persist logs
         run: |
-          mkdir -p tmp
+          mkdir -p tmp/logs/
           nohup stern . --all-namespaces | tee tmp/logs/stern.log &
 
       - name: Run tests
