@@ -78,7 +78,11 @@ jobs:
           nohup stern . --namespace=fusion-test,fusion-fixtures-test --template='{{ printf "%s/%s: %s\n" .Namespace .PodName .Message }}' | tee tmp/logs/stern.log &
 
       - name: Run tests
-        run: task test
+        env:
+          LOG_LEVEL: debug
+        run: |
+          mkdir -p tmp/logs/
+          task test | tee tmp/logs/test.log
 
       - if: always()
         name: Upload logs
