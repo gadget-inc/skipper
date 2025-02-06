@@ -18,6 +18,8 @@ spec:
     metadata:
       labels:
         fusion/deployment: <%= name %>
+      annotations:
+        fusion/port: "http-port"
     spec:
       volumes:
         - name: empty-dir

@@ -325,7 +325,10 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 
 	pod, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
-		return nil, fmt.Errorf("failed to assign pod: %w", err)
+		// there are many reasons this can fail, but one hard to debug
+		// one is that the pod doesn't have any annotations causing the
+		// json patch to fail: https://github.com/kubernetes-sigs/kustomize/issues/2986#issuecomment-692891118
+		return nil, fmt.Errorf("failed to patch pod: %w", err)
 	}
 
 	err = c.updatePodCache(pod)
