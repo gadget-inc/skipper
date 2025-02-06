@@ -8,6 +8,9 @@ export const abs = (...segments: string[]) => path.join(workspaceDir, ...segment
 
 export const gitSha = async () => await $`git rev-parse --short HEAD`.then((res) => res.stdout.trim());
 
+export const currentDockerPlatform = async () =>
+  await $`docker version --format '{{.Server.Os}}/{{.Server.Arch}}'`.then((res) => res.stdout.trim());
+
 export const renderKraneNamespace = async (namespace: string, bindings: Record<string, unknown> = {}) => {
   const deployDir = abs(`deploy/${namespace}`);
   const renderDir = abs(`tmp/krane/${namespace}`);

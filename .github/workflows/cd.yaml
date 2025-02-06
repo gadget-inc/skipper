@@ -12,16 +12,49 @@ jobs:
     uses: ./.github/workflows/ci.yaml
   cd:
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-l
+    permissions:
+      contents: "read"
+      id-token: "write"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Docker
+        uses: docker/setup-docker-action@v4
         with:
-          fetch-depth: 0
-          persist-credentials: false
+          daemon-config: |
+            {
+              "debug": true,
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
 
-      - name: Setup environment
-        uses: ./.github/actions/setup
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: TODO
-        run: echo 'Implement me!'
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build
+        run: task build --platform=linux/amd64,linux/arm64
+
+      - name: Authenticate gcloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCLOUD_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCLOUD_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: us-central1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Push to Google Artifact Registry
+        run: |
+          docker tag fusion:sha-${sha} us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:sha-${sha}
+          docker push us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:sha-${sha}
