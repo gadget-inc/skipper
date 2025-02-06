@@ -2,7 +2,7 @@
 import { $, glob, minimist, path } from "npm:zx";
 import { abs, currentDockerPlatform, defaultImageTag, isCI } from "./_utils.ts";
 
-const { tag = await defaultImageTag(), platform = await currentDockerPlatform() } = minimist(Deno.args);
+const { tag = await defaultImageTag(), platform = await currentDockerPlatform(), kind = isCI } = minimist(Deno.args, { boolean: ["kind"] });
 
 let cacheFromTo = "";
 if (isCI) {
@@ -12,8 +12,10 @@ if (isCI) {
 for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) {
   $.cwd = fixture;
   const name = path.basename(fixture);
+
   await $`docker buildx build . --load --tag=fusion-fixtures-${name}:${tag} --platform=${platform} ${cacheFromTo}`;
-  if (isCI) {
+
+  if (kind) {
     await $`kind load docker-image fusion-fixtures-${name}:${tag}`;
   }
 }

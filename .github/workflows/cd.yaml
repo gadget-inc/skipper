@@ -41,7 +41,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
 
       - name: Build
-        run: task build -- --platform=linux/amd64,linux/arm64
+        run: task build -- --platform=linux/amd64,linux/arm64 --kind=false
 
       - name: Authenticate gcloud
         id: auth

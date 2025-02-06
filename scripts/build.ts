@@ -3,7 +3,7 @@ import { $ } from "npm:zx";
 import { abs, currentDockerPlatform, defaultImageTag, isCI } from "./_utils.ts";
 import { minimist } from "npm:zx";
 
-const { tag = await defaultImageTag(), platform = await currentDockerPlatform() } = minimist(Deno.args);
+const { tag = await defaultImageTag(), platform = await currentDockerPlatform(), kind = isCI } = minimist(Deno.args, { boolean: ["kind"] });
 
 let cacheFromTo = "";
 if (isCI) {
@@ -11,7 +11,9 @@ if (isCI) {
 }
 
 $.cwd = abs();
+
 await $`docker buildx build . --load --tag=fusion:${tag} --platform=${platform} ${cacheFromTo}`;
-if (isCI) {
+
+if (kind) {
   await $`kind load docker-image fusion:${tag}`;
 }
