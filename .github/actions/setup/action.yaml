@@ -36,18 +36,18 @@ runs:
     - name: Restore and cache go dependencies
       uses: actions/cache@v4
       with:
-        path: ${{ env.GOPATH }}/pkg/mod
-        key: ${{ hashFiles('go.sum') }}
+        path: /home/runner/go/pkg/mod
+        key: go-mod-${{ hashFiles('go.sum') }}
 
     - name: Install go dependencies
-      run: go mod download
+      run: go mod download && go mod verify
       shell: bash
 
     - name: Restore and cache deno dependencies
       uses: actions/cache@v4
       with:
-        path: ${{ env.DENO_DIR }}
-        key: ${{ hashFiles('deno.lock') }}
+        path: /home/runner/.deno/deps
+        key: deno-deps-${{ hashFiles('deno.lock') }}
 
     - name: Install deno dependencies
       run: deno install

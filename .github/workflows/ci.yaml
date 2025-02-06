@@ -4,15 +4,9 @@ on:
   workflow_call:
   pull_request:
 
-env:
-  GOPATH: /home/runner/go
-  DENO_DIR: /home/runner/.deno
-
 jobs:
   go-lint:
     runs-on: ubuntu-latest
-    env:
-      GOLANGCI_LINT_CACHE: /home/runner/.cache/golangci-lint
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
