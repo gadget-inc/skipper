@@ -3,17 +3,24 @@
 FROM golang:1.23 AS build
 WORKDIR /build
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download && go mod verify
 COPY . .
 ARG TARGETOS TARGETARCH
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/fusion .
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/fusion .
 
-FROM ubuntu:latest
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl unzip && \
-    apt-get autoremove -y && \
-    apt-get purge -y --auto-remove && \
-    rm -rf /var/lib/apt/lists/*
+FROM debian:bookworm-slim
+RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update -qqy && \
+    apt-get install -qqy --no-install-recommends --no-install-suggests \
+    ca-certificates \
+    curl \
+    jq \
+    less \
+    vim
 RUN update-ca-certificates
 RUN useradd -ms /bin/bash fusion
 WORKDIR /home/fusion
