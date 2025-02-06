@@ -1,7 +1,6 @@
 name: ci
 
 on:
-  push:
   workflow_call:
   pull_request:
 
