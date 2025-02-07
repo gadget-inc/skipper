@@ -47,6 +47,7 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
+          token_format: access_token
           workload_identity_provider: ${{ secrets.GCLOUD_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCLOUD_SERVICE_ACCOUNT_EMAIL }}
 
