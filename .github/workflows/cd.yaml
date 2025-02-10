@@ -60,5 +60,5 @@ jobs:
 
       - name: Push to Google Artifact Registry
         run: |
-          docker tag fusion:sha-${sha} us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:sha-${sha}
-          docker push us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:sha-${sha}
+          docker tag fusion:sha-${GITHUB_SHA::7} us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:sha-${GITHUB_SHA::7}
+          docker push us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:sha-${GITHUB_SHA::7}
