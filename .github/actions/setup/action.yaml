@@ -22,7 +22,10 @@ runs:
       uses: actions/cache@v4
       with:
         key: setup-go-${{ hashFiles('go.sum') }}
-        path: /home/runner/go/pkg/mod
+        restore-keys: setup-go-
+        path: |
+          /home/runner/.cache/go-build
+          /home/runner/go/pkg/mod
 
     - name: Install go dependencies
       run: go mod download && go mod verify
@@ -32,6 +35,7 @@ runs:
       uses: actions/cache@v4
       with:
         key: setup-deno-${{ hashFiles('deno.lock') }}
+        restore-keys: setup-deno-
         path: |
           /home/runner/.deno
           /home/runner/.cache/deno
