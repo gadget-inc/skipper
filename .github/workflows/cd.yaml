@@ -38,9 +38,6 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Build
-        run: task build -- --platform=linux/amd64,linux/arm64 --no-kind --cache-to
-
       - name: Authenticate gcloud
         id: auth
         uses: google-github-actions/auth@v2
@@ -55,6 +52,9 @@ jobs:
           registry: us-central1-docker.pkg.dev
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Build
+        run: task build -- --platform=linux/amd64,linux/arm64 --no-kind --cache-from-to=registry
 
       - name: Push to Google Artifact Registry
         run: |

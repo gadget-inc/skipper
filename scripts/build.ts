@@ -4,20 +4,26 @@ import { abs, currentDockerPlatform, defaultImageTag, isCI } from "./_utils.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 
 const flags = parseArgs(Deno.args, {
-  string: ["tag", "platform"],
-  boolean: ["kind", "cache-to"],
-  negatable: ["kind", "cache-to"],
+  string: ["tag", "platform", "cache-from-to"],
+  boolean: ["kind"],
+  negatable: ["kind"],
   default: {
     tag: await defaultImageTag(),
     platform: await currentDockerPlatform(),
     kind: isCI,
-    "cache-to": false,
+    "cache-from-to": isCI ? "gha" : "",
   },
 });
 
-let cacheFromTo = "--cache-from=type=registry,ref=us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:buildcache";
-if (flags["cache-to"]) {
-  cacheFromTo += " --cache-to=type=registry,ref=us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:buildcache";
+let cacheFromTo = "";
+switch (flags["cache-from-to"]) {
+  case "gha":
+    cacheFromTo = "--cache-from=type=gha --cache-to=type=gha,mode=max";
+    break;
+  case "registry":
+    cacheFromTo =
+      "--cache-from=type=registry,ref=us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:buildcache --cache-to=type=registry,ref=us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:buildcache,mode=max";
+    break;
 }
 
 $.cwd = abs();
