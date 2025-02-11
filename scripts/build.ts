@@ -5,18 +5,19 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 
 const flags = parseArgs(Deno.args, {
   string: ["tag", "platform"],
-  boolean: ["kind"],
-  negatable: ["kind"],
+  boolean: ["kind", "cache-to"],
+  negatable: ["kind", "cache-to"],
   default: {
     tag: await defaultImageTag(),
     platform: await currentDockerPlatform(),
     kind: isCI,
+    "cache-to": false,
   },
 });
 
-let cacheFromTo = "";
-if (isCI) {
-  cacheFromTo = "--cache-from=type=gha --cache-to=type=gha,mode=max";
+let cacheFromTo = "--cache-from=type=registry,ref=us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:buildcache";
+if (flags["cache-to"]) {
+  cacheFromTo += " --cache-to=type=registry,ref=us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:buildcache";
 }
 
 $.cwd = abs();
