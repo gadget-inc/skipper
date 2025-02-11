@@ -30,30 +30,29 @@ spec:
         - name: router
           image: fusion:<%= image_tag %>
           imagePullPolicy: Never
-          args: ["router"]
+          args:
+            - router
+            - --log-level=debug
+            - --log-format=text
           ports:
             - name: http-port
               containerPort: 8080
           env:
-            - name: FUSION_FUNCTION_NAMESPACES
-              value: "fusion-fixtures-development,gadget-app-sandbox-development,gadget-app-sandbox-test"
-            - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
-              value: "true"
-            - name: FUSION_LOG_LEVEL
-              value: "debug"
-            - name: FUSION_LOG_FORMAT
-              value: "text"
             - name: GOMAXPROCS
-              value: "1"
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.cpu
             - name: GOMEMLIMIT
-              value: "256MiB"
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.memory
           resources:
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
             requests:
               memory: "256Mi"
               cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
           startupProbe:
             httpGet:
               path: /healthz

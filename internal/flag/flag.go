@@ -292,6 +292,12 @@ func (f *Flag[T]) Type() string {
 	return ""
 }
 
+// IsBoolFlag implements pflag.boolFlag.IsBoolFlag.
+func (f *Flag[T]) IsBoolFlag() bool {
+	_, ok := f.ptr.(*bool)
+	return ok
+}
+
 // Bind binds the flag to the given command.
 //
 // Once the command is executed and Run/RunE is called, the flag's value
@@ -313,10 +319,16 @@ func (f *Flag[T]) BindPersistent(cmd *cobra.Command) {
 func (f *Flag[T]) bind(cmd *cobra.Command, persistent bool) {
 	f.Init()
 
+	var flag *pflag.Flag
 	if persistent {
-		cmd.PersistentFlags().VarP(f, f.Name, f.Shorthand, f.Description)
+		flag = cmd.PersistentFlags().VarPF(f, f.Name, f.Shorthand, f.Description)
 	} else {
-		cmd.Flags().VarP(f, f.Name, f.Shorthand, f.Description)
+		flag = cmd.Flags().VarPF(f, f.Name, f.Shorthand, f.Description)
+	}
+
+	if f.IsBoolFlag() {
+		// make boolean flags default to true when passed without a value (e.g. --flag instead of --flag=true)
+		flag.NoOptDefVal = "true"
 	}
 
 	// FIXME: we can't use MarkFlagRequired or MarkFlagsRequiredTogether because they don't know about environment variables but we want these when we generate our completion scripts

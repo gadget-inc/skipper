@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/controller"
-	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/router"
@@ -70,8 +69,6 @@ func NewCmdRouter() *cobra.Command {
 		},
 	}
 
-	function.FlagNamespaces.Bind(cmd)
-	function.FlagSkipForbiddenNamespaces.Bind(cmd)
 	router.FlagControllerServiceHost.Bind(cmd)
 	router.FlagControllerServicePort.Bind(cmd)
 	router.FlagHeartbeatInterval.Bind(cmd)
