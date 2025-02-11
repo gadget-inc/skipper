@@ -31,7 +31,7 @@ runs:
     - name: Restore and cache deno dependencies
       uses: actions/cache@v4
       with:
-        path: /home/runner/.deno/deps
+        path: /home/runner/.deno/cache
         key: deno-deps-${{ hashFiles('deno.lock') }}
 
     - name: Install deno dependencies
