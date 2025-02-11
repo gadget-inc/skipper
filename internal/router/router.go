@@ -79,6 +79,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			return
 		}
+		log.Error(req.Context(), "failed to get function from header", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}

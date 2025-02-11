@@ -32,12 +32,14 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
 	fn, err := function.FromHeader(req)
 	if err != nil {
+		log.Error(req.Context(), "failed to get function from header", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	instances, err := c.getInstances(fn)
 	if err != nil {
+		log.Error(req.Context(), "failed to get instances", key.Error.Field(err), key.Function.Field(fn))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -45,6 +47,7 @@ func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
 	for len(instances) == 0 {
 		instances, err = c.scaleFunction(req.Context(), fn, 1)
 		if err != nil {
+			log.Error(req.Context(), "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -63,18 +66,21 @@ func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
 func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	fn, err := function.FromHeader(req)
 	if err != nil {
+		log.Error(req.Context(), "failed to get function from header", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	desiredInstances, err := strconv.Atoi(req.Header.Get(key.DesiredInstances.Header))
 	if err != nil {
+		log.Error(req.Context(), "failed to get desired instances from header", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	instances, err := c.scaleFunction(req.Context(), fn, desiredInstances)
 	if err != nil {
+		log.Error(req.Context(), "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -91,6 +97,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 	var heartbeats []function.Heartbeat
 	err := json.NewDecoder(req.Body).Decode(&heartbeats)
 	if err != nil {
+		log.Error(req.Context(), "failed to decode heartbeats", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
