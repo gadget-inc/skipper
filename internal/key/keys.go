@@ -37,4 +37,5 @@ var (
 	TargetMemoryUtilization = intKey{new("target-memory-utilization")}
 	Tenant                  = stringKey{new("tenant")}
 	Timestamp               = timeKey{new("timestamp")}
+	Token                   = stringKey{new("token")}
 )

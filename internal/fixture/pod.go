@@ -1,7 +1,6 @@
 package fixture
 
 import (
-	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -83,12 +82,9 @@ func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.Handler
 		must.NoError(t, err)
 		must.Eq(t, fn, assignedFn)
 
-		bytes, err := io.ReadAll(req.Body)
-		must.NoError(t, err)
-
 		parser := paseto.NewParserForValidNow()
 		parser.AddRule(paseto.Subject(fn.Tenant))
-		_, err = parser.ParseV2Public(DefaultControllerPasetoPublicKey, string(bytes))
+		_, err = parser.ParseV2Public(DefaultControllerPasetoPublicKey, req.Header.Get(key.Token.Header))
 		must.NoError(t, err)
 
 		rw.WriteHeader(http.StatusOK)

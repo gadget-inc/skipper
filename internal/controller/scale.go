@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -361,15 +360,13 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to set function claim: %w", err)
 	}
 
-	signed := token.V2Sign(FlagPasetoPrivateKey.Value())
-
-	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, strings.NewReader(signed))
+	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "text/plain")
-	fn.SetHeader(req)
+	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
+	fn.SetHeader(req) // TODO: skip this since the function is already in the token
 
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
 	res, err := http.DefaultClient.Do(req)

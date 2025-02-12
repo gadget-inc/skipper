@@ -24,7 +24,7 @@ const server = Deno.serve({ port: 8888 }, async (request) => {
       return new Response("already assigned", { status: 409 });
     }
 
-    const token = await request.text();
+    const token = request.headers.get("x-fusion-token") ?? "";
     const payload = await V2.verify(token, Deno.env.get("FUSION_PUBLIC_KEY")!);
     log.info({ payload }, "assigned");
 
@@ -50,7 +50,7 @@ const server = Deno.serve({ port: 8888 }, async (request) => {
         headers: {
           "content-type": "application/json",
         },
-      },
+      }
     );
   }
 
