@@ -4,7 +4,6 @@ import { abs, currentDockerPlatform, defaultImageTag, isCI } from "./_utils.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 
 $.cwd = abs();
-$.verbose = true;
 
 const flags = parseArgs(Deno.args, {
   string: ["tag", "platform", "cache-from-to"],
@@ -41,7 +40,9 @@ switch (flags["cache-from-to"]) {
     break;
 }
 
-await $`docker buildx build . --tag=${flags.image}:${flags.tag} --platform=${flags.platform} ${cacheFromTo} ${load} ${push}`;
+await $({
+  verbose: true,
+})`docker buildx build . --tag=${flags.image}:${flags.tag} --platform=${flags.platform} ${cacheFromTo} ${load} ${push}`;
 
 if (flags.kind) {
   await $`kind load docker-image ${flags.image}:${flags.tag}`;

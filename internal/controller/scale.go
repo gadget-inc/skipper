@@ -355,10 +355,6 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	token.SetIssuedAt(time.Now())
 	token.SetNotBefore(time.Now())
 	token.SetExpiration(time.Now().Add(7 * 24 * time.Hour))
-	err = token.Set("function", fn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to set function claim: %w", err)
-	}
 
 	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
@@ -366,7 +362,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	}
 
 	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
-	fn.SetHeader(req) // TODO: skip this since the function is already in the token
+	fn.SetHeader(req) // TODO: put the function in the token instead
 
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
 	res, err := http.DefaultClient.Do(req)

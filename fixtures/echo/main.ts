@@ -26,7 +26,8 @@ const server = Deno.serve({ port: 8888 }, async (request) => {
 
     const token = request.headers.get("x-fusion-token") ?? "";
     const payload = await V2.verify(token, Deno.env.get("FUSION_PUBLIC_KEY")!);
-    log.info({ payload }, "assigned");
+    const fn = JSON.parse(request.headers.get("x-fusion-function")!);
+    log.info({ token, payload, fn }, "assigned");
 
     await Deno.writeTextFile(tokenFilepath, token);
     assigned = true;
