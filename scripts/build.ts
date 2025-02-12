@@ -20,29 +20,28 @@ const flags = parseArgs(Deno.args, {
   },
 });
 
-let load = "";
+const buildFlags = [`--tag=${flags.image}:${flags.tag}`, `--platform=${flags.platform}`];
+
 if (flags.load) {
-  load = `--load`;
+  buildFlags.push("--load");
 }
 
-let push = "";
 if (flags.push) {
-  push = `--push`;
+  buildFlags.push("--push");
 }
 
-let cacheFromTo = "";
 switch (flags["cache-from-to"]) {
   case "gha":
-    cacheFromTo = "--cache-from=type=gha --cache-to=type=gha,mode=max";
+    buildFlags.push("--cache-from=type=gha");
+    buildFlags.push("--cache-to=type=gha,mode=max");
     break;
   case "registry":
-    cacheFromTo = `--cache-from=type=registry,ref=${flags.image}:buildcache --cache-to=type=registry,ref=${flags.image}:buildcache,mode=max`;
+    buildFlags.push(`--cache-from=type=registry,ref=${flags.image}:buildcache`);
+    buildFlags.push(`--cache-to=type=registry,ref=${flags.image}:buildcache,mode=max`);
     break;
 }
 
-await $({
-  verbose: true,
-})`docker buildx build . --tag=${flags.image}:${flags.tag} --platform=${flags.platform} ${cacheFromTo} ${load} ${push}`;
+await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
 if (flags.kind) {
   await $`kind load docker-image ${flags.image}:${flags.tag}`;

@@ -2,8 +2,8 @@
 
 ## Tests
 
-- ensure controller doesn't assign a function to a pod from an outdated replica set
-- ensure the controller terminates outdated functions based on number of available new pods
+- controller doesn't assign a function to a pod from an outdated replica set
+- controller terminates outdated functions based on number of available new pods
 
 ## Deployment Verifier
 
