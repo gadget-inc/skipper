@@ -53,10 +53,11 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
 
-      - name: Build
-        run: task build -- --platform=linux/amd64,linux/arm64 --no-kind --cache-from-to=registry
-
-      - name: Push to Google Artifact Registry
+      - name: Build and push to Google Artifact Registry
         run: |
-          docker tag fusion:sha-${GITHUB_SHA::7} us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:sha-${GITHUB_SHA::7}
-          docker push us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion:sha-${GITHUB_SHA::7}
+          task build -- \
+            --image=us-central1-docker.pkg.dev/gadget-core-production/core-production/fusion \
+            --platform=linux/amd64,linux/arm64 \
+            --cache-from-to=registry \
+            --push \
+            --no-kind
