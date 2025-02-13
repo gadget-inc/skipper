@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/buffer"
@@ -147,9 +148,56 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 }
 
-func rewriteHeaders(r *httputil.ProxyRequest) {
-	function.RemoveHeader(r.Out)
-	r.Out.Host = r.In.Host
-	r.Out.Header["X-Forwarded-For"] = r.In.Header["X-Forwarded-For"]
-	r.SetXForwarded()
+func rewriteHeaders(pr *httputil.ProxyRequest) {
+	function.RemoveHeader(pr.Out)
+
+	pr.Out.Host = pr.In.Host
+
+	var exists bool
+	if pr.Out.Header["X-Forwarded-For"], exists = pr.In.Header["X-Forwarded-For"]; !exists {
+		if host, _, err := net.SplitHostPort(pr.In.RemoteAddr); err == nil {
+			pr.Out.Header["X-Forwarded-For"] = []string{host}
+		}
+	}
+
+	if pr.Out.Header["X-Forwarded-Host"], exists = pr.In.Header["X-Forwarded-Host"]; !exists {
+		pr.Out.Header["X-Forwarded-Host"] = []string{pr.In.Host}
+	}
+
+	if pr.Out.Header["X-Forwarded-Proto"], exists = pr.In.Header["X-Forwarded-Proto"]; !exists {
+		if pr.In.TLS == nil {
+			pr.Out.Header.Set("X-Forwarded-Proto", "http")
+		} else {
+			pr.Out.Header.Set("X-Forwarded-Proto", "https")
+		}
+	}
+
+	if pr.Out.Header["Forwarded"], exists = pr.In.Header["Forwarded"]; !exists {
+		var b strings.Builder
+
+		for i, host := range pr.Out.Header["X-Forwarded-For"] {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString("for=")
+			if ip := net.ParseIP(host); ip == nil || ip.To4() != nil {
+				// non-IPv6 addresses can be written as is
+				b.WriteString(host)
+			} else {
+				// IPv6 addresses must be enclosed in square brackets
+				// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Forwarded#transitioning_from_x-forwarded-for_to_forwarded
+				b.WriteString(`"[`)
+				b.WriteString(host)
+				b.WriteString(`]"`)
+			}
+		}
+
+		b.WriteString(";host=")
+		b.WriteString(pr.In.Host)
+
+		b.WriteString(";proto=")
+		b.WriteString(pr.Out.Header["X-Forwarded-Proto"][0])
+
+		pr.Out.Header["Forwarded"] = []string{b.String()}
+	}
 }

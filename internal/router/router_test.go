@@ -120,11 +120,15 @@ func TestHeaders(t *testing.T) {
 				req.Host = fn.Tenant + ".example.com"
 			},
 			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
-				must.Eq(t, []string{fn.Tenant + ".example.com"}, headers.Values("Host"))
-				must.SliceNotEmpty(t, headers.Values("X-Forwarded-For")) // TODO: check the actual value
-				must.Eq(t, []string{fn.Tenant + ".example.com"}, headers.Values("X-Forwarded-Host"))
-				must.Eq(t, []string{"http"}, headers.Values("X-Forwarded-Proto"))
-				must.MapLen(t, 4, headers)
+				expectedHost := fn.Tenant + ".example.com"
+				expectedProto := "http"
+
+				must.Eq(t, []string{expectedHost}, headers.Values("Host"))
+				must.SliceLen(t, 1, headers.Values("X-Forwarded-For")) // TODO: check the actual value
+				must.Eq(t, []string{expectedHost}, headers.Values("X-Forwarded-Host"))
+				must.Eq(t, []string{expectedProto}, headers.Values("X-Forwarded-Proto"))
+				must.Eq(t, []string{fmt.Sprintf("for=%s;host=%s;proto=%s", headers.Get("X-Forwarded-For"), expectedHost, expectedProto)}, headers.Values("Forwarded"))
+				must.MapLen(t, 5, headers)
 			},
 		},
 		{
@@ -137,7 +141,7 @@ func TestHeaders(t *testing.T) {
 			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
 				must.Eq(t, []string{"custom-value"}, headers.Values("X-Custom-Header"))
 				must.Eq(t, []string{"multi-value-1", "multi-value-2"}, headers.Values("X-Custom-Multi-Header"))
-				must.MapLen(t, 6, headers)
+				must.MapLen(t, 7, headers)
 			},
 		},
 	}
