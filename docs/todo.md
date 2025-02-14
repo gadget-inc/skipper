@@ -14,8 +14,6 @@
 ## Misc
 
 - add open telemetry
-- add more router logs
-  - request logs
 
 ## UI
 

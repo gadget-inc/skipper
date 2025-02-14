@@ -133,6 +133,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.URL.Scheme = "http"
 		req.URL.Host = instance.Addr
 
+		log.Info(ctx, "forwarding request", key.Instance.Field(instance), key.Attempt.Field(attempt), key.Request.Field(req))
 		res, err := r.roundTripper.RoundTrip(req)
 
 		var netOpErr *net.OpError
@@ -141,6 +142,12 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt))
 				continue
 			}
+		}
+
+		if err != nil {
+			log.Error(ctx, "failed to forward request", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt), key.Request.Field(req))
+		} else {
+			log.Info(ctx, "received response", key.Instance.Field(instance), key.Attempt.Field(attempt), key.Response.Field(res))
 		}
 
 		return res, err

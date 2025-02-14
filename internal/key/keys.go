@@ -30,6 +30,8 @@ var (
 	Port                    = intKey{new("port")}
 	ReadyAt                 = timeKey{new("ready-at")}
 	ReplicaSet              = replicaSetKey{new("replica-set")}
+	Request                 = requestKey{new("request")}
+	Response                = responseKey{new("response")}
 	Signal                  = stringKey{new("signal")}
 	Status                  = stringKey{new("status")}
 	StatusCode              = intKey{new("status-code")}

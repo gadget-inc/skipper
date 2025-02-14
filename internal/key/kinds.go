@@ -3,6 +3,7 @@ package key
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -207,8 +208,8 @@ func (k replicaSetKey) Field(value *appsv1.ReplicaSet) slog.Attr {
 	return slog.Attr{
 		Key: k.Underscored,
 		Value: slog.GroupValue(
-			slog.String("name", value.Name),
-			slog.String("namespace", value.Namespace),
+			Name.Field(value.Name),
+			Namespace.Field(value.Namespace),
 			slog.Int64("desired_replicas", desiredReplicas),
 		),
 	}
@@ -249,4 +250,58 @@ func (k mapStringString) Attributes(value map[string]string) []attribute.KeyValu
 		attributes = append(attributes, attribute.String(k.Underscored+"."+mapKey, v))
 	}
 	return attributes
+}
+
+type requestKey struct{ key }
+
+var _ GroupKey[*http.Request] = requestKey{}
+
+func (r requestKey) Field(value *http.Request) slog.Attr {
+	return slog.Attr{
+		Key: r.Underscored,
+		Value: slog.GroupValue(
+			slog.String("method", value.Method),
+			slog.String("url", value.URL.String()),
+			slog.String("host", value.Host),
+			slog.String("remote_address", value.RemoteAddr),
+		),
+	}
+}
+
+func (r requestKey) Attributes(value *http.Request) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String(r.Underscored+".method", value.Method),
+		attribute.String(r.Underscored+".url", value.URL.String()),
+		attribute.String(r.Underscored+".host", value.Host),
+		attribute.String(r.Underscored+".remote_address", value.RemoteAddr),
+	}
+}
+
+type responseKey struct{ key }
+
+var _ GroupKey[*http.Response] = responseKey{}
+
+func (r responseKey) Field(value *http.Response) slog.Attr {
+	return slog.Attr{
+		Key: r.Underscored,
+		Value: slog.GroupValue(
+			slog.String("method", value.Request.Method),
+			slog.String("url", value.Request.URL.String()),
+			slog.String("host", value.Request.Host),
+			slog.String("remote_address", value.Request.RemoteAddr),
+			slog.Int("status_code", value.StatusCode),
+			slog.String("status", value.Status),
+		),
+	}
+}
+
+func (r responseKey) Attributes(value *http.Response) []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String(r.Underscored+".method", value.Request.Method),
+		attribute.String(r.Underscored+".url", value.Request.URL.String()),
+		attribute.String(r.Underscored+".host", value.Request.Host),
+		attribute.String(r.Underscored+".remote_address", value.Request.RemoteAddr),
+		attribute.Int(r.Underscored+".status_code", value.StatusCode),
+		attribute.String(r.Underscored+".status", value.Status),
+	}
 }
