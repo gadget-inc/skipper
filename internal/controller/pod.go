@@ -189,6 +189,11 @@ func (c *Controller) getInstances(fn function.Function) ([]*function.Instance, e
 			continue
 		}
 
+		if instance.Function != fn {
+			// pod is assigned to a different function
+			continue
+		}
+
 		instances = append(instances, instance)
 	}
 	return instances, nil

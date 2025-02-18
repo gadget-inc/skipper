@@ -71,6 +71,17 @@ func TestGetInstances(t *testing.T) {
 				must.Len(t, 0, instances)
 			},
 		},
+		{
+			name: "different metadata",
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				fn.Metadata = "different"
+				err := clientset.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, clientset *fake.Clientset, instances []*function.Instance) {
+				must.Len(t, 0, instances)
+			},
+		},
 	}
 
 	for _, tc := range testCases {
