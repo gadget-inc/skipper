@@ -172,6 +172,19 @@ func TestScaleFunction(t *testing.T) {
 			},
 		},
 		{
+			name:             "different metadata",
+			desiredInstances: 1,
+			err:              context.DeadlineExceeded,
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				fn.Metadata = "different"
+				err := clientset.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, clientset *fake.Clientset, instances []*function.Instance) {
+				must.Len(t, 0, instances)
+			},
+		},
+		{
 			name:             "already has desired instances",
 			desiredInstances: 1,
 			err:              nil,

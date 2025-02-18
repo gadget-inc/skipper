@@ -226,21 +226,9 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
 
-	assignedPods, err := c.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
-		key.Tenant.Label:     fn.Tenant,
-		key.Deployment.Label: fn.Deployment,
-	}))
+	instances, err := c.getInstances(fn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
-	}
-
-	var instances []*function.Instance
-	for _, pod := range assignedPods {
-		instance, err := function.FromPod(pod)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get function from labels: %w", err)
-		}
-		instances = append(instances, instance)
+		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
 
 	currentInstances := len(instances)

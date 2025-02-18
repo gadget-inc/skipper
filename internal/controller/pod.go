@@ -181,7 +181,7 @@ func (c *Controller) getInstances(fn function.Function) ([]*function.Instance, e
 
 		instance, err := function.FromPod(pod)
 		if err != nil {
-			return nil, fmt.Errorf("failed to convert pod to instance: %w", err)
+			return nil, fmt.Errorf("failed to get function from pod: %w", err)
 		}
 
 		if instance.ReadyAt.IsZero() {
