@@ -4,6 +4,10 @@ skip_forbidden_namespaces ||= false
 log_level ||= "info"
 log_format ||= "text"
 
+image_repository ||= "fusion"
+image_tag ||= "latest"
+image_pull_policy ||= "IfNotPresent"
+
 controller_name = "#{namespace}-controller"
 controller_replicas ||= 1
 controller_log_level ||= log_level

@@ -6,21 +6,26 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 $.cwd = abs();
 
 const flags = parseArgs(Deno.args, {
-  string: ["tag", "platform", "cache-from-to"],
-  boolean: ["load", "push", "kind"],
+  string: ["repo", "tag", "platform", "cache-from-to"],
+  boolean: ["latest", "load", "push", "kind"],
   negatable: ["kind"],
   default: {
-    image: "fusion",
+    repo: "fusion",
     tag: await defaultImageTag(),
     platform: await currentDockerPlatform(),
     kind: isCI,
     "cache-from-to": isCI ? "gha" : "",
+    latest: true,
     load: true,
     push: false,
   },
 });
 
-const buildFlags = [`--tag=${flags.image}:${flags.tag}`, `--platform=${flags.platform}`];
+const buildFlags = [`--platform=${flags.platform}`, `--tag=${flags.repo}:${flags.tag}`];
+
+if (flags.latest) {
+  buildFlags.push(`--tag=${flags.repo}:latest`);
+}
 
 if (flags.load) {
   buildFlags.push("--load");
@@ -36,13 +41,13 @@ switch (flags["cache-from-to"]) {
     buildFlags.push("--cache-to=type=gha,mode=max");
     break;
   case "registry":
-    buildFlags.push(`--cache-from=type=registry,ref=${flags.image}:buildcache`);
-    buildFlags.push(`--cache-to=type=registry,ref=${flags.image}:buildcache,mode=max`);
+    buildFlags.push(`--cache-from=type=registry,ref=${flags.repo}:buildcache`);
+    buildFlags.push(`--cache-to=type=registry,ref=${flags.repo}:buildcache,mode=max`);
     break;
 }
 
 await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
 if (flags.kind) {
-  await $`kind load docker-image ${flags.image}:${flags.tag}`;
+  await $`kind load docker-image ${flags.repo}:${flags.tag}`;
 }
