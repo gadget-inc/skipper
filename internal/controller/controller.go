@@ -22,12 +22,6 @@ import (
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-const (
-	StatusPending    = "pending"
-	StatusReady      = "ready"
-	StatusUnassigned = "unassigned"
-)
-
 var (
 	hasTenantRequirement labels.Requirement
 	hasTenantSelector    labels.Selector
