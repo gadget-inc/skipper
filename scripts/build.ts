@@ -50,4 +50,7 @@ await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
 if (flags.kind) {
   await $`kind load docker-image ${flags.repo}:${flags.tag}`;
+  if (flags.latest) {
+    await $`kind load docker-image ${flags.repo}:latest`;
+  }
 }
