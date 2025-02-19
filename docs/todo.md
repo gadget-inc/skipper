@@ -5,6 +5,7 @@
 - controller doesn't assign a function to a pod from an outdated replica set
 - controller terminates outdated functions based on number of available new pods
 - functions are unique
+- clean up pods that fail to be assigned a function
 
 ## Deployment Verifier
 

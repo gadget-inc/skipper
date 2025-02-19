@@ -3,8 +3,8 @@
 import WebSocket from "npm:ws";
 import { delay } from "jsr:@std/async";
 
-// const url = "http://127.0.0.1:31020";
-const routerUrl = "http://fusion-router.fusion-development.svc.cluster.local";
+const routerUrl = "http://127.0.0.1:31020";
+// const routerUrl = "http://fusion-development-router.fusion-development.svc.cluster.local";
 
 const echoFunction = {
   namespace: "fusion-fixtures-development",
