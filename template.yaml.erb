@@ -1,0 +1,276 @@
+<%-
+skip_forbidden_namespaces ||= false
+
+log_level ||= "info"
+log_format ||= "text"
+
+controller_name = "#{namespace}-controller"
+controller_replicas ||= 1
+controller_log_level ||= log_level
+controller_log_format ||= log_format
+controller_image_repository ||= image_repository
+controller_image_tag ||= image_tag
+controller_image_pull_policy ||= image_pull_policy
+controller_request_cpu ||= "250m"
+controller_request_memory ||= "256Mi"
+controller_limit_cpu ||= controller_request_cpu
+controller_limit_memory ||= controller_request_memory
+
+router_name = "#{namespace}-router"
+router_replicas ||= 1
+router_log_level ||= log_level
+router_log_format ||= log_format
+router_image_repository ||= image_repository
+router_image_tag ||= image_tag
+router_image_pull_policy ||= image_pull_policy
+router_request_cpu ||= "250m"
+router_request_memory ||= "256Mi"
+router_limit_cpu ||= router_request_cpu
+router_limit_memory ||= router_request_memory
+-%>
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: <%= controller_name %>
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: <%= controller_name %>
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: <%= controller_name %>
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: <%= controller_name %>
+subjects:
+  - kind: ServiceAccount
+    name: <%= controller_name %>
+    namespace: <%= namespace %>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <%= controller_name %>
+  labels:
+    app.kubernetes.io/name: fusion
+    app.kubernetes.io/instance: <%= namespace %>
+    app.kubernetes.io/component: controller
+  annotations:
+    shipit.shopify.io/restart: "true"
+spec:
+  replicas: <%= controller_replicas %>
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fusion
+      app.kubernetes.io/instance: <%= namespace %>
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fusion
+        app.kubernetes.io/instance: <%= namespace %>
+        app.kubernetes.io/component: controller
+    spec:
+      serviceAccountName: <%= controller_name %>
+      containers:
+        - name: controller
+          image: <%= controller_image_repository %>:<%= controller_image_tag %>
+          imagePullPolicy: <%= controller_image_pull_policy %>
+          args:
+            - controller
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.cpu
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.memory
+            - name: FUSION_CONTROLLER_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: FUSION_CONTROLLER_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: FUSION_LOG_LEVEL
+              value: "<%= controller_log_level %>"
+            - name: FUSION_LOG_FORMAT
+              value: "<%= controller_log_format %>"
+            - name: FUSION_FUNCTION_NAMESPACES
+              value: "<%= function_namespaces.join(',') %>"
+            - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
+              value: "<%= skip_forbidden_namespaces %>"
+            <%- if defined? unsafe_controller_paseto_private_key -%>
+            - name: FUSION_CONTROLLER_PASETO_PRIVATE_KEY
+              value: <%= unsafe_controller_paseto_private_key.to_json %>
+            <%- else -%>
+          envFrom:
+            - secretRef:
+                name: <%= controller_name %>
+            <%- end -%>
+          resources:
+            requests:
+              memory: "<%= controller_request_memory %>"
+              cpu: "<%= controller_request_cpu %>"
+            limits:
+              memory: "<%= controller_limit_memory %>"
+              cpu: "<%= controller_limit_cpu %>"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 3
+            initialDelaySeconds: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 1
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: <%= controller_name %>
+spec:
+  selector:
+    app.kubernetes.io/name: fusion
+    app.kubernetes.io/instance: <%= namespace %>
+    app.kubernetes.io/component: controller
+  ports:
+    - port: 80
+      targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: <%= router_name %>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <%= router_name %>
+  labels:
+    app.kubernetes.io/name: fusion
+    app.kubernetes.io/instance: <%= namespace %>
+    app.kubernetes.io/component: router
+  annotations:
+    shipit.shopify.io/restart: "true"
+spec:
+  replicas: <%= router_replicas %>
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fusion
+      app.kubernetes.io/instance: <%= namespace %>
+      app.kubernetes.io/component: router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fusion
+        app.kubernetes.io/instance: <%= namespace %>
+        app.kubernetes.io/component: router
+    spec:
+      serviceAccountName: <%= router_name %>
+      containers:
+        - name: router
+          image: <%= router_image_repository %>:<%= router_image_tag %>
+          imagePullPolicy: <%= router_image_pull_policy %>
+          args:
+            - router
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: GOMAXPROCS
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.cpu
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: requests.memory
+            - name: FUSION_LOG_LEVEL
+              value: "<%= router_log_level %>"
+            - name: FUSION_LOG_FORMAT
+              value: "<%= router_log_format %>"
+            - name: FUSION_CONTROLLER_SERVICE_HOST
+              value: "<%= controller_name %>.<%= namespace %>.svc.cluster.local"
+          resources:
+            requests:
+              cpu: "<%= router_request_cpu %>"
+              memory: "<%= router_request_memory %>"
+            limits:
+              cpu: "<%= router_limit_cpu %>"
+              memory: "<%= router_limit_memory %>"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 3
+            initialDelaySeconds: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 1
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: <%= router_name %>
+spec:
+  <%- if defined? router_node_port -%>
+  type: NodePort
+  <%- end -%>
+  selector:
+    app.kubernetes.io/name: fusion
+    app.kubernetes.io/instance: <%= namespace %>
+    app.kubernetes.io/component: router
+  ports:
+    - port: 80
+      targetPort: http
+      <%- if defined? router_node_port -%>
+      nodePort: <%= router_node_port %>
+      <%- end -%>

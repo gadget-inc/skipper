@@ -11,9 +11,6 @@ tasks:
       - scripts/build.ts {{.CLI_ARGS}}
 
   build-fixtures:
-    sources:
-      - fixtures/**/*
-      - scripts/build-fixtures.ts
     cmds:
       - scripts/build-fixtures.ts
 
