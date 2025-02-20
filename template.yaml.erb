@@ -9,24 +9,26 @@ image_tag ||= "latest"
 image_pull_policy ||= "IfNotPresent"
 
 controller_name = "#{namespace}-controller"
-controller_replicas ||= 1
+controller_replicas ||= 2
 controller_log_level ||= log_level
 controller_log_format ||= log_format
 controller_image_repository ||= image_repository
 controller_image_tag ||= image_tag
 controller_image_pull_policy ||= image_pull_policy
+controller_extra_env ||= {}
 controller_request_cpu ||= "250m"
 controller_request_memory ||= "256Mi"
 controller_limit_cpu ||= controller_request_cpu
 controller_limit_memory ||= controller_request_memory
 
 router_name = "#{namespace}-router"
-router_replicas ||= 1
+router_replicas ||= 2
 router_log_level ||= log_level
 router_log_format ||= log_format
 router_image_repository ||= image_repository
 router_image_tag ||= image_tag
 router_image_pull_policy ||= image_pull_policy
+router_extra_env ||= {}
 router_request_cpu ||= "250m"
 router_request_memory ||= "256Mi"
 router_limit_cpu ||= router_request_cpu
@@ -95,14 +97,6 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            - name: GOMAXPROCS
-              valueFrom:
-                resourceFieldRef:
-                  resource: requests.cpu
-            - name: GOMEMLIMIT
-              valueFrom:
-                resourceFieldRef:
-                  resource: requests.memory
             - name: FUSION_CONTROLLER_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -119,6 +113,10 @@ spec:
               value: "<%= function_namespaces.join(',') %>"
             - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
               value: "<%= skip_forbidden_namespaces %>"
+            <%- controller_extra_env.each do |key, value| -%>
+            - name: "<%= key %>"
+              value: "<%= value %>"
+            <%- end -%>
             <%- if defined? unsafe_controller_paseto_private_key -%>
             - name: FUSION_CONTROLLER_PASETO_PRIVATE_KEY
               value: <%= unsafe_controller_paseto_private_key.to_json %>
@@ -213,20 +211,16 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            - name: GOMAXPROCS
-              valueFrom:
-                resourceFieldRef:
-                  resource: requests.cpu
-            - name: GOMEMLIMIT
-              valueFrom:
-                resourceFieldRef:
-                  resource: requests.memory
             - name: FUSION_LOG_LEVEL
               value: "<%= router_log_level %>"
             - name: FUSION_LOG_FORMAT
               value: "<%= router_log_format %>"
             - name: FUSION_CONTROLLER_SERVICE_HOST
               value: "<%= controller_name %>.<%= namespace %>.svc.cluster.local"
+            <%- router_extra_env.each do |key, value| -%>
+            - name: "<%= key %>"
+              value: "<%= value %>"
+            <%- end -%>
           resources:
             requests:
               cpu: "<%= router_request_cpu %>"
