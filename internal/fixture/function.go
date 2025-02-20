@@ -25,14 +25,16 @@ func NewFunction(opts ...FunctionOption) function.Function {
 	tenantCounter++
 
 	fn := function.Function{
-		Tenant:                  "tenant-" + strconv.Itoa(tenantCounter),
-		Metadata:                uuid.NewString(),
-		Namespace:               DefaultFunctionNamespace,
-		Deployment:              DefaultDeployment,
-		MinInstances:            0,
-		MaxInstances:            1,
-		TargetCPUUtilization:    100,
-		TargetMemoryUtilization: 200,
+		Tenant:     "tenant-" + strconv.Itoa(tenantCounter),
+		Metadata:   uuid.NewString(),
+		Namespace:  DefaultFunctionNamespace,
+		Deployment: DefaultDeployment,
+		Scale: function.Scale{
+			MinInstances:      0,
+			MaxInstances:      1,
+			TargetCPUUsage:    100,
+			TargetMemoryUsage: 200,
+		},
 	}
 
 	for _, opt := range opts {

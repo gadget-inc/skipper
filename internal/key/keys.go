@@ -32,11 +32,12 @@ var (
 	ReplicaSet              = replicaSetKey{new("replica-set")}
 	Request                 = requestKey{new("request")}
 	Response                = responseKey{new("response")}
+	Scale                   = groupValueKey{new("scale")}
 	Signal                  = stringKey{new("signal")}
 	Status                  = stringKey{new("status")}
 	StatusCode              = intKey{new("status-code")}
-	TargetCPUUtilization    = intKey{new("target-cpu-utilization")}
-	TargetMemoryUtilization = intKey{new("target-memory-utilization")}
+	TargetCPUUsage          = intKey{new("target-cpu-usage")}
+	TargetMemoryUsage       = intKey{new("target-memory-usage")}
 	Tenant                  = stringKey{new("tenant")}
 	Timestamp               = timeKey{new("timestamp")}
 	Token                   = stringKey{new("token")}

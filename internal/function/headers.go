@@ -31,29 +31,29 @@ func FromHeader(req *http.Request) (Function, error) {
 
 	err := json.Unmarshal([]byte(header[0]), &fn)
 	if err != nil {
-		return fn, fmt.Errorf("failed to unmarshal function header: %w", err)
+		return fn, fmt.Errorf("failed to unmarshal %s header: %w", key.Function.Header, err)
 	}
 
 	if fn.Namespace == "" {
-		return fn, fmt.Errorf("missing function namespace")
+		return fn, fmt.Errorf("missing namespace")
 	}
 	if fn.Deployment == "" {
-		return fn, fmt.Errorf("missing function deployment")
+		return fn, fmt.Errorf("missing deployment")
 	}
 	if fn.Tenant == "" {
-		return fn, fmt.Errorf("missing function tenant")
+		return fn, fmt.Errorf("missing tenant")
 	}
-	if fn.MinInstances < 0 {
+	if fn.Scale.MinInstances < 0 {
 		return fn, fmt.Errorf("min instances must be greater than or equal to 0")
 	}
-	if fn.MaxInstances < 0 {
+	if fn.Scale.MaxInstances < 0 {
 		return fn, fmt.Errorf("max instances must be greater than or equal to 0")
 	}
-	if fn.TargetCPUUtilization < 0 {
-		return fn, fmt.Errorf("target CPU utilization must be greater than or equal to 0")
+	if fn.Scale.TargetCPUUsage < 0 {
+		return fn, fmt.Errorf("target CPU usage must be greater than or equal to 0")
 	}
-	if fn.TargetMemoryUtilization < 0 {
-		return fn, fmt.Errorf("target memory utilization must be greater than or equal to 0")
+	if fn.Scale.TargetMemoryUsage < 0 {
+		return fn, fmt.Errorf("target memory usage must be greater than or equal to 0")
 	}
 
 	return fn, nil

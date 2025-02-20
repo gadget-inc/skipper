@@ -83,8 +83,6 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 					desiredInstances, err := calculateDesiredInstances(
 						currentInstances,
 						instanceMetrics,
-						int64(fn.TargetCPUUtilization),
-						// int64(fn.TargetMemoryUtilization),
 						DefaultConfig,
 						now,
 					)
@@ -93,12 +91,12 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						continue
 					}
 
-					if desiredInstances < fn.MinInstances {
-						desiredInstances = fn.MinInstances
+					if desiredInstances < fn.Scale.MinInstances {
+						desiredInstances = fn.Scale.MinInstances
 					}
 
-					if desiredInstances > fn.MaxInstances {
-						desiredInstances = fn.MaxInstances
+					if desiredInstances > fn.Scale.MaxInstances {
+						desiredInstances = fn.Scale.MaxInstances
 					}
 
 					stabilizationWindow, exists := stabilizationWindows[fn]

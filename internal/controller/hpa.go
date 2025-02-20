@@ -1,18 +1,22 @@
 package controller
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/fusion/internal/log"
 )
 
-type Metric int
+type Metric string
 
 const (
-	MetricCPU Metric = iota
-	MetricMemory
+	MetricCPU    Metric = "cpu"
+	MetricMemory Metric = "memory"
 )
 
 // Config holds configuration values for the HPA algorithm
@@ -83,7 +87,6 @@ func calculateDesiredInstancesForMetric(
 	currentInstances int,
 	metric Metric,
 	instanceMetrics []InstanceMetric,
-	targetUtilization int64,
 	hpaConfig Config,
 	timestamp time.Time,
 ) (int, error) {
@@ -116,24 +119,40 @@ func calculateDesiredInstancesForMetric(
 		}
 	}
 
-	var totalUsage int64
-	for _, instance := range instancesWithMetrics {
-		var usage int64
-		switch metric {
-		case MetricCPU:
-			usage = *instance.CPUUsage
-		case MetricMemory:
-			usage = *instance.MemoryUsage / 1024 / 1024 // convert memory usage from bytes to mb
-		}
-		totalUsage += usage
-	}
-
 	if len(instancesWithMetrics) == 0 {
 		return currentInstances, fmt.Errorf("no metrics available for metric %v", metric)
 	}
 
-	currentAverageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
-	usageRatio := currentAverageUsage / float64(targetUtilization)
+	var targetUsage int
+	var totalUsage int64
+	for _, instance := range instancesWithMetrics {
+		// accumulate total usage and keep track of target usage (they should all be identical)
+		switch metric {
+		case MetricCPU:
+			targetUsage = instance.Scale.TargetCPUUsage
+			totalUsage += *instance.CPUUsage
+		case MetricMemory:
+			targetUsage = instance.Scale.TargetMemoryUsage
+			totalUsage += *instance.MemoryUsage / 1024 / 1024 // convert memory usage from bytes to MiB
+		}
+	}
+
+	averageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
+	usageRatio := averageUsage / float64(targetUsage)
+
+	log.Debug(context.TODO(), "metric calculation",
+		key.Function.Field(instancesWithMetrics[0].Function),
+		slog.String("metric", string(metric)),
+		key.CurrentInstances.Field(currentInstances),
+		slog.Int("instancesWithMetrics", len(instancesWithMetrics)),
+		slog.Int("instancesWithoutMetrics", len(instancesWithoutMetrics)),
+		slog.Int("notReadyInstances", len(notReadyInstances)),
+		slog.Int("targetUsage", targetUsage),
+		slog.Int64("totalUsage", totalUsage),
+		slog.Float64("currentAverageUsage", averageUsage),
+		slog.Float64("usageRatio", usageRatio),
+		slog.Float64("tolerance", hpaConfig.Tolerance),
+	)
 
 	if math.Abs(1.0-usageRatio) <= hpaConfig.Tolerance {
 		return currentInstances, nil
@@ -146,16 +165,16 @@ func calculateDesiredInstancesForMetric(
 
 		adjustedTotalUsage := totalUsage
 		if desiredInstances < currentInstances {
-			adjustedTotalUsage += int64(len(instancesWithoutMetrics)) * targetUtilization
+			adjustedTotalUsage += int64(len(instancesWithoutMetrics)) * int64(targetUsage)
 		}
 
 		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(totalInstances)
-		adjustedUsageRatio := adjustedAverageUsage / float64(targetUtilization)
+		adjustedUsageRatio := adjustedAverageUsage / float64(int64(targetUsage))
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
 			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance {
-			// If the adjusted usage ratio is within tolerance of the target utilization, return the current instances
+			// the adjusted usage ratio is within tolerance of the target utilization, return the current instances
 			return currentInstances, nil
 		}
 
@@ -169,29 +188,18 @@ func calculateDesiredInstancesForMetric(
 func calculateDesiredInstances(
 	currentInstances int,
 	instanceMetrics []InstanceMetric,
-	targetCPUUtilization int64,
-	// targetMemoryUtilization int64,
 	hpaConfig Config,
 	timestamp time.Time,
 ) (int, error) {
 	maxDesiredInstances := 0
-	metricsToCalculate := []struct {
-		name              Metric
-		targetUtilization int64
-	}{
-		{MetricCPU, targetCPUUtilization},
-		// {MetricMemory, targetMemoryUtilization},
-	}
-
 	scaleDownErrors := 0
 	scaleDownSuggested := false
 
-	for _, metric := range metricsToCalculate {
+	for _, metric := range []Metric{MetricCPU /*, MetricMemory*/} {
 		desiredInstances, err := calculateDesiredInstancesForMetric(
 			currentInstances,
-			metric.name,
+			metric,
 			instanceMetrics,
-			metric.targetUtilization,
 			hpaConfig,
 			timestamp,
 		)

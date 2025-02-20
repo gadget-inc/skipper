@@ -11,10 +11,12 @@ const echoFunction = {
   deployment: "echo",
   tenant: "123",
   metadata: JSON.stringify({ foo: "bar" }),
-  min_instances: 0,
-  max_instances: 5,
-  target_cpu_utilization: 100,
-  target_memory_utilization: 200,
+  scale: {
+    min_instances: 0,
+    max_instances: 5,
+    target_cpu_usage: 100,
+    target_memory_usage: 200,
+  },
 };
 
 const socket = new WebSocket(routerUrl, undefined, {

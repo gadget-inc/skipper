@@ -4,13 +4,15 @@ version: 3
 tasks:
   test:
     cmds:
-      - go test -v ./... {{.CLI_ARGS}}
+      - go test -v ./... {{ .CLI_ARGS }}
 
   build:
     cmds:
-      - scripts/build.ts {{.CLI_ARGS}}
+      - scripts/build.ts {{ .CLI_ARGS }}
 
   build-fixtures:
+    sources:
+      - fixtures/**/*
     cmds:
       - scripts/build-fixtures.ts
 
@@ -25,6 +27,9 @@ tasks:
     deps:
       - generate-paseto-keypair
       - build-fixtures
+    sources:
+      - deploy/fusion-fixtures-*/**
+      - scripts/deploy-fixtures.ts
     cmds:
       - scripts/deploy-fixtures.ts
 
