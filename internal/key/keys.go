@@ -36,8 +36,8 @@ var (
 	Signal                  = stringKey{new("signal")}
 	Status                  = stringKey{new("status")}
 	StatusCode              = intKey{new("status-code")}
-	TargetCPUUsage          = intKey{new("target-cpu-usage")}
-	TargetMemoryUsage       = intKey{new("target-memory-usage")}
+	TargetCPUUsageMilli     = intKey{new("target-cpu-usage-milli")}
+	TargetMemoryUsageMiB    = intKey{new("target-memory-usage-mib")}
 	Tenant                  = stringKey{new("tenant")}
 	Timestamp               = timeKey{new("timestamp")}
 	Token                   = stringKey{new("token")}

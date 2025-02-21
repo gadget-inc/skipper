@@ -49,10 +49,10 @@ func FromHeader(req *http.Request) (Function, error) {
 	if fn.Scale.MaxInstances < 0 {
 		return fn, fmt.Errorf("max instances must be greater than or equal to 0")
 	}
-	if fn.Scale.TargetCPUUsage < 0 {
-		return fn, fmt.Errorf("target CPU usage must be greater than or equal to 0")
+	if fn.Scale.TargetCPUUsageMilli < 0 {
+		return fn, fmt.Errorf("target cpu usage must be greater than or equal to 0")
 	}
-	if fn.Scale.TargetMemoryUsage < 0 {
+	if fn.Scale.TargetMemoryUsageMiB < 0 {
 		return fn, fmt.Errorf("target memory usage must be greater than or equal to 0")
 	}
 

@@ -12,8 +12,8 @@ const echoFunction = {
   scale: {
     min_instances: 0,
     max_instances: 5,
-    target_cpu_usage: 100,
-    target_memory_usage: 200,
+    target_cpu_usage_milli: 100,
+    target_memory_usage_mib: 200,
   },
 };
 

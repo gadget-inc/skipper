@@ -30,10 +30,10 @@ func NewFunction(opts ...FunctionOption) function.Function {
 		Namespace:  DefaultFunctionNamespace,
 		Deployment: DefaultDeployment,
 		Scale: function.Scale{
-			MinInstances:      0,
-			MaxInstances:      1,
-			TargetCPUUsage:    100,
-			TargetMemoryUsage: 200,
+			MinInstances:         0,
+			MaxInstances:         1,
+			TargetCPUUsageMilli:  100,
+			TargetMemoryUsageMiB: 200,
 		},
 	}
 

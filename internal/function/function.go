@@ -22,8 +22,8 @@ func (f Function) RingKey() string {
 		f.Deployment +
 		strconv.Itoa(f.Scale.MinInstances) +
 		strconv.Itoa(f.Scale.MaxInstances) +
-		strconv.Itoa(f.Scale.TargetCPUUsage) +
-		strconv.Itoa(f.Scale.TargetMemoryUsage)
+		strconv.Itoa(f.Scale.TargetCPUUsageMilli) +
+		strconv.Itoa(f.Scale.TargetMemoryUsageMiB)
 }
 
 func (f Function) Fields() []slog.Attr {

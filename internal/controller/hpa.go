@@ -129,10 +129,10 @@ func calculateDesiredInstancesForMetric(
 		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
 		case MetricCPU:
-			targetUsage = instance.Scale.TargetCPUUsage
+			targetUsage = instance.Scale.TargetCPUUsageMilli
 			totalUsage += *instance.CPUUsage
 		case MetricMemory:
-			targetUsage = instance.Scale.TargetMemoryUsage
+			targetUsage = instance.Scale.TargetMemoryUsageMiB
 			totalUsage += *instance.MemoryUsage / 1024 / 1024 // convert memory usage from bytes to MiB
 		}
 	}

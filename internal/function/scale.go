@@ -8,18 +8,18 @@ import (
 )
 
 type Scale struct {
-	MinInstances      int `json:"min_instances"`
-	MaxInstances      int `json:"max_instances"`
-	TargetCPUUsage    int `json:"target_cpu_usage"`    // in millicores
-	TargetMemoryUsage int `json:"target_memory_usage"` // in MiB
+	MinInstances         int `json:"min_instances"`
+	MaxInstances         int `json:"max_instances"`
+	TargetCPUUsageMilli  int `json:"target_cpu_usage_milli"`
+	TargetMemoryUsageMiB int `json:"target_memory_usage_mib"`
 }
 
 func (s Scale) Fields() []slog.Attr {
 	return []slog.Attr{
 		key.MinInstances.Field(s.MinInstances),
 		key.MaxInstances.Field(s.MaxInstances),
-		key.TargetCPUUsage.Field(s.TargetCPUUsage),
-		key.TargetMemoryUsage.Field(s.TargetMemoryUsage),
+		key.TargetCPUUsageMilli.Field(s.TargetCPUUsageMilli),
+		key.TargetMemoryUsageMiB.Field(s.TargetMemoryUsageMiB),
 	}
 }
 
@@ -27,7 +27,7 @@ func (s Scale) Attributes() []attribute.KeyValue {
 	return []attribute.KeyValue{
 		key.MinInstances.Attribute(s.MinInstances),
 		key.MaxInstances.Attribute(s.MaxInstances),
-		key.TargetCPUUsage.Attribute(s.TargetCPUUsage),
-		key.TargetMemoryUsage.Attribute(s.TargetMemoryUsage),
+		key.TargetCPUUsageMilli.Attribute(s.TargetCPUUsageMilli),
+		key.TargetMemoryUsageMiB.Attribute(s.TargetMemoryUsageMiB),
 	}
 }

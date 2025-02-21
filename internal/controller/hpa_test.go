@@ -121,9 +121,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			for _, pm := range tc.podMetrics {
 				switch tc.metricName {
 				case MetricCPU:
-					pm.Function.Scale.TargetCPUUsage = int(tc.targetUsage)
+					pm.Function.Scale.TargetCPUUsageMilli = int(tc.targetUsage)
 				case MetricMemory:
-					pm.Function.Scale.TargetMemoryUsage = int(tc.targetUsage)
+					pm.Function.Scale.TargetMemoryUsageMiB = int(tc.targetUsage)
 				}
 			}
 
