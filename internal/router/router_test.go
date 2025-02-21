@@ -185,7 +185,9 @@ func TestHeaders(t *testing.T) {
 			echoResponse, err := fixture.ParseEchoResponse(res)
 			must.NoError(t, err)
 
-			tc.checkHeaders(t, fn, echoResponse.Header())
+			headers := echoResponse.Header()
+			headers.Del("Traceparent") // ignore the Traceparent header since it may or may not be present depending on the test environment
+			tc.checkHeaders(t, fn, headers)
 		})
 	}
 }
