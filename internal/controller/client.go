@@ -32,9 +32,9 @@ func NewHTTPClient(host string, port int) Client {
 	return &httpClient{
 		addr: fmt.Sprintf("http://%s:%d", host, port),
 		Client: &http.Client{
-			Transport: otelhttp.NewTransport(http.DefaultTransport, otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
-				return "HTTP " + r.Method + " " + r.URL.Path
-			})),
+			Transport: otelhttp.NewTransport(http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
+			),
 		},
 	}
 }
@@ -47,7 +47,7 @@ func (c *httpClient) Get(ctx context.Context, fn function.Function) (instance *f
 
 	fn.SetHeader(req)
 
-	res, err := otelhttp.DefaultClient.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send get request: %w", err)
 	}
@@ -83,7 +83,7 @@ func (c *httpClient) Heartbeat(ctx context.Context, heartbeats []function.Heartb
 		req.Header.Add(key.ForwardedFor.Header, forwardedForIP)
 	}
 
-	res, err := otelhttp.DefaultClient.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to send heartbeat request: %w", err)
 	}
@@ -105,7 +105,7 @@ func (c *httpClient) Scale(ctx context.Context, fn function.Function, desiredIns
 	fn.SetHeader(req)
 	req.Header[key.DesiredInstances.Header] = []string{strconv.Itoa(desiredInstances)}
 
-	res, err := otelhttp.DefaultClient.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send scale request: %w", err)
 	}
