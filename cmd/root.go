@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +22,7 @@ func NewCmdRoot() *cobra.Command {
 
 	log.FlagLogLevel.BindPersistent(cmd)
 	log.FlagLogFormat.BindPersistent(cmd)
+	telemetry.FlagTelemetry.BindPersistent(cmd)
 	return cmd
 }
 

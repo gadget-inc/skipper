@@ -9,6 +9,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/gadget-inc/fusion/internal/timer"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -26,7 +27,8 @@ type podListerEntry struct {
 }
 
 func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
-	log.Info(ctx, "starting managed replica set informers", key.Namespaces.Field(function.FlagNamespaces.Value()))
+	ctx, span := telemetry.Start(ctx, "controller.start_replica_set_informer")
+	defer span.End()
 
 	for _, namespace := range function.FlagNamespaces.Value() {
 		informerFactory := informers.NewSharedInformerFactoryWithOptions(
@@ -118,7 +120,8 @@ func (c *Controller) startReplicaSetInformer(ctx context.Context) error {
 }
 
 func (c *Controller) startPodInformers(ctx context.Context) error {
-	log.Info(ctx, "starting managed pod informers", key.Namespaces.Field(function.FlagNamespaces.Value()))
+	ctx, span := telemetry.Start(ctx, "controller.start_pod_informers")
+	defer span.End()
 
 	// TODO: test all required permissions before starting informers
 	var validNamespaces []string

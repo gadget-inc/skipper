@@ -16,8 +16,11 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/goccy/go-json"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -27,6 +30,9 @@ import (
 )
 
 func (c *Controller) startScalingInstances(ctx context.Context) error {
+	ctx, span := telemetry.Start(ctx, "controller.start_scaling_instances")
+	defer span.End()
+
 	// TODO: garbage collect old stabilization windows
 	stabilizationWindows := make(map[function.Function]*StabilizationWindow)
 
@@ -220,6 +226,9 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 }
 
 func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+	ctx, span := telemetry.Start(ctx, "controller.scale_function")
+	defer span.End()
+
 	scaleMu, _ := c.scaleMu.LoadOrCompute(fn, func() *sync.Mutex { return new(sync.Mutex) })
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
@@ -275,7 +284,13 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 }
 
 func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Function) (*function.Instance, error) {
-	pod, err := timer.PollUntil(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
+	ctx, span := telemetry.Start(ctx, "controller.assign_pod_to_function", trace.WithAttributes(key.Function.Attributes(fn)...))
+	defer span.End()
+
+	pod, err := timer.PollUntil(ctx, "controller.assign_pod_to_function.get_unassigned_pod", 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
+		span := trace.SpanFromContext(ctx)
+		span.SetAttributes(key.Function.Attributes(fn)...)
+
 		availablePods, err := c.getAvailablePodsForFunction(fn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list available pods: %w", err)
@@ -351,7 +366,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
-	res, err := http.DefaultClient.Do(req)
+	res, err := otelhttp.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send assign request: %w", err)
 	}

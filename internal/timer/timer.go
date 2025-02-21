@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/gadget-inc/fusion/internal/telemetry"
 )
 
 // Poll polls the given function until it returns a non-nil result or the timeout is reached.
@@ -40,10 +42,13 @@ func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(c
 }
 
 // PollUntil polls the given function until it returns a non-nil result or the context is cancelled.
-func PollUntil[T any](ctx context.Context, interval time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
+func PollUntil[T any](ctx context.Context, spanName string, interval time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
 	if ctx.Done() == nil {
 		panic("timer.PollUntil context must be cancellable")
 	}
+
+	ctx, span := telemetry.Start(ctx, spanName)
+	defer span.End()
 	return Poll(ctx, interval, time.Duration(1<<63-1), fn)
 }
 

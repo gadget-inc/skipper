@@ -12,6 +12,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/goccy/go-json"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -30,24 +31,25 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
 	fn, err := function.FromHeader(req)
 	if err != nil {
-		log.Error(req.Context(), "failed to get function from header", key.Error.Field(err))
+		log.Error(ctx, "failed to get function from header", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	instances, err := c.getInstances(fn)
 	if err != nil {
-		log.Error(req.Context(), "failed to get instances", key.Error.Field(err), key.Function.Field(fn))
+		log.Error(ctx, "failed to get instances", key.Error.Field(err), key.Function.Field(fn))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	for len(instances) == 0 {
-		instances, err = c.scaleFunction(req.Context(), fn, 1)
+		instances, err = c.scaleFunction(ctx, fn, 1)
 		if err != nil {
-			log.Error(req.Context(), "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
+			log.Error(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -59,28 +61,32 @@ func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(instance)
 	if err != nil {
-		log.Error(req.Context(), "failed to encode get response", key.Error.Field(err))
+		log.Error(ctx, "failed to encode get response", key.Error.Field(err))
 	}
 }
 
 func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
 	fn, err := function.FromHeader(req)
 	if err != nil {
-		log.Error(req.Context(), "failed to get function from header", key.Error.Field(err))
+		log.Error(ctx, "failed to get function from header", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(key.Function.Attributes(fn)...)
 
 	desiredInstances, err := strconv.Atoi(req.Header.Get(key.DesiredInstances.Header))
 	if err != nil {
-		log.Error(req.Context(), "failed to get desired instances from header", key.Error.Field(err))
+		log.Error(ctx, "failed to get desired instances from header", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	instances, err := c.scaleFunction(req.Context(), fn, desiredInstances)
+	instances, err := c.scaleFunction(ctx, fn, desiredInstances)
 	if err != nil {
-		log.Error(req.Context(), "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
+		log.Error(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -89,7 +95,7 @@ func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(http.StatusOK)
 	err = json.NewEncoder(rw).Encode(instances)
 	if err != nil {
-		log.Error(req.Context(), "failed to encode scale response", key.Error.Field(err))
+		log.Error(ctx, "failed to encode scale response", key.Error.Field(err))
 	}
 }
 

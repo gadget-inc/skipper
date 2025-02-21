@@ -14,7 +14,9 @@ import (
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/router"
+	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func NewCmdRouter() *cobra.Command {
@@ -25,13 +27,19 @@ func NewCmdRouter() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
+			shutdownTelemetry := telemetry.Init(ctx, telemetry.ComponentRouter)
+			defer shutdownTelemetry()
+
 			controllerClient := controller.NewHTTPClient(router.FlagControllerServiceHost.Value(), router.FlagControllerServicePort.Value())
 			r := router.New(controllerClient)
 			r.Start(ctx)
 
 			httpServer := &http.Server{
-				Addr:    ":" + strconv.Itoa(router.FlagPort.Value()),
-				Handler: r,
+				Addr: ":" + strconv.Itoa(router.FlagPort.Value()),
+				Handler: otelhttp.NewHandler(r, "",
+					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
+					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method }),
+				),
 			}
 
 			httpServerErrors := make(chan error, 1)

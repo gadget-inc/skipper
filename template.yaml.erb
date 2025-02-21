@@ -8,6 +8,8 @@ image_repository ||= "fusion"
 image_tag ||= "latest"
 image_pull_policy ||= "IfNotPresent"
 
+extra_env ||= {}
+
 controller_name = "#{namespace}-controller"
 controller_replicas ||= 2
 controller_log_level ||= log_level
@@ -113,6 +115,10 @@ spec:
               value: "<%= function_namespaces.join(',') %>"
             - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
               value: "<%= skip_forbidden_namespaces %>"
+            <%- extra_env.each do |key, value| -%>
+            - name: "<%= key %>"
+              value: "<%= value %>"
+            <%- end -%>
             <%- controller_extra_env.each do |key, value| -%>
             - name: "<%= key %>"
               value: "<%= value %>"
@@ -217,6 +223,10 @@ spec:
               value: "<%= router_log_format %>"
             - name: FUSION_CONTROLLER_SERVICE_HOST
               value: "<%= controller_name %>.<%= namespace %>.svc.cluster.local"
+            <%- extra_env.each do |key, value| -%>
+            - name: "<%= key %>"
+              value: "<%= value %>"
+            <%- end -%>
             <%- router_extra_env.each do |key, value| -%>
             - name: "<%= key %>"
               value: "<%= value %>"

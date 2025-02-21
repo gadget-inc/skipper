@@ -10,6 +10,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/hashring"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
 	v1 "k8s.io/api/core/v1"
@@ -74,27 +75,35 @@ func New(newClientFunc NewClientFunc, clientset kubernetes.Interface, metricsCli
 }
 
 func (c *Controller) Start(ctx context.Context) error {
+	ctx, span := telemetry.Start(ctx, "controller.start")
+	defer span.End()
+
 	err := c.startControllerInformer(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start controller pod informer: %w", err)
 	}
+
 	err = c.startPodInformers(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start managed pod informers: %w", err)
 	}
+
 	err = c.startReplicaSetInformer(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start managed replica set informer: %w", err)
 	}
+
 	err = c.startScalingInstances(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start scaling tenant pods: %w", err)
 	}
+
 	return nil
 }
 
 func (c *Controller) startControllerInformer(ctx context.Context) error {
-	log.Info(ctx, "starting controller informer", key.Namespace.Field(FlagNamespace.Value()))
+	ctx, span := telemetry.Start(ctx, "controller.start_controller_informer")
+	defer span.End()
 
 	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		c.clientset,

@@ -1,3 +1,6 @@
+<%-
+extra_env = locals[:extra_env] || {}
+-%>
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,7 +22,7 @@ spec:
       labels:
         fusion/deployment: <%= name %>
       annotations:
-        fusion/port: "http-port"
+        fusion/port: "http"
     spec:
       volumes:
         - name: empty-dir
@@ -29,27 +32,29 @@ spec:
           image: fusion-fixtures-<%= name %>:latest
           imagePullPolicy: Never
           ports:
-            - name: http-port
+            - name: http
               containerPort: 8888
           env:
-            - name: DENO_V8_FLAGS
-              value: "--max-old-space-size=256"
             - name: FUSION_PUBLIC_KEY
               value: <%= File.read("#{workspace_dir}/tmp/paseto/public.pem").to_json %>
+            <%- extra_env.each do |key, value| -%>
+            - name: "<%= key %>"
+              value: "<%= value %>"
+            <%- end -%>
           volumeMounts:
             - name: empty-dir
               mountPath: /tmp
           resources:
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
             requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
               memory: "256Mi"
               cpu: "250m"
           startupProbe:
             httpGet:
               path: /healthz
-              port: http-port
+              port: http
             failureThreshold: 3
             initialDelaySeconds: 3
             periodSeconds: 1
@@ -58,7 +63,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /healthz
-              port: http-port
+              port: http
             failureThreshold: 3
             periodSeconds: 1
             successThreshold: 1
@@ -66,7 +71,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /healthz
-              port: http-port
+              port: http
             failureThreshold: 1
             periodSeconds: 1
             successThreshold: 1

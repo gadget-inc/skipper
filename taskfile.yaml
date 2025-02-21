@@ -41,9 +41,17 @@ tasks:
     cmds:
       - scripts/deploy-metrics-server.ts
 
+  deploy-otel-lgtm:
+    sources:
+      - deploy/otel-lgtm/**
+      - scripts/deploy-otel-lgtm.ts
+    cmds:
+      - scripts/deploy-otel-lgtm.ts
+
   deploy-all:
     cmds:
       - task: deploy-metrics-server
+      - task: deploy-otel-lgtm
       - task: deploy-fixtures
       - task: deploy
 

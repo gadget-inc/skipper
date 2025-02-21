@@ -1,0 +1,86 @@
+# initally copied from https://github.com/grafana/docker-otel-lgtm/blob/90a42becc0ccfdea29f63a399a52ebb81169cd7d/k8s/lgtm.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-lgtm
+  annotations:
+    shipit.shopify.io/restart: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-lgtm
+  template:
+    metadata:
+      labels:
+        app: otel-lgtm
+    spec:
+      containers:
+        - name: otel-lgtm
+          image: grafana/otel-lgtm:latest
+          ports:
+            - name: grafana
+              containerPort: 3000
+            - name: otel-grpc
+              containerPort: 4317
+            - name: otel-http
+              containerPort: 4318
+          resources:
+            requests:
+              cpu: "1"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          readinessProbe:
+            exec:
+              command:
+                - cat
+                - /tmp/ready
+          # NOTE: By default OpenShift does not allow writing the root directory.
+          # Thats why the data dirs for grafana, prometheus and loki can not be
+          # created and the pod never becomes ready.
+          # See: https://github.com/grafana/docker-otel-lgtm/issues/132
+          volumeMounts:
+            - name: tempo-data
+              mountPath: /data/tempo
+            - name: grafana-data
+              mountPath: /data/grafana
+            - name: loki-data
+              mountPath: /data/loki
+            - name: loki-storage
+              mountPath: /loki
+            - name: p8s-storage
+              mountPath: /data/prometheus
+      volumes:
+        - name: tempo-data
+          emptyDir: {}
+        - name: loki-data
+          emptyDir: {}
+        - name: grafana-data
+          emptyDir: {}
+        - name: loki-storage
+          emptyDir: {}
+        - name: p8s-storage
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-lgtm
+spec:
+  type: NodePort
+  selector:
+    app: otel-lgtm
+  ports:
+    - name: grafana
+      port: 80
+      targetPort: grafana
+      nodePort: 30000
+    - name: otel-grpc
+      port: 4317
+      targetPort: otel-grpc
+    - name: otel-http
+      port: 4318
+      targetPort: otel-http

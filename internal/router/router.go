@@ -18,6 +18,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type Router struct {
@@ -31,7 +32,7 @@ func New(controllerClient controller.Client) *Router {
 	r := &Router{
 		controller: controllerClient,
 		heartbeats: xsync.NewMapOf[function.Function, time.Time](),
-		roundTripper: &http.Transport{
+		roundTripper: otelhttp.NewTransport(&http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
 				Timeout:   2 * time.Second, // default is 30 seconds
@@ -43,7 +44,7 @@ func New(controllerClient controller.Client) *Router {
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 			DisableCompression:    true, // disable the Accept-Encoding header
-		},
+		}),
 	}
 
 	r.reverseProxy = &httputil.ReverseProxy{

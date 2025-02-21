@@ -16,7 +16,9 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -53,6 +55,9 @@ func NewCmdController() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
+			shutdownTelemetry := telemetry.Init(ctx, telemetry.ComponentController)
+			defer shutdownTelemetry()
+
 			ctrl := controller.New(controller.NewHTTPClient, clientset, metricsClientset)
 			err = ctrl.Start(ctx)
 			if err != nil {
@@ -60,8 +65,11 @@ func NewCmdController() *cobra.Command {
 			}
 
 			srv := &http.Server{
-				Addr:    ":" + strconv.Itoa(controller.FlagPort.Value()),
-				Handler: ctrl,
+				Addr: ":" + strconv.Itoa(controller.FlagPort.Value()),
+				Handler: otelhttp.NewHandler(ctrl, "",
+					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
+					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
+				),
 			}
 
 			serverErrors := make(chan error, 1)
