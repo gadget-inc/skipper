@@ -11,7 +11,7 @@ import (
 )
 
 type (
-	GetHandler       func(ctx context.Context, fn function.Function) (*function.Instance, error)
+	InstanceHandler  func(ctx context.Context, fn function.Function) (*function.Instance, error)
 	ScaleHandler     func(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
 	HeartbeatHandler func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error
 )
@@ -28,8 +28,8 @@ var (
 
 type MockControllerClient struct {
 	t                  *testing.T
-	getHandler         GetHandler
-	getWasCalled       bool
+	instanceHandler    InstanceHandler
+	instanceWasCalled  bool
 	scaleHandler       ScaleHandler
 	scaleWasCalled     bool
 	heartbeatHandler   HeartbeatHandler
@@ -41,8 +41,8 @@ type MockControllerClient struct {
 func NewMockControllerClient(t *testing.T) *MockControllerClient {
 	mcc := &MockControllerClient{t: t}
 	t.Cleanup(func() {
-		if mcc.getHandler != nil && !mcc.getWasCalled {
-			t.Fatalf("mcc.Get was mocked but never called")
+		if mcc.instanceHandler != nil && !mcc.instanceWasCalled {
+			t.Fatalf("mcc.Instance was mocked but never called")
 		}
 		if mcc.scaleHandler != nil && !mcc.scaleWasCalled {
 			t.Fatalf("mcc.Scale was mocked but never called")
@@ -54,8 +54,8 @@ func NewMockControllerClient(t *testing.T) *MockControllerClient {
 	return mcc
 }
 
-func (f *MockControllerClient) HandleGet(h GetHandler) {
-	f.getHandler = h
+func (f *MockControllerClient) HandleInstance(h InstanceHandler) {
+	f.instanceHandler = h
 }
 
 func (f *MockControllerClient) HandleScale(h ScaleHandler) {
@@ -66,13 +66,13 @@ func (f *MockControllerClient) HandleHeartbeat(h HeartbeatHandler) {
 	f.heartbeatHandler = h
 }
 
-// Get implements controller.Client.
-func (f *MockControllerClient) Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
-	if f.getHandler == nil {
-		f.t.Fatalf("mcc.Get was called but not mocked")
+// Instance implements controller.Client.
+func (f *MockControllerClient) Instance(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
+	if f.instanceHandler == nil {
+		f.t.Fatalf("mcc.Instance was called but not mocked")
 	}
-	f.getWasCalled = true
-	return f.getHandler(ctx, fn)
+	f.instanceWasCalled = true
+	return f.instanceHandler(ctx, fn)
 }
 
 // Scale implements controller.Client.

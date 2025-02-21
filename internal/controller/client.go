@@ -14,7 +14,7 @@ import (
 )
 
 type Client interface {
-	Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error)
+	Instance(ctx context.Context, fn function.Function) (instance *function.Instance, err error)
 	Heartbeat(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
 }
@@ -39,26 +39,26 @@ func NewHTTPClient(host string, port int) Client {
 	}
 }
 
-func (c *httpClient) Get(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/get", nil)
+func (c *httpClient) Instance(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/instance", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create get request: %w", err)
+		return nil, fmt.Errorf("failed to create instance request: %w", err)
 	}
 
 	fn.SetHeader(req)
 
 	res, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send get request: %w", err)
+		return nil, fmt.Errorf("failed to send instance request: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("get request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
+		return nil, fmt.Errorf("instance request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
 	if err := json.NewDecoder(res.Body).Decode(&instance); err != nil {
-		return nil, fmt.Errorf("failed to decode get response: %w", err)
+		return nil, fmt.Errorf("failed to decode instance response: %w", err)
 	}
 
 	return instance, nil

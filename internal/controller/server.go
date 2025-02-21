@@ -19,8 +19,8 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch req.URL.Path {
 	case "/healthz":
 		rw.WriteHeader(http.StatusOK)
-	case "/get":
-		c.handleGet(rw, req)
+	case "/instance":
+		c.handleInstance(rw, req)
 	case "/scale":
 		c.handleScale(rw, req)
 	case "/heartbeat":
@@ -30,7 +30,7 @@ func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) handleGet(rw http.ResponseWriter, req *http.Request) {
+func (c *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	fn, err := function.FromHeader(req)
 	if err != nil {

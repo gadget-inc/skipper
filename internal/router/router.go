@@ -125,7 +125,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		default:
 		}
 
-		instance, err := r.controller.Get(ctx, fn)
+		instance, err := r.controller.Instance(ctx, fn)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Function.Field(fn), key.Attempt.Field(attempt))
 			continue
