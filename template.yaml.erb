@@ -1,40 +1,57 @@
 <%-
-skip_forbidden_namespaces ||= false
-
-log_level ||= "info"
-log_format ||= "text"
-
 image_repository ||= "fusion"
 image_tag ||= "latest"
 image_pull_policy ||= "IfNotPresent"
 
-extra_env ||= {}
+log_level ||= "info"
+log_format ||= "text"
+
+skip_forbidden_namespaces ||= false
+
+replicas ||= 2
+max_surge ||= "100%"
+max_unavailable ||= "0"
+request_cpu ||= "250m"
+request_memory ||= "256Mi"
+limit_cpu ||= request_cpu
+limit_memory ||= request_memory
+termination_grace_period_seconds ||= 30
+pre_stop_sleep ||= 5
+env ||= {}
 
 controller_name = "#{namespace}-controller"
-controller_replicas ||= 2
 controller_log_level ||= log_level
 controller_log_format ||= log_format
 controller_image_repository ||= image_repository
 controller_image_tag ||= image_tag
 controller_image_pull_policy ||= image_pull_policy
-controller_extra_env ||= {}
-controller_request_cpu ||= "250m"
-controller_request_memory ||= "256Mi"
+controller_replicas ||= replicas
+controller_max_surge ||= max_surge
+controller_max_unavailable ||= max_unavailable
+controller_request_cpu ||= request_cpu
+controller_request_memory ||= request_memory
 controller_limit_cpu ||= controller_request_cpu
 controller_limit_memory ||= controller_request_memory
+controller_termination_grace_period_seconds ||= termination_grace_period_seconds
+controller_pre_stop_sleep ||= pre_stop_sleep
+controller_env ||= {}
 
 router_name = "#{namespace}-router"
-router_replicas ||= 2
 router_log_level ||= log_level
 router_log_format ||= log_format
 router_image_repository ||= image_repository
 router_image_tag ||= image_tag
 router_image_pull_policy ||= image_pull_policy
-router_extra_env ||= {}
-router_request_cpu ||= "250m"
-router_request_memory ||= "256Mi"
+router_replicas ||= replicas
+router_max_surge ||= max_surge
+router_max_unavailable ||= max_unavailable
+router_request_cpu ||= request_cpu
+router_request_memory ||= request_memory
 router_limit_cpu ||= router_request_cpu
 router_limit_memory ||= router_request_memory
+router_termination_grace_period_seconds ||= termination_grace_period_seconds
+router_pre_stop_sleep ||= pre_stop_sleep
+router_env ||= {}
 -%>
 ---
 apiVersion: v1
@@ -70,29 +87,39 @@ metadata:
   name: <%= controller_name %>
   labels:
     app.kubernetes.io/name: fusion
-    app.kubernetes.io/instance: <%= namespace %>
     app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: <%= namespace %>
   annotations:
     shipit.shopify.io/restart: "true"
 spec:
   replicas: <%= controller_replicas %>
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: <%= controller_max_surge %>
+      maxUnavailable: <%= controller_max_unavailable %>
   selector:
     matchLabels:
       app.kubernetes.io/name: fusion
-      app.kubernetes.io/instance: <%= namespace %>
       app.kubernetes.io/component: controller
+      app.kubernetes.io/instance: <%= namespace %>
   template:
     metadata:
       labels:
         app.kubernetes.io/name: fusion
-        app.kubernetes.io/instance: <%= namespace %>
         app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: <%= namespace %>
     spec:
       serviceAccountName: <%= controller_name %>
+      terminationGracePeriodSeconds: <%= controller_termination_grace_period_seconds %>
       containers:
         - name: controller
           image: <%= controller_image_repository %>:<%= controller_image_tag %>
           imagePullPolicy: <%= controller_image_pull_policy %>
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep <%= controller_pre_stop_sleep %>"]
           args:
             - controller
           ports:
@@ -115,11 +142,11 @@ spec:
               value: "<%= function_namespaces.join(',') %>"
             - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
               value: "<%= skip_forbidden_namespaces %>"
-            <%- extra_env.each do |key, value| -%>
+            <%- env.each do |key, value| -%>
             - name: "<%= key %>"
               value: "<%= value %>"
             <%- end -%>
-            <%- controller_extra_env.each do |key, value| -%>
+            <%- controller_env.each do |key, value| -%>
             - name: "<%= key %>"
               value: "<%= value %>"
             <%- end -%>
@@ -151,7 +178,7 @@ spec:
             httpGet:
               path: /healthz
               port: http
-            failureThreshold: 3
+            failureThreshold: 2
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
@@ -163,6 +190,26 @@ spec:
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                      - fusion
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                      - controller
+                    - key: app.kubernetes.io/instance
+                      operator: In
+                      values:
+                      - <%= namespace %>
 ---
 apiVersion: v1
 kind: Service
@@ -171,8 +218,8 @@ metadata:
 spec:
   selector:
     app.kubernetes.io/name: fusion
-    app.kubernetes.io/instance: <%= namespace %>
     app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: <%= namespace %>
   ports:
     - port: 80
       targetPort: http
@@ -188,29 +235,39 @@ metadata:
   name: <%= router_name %>
   labels:
     app.kubernetes.io/name: fusion
-    app.kubernetes.io/instance: <%= namespace %>
     app.kubernetes.io/component: router
+    app.kubernetes.io/instance: <%= namespace %>
   annotations:
     shipit.shopify.io/restart: "true"
 spec:
   replicas: <%= router_replicas %>
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: <%= router_max_surge %>
+      maxUnavailable: <%= router_max_unavailable %>
   selector:
     matchLabels:
       app.kubernetes.io/name: fusion
-      app.kubernetes.io/instance: <%= namespace %>
       app.kubernetes.io/component: router
+      app.kubernetes.io/instance: <%= namespace %>
   template:
     metadata:
       labels:
         app.kubernetes.io/name: fusion
-        app.kubernetes.io/instance: <%= namespace %>
         app.kubernetes.io/component: router
+        app.kubernetes.io/instance: <%= namespace %>
     spec:
       serviceAccountName: <%= router_name %>
+      terminationGracePeriodSeconds: <%= router_termination_grace_period_seconds %>
       containers:
         - name: router
           image: <%= router_image_repository %>:<%= router_image_tag %>
           imagePullPolicy: <%= router_image_pull_policy %>
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep <%= router_pre_stop_sleep %>"]
           args:
             - router
           ports:
@@ -223,11 +280,11 @@ spec:
               value: "<%= router_log_format %>"
             - name: FUSION_CONTROLLER_SERVICE_HOST
               value: "<%= controller_name %>.<%= namespace %>.svc.cluster.local"
-            <%- extra_env.each do |key, value| -%>
+            <%- env.each do |key, value| -%>
             - name: "<%= key %>"
               value: "<%= value %>"
             <%- end -%>
-            <%- router_extra_env.each do |key, value| -%>
+            <%- router_env.each do |key, value| -%>
             - name: "<%= key %>"
               value: "<%= value %>"
             <%- end -%>
@@ -251,7 +308,7 @@ spec:
             httpGet:
               path: /healthz
               port: http
-            failureThreshold: 3
+            failureThreshold: 2
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
@@ -263,6 +320,22 @@ spec:
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                      - fusion
+                    - key: app.kubernetes.io/instance
+                      operator: In
+                      values:
+                      - <%= namespace %>
 ---
 apiVersion: v1
 kind: Service
@@ -274,8 +347,8 @@ spec:
   <%- end -%>
   selector:
     app.kubernetes.io/name: fusion
-    app.kubernetes.io/instance: <%= namespace %>
     app.kubernetes.io/component: router
+    app.kubernetes.io/instance: <%= namespace %>
   ports:
     - port: 80
       targetPort: http
