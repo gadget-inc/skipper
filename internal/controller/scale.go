@@ -86,12 +86,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 					}
 
 					currentInstances := len(instanceMetrics)
-					desiredInstances, err := calculateDesiredInstances(
-						currentInstances,
-						instanceMetrics,
-						DefaultConfig,
-						now,
-					)
+					desiredInstances, err := calculateDesiredInstances(instanceMetrics, DefaultConfig, now)
 					if err != nil {
 						log.Trace(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
 						continue

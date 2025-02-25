@@ -14,15 +14,9 @@ func ptrInt64(val int64) *int64 {
 
 func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 	now := time.Now()
-	hpaConfig := Config{
-		Tolerance:               0.1,
-		InitialReadinessDelay:   30 * time.Second,
-		CPUInitializationPeriod: 5 * time.Minute,
-	}
 
 	testCases := []struct {
 		name              string
-		currentInstances  int
 		metricName        Metric
 		podMetrics        []InstanceMetric
 		targetUsage       int64
@@ -30,10 +24,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		expectError       bool
 	}{
 		{
-			name:             "Scaling up due to high CPU utilization",
-			currentInstances: 3,
-			metricName:       MetricCPU,
-			targetUsage:      100,
+			name:        "Scaling up due to high CPU utilization",
+			metricName:  MetricCPU,
+			targetUsage: 100,
 			podMetrics: []InstanceMetric{
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(200)},
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(200)},
@@ -43,10 +36,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			expectError:       false,
 		},
 		{
-			name:             "Scaling down due to low CPU utilization",
-			currentInstances: 6,
-			metricName:       MetricCPU,
-			targetUsage:      200,
+			name:        "Scaling down due to low CPU utilization",
+			metricName:  MetricCPU,
+			targetUsage: 100,
 			podMetrics: []InstanceMetric{
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
@@ -55,21 +47,17 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(50)},
 			},
-			expectedInstances: 2,
+			expectedInstances: 3,
 			expectError:       false,
 		},
 		{
-			name:             "No scaling when within tolerance",
-			currentInstances: 4,
-			metricName:       MetricCPU,
-			targetUsage:      100,
+			name:        "No scaling when within tolerance",
+			metricName:  MetricCPU,
+			targetUsage: 100,
 			podMetrics: []InstanceMetric{
-				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(105)},
-				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(95)},
-				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(100)},
-				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(100)},
+				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(110)},
 			},
-			expectedInstances: 4,
+			expectedInstances: 1,
 			expectError:       false,
 		},
 		// - Included Pods: Pods with available metrics (Pod1, 150m CPU usage).
@@ -79,10 +67,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		// - Adjusted Usage: 150m total over 2 pods = 75m; Adjusted Ratio = 0.75 (< target).
 		// - Reassessed ratio suggests scale-down, reversing initial direction, so no scaling occurs.
 		{
-			name:             "Handling missing metrics when scaling up",
-			currentInstances: 2,
-			metricName:       MetricCPU,
-			targetUsage:      100,
+			name:        "Handling missing metrics when scaling up",
+			metricName:  MetricCPU,
+			targetUsage: 100,
 			podMetrics: []InstanceMetric{
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(150)},
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: nil},
@@ -91,10 +78,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			expectError:       false,
 		},
 		{
-			name:             "Handling not-yet-ready pods when scaling up",
-			currentInstances: 2,
-			metricName:       MetricCPU,
-			targetUsage:      100,
+			name:        "Handling not-yet-ready pods when scaling up",
+			metricName:  MetricCPU,
+			targetUsage: 100,
 			podMetrics: []InstanceMetric{
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: ptrInt64(150)},
 				{Instance: &function.Instance{AssignedAt: now.Add(-10 * time.Second)}, CPUUsage: ptrInt64(150)},
@@ -103,10 +89,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			expectError:       false,
 		},
 		{
-			name:             "No metrics available",
-			currentInstances: 2,
-			metricName:       MetricCPU,
-			targetUsage:      100,
+			name:        "No metrics available",
+			metricName:  MetricCPU,
+			targetUsage: 100,
 			podMetrics: []InstanceMetric{
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: nil},
 				{Instance: &function.Instance{ReadyAt: now}, CPUUsage: nil},
@@ -127,7 +112,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				}
 			}
 
-			instances, err := calculateDesiredInstancesForMetric(tc.currentInstances, tc.metricName, tc.podMetrics, hpaConfig, now)
+			instances, err := calculateDesiredInstancesForMetric(tc.metricName, tc.podMetrics, DefaultConfig, now)
 			if tc.expectError {
 				must.Error(t, err)
 				return

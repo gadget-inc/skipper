@@ -1,15 +1,11 @@
 package controller
 
 import (
-	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/gadget-inc/fusion/internal/key"
-	"github.com/gadget-inc/fusion/internal/log"
 )
 
 type Metric string
@@ -21,17 +17,15 @@ const (
 
 // Config holds configuration values for the HPA algorithm
 type Config struct {
-	Tolerance               float64
-	InitialReadinessDelay   time.Duration
-	CPUInitializationPeriod time.Duration
-	DownscaleStabilization  time.Duration
+	Tolerance              float64
+	InitialReadinessDelay  time.Duration
+	DownscaleStabilization time.Duration
 }
 
 var DefaultConfig = Config{
-	Tolerance:               0.1,
-	InitialReadinessDelay:   30 * time.Second,
-	CPUInitializationPeriod: 90 * time.Second,
-	DownscaleStabilization:  90 * time.Second,
+	Tolerance:              0.1,
+	InitialReadinessDelay:  30 * time.Second,
+	DownscaleStabilization: 90 * time.Second,
 }
 
 // InstanceMetric contains metrics and status information for a pod
@@ -83,13 +77,8 @@ func (sw *StabilizationWindow) GetMaxRecommendation() int {
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(
-	currentInstances int,
-	metric Metric,
-	instanceMetrics []InstanceMetric,
-	hpaConfig Config,
-	timestamp time.Time,
-) (int, error) {
+func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []InstanceMetric, hpaConfig Config, timestamp time.Time) (int, error) {
+	currentInstances := len(instanceMetrics)
 	var instancesWithMetrics []InstanceMetric
 	var instancesWithoutMetrics []InstanceMetric
 	var notReadyInstances []InstanceMetric
@@ -139,26 +128,12 @@ func calculateDesiredInstancesForMetric(
 
 	averageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
 	usageRatio := averageUsage / float64(targetUsage)
+	usageDiscrepancy := math.Abs(1.0 - usageRatio)
+	desiredInstances := int(math.Ceil(float64(currentInstances) * usageRatio))
 
-	log.Debug(context.TODO(), "metric calculation",
-		key.Function.Field(instancesWithMetrics[0].Function),
-		slog.String("metric", string(metric)),
-		key.CurrentInstances.Field(currentInstances),
-		slog.Int("instancesWithMetrics", len(instancesWithMetrics)),
-		slog.Int("instancesWithoutMetrics", len(instancesWithoutMetrics)),
-		slog.Int("notReadyInstances", len(notReadyInstances)),
-		slog.Int("targetUsage", targetUsage),
-		slog.Int64("totalUsage", totalUsage),
-		slog.Float64("currentAverageUsage", averageUsage),
-		slog.Float64("usageRatio", usageRatio),
-		slog.Float64("tolerance", hpaConfig.Tolerance),
-	)
-
-	if math.Abs(1.0-usageRatio) <= hpaConfig.Tolerance {
+	if usageDiscrepancy <= hpaConfig.Tolerance+1e-10 { // add a small epsilon to avoid floating point errors
 		return currentInstances, nil
 	}
-
-	desiredInstances := int(math.Ceil(float64(currentInstances) * usageRatio))
 
 	if len(instancesWithoutMetrics) > 0 || len(notReadyInstances) > 0 {
 		totalInstances := len(instancesWithMetrics) + len(instancesWithoutMetrics) + len(notReadyInstances)
@@ -174,7 +149,10 @@ func calculateDesiredInstancesForMetric(
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
 			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance {
-			// the adjusted usage ratio is within tolerance of the target utilization, return the current instances
+			// if the adjusted usage ratio is opposite of the original
+			// usage ratio, or the adjusted usage ratio is within
+			// tolerance of the target utilization, return the current
+			// instances
 			return currentInstances, nil
 		}
 
@@ -185,24 +163,14 @@ func calculateDesiredInstancesForMetric(
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(
-	currentInstances int,
-	instanceMetrics []InstanceMetric,
-	hpaConfig Config,
-	timestamp time.Time,
-) (int, error) {
+func calculateDesiredInstances(instanceMetrics []InstanceMetric, hpaConfig Config, timestamp time.Time) (int, error) {
+	currentInstances := len(instanceMetrics)
 	maxDesiredInstances := 0
 	scaleDownErrors := 0
 	scaleDownSuggested := false
 
 	for _, metric := range []Metric{MetricCPU /*, MetricMemory*/} {
-		desiredInstances, err := calculateDesiredInstancesForMetric(
-			currentInstances,
-			metric,
-			instanceMetrics,
-			hpaConfig,
-			timestamp,
-		)
+		desiredInstances, err := calculateDesiredInstancesForMetric(metric, instanceMetrics, hpaConfig, timestamp)
 		if err != nil {
 			if desiredInstances < currentInstances {
 				scaleDownErrors++
