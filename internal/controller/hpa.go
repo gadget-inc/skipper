@@ -81,7 +81,6 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 	currentInstances := len(instanceMetrics)
 	var instancesWithMetrics []InstanceMetric
 	var instancesWithoutMetrics []InstanceMetric
-	var notReadyInstances []InstanceMetric
 
 	for _, instance := range instanceMetrics {
 		var usage *int64
@@ -91,14 +90,13 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 		case MetricMemory:
 			usage = instance.MemoryUsage
 		default:
-			return 0, fmt.Errorf("unsupported metric: %v", metric)
+			return currentInstances, fmt.Errorf("unsupported metric: %v", metric)
 		}
 
-		if metric == MetricCPU && instance.ReadyAt.IsZero() {
-			if timestamp.Sub(instance.AssignedAt) < hpaConfig.InitialReadinessDelay {
-				notReadyInstances = append(notReadyInstances, instance)
-				continue
-			}
+		if metric == MetricCPU && (instance.ReadyAt.IsZero() || timestamp.Sub(instance.ReadyAt) <= hpaConfig.InitialReadinessDelay) {
+			// ignore CPU metrics for pods that have been ready for less than the initial readiness delay
+			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
+			continue
 		}
 
 		if usage == nil {
@@ -113,16 +111,16 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 	}
 
 	var targetUsage int
-	var totalUsage int64
+	var totalUsage int
 	for _, instance := range instancesWithMetrics {
 		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
 		case MetricCPU:
 			targetUsage = instance.Scale.TargetCPUUsageMilli
-			totalUsage += *instance.CPUUsage
+			totalUsage += int(*instance.CPUUsage)
 		case MetricMemory:
 			targetUsage = instance.Scale.TargetMemoryUsageMiB
-			totalUsage += *instance.MemoryUsage / 1024 / 1024 // convert memory usage from bytes to MiB
+			totalUsage += int(*instance.MemoryUsage / 1024 / 1024) // convert memory usage from bytes to MiB
 		}
 	}
 
@@ -132,27 +130,29 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 	desiredInstances := int(math.Ceil(float64(currentInstances) * usageRatio))
 
 	if usageDiscrepancy <= hpaConfig.Tolerance+1e-10 { // add a small epsilon to avoid floating point errors
+		// the average usage is within tolerance of the target utilization, so we should not scale
 		return currentInstances, nil
 	}
 
-	if len(instancesWithoutMetrics) > 0 || len(notReadyInstances) > 0 {
-		totalInstances := len(instancesWithMetrics) + len(instancesWithoutMetrics) + len(notReadyInstances)
-
+	if len(instancesWithoutMetrics) > 0 {
 		adjustedTotalUsage := totalUsage
 		if desiredInstances < currentInstances {
-			adjustedTotalUsage += int64(len(instancesWithoutMetrics)) * int64(targetUsage)
+			// we wanted to scale down, so we assume that instances without metrics are consuming 100% of target usage
+			adjustedTotalUsage += len(instancesWithoutMetrics) * targetUsage
+		} else {
+			// we wanted to scale up, so we assume that instances without metrics are consuming 0% of target usage
 		}
 
-		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(totalInstances)
-		adjustedUsageRatio := adjustedAverageUsage / float64(int64(targetUsage))
+		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(currentInstances)
+		adjustedUsageRatio := adjustedAverageUsage / float64(targetUsage)
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
 			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance+1e-10 {
-			// the adjusted usage ratio is opposite of the original
+			// the adjusted usage ratio is the opposite of the original
 			// usage ratio, or the adjusted usage ratio is within
-			// tolerance of the target utilization, so we should not
-			// scale
+			// tolerance of the target utilization. either way, we
+			// should noop and not scale
 			return currentInstances, nil
 		}
 
