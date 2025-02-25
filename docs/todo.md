@@ -2,9 +2,8 @@
 
 ## Tests
 
-- controller doesn't assign a function to a pod from an outdated replica set
+- controller doesn't assign a function to a pod from an outdated replica set, unless it's the only option
 - controller terminates outdated functions based on number of available new pods
-- functions are unique
 - clean up pods that fail to be assigned a function
 
 ## Deployment Verifier
@@ -12,10 +11,6 @@
 - has "fusion/deployment" label
 - has "fusion/port" annotation
 - has "fusion/tenant" does not exist match expression
-
-## Misc
-
-- add open telemetry
 
 ## UI
 
