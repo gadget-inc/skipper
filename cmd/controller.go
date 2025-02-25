@@ -107,6 +107,9 @@ func NewCmdController() *cobra.Command {
 		},
 	}
 
+	controller.FlagHPADownscaleStabilization.Bind(cmd)
+	controller.FlagHPAInitialReadinessDelay.Bind(cmd)
+	controller.FlagHPATolerance.Bind(cmd)
 	controller.FlagIP.Bind(cmd)
 	controller.FlagNamespace.Bind(cmd)
 	controller.FlagPasetoPrivateKey.Bind(cmd)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"aidanwoods.dev/go-paseto"
 	"github.com/gadget-inc/fusion/internal/flag"
@@ -62,5 +63,23 @@ var (
 			}
 			return paseto.NewV2AsymmetricSecretKeyFromEd25519(ed25519PrivateKey)
 		},
+	}
+
+	FlagHPATolerance = flag.Flag[float64]{
+		Name:        "controller-hpa-tolerance",
+		Description: "The usage ratio tolerance for the HPA algorithm.",
+		Default:     0.1,
+	}
+
+	FlagHPAInitialReadinessDelay = flag.Flag[time.Duration]{
+		Name:        "controller-hpa-initial-readiness-delay",
+		Description: "The initial readiness delay for the HPA algorithm.",
+		Default:     30 * time.Second,
+	}
+
+	FlagHPADownscaleStabilization = flag.Flag[time.Duration]{
+		Name:        "controller-hpa-downscale-stabilization",
+		Description: "The stabilization window for downscaling in the HPA algorithm.",
+		Default:     90 * time.Second,
 	}
 )

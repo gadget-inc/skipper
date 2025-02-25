@@ -15,19 +15,6 @@ const (
 	MetricMemory Metric = "memory"
 )
 
-// Config holds configuration values for the HPA algorithm
-type Config struct {
-	Tolerance              float64
-	InitialReadinessDelay  time.Duration
-	DownscaleStabilization time.Duration
-}
-
-var DefaultConfig = Config{
-	Tolerance:              0.1,
-	InitialReadinessDelay:  30 * time.Second,
-	DownscaleStabilization: 90 * time.Second,
-}
-
 // InstanceMetric contains metrics and status information for a pod
 type InstanceMetric struct {
 	*function.Instance
@@ -43,7 +30,6 @@ type Recommendation struct {
 
 // StabilizationWindow holds scaling recommendations within a time window
 type StabilizationWindow struct {
-	Window          time.Duration
 	Recommendations []Recommendation
 }
 
@@ -55,7 +41,7 @@ func (sw *StabilizationWindow) RecordRecommendation(desiredInstances int, timest
 	})
 
 	// Remove old recommendations
-	cutoff := timestamp.Add(-sw.Window)
+	cutoff := timestamp.Add(-FlagHPADownscaleStabilization.Value())
 	var newRecommendations []Recommendation
 	for _, rec := range sw.Recommendations {
 		if rec.Timestamp.After(cutoff) {
@@ -77,7 +63,7 @@ func (sw *StabilizationWindow) GetMaxRecommendation() int {
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []InstanceMetric, hpaConfig Config, timestamp time.Time) (int, error) {
+func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []InstanceMetric, timestamp time.Time) (int, error) {
 	currentInstances := len(instanceMetrics)
 	var instancesWithMetrics []InstanceMetric
 	var instancesWithoutMetrics []InstanceMetric
@@ -93,7 +79,7 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 			return currentInstances, fmt.Errorf("unsupported metric: %v", metric)
 		}
 
-		if metric == MetricCPU && (instance.ReadyAt.IsZero() || timestamp.Sub(instance.ReadyAt) <= hpaConfig.InitialReadinessDelay) {
+		if metric == MetricCPU && (instance.ReadyAt.IsZero() || timestamp.Sub(instance.ReadyAt) <= FlagHPAInitialReadinessDelay.Value()) {
 			// ignore CPU metrics for pods that have been ready for less than the initial readiness delay
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 			continue
@@ -129,7 +115,7 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 	usageDiscrepancy := math.Abs(1.0 - usageRatio)
 	desiredInstances := int(math.Ceil(float64(currentInstances) * usageRatio))
 
-	if usageDiscrepancy <= hpaConfig.Tolerance+1e-10 { // add a small epsilon to avoid floating point errors
+	if usageDiscrepancy <= FlagHPATolerance.Value()+1e-10 { // add a small epsilon to avoid floating point errors
 		// the average usage is within tolerance of the target utilization, so we should not scale
 		return currentInstances, nil
 	}
@@ -148,7 +134,7 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
-			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance+1e-10 {
+			math.Abs(1.0-adjustedUsageRatio) <= FlagHPATolerance.Value()+1e-10 {
 			// the adjusted usage ratio is the opposite of the original
 			// usage ratio, or the adjusted usage ratio is within
 			// tolerance of the target utilization. either way, we
@@ -163,14 +149,14 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(instanceMetrics []InstanceMetric, hpaConfig Config, timestamp time.Time) (int, error) {
+func calculateDesiredInstances(instanceMetrics []InstanceMetric, timestamp time.Time) (int, error) {
 	currentInstances := len(instanceMetrics)
 	maxDesiredInstances := 0
 	scaleDownErrors := 0
 	scaleDownSuggested := false
 
 	for _, metric := range []Metric{MetricCPU /*, MetricMemory*/} {
-		desiredInstances, err := calculateDesiredInstancesForMetric(metric, instanceMetrics, hpaConfig, timestamp)
+		desiredInstances, err := calculateDesiredInstancesForMetric(metric, instanceMetrics, timestamp)
 		if err != nil {
 			if desiredInstances < currentInstances {
 				scaleDownErrors++

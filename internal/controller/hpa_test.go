@@ -8,12 +8,18 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+func init() {
+	FlagHPATolerance.Init()
+	FlagHPAInitialReadinessDelay.Init()
+	FlagHPADownscaleStabilization.Init()
+}
+
 func ptrInt64(val int64) *int64 {
 	return &val
 }
 
 func TestCalculateDesiredInstancesForMetric(t *testing.T) {
-	readyAt := time.Now().Add(-DefaultConfig.InitialReadinessDelay)
+	readyAt := time.Now().Add(-FlagHPAInitialReadinessDelay.Value())
 
 	testCases := []struct {
 		name              string
@@ -110,7 +116,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				}
 			}
 
-			instances, err := calculateDesiredInstancesForMetric(tc.metricName, tc.podMetrics, DefaultConfig, time.Now())
+			instances, err := calculateDesiredInstancesForMetric(tc.metricName, tc.podMetrics, time.Now())
 			if tc.expectError {
 				must.Error(t, err)
 				return
