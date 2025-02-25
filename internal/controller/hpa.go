@@ -148,11 +148,11 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
-			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance {
-			// if the adjusted usage ratio is opposite of the original
+			math.Abs(1.0-adjustedUsageRatio) <= hpaConfig.Tolerance+1e-10 {
+			// the adjusted usage ratio is opposite of the original
 			// usage ratio, or the adjusted usage ratio is within
-			// tolerance of the target utilization, return the current
-			// instances
+			// tolerance of the target utilization, so we should not
+			// scale
 			return currentInstances, nil
 		}
 
