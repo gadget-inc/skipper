@@ -15,8 +15,8 @@ request_cpu ||= "250m"
 request_memory ||= "256Mi"
 limit_cpu ||= request_cpu
 limit_memory ||= request_memory
-termination_grace_period_seconds ||= 30
-pre_stop_sleep ||= 5
+pre_stop_sleep ||= 20
+termination_grace_period_seconds ||= pre_stop_sleep + 10
 env ||= {}
 
 controller_name = "#{namespace}-controller"
@@ -32,8 +32,8 @@ controller_request_cpu ||= request_cpu
 controller_request_memory ||= request_memory
 controller_limit_cpu ||= controller_request_cpu
 controller_limit_memory ||= controller_request_memory
-controller_termination_grace_period_seconds ||= termination_grace_period_seconds
 controller_pre_stop_sleep ||= pre_stop_sleep
+controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + 10
 controller_env ||= {}
 
 router_name = "#{namespace}-router"
@@ -49,8 +49,8 @@ router_request_cpu ||= request_cpu
 router_request_memory ||= request_memory
 router_limit_cpu ||= router_request_cpu
 router_limit_memory ||= router_request_memory
-router_termination_grace_period_seconds ||= termination_grace_period_seconds
 router_pre_stop_sleep ||= pre_stop_sleep
+router_termination_grace_period_seconds ||= router_pre_stop_sleep + 10
 router_env ||= {}
 -%>
 ---
