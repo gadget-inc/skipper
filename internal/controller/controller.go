@@ -195,51 +195,6 @@ func (c *Controller) startInformers(ctx context.Context) error {
 	return nil
 }
 
-// go timer.Loop(ctx, 10*time.Second, func(ctx context.Context) error {
-// 	pods, err := c.listPods(namespace, hasTenantSelector)
-// 	if err != nil {
-// 		log.Warn(ctx, "failed to get all assigned pods for replica set check", key.Error.Field(err))
-// 		return nil
-// 	}
-//
-// 	var defunctInstances []*function.Instance
-// 	for _, pod := range pods {
-// 		instance, err := function.FromPod(pod)
-// 		if err != nil {
-// 			log.Warn(ctx, "failed to get function from pod", key.Error.Field(err), key.Pod.Field(pod))
-// 			continue
-// 		}
-//
-// 		replicaSet, err := replicaSetLister.ReplicaSets(pod.Namespace).Get(instance.Version)
-// 		if err != nil {
-// 			log.Warn(ctx, "failed to get replica set for pod", key.Error.Field(err), key.Pod.Field(pod))
-// 			continue
-// 		}
-//
-// 		if replicaSet.Spec.Replicas == nil || *replicaSet.Spec.Replicas == 0 {
-// 			defunctInstances = append(defunctInstances, instance)
-// 		}
-// 	}
-//
-// 	for _, instance := range defunctInstances {
-// 		func() {
-// 			scaleMu, _ := c.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
-// 			scaleMu.Lock()
-// 			defer scaleMu.Unlock()
-//
-// 			log.Debug(ctx, "terminating defunct function", key.Instance.Field(instance))
-// 			err = c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
-// 			if err != nil {
-// 				log.Warn(ctx, "failed to terminate instance", key.Error.Field(err), key.Instance.Field(instance))
-// 			}
-// 		}()
-//
-// 		time.Sleep(1 * time.Second)
-// 	}
-//
-// 	return nil
-// })
-
 func (c *Controller) startScalingInstances(ctx context.Context) error {
 	ctx, span := telemetry.Start(ctx, "controller.start_scaling_instances")
 	defer span.End()
@@ -335,6 +290,45 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 					if err != nil {
 						log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn), key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
 					}
+				}
+
+				pods, err := c.listPods(namespace, hasTenantSelector)
+				if err != nil {
+					log.Warn(ctx, "failed to get all assigned pods for replica set check", key.Error.Field(err))
+					continue
+				}
+
+				var defunctInstances []*function.Instance
+				for _, pod := range pods {
+					instance, err := function.FromPod(pod)
+					if err != nil {
+						log.Warn(ctx, "failed to get function from pod", key.Error.Field(err), key.Pod.Field(pod))
+						continue
+					}
+
+					replicaSet, err := c.namespaceListers[namespace].replicaSetLister.ReplicaSets(pod.Namespace).Get(instance.Version)
+					if err != nil {
+						log.Warn(ctx, "failed to get replica set for pod", key.Error.Field(err), key.Pod.Field(pod))
+						continue
+					}
+
+					if replicaSet.Spec.Replicas == nil || *replicaSet.Spec.Replicas == 0 {
+						defunctInstances = append(defunctInstances, instance)
+					}
+				}
+
+				for _, instance := range defunctInstances {
+					func() {
+						scaleMu, _ := c.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
+						scaleMu.Lock()
+						defer scaleMu.Unlock()
+
+						log.Debug(ctx, "terminating defunct function", key.Instance.Field(instance))
+						err = c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+						if err != nil {
+							log.Warn(ctx, "failed to terminate instance", key.Error.Field(err), key.Instance.Field(instance))
+						}
+					}()
 				}
 			}
 
