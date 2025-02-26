@@ -251,7 +251,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	)
 
 	if desiredInstances > currentInstances {
-		for i := 0; i < desiredInstances-currentInstances; i++ {
+		for range desiredInstances - currentInstances {
 			instance, err := c.assignPodToFunction(ctx, fn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
