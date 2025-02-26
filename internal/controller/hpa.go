@@ -15,20 +15,20 @@ const (
 	MetricMemory Metric = "memory"
 )
 
-// InstanceMetric contains metrics and status information for a pod
+// InstanceMetric represents an instance with metrics
 type InstanceMetric struct {
 	*function.Instance
 	CPUUsage    *int64
 	MemoryUsage *int64
 }
 
-// Recommendation represents a scaling recommendation
+// Recommendation represents a scaling recommendation at a point in time
 type Recommendation struct {
 	Instances int
 	Timestamp time.Time
 }
 
-// StabilizationWindow holds scaling recommendations within a time window
+// StabilizationWindow represents a window of scaling recommendations
 type StabilizationWindow struct {
 	Recommendations []Recommendation
 }

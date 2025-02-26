@@ -3,8 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"maps"
 	"math/rand"
 	"net/http"
 	"slices"
@@ -29,150 +27,13 @@ import (
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
-func (c *Controller) startScalingInstances(ctx context.Context) error {
-	ctx, span := telemetry.Start(ctx, "controller.start_scaling_instances")
-	defer span.End()
-
-	// TODO: garbage collect old stabilization windows
-	stabilizationWindows := make(map[function.Function]*StabilizationWindow)
-
-	go timer.Loop(
-		ctx,
-		15*time.Second,
-		func(ctx context.Context) error {
-			c.heartbeatsMu.Lock()
-			heartbeats := maps.Clone(c.heartbeats)
-			c.heartbeatsMu.Unlock()
-
-			for _, namespace := range function.FlagNamespaces.Value() {
-				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)
-				if err != nil {
-					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
-					return nil
-				}
-
-				now := time.Now()
-				for fn, instanceMetrics := range functionMetrics {
-					timestamp, ok := heartbeats[fn]
-					if !ok {
-						log.Warn(ctx, "no heartbeat for function", key.Function.Field(fn))
-						for _, instanceMetric := range instanceMetrics {
-							if instanceMetric.AssignedAt.After(timestamp) {
-								timestamp = instanceMetric.AssignedAt
-							}
-						}
-					}
-
-					if time.Since(timestamp) > 90*time.Second {
-						delete(stabilizationWindows, fn)
-
-						controllerIP := c.ring.Get(fn.RingKey())
-						if controllerIP != FlagIP.Value() {
-							log.Trace(ctx, "skipping scaling fn to 0, not assigned to this controller",
-								key.Function.Field(fn),
-								key.ControllerIP.Field(controllerIP),
-								key.IP.Field(FlagIP.Value()),
-								slog.Bool("ok", ok),
-							)
-							continue
-						}
-
-						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.Timestamp.Field(timestamp))
-						_, err := c.scaleFunction(ctx, fn, 0)
-						if err != nil {
-							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
-						}
-						continue
-					}
-
-					currentInstances := len(instanceMetrics)
-					desiredInstances, err := calculateDesiredInstances(instanceMetrics, now)
-					if err != nil {
-						log.Trace(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
-						continue
-					}
-
-					if desiredInstances < fn.Scale.MinInstances {
-						desiredInstances = fn.Scale.MinInstances
-					}
-
-					if desiredInstances > fn.Scale.MaxInstances {
-						desiredInstances = fn.Scale.MaxInstances
-					}
-
-					stabilizationWindow, exists := stabilizationWindows[fn]
-					if !exists {
-						stabilizationWindow = &StabilizationWindow{}
-						stabilizationWindows[fn] = stabilizationWindow
-					}
-
-					log.Trace(ctx, "desired instances",
-						key.Function.Field(fn),
-						key.CurrentInstances.Field(currentInstances),
-						key.DesiredInstances.Field(desiredInstances),
-						key.MaxRecommendedInstances.Field(stabilizationWindow.GetMaxRecommendation()),
-					)
-
-					stabilizationWindow.RecordRecommendation(desiredInstances, now)
-
-					controllerIP := c.ring.Get(fn.RingKey())
-					if controllerIP != FlagIP.Value() {
-						log.Trace(ctx, "skipping scaling for function, not assigned to this controller",
-							key.Function.Field(fn),
-							key.Controller.Field(controllerIP),
-							key.IP.Field(FlagIP.Value()),
-							slog.Bool("ok", ok),
-						)
-						continue
-					}
-
-					if desiredInstances < currentInstances {
-						maxRecommendedInstances := stabilizationWindow.GetMaxRecommendation()
-						if maxRecommendedInstances < currentInstances {
-							desiredInstances = maxRecommendedInstances
-						} else {
-							desiredInstances = currentInstances
-						}
-					}
-
-					if desiredInstances == 0 {
-						// we only scale to 0 if the last request was more than 90 seconds ago
-						log.Debug(ctx, "skipping scaling function to 0 based on hpa", key.Function.Field(fn))
-						continue
-					}
-
-					log.Trace(ctx, "scaling function",
-						key.Function.Field(fn),
-						key.CurrentInstances.Field(currentInstances),
-						key.DesiredInstances.Field(desiredInstances),
-						key.MaxRecommendedInstances.Field(stabilizationWindow.GetMaxRecommendation()),
-					)
-
-					_, err = c.scaleFunction(ctx, fn, desiredInstances)
-					if err != nil {
-						log.Warn(ctx, "failed to scale function",
-							key.Error.Field(err),
-							key.Function.Field(fn),
-							key.CurrentInstances.Field(currentInstances),
-							key.DesiredInstances.Field(desiredInstances),
-						)
-					}
-				}
-			}
-
-			return nil
-		},
-	)
-
-	return nil
-}
-
 func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (map[function.Function][]InstanceMetric, error) {
 	pods, err := c.listPods(namespace, hasTenantSelector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
 	}
 
+	// TODO: paginate
 	metrics, err := c.metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{LabelSelector: key.Tenant.Label})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod metrics: %w", err)
@@ -326,10 +187,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to patch pod: %w", err)
 	}
 
-	err = c.updatePodCache(pod)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update pod: %w", err)
-	}
+	c.updatePodCache(ctx, pod)
 
 	var port string
 	for _, container := range pod.Spec.Containers {
@@ -339,7 +197,8 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		}
 	}
 	if port == "" {
-		return nil, fmt.Errorf("failed to get port for pod: %w", err)
+		err = fmt.Errorf("no port found for pod")
+		return nil, err
 	}
 
 	assignURL := "http://" + pod.Status.PodIP + ":" + port + function.FlagAssignPath.Value()
@@ -384,10 +243,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to patch status: %w", err)
 	}
 
-	err = c.updatePodCache(pod)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update pod: %w", err)
-	}
+	c.updatePodCache(ctx, pod)
 
 	return function.FromPod(pod)
 }

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"strconv"
 	"testing"
 	"time"
@@ -48,7 +49,7 @@ func TestAssignPodToFunction(t *testing.T) {
 		name  string
 		err   error
 		setup func(*testing.T, *fake.Clientset, function.Function)
-		check func(*testing.T, *fake.Clientset, *function.Instance)
+		check func(*testing.T, *fake.Clientset, function.Function, *function.Instance)
 	}{
 		{
 			name: "smoke",
@@ -56,7 +57,7 @@ func TestAssignPodToFunction(t *testing.T) {
 				err := clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, clientset *fake.Clientset, instance *function.Instance) {
+			check: func(t *testing.T, clientset *fake.Clientset, fn function.Function, instance *function.Instance) {
 				pods, err := clientset.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
@@ -69,7 +70,7 @@ func TestAssignPodToFunction(t *testing.T) {
 			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
 				// no pods
 			},
-			check: func(t *testing.T, clientset *fake.Clientset, instance *function.Instance) {
+			check: func(t *testing.T, clientset *fake.Clientset, fn function.Function, instance *function.Instance) {
 				must.Nil(t, instance)
 			},
 		},
@@ -82,11 +83,26 @@ func TestAssignPodToFunction(t *testing.T) {
 					must.NoError(t, err)
 				}()
 			},
-			check: func(t *testing.T, clientset *fake.Clientset, instance *function.Instance) {
+			check: func(t *testing.T, clientset *fake.Clientset, fn function.Function, instance *function.Instance) {
 				pods, err := clientset.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
 				ensureInstanceMatchesPod(t, instance, pods.Items[0])
+			},
+		},
+		{
+			name: "assign timeout",
+			err:  context.DeadlineExceeded,
+			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+				fixture.SetFlag(t, &function.FlagAssignTimeout, time.Millisecond)
+				err := clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					time.Sleep(10 * time.Millisecond)
+					w.WriteHeader(http.StatusOK)
+				})))
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, clientset *fake.Clientset, fn function.Function, instance *function.Instance) {
+				must.Nil(t, instance)
 			},
 		},
 	}
@@ -102,10 +118,7 @@ func TestAssignPodToFunction(t *testing.T) {
 
 			c := New(nil, clientset, nil)
 
-			err := c.startControllerInformer(ctx)
-			must.NoError(t, err)
-
-			err = c.startPodInformers(ctx)
+			err := c.startInformers(ctx)
 			must.NoError(t, err)
 
 			instance, err := c.assignPodToFunction(ctx, fn)
@@ -115,7 +128,7 @@ func TestAssignPodToFunction(t *testing.T) {
 				must.NoError(t, err)
 			}
 
-			tc.check(t, clientset, instance)
+			tc.check(t, clientset, fn, instance)
 		})
 	}
 }
@@ -224,10 +237,7 @@ func TestScaleFunction(t *testing.T) {
 
 			c := New(nil, clientset, nil)
 
-			err := c.startControllerInformer(ctx)
-			must.NoError(t, err)
-
-			err = c.startPodInformers(ctx)
+			err := c.startInformers(ctx)
 			must.NoError(t, err)
 
 			instances, err := c.scaleFunction(ctx, fn, tc.desiredInstances)
@@ -259,10 +269,7 @@ func TestScaleFunctionForwarding(t *testing.T) {
 
 	c := New(func(host string, port int) Client { return mcc }, clientset, nil)
 
-	err := c.startControllerInformer(ctx)
-	must.NoError(t, err)
-
-	err = c.startPodInformers(ctx)
+	err := c.startInformers(ctx)
 	must.NoError(t, err)
 
 	instances, err := c.scaleFunction(ctx, fn, 1)

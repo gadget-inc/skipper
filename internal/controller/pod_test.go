@@ -96,10 +96,7 @@ func TestGetInstances(t *testing.T) {
 
 			c := New(nil, clientset, nil)
 
-			err := c.startControllerInformer(ctx)
-			must.NoError(t, err)
-
-			err = c.startPodInformers(ctx)
+			err := c.startInformers(ctx)
 			must.NoError(t, err)
 
 			instances, err := c.getInstances(fn)
