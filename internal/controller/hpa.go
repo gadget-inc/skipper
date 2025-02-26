@@ -127,6 +127,7 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 			adjustedTotalUsage += len(instancesWithoutMetrics) * targetUsage
 		} else {
 			// we wanted to scale up, so we assume that instances without metrics are consuming 0% of target usage
+			adjustedTotalUsage += len(instancesWithoutMetrics) * 0
 		}
 
 		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(currentInstances)
