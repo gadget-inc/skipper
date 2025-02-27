@@ -200,17 +200,13 @@ type replicaSetKey struct{ key }
 var _ GroupKey[*appsv1.ReplicaSet] = replicaSetKey{}
 
 func (k replicaSetKey) Field(value *appsv1.ReplicaSet) slog.Attr {
-	var desiredReplicas int64
-	if value.Spec.Replicas != nil {
-		desiredReplicas = int64(*value.Spec.Replicas)
-	}
-
 	return slog.Attr{
 		Key: k.Underscored,
 		Value: slog.GroupValue(
 			Name.Field(value.Name),
 			Namespace.Field(value.Namespace),
-			slog.Int64("desired_replicas", desiredReplicas),
+			slog.Int("replicas", int(value.Status.Replicas)),
+			slog.Int("available_replicas", int(value.Status.AvailableReplicas)),
 		),
 	}
 }

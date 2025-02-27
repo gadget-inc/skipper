@@ -14,6 +14,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/gadget-inc/fusion/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -199,7 +200,6 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 	ctx, span := telemetry.Start(ctx, "controller.start_scaling_instances")
 	defer span.End()
 
-	// TODO: garbage collect old stabilization windows
 	stabilizationWindows := make(map[function.Function]*StabilizationWindow)
 
 	go timer.Loop(
@@ -213,19 +213,16 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 			for _, namespace := range function.FlagNamespaces.Value() {
 				functionMetrics, err := c.getFunctionMetrics(ctx, namespace)
 				if err != nil {
-					log.Warn(ctx, "failed to get function metrics", key.Error.Field(err))
+					log.Error(ctx, "failed to get function metrics", key.Error.Field(err))
 					return nil
 				}
 
 				now := time.Now()
 				for fn, instanceMetrics := range functionMetrics {
-					timestamp, ok := heartbeats[fn]
-					if !ok {
-						log.Warn(ctx, "no heartbeat for function", key.Function.Field(fn))
-						for _, instanceMetric := range instanceMetrics {
-							if instanceMetric.AssignedAt.After(timestamp) {
-								timestamp = instanceMetric.AssignedAt
-							}
+					timestamp := heartbeats[fn]
+					for _, instanceMetric := range instanceMetrics {
+						if instanceMetric.AssignedAt.After(timestamp) {
+							timestamp = instanceMetric.AssignedAt
 						}
 					}
 
@@ -241,7 +238,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						log.Trace(ctx, "scaling function to 0", key.Function.Field(fn), key.Timestamp.Field(timestamp))
 						_, err := c.scaleFunction(ctx, fn, 0)
 						if err != nil {
-							log.Warn(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
+							log.Error(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 						}
 						continue
 					}
@@ -298,7 +295,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 					continue
 				}
 
-				var defunctInstances []*function.Instance
+				var staleInstances []*function.Instance
 				for _, pod := range pods {
 					instance, err := function.FromPod(pod)
 					if err != nil {
@@ -312,21 +309,45 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						continue
 					}
 
-					if replicaSet.Spec.Replicas == nil || *replicaSet.Spec.Replicas == 0 {
-						defunctInstances = append(defunctInstances, instance)
+					if replicaSet.Status.Replicas == 0 {
+						staleInstances = append(staleInstances, instance)
 					}
 				}
 
-				for _, instance := range defunctInstances {
+				for _, staleInstance := range staleInstances {
+					replicaSets, err := c.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: staleInstance.Deployment}))
+					if err != nil {
+						log.Warn(ctx, "failed to list replica sets", key.Error.Field(err), key.Instance.Field(staleInstance))
+						continue
+					}
+
+					var activeReplicaSet *appsv1.ReplicaSet
+					for _, replicaSet := range replicaSets {
+						if replicaSet.Status.Replicas > 0 {
+							activeReplicaSet = replicaSet
+							break
+						}
+					}
+
+					if activeReplicaSet == nil {
+						log.Warn(ctx, "no active replica set found", key.Instance.Field(staleInstance))
+						continue
+					}
+
+					if activeReplicaSet.Status.AvailableReplicas < max(1, activeReplicaSet.Status.Replicas/2) {
+						log.Warn(ctx, "replica set does not have enough ready replicas to terminate stale instance", key.Instance.Field(staleInstance), key.ReplicaSet.Field(activeReplicaSet))
+						continue
+					}
+
 					func() {
-						scaleMu, _ := c.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
+						scaleMu, _ := c.scaleMu.LoadOrCompute(staleInstance.Function, func() *sync.Mutex { return new(sync.Mutex) })
 						scaleMu.Lock()
 						defer scaleMu.Unlock()
 
-						log.Debug(ctx, "terminating defunct function", key.Instance.Field(instance))
-						err = c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+						log.Debug(ctx, "terminating defunct function", key.Instance.Field(staleInstance))
+						err = c.clientset.CoreV1().Pods(staleInstance.Namespace).Delete(ctx, staleInstance.Name, metav1.DeleteOptions{})
 						if err != nil {
-							log.Warn(ctx, "failed to terminate instance", key.Error.Field(err), key.Instance.Field(instance))
+							log.Warn(ctx, "failed to terminate instance", key.Error.Field(err), key.Instance.Field(staleInstance))
 						}
 					}()
 				}
