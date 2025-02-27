@@ -206,6 +206,9 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 		ctx,
 		15*time.Second,
 		func(ctx context.Context) error {
+			ctx, span := telemetry.Start(ctx, "controller.scale_instances")
+			defer span.End()
+
 			c.heartbeatsMu.Lock()
 			heartbeats := maps.Clone(c.heartbeats)
 			c.heartbeatsMu.Unlock()
@@ -299,7 +302,20 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 				for _, pod := range pods {
 					instance, err := function.FromPod(pod)
 					if err != nil {
-						log.Warn(ctx, "failed to get function from pod", key.Error.Field(err), key.Pod.Field(pod))
+						log.Warn(ctx, "failed to get instance from pod", key.Error.Field(err), key.Pod.Field(pod))
+						err = c.clientset.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+						if err != nil {
+							log.Error(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(pod))
+						}
+						continue
+					}
+
+					if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > function.FlagAssignTimeout.Value()*2 {
+						log.Warn(ctx, "terminating instance stuck in assigned state", key.Instance.Field(instance))
+						err = c.clientset.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+						if err != nil {
+							log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Field(err), key.Pod.Field(pod))
+						}
 						continue
 					}
 
@@ -339,17 +355,14 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 						continue
 					}
 
-					func() {
-						scaleMu, _ := c.scaleMu.LoadOrCompute(staleInstance.Function, func() *sync.Mutex { return new(sync.Mutex) })
-						scaleMu.Lock()
-						defer scaleMu.Unlock()
-
-						log.Debug(ctx, "terminating defunct function", key.Instance.Field(staleInstance))
-						err = c.clientset.CoreV1().Pods(staleInstance.Namespace).Delete(ctx, staleInstance.Name, metav1.DeleteOptions{})
-						if err != nil {
-							log.Warn(ctx, "failed to terminate instance", key.Error.Field(err), key.Instance.Field(staleInstance))
-						}
-					}()
+					scaleMu, _ := c.scaleMu.LoadOrCompute(staleInstance.Function, func() *sync.Mutex { return new(sync.Mutex) })
+					scaleMu.Lock()
+					log.Debug(ctx, "terminating defunct function", key.Instance.Field(staleInstance))
+					err = c.clientset.CoreV1().Pods(staleInstance.Namespace).Delete(ctx, staleInstance.Name, metav1.DeleteOptions{})
+					if err != nil {
+						log.Warn(ctx, "failed to terminate instance", key.Error.Field(err), key.Instance.Field(staleInstance))
+					}
+					scaleMu.Unlock()
 				}
 			}
 
