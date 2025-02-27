@@ -294,7 +294,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 
 				pods, err := c.listPods(namespace, hasTenantSelector)
 				if err != nil {
-					log.Warn(ctx, "failed to get all assigned pods for replica set check", key.Error.Field(err))
+					log.Error(ctx, "failed to get assigned pods", key.Error.Field(err))
 					continue
 				}
 
@@ -333,7 +333,7 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 				for _, staleInstance := range staleInstances {
 					replicaSets, err := c.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: staleInstance.Deployment}))
 					if err != nil {
-						log.Warn(ctx, "failed to list replica sets", key.Error.Field(err), key.Instance.Field(staleInstance))
+						log.Error(ctx, "failed to list replica sets", key.Error.Field(err), key.Instance.Field(staleInstance))
 						continue
 					}
 
@@ -351,16 +351,16 @@ func (c *Controller) startScalingInstances(ctx context.Context) error {
 					}
 
 					if activeReplicaSet.Status.AvailableReplicas < max(1, activeReplicaSet.Status.Replicas/2) {
-						log.Warn(ctx, "replica set does not have enough ready replicas to terminate stale instance", key.Instance.Field(staleInstance), key.ReplicaSet.Field(activeReplicaSet))
+						log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance", key.Instance.Field(staleInstance), key.ReplicaSet.Field(activeReplicaSet))
 						continue
 					}
 
 					scaleMu, _ := c.scaleMu.LoadOrCompute(staleInstance.Function, func() *sync.Mutex { return new(sync.Mutex) })
 					scaleMu.Lock()
-					log.Debug(ctx, "terminating defunct function", key.Instance.Field(staleInstance))
+					log.Info(ctx, "terminating stale instance", key.Instance.Field(staleInstance))
 					err = c.clientset.CoreV1().Pods(staleInstance.Namespace).Delete(ctx, staleInstance.Name, metav1.DeleteOptions{})
 					if err != nil {
-						log.Warn(ctx, "failed to terminate instance", key.Error.Field(err), key.Instance.Field(staleInstance))
+						log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err), key.Instance.Field(staleInstance))
 					}
 					scaleMu.Unlock()
 				}
