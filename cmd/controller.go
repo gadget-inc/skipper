@@ -41,11 +41,7 @@ func NewCmdController() *cobra.Command {
 
 			config.QPS = 100
 			config.Burst = 200
-			config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
-				return otelhttp.NewTransport(rt,
-					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
-				)
-			}
+			config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper { return otelhttp.NewTransport(rt) }
 
 			clientset, err := kubernetes.NewForConfig(config)
 			if err != nil {
