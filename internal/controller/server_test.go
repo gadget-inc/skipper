@@ -40,8 +40,10 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 1, len(ctrl.heartbeats))
-				must.Eq(t, heartbeats[0].Timestamp, ctrl.heartbeats[heartbeats[0].Function])
+				must.Eq(t, 1, ctrl.heartbeats.Size())
+				heartbeat, ok := ctrl.heartbeats.Load(heartbeats[0].Function)
+				must.True(t, ok)
+				must.Eq(t, heartbeats[0].Timestamp, heartbeat)
 			},
 		},
 		{
@@ -53,9 +55,11 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 2, len(ctrl.heartbeats))
+				must.Eq(t, 2, ctrl.heartbeats.Size())
 				for _, hb := range heartbeats {
-					must.Eq(t, hb.Timestamp, ctrl.heartbeats[hb.Function])
+					heartbeat, ok := ctrl.heartbeats.Load(hb.Function)
+					must.True(t, ok)
+					must.Eq(t, hb.Timestamp, heartbeat)
 				}
 			},
 		},
@@ -64,19 +68,21 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				// seed the controller with a recent heartbeat
 				fn := fixture.NewFunction()
-				ctrl.heartbeats[fn] = time.Now()
+				heartbeat := time.Now()
+				ctrl.heartbeats.Store(fn, heartbeat)
 
 				// send an old heartbeat
 				return []function.Heartbeat{
-					{Function: fn, Timestamp: ctrl.heartbeats[fn].Add(-time.Hour)},
+					{Function: fn, Timestamp: heartbeat.Add(-time.Hour)},
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 1, len(ctrl.heartbeats))
+				must.Eq(t, 1, ctrl.heartbeats.Size())
 
 				sentTimestamp := heartbeats[0].Timestamp
-				keptTimestamp := ctrl.heartbeats[heartbeats[0].Function]
+				keptTimestamp, ok := ctrl.heartbeats.Load(heartbeats[0].Function)
 
+				must.True(t, ok)
 				must.NotEq(t, keptTimestamp, sentTimestamp)
 				must.Eq(t, keptTimestamp, sentTimestamp.Add(time.Hour))
 			},
@@ -117,9 +123,6 @@ func TestHandleHeartbeat(t *testing.T) {
 
 			must.Eq(t, http.StatusOK, rw.Code)
 			must.Length(t, 0, rw.Body)
-
-			ctrl.heartbeatsMu.Lock()
-			defer ctrl.heartbeatsMu.Unlock()
 			tc.check(t, mcc, ctrl, heartbeats)
 		})
 	}

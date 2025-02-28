@@ -41,6 +41,11 @@ func NewCmdController() *cobra.Command {
 
 			config.QPS = 100
 			config.Burst = 200
+			config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+				return otelhttp.NewTransport(rt,
+					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
+				)
+			}
 
 			clientset, err := kubernetes.NewForConfig(config)
 			if err != nil {
@@ -110,10 +115,12 @@ func NewCmdController() *cobra.Command {
 	controller.FlagHPADownscaleStabilization.Bind(cmd)
 	controller.FlagHPAInitialReadinessDelay.Bind(cmd)
 	controller.FlagHPATolerance.Bind(cmd)
+	controller.FlagHeartbeatTimeout.Bind(cmd)
 	controller.FlagIP.Bind(cmd)
 	controller.FlagNamespace.Bind(cmd)
 	controller.FlagPasetoPrivateKey.Bind(cmd)
 	controller.FlagPort.Bind(cmd)
+	controller.FlagScaleInterval.Bind(cmd)
 	function.FlagAssignPath.Bind(cmd)
 	function.FlagAssignTimeout.Bind(cmd)
 	function.FlagNamespaces.Bind(cmd)

@@ -65,6 +65,18 @@ var (
 		},
 	}
 
+	FlagHeartbeatTimeout = flag.Flag[time.Duration]{
+		Name:        "controller-heartbeat-timeout",
+		Description: "How long to wait before scaling a function to 0 if it has not sent a heartbeat.",
+		Default:     90 * time.Second,
+	}
+
+	FlagScaleInterval = flag.Flag[time.Duration]{
+		Name:        "controller-scale-interval",
+		Description: "How often to scale functions.",
+		Default:     15 * time.Second,
+	}
+
 	FlagHPATolerance = flag.Flag[float64]{
 		Name:        "controller-hpa-tolerance",
 		Description: "The usage ratio tolerance for the HPA algorithm.",

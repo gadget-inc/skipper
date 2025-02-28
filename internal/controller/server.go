@@ -108,14 +108,14 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	c.heartbeatsMu.Lock()
 	for _, heartbeat := range heartbeats {
-		timestamp, ok := c.heartbeats[heartbeat.Function]
-		if !ok || heartbeat.Timestamp.After(timestamp) {
-			c.heartbeats[heartbeat.Function] = heartbeat.Timestamp
-		}
+		c.heartbeats.Compute(heartbeat.Function, func(timestamp time.Time, loaded bool) (time.Time, bool) {
+			if !loaded || heartbeat.Timestamp.After(timestamp) {
+				return heartbeat.Timestamp, false
+			}
+			return timestamp, false
+		})
 	}
-	c.heartbeatsMu.Unlock()
 
 	log.Trace(req.Context(), "received heartbeats", key.Count.Field(len(heartbeats)))
 	rw.WriteHeader(http.StatusOK)

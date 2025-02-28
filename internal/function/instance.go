@@ -14,11 +14,13 @@ import (
 
 type Instance struct {
 	Function
-	Name       string // pod name
-	Addr       string // pod IP : function port
-	Version    string // replica set name
-	AssignedAt time.Time
-	ReadyAt    time.Time
+	Name        string // pod name
+	Addr        string // pod IP : function port
+	Version     string // replica set name
+	AssignedAt  time.Time
+	ReadyAt     time.Time
+	CPUUsage    *int64
+	MemoryUsage *int64
 }
 
 func FromPod(pod *v1.Pod) (*Instance, error) {

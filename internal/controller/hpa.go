@@ -15,13 +15,6 @@ const (
 	MetricMemory Metric = "memory"
 )
 
-// InstanceMetric represents an instance with metrics
-type InstanceMetric struct {
-	*function.Instance
-	CPUUsage    *int64
-	MemoryUsage *int64
-}
-
 // Recommendation represents a scaling recommendation at a point in time
 type Recommendation struct {
 	Instances int
@@ -63,12 +56,12 @@ func (sw *StabilizationWindow) GetMaxRecommendation() int {
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []InstanceMetric, timestamp time.Time) (int, error) {
-	currentInstances := len(instanceMetrics)
-	var instancesWithMetrics []InstanceMetric
-	var instancesWithoutMetrics []InstanceMetric
+func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Instance, timestamp time.Time) (int, error) {
+	currentInstances := len(instances)
+	var instancesWithMetrics []*function.Instance
+	var instancesWithoutMetrics []*function.Instance
 
-	for _, instance := range instanceMetrics {
+	for _, instance := range instances {
 		var usage *int64
 		switch metric {
 		case MetricCPU:
@@ -150,14 +143,14 @@ func calculateDesiredInstancesForMetric(metric Metric, instanceMetrics []Instanc
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(instanceMetrics []InstanceMetric, timestamp time.Time) (int, error) {
-	currentInstances := len(instanceMetrics)
+func calculateDesiredInstances(instances []*function.Instance, timestamp time.Time) (int, error) {
+	currentInstances := len(instances)
 	maxDesiredInstances := 0
 	scaleDownErrors := 0
 	scaleDownSuggested := false
 
 	for _, metric := range []Metric{MetricCPU /*, MetricMemory*/} {
-		desiredInstances, err := calculateDesiredInstancesForMetric(metric, instanceMetrics, timestamp)
+		desiredInstances, err := calculateDesiredInstancesForMetric(metric, instances, timestamp)
 		if err != nil {
 			if desiredInstances < currentInstances {
 				scaleDownErrors++

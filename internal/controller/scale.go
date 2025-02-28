@@ -19,6 +19,7 @@ import (
 	"github.com/goccy/go-json"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -27,16 +28,20 @@ import (
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
-func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (map[function.Function][]InstanceMetric, error) {
+func (c *Controller) scaleInstances(ctx context.Context, namespace string) error {
+	ctx, span := telemetry.Start(ctx, "controller.scale_instances")
+	defer span.End()
+
 	pods, err := c.listPods(namespace, hasTenantSelector)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all assigned pods: %w", err)
+		return fmt.Errorf("failed to get assigned pods: %w", err)
 	}
 
 	// TODO: paginate
 	metrics, err := c.metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{LabelSelector: key.Tenant.Label})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pod metrics: %w", err)
+		// TODO: make this recoverable
+		return fmt.Errorf("failed to get metrics: %w", err)
 	}
 
 	podNameToMetric := make(map[string]metricsv1beta1.PodMetrics, len(metrics.Items))
@@ -44,41 +49,153 @@ func (c *Controller) getFunctionMetrics(ctx context.Context, namespace string) (
 		podNameToMetric[metric.Name] = metric
 	}
 
-	functionMetrics := make(map[function.Function][]InstanceMetric)
+	fnInstances := make(map[function.Function][]*function.Instance)
 
 	for _, pod := range pods {
 		instance, err := function.FromPod(pod)
 		if err != nil {
-			log.Warn(ctx, "failed to get instance from labels", key.Error.Field(err), key.Pod.Field(pod), key.Labels.Field(pod.Labels))
+			log.Warn(ctx, "failed to get instance from pod", key.Error.Field(err), key.Pod.Field(pod))
+			err = c.clientset.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			if err != nil {
+				log.Error(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(pod))
+			}
 			continue
 		}
 
-		instanceMetric := InstanceMetric{Instance: instance}
+		if !c.isResponsibleForFunction(instance.Function) {
+			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.Function.Field(instance.Function))
+			continue
+		}
 
-		if m, exists := podNameToMetric[pod.Name]; exists {
-			for _, container := range m.Containers {
+		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > function.FlagAssignTimeout.Value()*2 {
+			log.Warn(ctx, "terminating instance stuck in assigned state", key.Instance.Field(instance))
+			err = c.clientset.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			if err != nil {
+				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Field(err), key.Pod.Field(pod))
+			}
+			continue
+		}
+
+		if podMetric, exists := podNameToMetric[pod.Name]; exists {
+			for _, container := range podMetric.Containers {
 				if container.Usage.Cpu() != nil {
 					cpuUsage := container.Usage.Cpu().MilliValue()
-					if instanceMetric.CPUUsage == nil {
-						instanceMetric.CPUUsage = new(int64)
+					if instance.CPUUsage == nil {
+						instance.CPUUsage = new(int64)
 					}
-					*instanceMetric.CPUUsage += cpuUsage
+					*instance.CPUUsage += cpuUsage
 				}
-
 				if container.Usage.Memory() != nil {
 					memUsage := container.Usage.Memory().Value()
-					if instanceMetric.MemoryUsage == nil {
-						instanceMetric.MemoryUsage = new(int64)
+					if instance.MemoryUsage == nil {
+						instance.MemoryUsage = new(int64)
 					}
-					*instanceMetric.MemoryUsage += memUsage
+					*instance.MemoryUsage += memUsage
 				}
 			}
 		}
 
-		functionMetrics[instance.Function] = append(functionMetrics[instance.Function], instanceMetric)
+		if fnInstances[instance.Function] == nil {
+			// ensure the function is in the map
+			fnInstances[instance.Function] = []*function.Instance{}
+		}
+
+		replicaSet, err := c.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.Version)
+		if err != nil {
+			log.Error(ctx, "failed to get replica set for pod", key.Error.Field(err), key.Pod.Field(pod))
+			continue
+		}
+
+		if replicaSet.Status.Replicas > 0 {
+			// instance is running on the latest replica set
+			fnInstances[instance.Function] = append(fnInstances[instance.Function], instance)
+			continue
+		}
+
+		// this is a stale instance, find the active replica set
+		replicaSets, err := c.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Deployment}))
+		if err != nil {
+			log.Error(ctx, "failed to list replica sets", key.Error.Field(err), key.Instance.Field(instance))
+			continue
+		}
+
+		var activeReplicaSet *appsv1.ReplicaSet
+		for _, replicaSet := range replicaSets {
+			if replicaSet.Status.Replicas > 0 {
+				activeReplicaSet = replicaSet
+				break
+			}
+		}
+
+		if activeReplicaSet != nil && activeReplicaSet.Status.AvailableReplicas < max(1, activeReplicaSet.Status.Replicas/2) {
+			log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance", key.Instance.Field(instance), key.ReplicaSet.Field(activeReplicaSet))
+			continue
+		}
+
+		scaleMu, _ := c.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
+		scaleMu.Lock()
+		log.Info(ctx, "terminating stale instance", key.Instance.Field(instance))
+		err = c.clientset.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+		if err != nil {
+			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err), key.Instance.Field(instance))
+		}
+		scaleMu.Unlock()
 	}
 
-	return functionMetrics, nil
+	now := time.Now()
+	for fn, instances := range fnInstances {
+		heartbeat, _ := c.heartbeats.Load(fn)
+		for _, instance := range instances {
+			if instance.AssignedAt.After(heartbeat) {
+				heartbeat = instance.AssignedAt
+			}
+		}
+
+		if time.Since(heartbeat) > FlagHeartbeatTimeout.Value() {
+			log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat))
+			c.scaleMu.Delete(fn)
+			c.heartbeats.Delete(fn)
+			c.stabilizationWindows.Delete(fn)
+			_, err := c.scaleFunction(ctx, fn, 0)
+			if err != nil {
+				log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
+			}
+			continue
+		}
+
+		currentInstances := len(instances)
+		desiredInstances, err := calculateDesiredInstances(instances, now)
+		if err != nil {
+			log.Error(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
+			continue
+		}
+
+		if desiredInstances < fn.Scale.MinInstances {
+			desiredInstances = fn.Scale.MinInstances
+		}
+
+		if desiredInstances > fn.Scale.MaxInstances {
+			desiredInstances = fn.Scale.MaxInstances
+		}
+
+		stabilizationWindow, _ := c.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
+		stabilizationWindow.RecordRecommendation(desiredInstances, now)
+
+		if desiredInstances < currentInstances {
+			desiredInstances = min(currentInstances, stabilizationWindow.GetMaxRecommendation()) // scale down to the max recommendation within the stabilization window
+		}
+
+		if desiredInstances == 0 {
+			desiredInstances = 1 // only scale to 0 from a heartbeat timeout
+		}
+
+		_, err = c.scaleFunction(ctx, fn, desiredInstances)
+		if err != nil {
+			log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err), key.Function.Field(fn), key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+		}
+	}
+
+	return nil
 }
 
 func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {

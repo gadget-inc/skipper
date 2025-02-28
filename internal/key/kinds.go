@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 type boolKey struct{ key }
@@ -163,6 +164,7 @@ func (k podKey) Field(value *v1.Pod) slog.Attr {
 		Value: slog.GroupValue(
 			Name.Field(value.Name),
 			Namespace.Field(value.Namespace),
+			Labels.Field(value.Labels),
 		),
 	}
 }
@@ -171,6 +173,7 @@ func (k podKey) Attributes(value *v1.Pod) []attribute.KeyValue {
 	return []attribute.KeyValue{
 		attribute.String(k.Underscored+".name", value.Name),
 		attribute.String(k.Underscored+".namespace", value.Namespace),
+		attribute.String(k.Underscored+".labels", labels.Set(value.Labels).String()),
 	}
 }
 
