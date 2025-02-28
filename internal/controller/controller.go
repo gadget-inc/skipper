@@ -87,9 +87,6 @@ func New(newClientFunc NewClientFunc, clientset kubernetes.Interface, metricsCli
 }
 
 func (c *Controller) Start(ctx context.Context) error {
-	ctx, span := telemetry.Start(ctx, "controller.start")
-	defer span.End()
-
 	err := c.startInformers(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start informers: %w", err)
