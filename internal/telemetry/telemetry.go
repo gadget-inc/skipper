@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/key"
@@ -20,6 +21,7 @@ var tracer = otel.Tracer("github.com/gadget-inc/fusion")
 
 func Init(ctx context.Context, component Component) func() {
 	if !FlagTelemetry.Value() {
+		log.Info(ctx, "telemetry disabled", slog.String("component", component.String()))
 		return func() {}
 	}
 
@@ -62,6 +64,7 @@ func Init(ctx context.Context, component Component) func() {
 
 	otel.SetTracerProvider(traceProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	log.Info(ctx, "telemetry enabled", slog.String("component", component.String()))
 
 	return func() {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

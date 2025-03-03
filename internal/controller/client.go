@@ -29,10 +29,16 @@ type httpClient struct {
 var _ Client = &httpClient{}
 
 func NewHTTPClient(host string, port int) Client {
+	var protocols http.Protocols
+	protocols.SetUnencryptedHTTP2(true)
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Protocols = &protocols
+
 	return &httpClient{
 		addr: fmt.Sprintf("http://%s:%d", host, port),
 		Client: &http.Client{
-			Transport: otelhttp.NewTransport(http.DefaultTransport,
+			Transport: otelhttp.NewTransport(transport,
 				otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
 			),
 		},
