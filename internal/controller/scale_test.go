@@ -191,7 +191,8 @@ func TestScaleFunctions(t *testing.T) {
 				clientset.Tracker().Add(currentReplicaSet)
 
 				newReplicaSet := fixture.NewReplicaSet(t, fn)
-				newReplicaSet.Status.AvailableReplicas = 0 // simulate a new replica set with no available replicas
+				newReplicaSet.Status.Replicas = 10
+				newReplicaSet.Status.AvailableReplicas = 2 // simulate a new replica set with less than 1/4 available replicas
 				clientset.Tracker().Add(newReplicaSet)
 
 				return fn
