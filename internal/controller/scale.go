@@ -29,7 +29,7 @@ import (
 )
 
 func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error {
-	ctx, span := telemetry.Start(ctx, "controller.scale_instances")
+	ctx, span := telemetry.StartRoot(ctx, "controller.scale_instances")
 	defer span.End()
 
 	pods, err := c.listPods(namespace, hasTenantSelector)
@@ -141,58 +141,70 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 		scaleMu.Unlock()
 	}
 
+	var wg sync.WaitGroup
+
 	now := time.Now()
 	for fn, instances := range fnInstances {
-		heartbeat, _ := c.heartbeats.Load(fn)
-		for _, instance := range instances {
-			if instance.AssignedAt.After(heartbeat) {
-				heartbeat = instance.AssignedAt
-			}
-		}
+		wg.Add(1)
 
-		if time.Since(heartbeat) >= FlagHeartbeatTimeout.Value() {
-			log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat))
-			_, err := c.scaleFunction(ctx, fn, 0)
+		go func() {
+			ctx, span := telemetry.Start(ctx, "controller.scale_functions.scale_function", trace.WithAttributes(key.Function.Attributes(fn)...))
+			defer span.End()
+			defer wg.Done()
+
+			heartbeat, _ := c.heartbeats.Load(fn)
+			for _, instance := range instances {
+				if instance.AssignedAt.After(heartbeat) {
+					heartbeat = instance.AssignedAt
+				}
+			}
+
+			if time.Since(heartbeat) >= FlagHeartbeatTimeout.Value() {
+				log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat))
+				_, err := c.scaleFunction(ctx, fn, 0)
+				if err != nil {
+					log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
+				}
+				c.scaleMu.Delete(fn)
+				c.heartbeats.Delete(fn)
+				c.stabilizationWindows.Delete(fn)
+				return
+			}
+
+			currentInstances := len(instances)
+			desiredInstances, err := calculateDesiredInstances(instances, now)
 			if err != nil {
-				log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
+				log.Warn(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
+				return
 			}
-			c.scaleMu.Delete(fn)
-			c.heartbeats.Delete(fn)
-			c.stabilizationWindows.Delete(fn)
-			continue
-		}
 
-		currentInstances := len(instances)
-		desiredInstances, err := calculateDesiredInstances(instances, now)
-		if err != nil {
-			log.Warn(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
-			continue
-		}
+			if desiredInstances < fn.Scale.MinInstances {
+				desiredInstances = fn.Scale.MinInstances
+			}
 
-		if desiredInstances < fn.Scale.MinInstances {
-			desiredInstances = fn.Scale.MinInstances
-		}
+			if desiredInstances > fn.Scale.MaxInstances {
+				desiredInstances = fn.Scale.MaxInstances
+			}
 
-		if desiredInstances > fn.Scale.MaxInstances {
-			desiredInstances = fn.Scale.MaxInstances
-		}
+			stabilizationWindow, _ := c.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
+			stabilizationWindow.RecordRecommendation(desiredInstances, now)
 
-		stabilizationWindow, _ := c.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
-		stabilizationWindow.RecordRecommendation(desiredInstances, now)
+			if desiredInstances < currentInstances {
+				desiredInstances = min(currentInstances, stabilizationWindow.GetMaxRecommendation()) // scale down to the max recommendation within the stabilization window
+			}
 
-		if desiredInstances < currentInstances {
-			desiredInstances = min(currentInstances, stabilizationWindow.GetMaxRecommendation()) // scale down to the max recommendation within the stabilization window
-		}
+			if desiredInstances == 0 {
+				desiredInstances = 1 // only scale to 0 from a heartbeat timeout
+			}
 
-		if desiredInstances == 0 {
-			desiredInstances = 1 // only scale to 0 from a heartbeat timeout
-		}
-
-		_, err = c.scaleFunction(ctx, fn, desiredInstances)
-		if err != nil {
-			log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err), key.Function.Field(fn), key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		}
+			_, err = c.scaleFunction(ctx, fn, desiredInstances)
+			if err != nil {
+				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err), key.Function.Field(fn), key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+			}
+		}()
 	}
+
+	wg.Wait()
 
 	return nil
 }
