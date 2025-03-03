@@ -29,7 +29,7 @@ import (
 )
 
 func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error {
-	ctx, span := telemetry.StartRoot(ctx, "controller.scale_instances")
+	ctx, span := telemetry.StartRoot(ctx, "controller.scale_functions")
 	defer span.End()
 
 	pods, err := c.listPods(namespace, hasTenantSelector)

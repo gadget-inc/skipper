@@ -4,12 +4,9 @@ import (
 	"hash/crc32"
 	"maps"
 	"slices"
-	"sort"
 
 	"github.com/puzpuzpuz/xsync/v3"
 )
-
-// curtesy of gpt-01-preview :)
 
 // HashRing represents a thread-safe consistent hash ring of IPs.
 type HashRing struct {
@@ -56,7 +53,7 @@ func (h *HashRing) Add(ip string) {
 	h.hashes = append(h.hashes, hash)
 
 	// Sort the hashes to maintain the ring order
-	sort.Slice(h.hashes, func(i, j int) bool { return h.hashes[i] < h.hashes[j] })
+	slices.Sort(h.hashes)
 }
 
 // Remove removes an IP from the hash ring.
@@ -77,9 +74,9 @@ func (h *HashRing) Remove(ip string) {
 	delete(h.ips, hash)
 
 	// Remove hash from the sorted list of hashes
-	index := sort.Search(len(h.hashes), func(i int) bool { return h.hashes[i] >= hash })
-	if index < len(h.hashes) && h.hashes[index] == hash {
-		h.hashes = append(h.hashes[:index], h.hashes[index+1:]...)
+	index, found := slices.BinarySearch(h.hashes, hash)
+	if found {
+		h.hashes = slices.Delete(h.hashes, index, index+1)
 	}
 }
 
@@ -102,8 +99,8 @@ func (h *HashRing) Get(key string) string {
 	hash := crc32.ChecksumIEEE([]byte(key))
 
 	// Locate the nearest ip greater than or equal to the key's hash
-	index := sort.Search(len(h.hashes), func(i int) bool { return h.hashes[i] >= hash })
-	if index == len(h.hashes) {
+	index, found := slices.BinarySearch(h.hashes, hash)
+	if !found {
 		// Wrap around to the first ip
 		index = 0
 	}
@@ -119,6 +116,5 @@ func (h *HashRing) Get(key string) string {
 func (h *HashRing) List() []string {
 	rt := h.mu.RLock()
 	defer h.mu.RUnlock(rt)
-
 	return slices.Sorted(maps.Values(h.ips))
 }
