@@ -11,7 +11,6 @@ import (
 	"net/http/httputil"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/buffer"
 	"github.com/gadget-inc/fusion/internal/controller"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
@@ -48,7 +47,7 @@ func New(controllerClient controller.Client) *Router {
 	}
 
 	r.reverseProxy = &httputil.ReverseProxy{
-		BufferPool: buffer.Pool,
+		BufferPool: bufferPool,
 		Rewrite:    rewriteHeaders,
 		Transport:  r,
 	}
