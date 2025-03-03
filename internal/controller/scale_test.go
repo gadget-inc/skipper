@@ -178,7 +178,7 @@ func TestScaleFunctions(t *testing.T) {
 			},
 		},
 		{
-			name: "stale instance without available pods",
+			name: "stale instance without enough available pods",
 			setup: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
 				c.heartbeats.Store(fn, time.Now())
