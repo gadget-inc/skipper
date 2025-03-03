@@ -116,7 +116,7 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 			},
 			Annotations: map[string]string{
 				key.Function.Label:   string(fnJSON),
-				key.ReplicaSet.Label: CurrentReplicaSet(fn),
+				key.ReplicaSet.Label: CurrentReplicaSetName(fn),
 				key.AssignedAt.Label: time.Now().UTC().Format(time.RFC3339),
 				key.ReadyAt.Label:    time.Now().UTC().Format(time.RFC3339),
 			},
@@ -147,23 +147,29 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 	}
 }
 
-func CurrentReplicaSet(fn function.Function) string {
+func CurrentReplicaSetName(fn function.Function) string {
 	return fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load()))
 }
 
-func NewReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
+func CurrentReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
 	return &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      CurrentReplicaSet(fn),
+			Name:      CurrentReplicaSetName(fn),
 			Namespace: fn.Namespace,
 			Labels: map[string]string{
 				key.Deployment.Label: fn.Deployment,
 			},
 		},
 		Status: appsv1.ReplicaSetStatus{
-			Replicas: 1,
+			Replicas:          1,
+			AvailableReplicas: 1,
 		},
 	}
+}
+
+func NewReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
+	replicaSetCounter.Add(1)
+	return CurrentReplicaSet(t, fn)
 }
 
 // NewPodMetrics returns a new PodMetrics for the given pod.

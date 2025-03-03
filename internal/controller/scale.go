@@ -165,7 +165,7 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 		currentInstances := len(instances)
 		desiredInstances, err := calculateDesiredInstances(instances, now)
 		if err != nil {
-			log.Error(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
+			log.Warn(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
 			continue
 		}
 

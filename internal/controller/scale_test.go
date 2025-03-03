@@ -60,7 +60,7 @@ func TestScaleFunctions(t *testing.T) {
 				fn := fixture.NewFunction()
 				c.heartbeats.Store(fn, time.Now())
 
-				clientset.Tracker().Add(fixture.NewReplicaSet(t, fn))
+				clientset.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 				clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
@@ -94,7 +94,7 @@ func TestScaleFunctions(t *testing.T) {
 				fn := fixture.NewFunction()
 				c.heartbeats.Store(fn, time.Now())
 
-				clientset.Tracker().Add(fixture.NewReplicaSet(t, fn))
+				clientset.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
 				assignedPod1 := fixture.NewAssignedPod(t, fn, nil)
 				assignedPod1.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
@@ -131,7 +131,7 @@ func TestScaleFunctions(t *testing.T) {
 				c.scaleMu.Store(fn, new(sync.Mutex))
 				c.stabilizationWindows.Store(fn, new(StabilizationWindow))
 
-				clientset.Tracker().Add(fixture.NewReplicaSet(t, fn))
+				clientset.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
 				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
@@ -153,6 +153,57 @@ func TestScaleFunctions(t *testing.T) {
 
 				_, ok = c.stabilizationWindows.Load(fn)
 				must.False(t, ok)
+			},
+		},
+		{
+			name: "stale instance",
+			setup: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.heartbeats.Store(fn, time.Now())
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				clientset.Tracker().Add(assignedPod)
+
+				currentReplicaSet := fixture.CurrentReplicaSet(t, fn)
+				currentReplicaSet.Status.Replicas = 0 // simulate a stale replica set
+				clientset.Tracker().Add(currentReplicaSet)
+				clientset.Tracker().Add(fixture.NewReplicaSet(t, fn)) // add a new replica set with available replicas
+
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset, fn function.Function) {
+				pods, err := clientset.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 0, pods.Items)
+			},
+		},
+		{
+			name: "stale instance without available pods",
+			setup: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.heartbeats.Store(fn, time.Now())
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				clientset.Tracker().Add(assignedPod)
+
+				currentReplicaSet := fixture.CurrentReplicaSet(t, fn)
+				currentReplicaSet.Status.Replicas = 0 // simulate a stale replica set
+				clientset.Tracker().Add(currentReplicaSet)
+
+				newReplicaSet := fixture.NewReplicaSet(t, fn)
+				newReplicaSet.Status.AvailableReplicas = 0 // simulate a new replica set with no available replicas
+				clientset.Tracker().Add(newReplicaSet)
+
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset, fn function.Function) {
+				pods, err := clientset.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				must.NoError(t, err)
+
+				instance, err := function.FromPod(&pods.Items[0])
+				must.NoError(t, err)
+				must.Eq(t, fn, instance.Function)
+				must.Len(t, 1, pods.Items)
 			},
 		},
 	}
