@@ -122,6 +122,27 @@ func TestScaleFunctions(t *testing.T) {
 				must.Len(t, 1, pods.Items)
 			},
 		},
+		{
+			name: "heartbeat timeout",
+			setup: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.heartbeats.Store(fn, time.Now().Add(-FlagHeartbeatTimeout.Value()))
+
+				clientset.Tracker().Add(fixture.NewReplicaSet(t, fn))
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				clientset.Tracker().Add(assignedPod)
+
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset, fn function.Function) {
+				pods, err := clientset.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 0, pods.Items)
+			},
+		},
 	}
 
 	for _, tc := range testCases {

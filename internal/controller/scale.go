@@ -150,7 +150,7 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 			}
 		}
 
-		if time.Since(heartbeat) > FlagHeartbeatTimeout.Value() {
+		if time.Since(heartbeat) >= FlagHeartbeatTimeout.Value() {
 			log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat))
 			c.scaleMu.Delete(fn)
 			c.heartbeats.Delete(fn)
@@ -160,10 +160,6 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 				log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
 			}
 			continue
-		}
-
-		for _, instance := range instances {
-			log.Info(ctx, "instance", key.Instance.Field(instance))
 		}
 
 		currentInstances := len(instances)
