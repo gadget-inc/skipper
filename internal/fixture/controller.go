@@ -8,6 +8,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/rand"
 )
 
 type (
@@ -96,7 +97,7 @@ func (f *MockControllerClient) Heartbeat(ctx context.Context, heartbeats []funct
 func NewControllerPod() *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "controller",
+			Name:      "controller-" + rand.String(6),
 			Namespace: DefaultControllerNamespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/name":      "fusion",

@@ -207,6 +207,35 @@ func TestScaleFunctions(t *testing.T) {
 				must.Len(t, 1, pods.Items)
 			},
 		},
+		{
+			name: "different controller pod",
+			setup: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.heartbeats.Store(fn, time.Now().Add(-FlagHeartbeatTimeout.Value())) // heartbeat timeout
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				clientset.Tracker().Add(assignedPod) // add an assigned pod that needs to be terminated
+
+				// add a bunch of controller pods so that we're unlikely to be responsible for the assigned pod
+				for i := range 10 {
+					ctrlPod := fixture.NewControllerPod()
+					ctrlPod.Status.PodIP = "127.0.0." + strconv.Itoa(i+2)
+					clientset.Tracker().Add(ctrlPod)
+				}
+
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset, fn function.Function) {
+				pods, err := clientset.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				must.NoError(t, err)
+
+				// the assigned pod should still be around because we're not responsible for it
+				instance, err := function.FromPod(&pods.Items[0])
+				must.NoError(t, err)
+				must.Eq(t, fn, instance.Function)
+				must.Len(t, 1, pods.Items)
+			},
+		},
 	}
 
 	for _, tc := range testCases {
