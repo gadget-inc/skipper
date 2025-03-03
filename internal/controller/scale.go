@@ -28,7 +28,7 @@ import (
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
-func (c *Controller) scaleInstances(ctx context.Context, namespace string) error {
+func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error {
 	ctx, span := telemetry.Start(ctx, "controller.scale_instances")
 	defer span.End()
 
@@ -67,6 +67,10 @@ func (c *Controller) scaleInstances(ctx context.Context, namespace string) error
 			continue
 		}
 
+		if _, ok := fnInstances[instance.Function]; !ok {
+			fnInstances[instance.Function] = nil // ensure the function is in the map so that we loop over all the functions in the next step
+		}
+
 		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > function.FlagAssignTimeout.Value()*2 {
 			log.Warn(ctx, "terminating instance stuck in assigned state", key.Instance.Field(instance))
 			err = c.clientset.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
@@ -95,14 +99,9 @@ func (c *Controller) scaleInstances(ctx context.Context, namespace string) error
 			}
 		}
 
-		if fnInstances[instance.Function] == nil {
-			// ensure the function is in the map
-			fnInstances[instance.Function] = []*function.Instance{}
-		}
-
-		replicaSet, err := c.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.Version)
+		replicaSet, err := c.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
 		if err != nil {
-			log.Error(ctx, "failed to get replica set for pod", key.Error.Field(err), key.Pod.Field(pod))
+			log.Error(ctx, "failed to get replica set for instance", key.Error.Field(err), key.Instance.Field(instance))
 			continue
 		}
 
@@ -161,6 +160,10 @@ func (c *Controller) scaleInstances(ctx context.Context, namespace string) error
 				log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
 			}
 			continue
+		}
+
+		for _, instance := range instances {
+			log.Info(ctx, "instance", key.Instance.Field(instance))
 		}
 
 		currentInstances := len(instances)

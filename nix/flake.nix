@@ -15,7 +15,7 @@
         packages = {
           deno = pkgs.deno;
           git = pkgs.git;
-          go = pkgs.go;
+          go = pkgs.go_1_24;
           golangci-lint = pkgs.golangci-lint;
           krane = pkgs.krane;
           stern = pkgs.stern;

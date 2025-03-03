@@ -94,7 +94,7 @@ func (c *Controller) Start(ctx context.Context) error {
 
 	go timer.Loop(ctx, FlagScaleInterval.Value(), func(ctx context.Context) error {
 		for _, namespace := range function.FlagNamespaces.Value() {
-			err := c.scaleInstances(ctx, namespace)
+			err := c.scaleFunctions(ctx, namespace)
 			if err != nil {
 				log.Error(ctx, "failed to scale instances", key.Error.Field(err))
 			}

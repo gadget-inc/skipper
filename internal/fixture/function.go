@@ -19,19 +19,16 @@ const (
 )
 
 func NewFunction(opts ...FunctionOption) function.Function {
-	counterMu.Lock()
-	defer counterMu.Unlock()
-
-	tenantCounter++
+	tenantCounter.Add(1)
 
 	fn := function.Function{
-		Tenant:     "tenant-" + strconv.Itoa(tenantCounter),
+		Tenant:     "tenant-" + strconv.Itoa(int(tenantCounter.Load())),
 		Metadata:   uuid.NewString(),
 		Namespace:  DefaultFunctionNamespace,
 		Deployment: DefaultDeployment,
 		Scale: function.Scale{
 			MinInstances:         0,
-			MaxInstances:         1,
+			MaxInstances:         5,
 			TargetCPUUsageMilli:  100,
 			TargetMemoryUsageMiB: 200,
 		},

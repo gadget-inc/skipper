@@ -15,14 +15,13 @@ func NewInstance(t *testing.T, fn function.Function, handler http.HandlerFunc) *
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
-	counterMu.Lock()
-	defer counterMu.Unlock()
+	replicaSetCounter.Add(1)
 
 	return &function.Instance{
 		Function:   fn,
 		Name:       uuid.NewString(),
 		Addr:       testServer.Listener.Addr().String(),
-		Version:    fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter),
+		ReplicaSet: fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load())),
 		AssignedAt: time.Now(),
 		ReadyAt:    time.Now(),
 	}

@@ -15,6 +15,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	fakemetrics "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
 
 func init() {
@@ -24,27 +25,132 @@ func init() {
 	_ = function.FlagNamespaces.SetValue([]string{fixture.DefaultFunctionNamespace})
 
 	FlagPort.Init()
+	FlagHeartbeatTimeout.Init()
 	_ = FlagIP.SetValue(fixture.DefaultControllerIP)
 	_ = FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
 	_ = FlagPasetoPrivateKey.SetValue(fixture.DefaultControllerPasetoSecretKey)
 }
 
-func TestAssignPodToFunction(t *testing.T) {
-	ensureInstanceMatchesPod := func(t *testing.T, instance *function.Instance, pod v1.Pod) {
-		must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
-		must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
+func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, pod v1.Pod) {
+	must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
+	must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
 
-		fnJSON, err := json.Marshal(instance.Function)
-		must.NoError(t, err)
-		must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
+	fnJSON, err := json.Marshal(instance.Function)
+	must.NoError(t, err)
+	must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
 
-		must.Eq(t, instance.Name, pod.Name)
-		must.Eq(t, instance.Addr, pod.Status.PodIP+":"+strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
-		must.Eq(t, instance.Version, pod.Annotations[key.ReplicaSet.Label])
-		must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
-		must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
+	must.Eq(t, instance.Name, pod.Name)
+	must.Eq(t, instance.Addr, pod.Status.PodIP+":"+strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
+	must.Eq(t, instance.ReplicaSet, pod.Annotations[key.ReplicaSet.Label])
+	must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
+	must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
+}
+
+func TestScaleFunctions(t *testing.T) {
+	testCases := []struct {
+		name  string
+		err   error
+		setup func(*testing.T, *Controller, *fake.Clientset, *fakemetrics.Clientset) function.Function
+		check func(*testing.T, *Controller, *fake.Clientset, *fakemetrics.Clientset, function.Function)
+	}{
+		{
+			name: "scale up",
+			setup: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.heartbeats.Store(fn, time.Now())
+
+				clientset.Tracker().Add(fixture.NewReplicaSet(t, fn))
+				clientset.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				clientset.Tracker().Add(assignedPod)
+
+				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli*2) + "m"    // 2x target
+				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB) + "Mi" // 1x target
+				metricsClientset.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset, fn function.Function) {
+				pods, err := clientset.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				must.NoError(t, err)
+
+				instance1, err := function.FromPod(&pods.Items[0])
+				must.NoError(t, err)
+
+				instance2, err := function.FromPod(&pods.Items[1])
+				must.NoError(t, err)
+
+				must.Eq(t, fn, instance1.Function)
+				must.Eq(t, fn, instance2.Function)
+				must.Len(t, 2, pods.Items)
+			},
+		},
+		{
+			name: "scale down",
+			setup: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.heartbeats.Store(fn, time.Now())
+
+				clientset.Tracker().Add(fixture.NewReplicaSet(t, fn))
+
+				assignedPod1 := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod1.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod1.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				clientset.Tracker().Add(assignedPod1)
+
+				assignedPod2 := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod2.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod2.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				clientset.Tracker().Add(assignedPod2)
+
+				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli/2) + "m"    // 0.5x target
+				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB) + "Mi" // 1x target
+				metricsClientset.Tracker().Create(fixture.NewPodMetrics(t, assignedPod1, cpuUsage, memoryUsage))
+				metricsClientset.Tracker().Create(fixture.NewPodMetrics(t, assignedPod2, cpuUsage, memoryUsage))
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset, fn function.Function) {
+				pods, err := clientset.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				must.NoError(t, err)
+
+				instance1, err := function.FromPod(&pods.Items[0])
+				must.NoError(t, err)
+
+				must.Eq(t, fn, instance1.Function)
+				must.Len(t, 1, pods.Items)
+			},
+		},
 	}
 
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			t.Cleanup(cancel)
+
+			clientset := fake.NewClientset(fixture.NewControllerPod())
+			metricsClientset := fakemetrics.NewSimpleClientset()
+			c := New(nil, clientset, metricsClientset)
+
+			fn := tc.setup(t, c, clientset, metricsClientset)
+
+			err := c.startInformers(ctx)
+			must.NoError(t, err)
+
+			err = c.scaleFunctions(ctx, fn.Namespace)
+			if tc.err != nil {
+				must.ErrorIs(t, err, tc.err)
+			} else {
+				must.NoError(t, err)
+			}
+
+			tc.check(t, c, clientset, metricsClientset, fn)
+		})
+	}
+}
+
+func TestAssignPodToFunction(t *testing.T) {
 	testCases := []struct {
 		name  string
 		err   error
@@ -61,7 +167,7 @@ func TestAssignPodToFunction(t *testing.T) {
 				pods, err := clientset.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
-				ensureInstanceMatchesPod(t, instance, pods.Items[0])
+				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
 			},
 		},
 		{
@@ -87,7 +193,7 @@ func TestAssignPodToFunction(t *testing.T) {
 				pods, err := clientset.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
-				ensureInstanceMatchesPod(t, instance, pods.Items[0])
+				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
 			},
 		},
 		{

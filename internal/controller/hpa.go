@@ -1,11 +1,14 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/fusion/internal/log"
 )
 
 type Metric string
@@ -152,6 +155,7 @@ func calculateDesiredInstances(instances []*function.Instance, timestamp time.Ti
 	for _, metric := range []Metric{MetricCPU /*, MetricMemory*/} {
 		desiredInstances, err := calculateDesiredInstancesForMetric(metric, instances, timestamp)
 		if err != nil {
+			log.Trace(context.Background(), "failed to calculate desired instances for metric", key.Error.Field(err))
 			if desiredInstances < currentInstances {
 				scaleDownErrors++
 			}

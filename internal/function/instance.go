@@ -16,7 +16,7 @@ type Instance struct {
 	Function
 	Name        string // pod name
 	Addr        string // pod IP : function port
-	Version     string // replica set name
+	ReplicaSet  string // replica set name
 	AssignedAt  time.Time
 	ReadyAt     time.Time
 	CPUUsage    *int64
@@ -24,20 +24,29 @@ type Instance struct {
 }
 
 func FromPod(pod *v1.Pod) (*Instance, error) {
+	if pod == nil {
+		return nil, fmt.Errorf("pod is nil")
+	}
+
 	instance := &Instance{
 		Name: pod.Name,
 	}
 
-	instance.Version = pod.Annotations[key.ReplicaSet.Label]
-	if instance.Version == "" {
+	if fnJson, ok := pod.Annotations[key.Function.Label]; ok {
+		err := json.Unmarshal([]byte(fnJson), &instance.Function)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("missing function annotation")
+	}
+
+	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Label]
+	if instance.ReplicaSet == "" {
 		return nil, fmt.Errorf("missing replica set annotation")
 	}
 
-	err := json.Unmarshal([]byte(pod.Annotations[key.Function.Label]), &instance.Function)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
-	}
-
+	var err error
 	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Label])
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
@@ -67,20 +76,41 @@ func FromPod(pod *v1.Pod) (*Instance, error) {
 }
 
 func (instance *Instance) Fields() []slog.Attr {
+	cpuUsage := "unknown"
+	if instance.CPUUsage != nil {
+		cpuUsage = strconv.FormatInt(*instance.CPUUsage, 10)
+	}
+	memoryUsage := "unknown"
+	if instance.MemoryUsage != nil {
+		memoryUsage = strconv.FormatInt(*instance.MemoryUsage/1024/1024, 10)
+	}
 	return []slog.Attr{
 		key.Name.Field(instance.Name),
 		key.Addr.Field(instance.Addr),
 		key.AssignedAt.Field(instance.AssignedAt),
 		key.ReadyAt.Field(instance.ReadyAt),
 		key.Function.Field(instance.Function),
+		slog.String("cpu_usage", cpuUsage),
+		slog.String("memory_usage", memoryUsage),
 	}
 }
 
 func (instance *Instance) Attributes() []attribute.KeyValue {
+	cpuUsage := "unknown"
+	if instance.CPUUsage != nil {
+		cpuUsage = strconv.FormatInt(*instance.CPUUsage, 10)
+	}
+	memoryUsage := "unknown"
+	if instance.MemoryUsage != nil {
+		memoryUsage = strconv.FormatInt(*instance.MemoryUsage/1024/1024, 10)
+	}
 	return append(key.Function.Attributes(instance.Function),
 		key.Name.Attribute(instance.Name),
 		key.Addr.Attribute(instance.Addr),
+		attribute.String("replica_set", instance.ReplicaSet),
 		key.AssignedAt.Attribute(instance.AssignedAt),
 		key.ReadyAt.Attribute(instance.ReadyAt),
+		attribute.String("cpu_usage", cpuUsage),
+		attribute.String("memory_usage", memoryUsage),
 	)
 }

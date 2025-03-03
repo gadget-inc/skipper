@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,15 +14,18 @@ import (
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/goccy/go-json"
 	"github.com/shoenig/test/must"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
 var (
-	counterMu         = new(sync.Mutex)
-	podCounter        = 0
-	replicaSetCounter = 0
-	tenantCounter     = 0
+	podCounter        = new(atomic.Int64)
+	replicaSetCounter = new(atomic.Int64)
+	tenantCounter     = new(atomic.Int64)
 )
 
 func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *v1.Pod {
@@ -39,14 +42,11 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 	port, err := strconv.Atoi(portStr)
 	must.NoError(t, err)
 
-	counterMu.Lock()
-	defer counterMu.Unlock()
-
-	podCounter++
+	podCounter.Add(1)
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + strconv.Itoa(podCounter),
+			Name:      fn.Deployment + "-" + strconv.Itoa(int(podCounter.Load())),
 			Namespace: fn.Namespace,
 			Labels: map[string]string{
 				key.Deployment.Label: fn.Deployment,
@@ -55,7 +55,7 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 				"": "", // needed to avoid "add operation does not apply: doc is missing path: /metadata/annotations/...: missing value"
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				{Kind: "ReplicaSet", Name: fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter)},
+				{Kind: "ReplicaSet", Name: fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load()))},
 			},
 		},
 		Status: v1.PodStatus{
@@ -104,14 +104,11 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 	fnJSON, err := json.Marshal(fn)
 	must.NoError(t, err)
 
-	counterMu.Lock()
-	defer counterMu.Unlock()
-
-	podCounter++
+	podCounter.Add(1)
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + strconv.Itoa(podCounter),
+			Name:      fn.Deployment + "-" + strconv.Itoa(int(podCounter.Load())),
 			Namespace: fn.Namespace,
 			Labels: map[string]string{
 				key.Deployment.Label: fn.Deployment,
@@ -119,7 +116,7 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 			},
 			Annotations: map[string]string{
 				key.Function.Label:   string(fnJSON),
-				key.ReplicaSet.Label: fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter),
+				key.ReplicaSet.Label: CurrentReplicaSet(fn),
 				key.AssignedAt.Label: time.Now().UTC().Format(time.RFC3339),
 				key.ReadyAt.Label:    time.Now().UTC().Format(time.RFC3339),
 			},
@@ -133,14 +130,65 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 		},
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
-				{Ports: []v1.ContainerPort{{ContainerPort: int32(port)}}},
+				{
+					Name:    "main",
+					Image:   "busybox",
+					Command: []string{"sleep", "3600"},
+					Ports:   []v1.ContainerPort{{ContainerPort: int32(port)}},
+					Resources: v1.ResourceRequirements{
+						Requests: v1.ResourceList{
+							v1.ResourceCPU:    resource.MustParse(strconv.Itoa(fn.Scale.TargetCPUUsageMilli) + "m"),
+							v1.ResourceMemory: resource.MustParse(strconv.Itoa(fn.Scale.TargetMemoryUsageMiB) + "Mi"),
+						},
+					},
+				},
 			},
 		},
 	}
 }
 
 func CurrentReplicaSet(fn function.Function) string {
-	counterMu.Lock()
-	defer counterMu.Unlock()
-	return fn.Deployment + "-replicaset-" + strconv.Itoa(replicaSetCounter)
+	return fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load()))
+}
+
+func NewReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
+	return &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      CurrentReplicaSet(fn),
+			Namespace: fn.Namespace,
+			Labels: map[string]string{
+				key.Deployment.Label: fn.Deployment,
+			},
+		},
+		Status: appsv1.ReplicaSetStatus{
+			Replicas: 1,
+		},
+	}
+}
+
+// NewPodMetrics returns a new PodMetrics for the given pod.
+//
+// This returns 4 values because it is meant to be used with
+// metricsClientset.Tracker().Create() rather than
+// metricsClientset.Tracker().Add(). This is because Add() has to guess
+// the schema.GroupVersionResource and gets it wrong for PodMetrics,
+// making the pod metrics not show up in future
+// metricsClientset.MetricsV1beta1().PodMetricses() calls.
+func NewPodMetrics(t *testing.T, pod *v1.Pod, cpu, memory string) (schema.GroupVersionResource, *metricsv1beta1.PodMetrics, string, metav1.CreateOptions) {
+	return metricsv1beta1.SchemeGroupVersion.WithResource("pods"), &metricsv1beta1.PodMetrics{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pod.Name,
+			Namespace: pod.Namespace,
+			Labels:    pod.Labels,
+		},
+		Containers: []metricsv1beta1.ContainerMetrics{
+			{
+				Name: pod.Spec.Containers[0].Name,
+				Usage: v1.ResourceList{
+					v1.ResourceCPU:    resource.MustParse(cpu),
+					v1.ResourceMemory: resource.MustParse(memory),
+				},
+			},
+		},
+	}, pod.Namespace, metav1.CreateOptions{}
 }
