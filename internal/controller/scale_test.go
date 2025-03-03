@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"sync"
@@ -12,6 +11,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/goccy/go-json"
 	"github.com/shoenig/test/must"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

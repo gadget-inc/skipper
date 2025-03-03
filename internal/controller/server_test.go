@@ -3,7 +3,6 @@ package controller
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/goccy/go-json"
 	"github.com/shoenig/test/must"
 	"k8s.io/client-go/kubernetes/fake"
 )
