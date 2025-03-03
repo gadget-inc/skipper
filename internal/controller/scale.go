@@ -152,13 +152,13 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 
 		if time.Since(heartbeat) >= FlagHeartbeatTimeout.Value() {
 			log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat))
-			c.scaleMu.Delete(fn)
-			c.heartbeats.Delete(fn)
-			c.stabilizationWindows.Delete(fn)
 			_, err := c.scaleFunction(ctx, fn, 0)
 			if err != nil {
 				log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
 			}
+			c.scaleMu.Delete(fn)
+			c.heartbeats.Delete(fn)
+			c.stabilizationWindows.Delete(fn)
 			continue
 		}
 

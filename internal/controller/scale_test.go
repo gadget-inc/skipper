@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -127,6 +128,8 @@ func TestScaleFunctions(t *testing.T) {
 			setup: func(t *testing.T, c *Controller, clientset *fake.Clientset, metricsClientset *fakemetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
 				c.heartbeats.Store(fn, time.Now().Add(-FlagHeartbeatTimeout.Value()))
+				c.scaleMu.Store(fn, new(sync.Mutex))
+				c.stabilizationWindows.Store(fn, new(StabilizationWindow))
 
 				clientset.Tracker().Add(fixture.NewReplicaSet(t, fn))
 
@@ -141,6 +144,15 @@ func TestScaleFunctions(t *testing.T) {
 				pods, err := clientset.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
+
+				_, ok := c.heartbeats.Load(fn)
+				must.False(t, ok)
+
+				_, ok = c.scaleMu.Load(fn)
+				must.False(t, ok)
+
+				_, ok = c.stabilizationWindows.Load(fn)
+				must.False(t, ok)
 			},
 		},
 	}
