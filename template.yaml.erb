@@ -34,7 +34,7 @@ controller_limit_cpu ||= controller_request_cpu
 controller_limit_memory ||= controller_request_memory
 controller_pre_stop_sleep ||= pre_stop_sleep
 controller_shutdown_timeout_seconds ||= shutdown_timeout_seconds
-controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + controller_shutdown_timeout_seconds + 1
+controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + controller_shutdown_timeout_seconds + 5
 controller_env ||= {}
 
 router_name = "#{namespace}-router"
@@ -52,7 +52,7 @@ router_limit_cpu ||= router_request_cpu
 router_limit_memory ||= router_request_memory
 router_pre_stop_sleep ||= pre_stop_sleep
 router_shutdown_timeout_seconds ||= shutdown_timeout_seconds
-router_termination_grace_period_seconds ||= router_pre_stop_sleep + router_shutdown_timeout_seconds + 1
+router_termination_grace_period_seconds ||= router_pre_stop_sleep + router_shutdown_timeout_seconds + 5
 router_env ||= {}
 -%>
 ---
