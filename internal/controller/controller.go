@@ -105,6 +105,11 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 	return nil
 }
 
+func (ctrl *Controller) isResponsibleForFunction(fn function.Function) bool {
+	ctrlIP := ctrl.ring.Get(fn.RingKey())
+	return ctrlIP == FlagPodIP.Value()
+}
+
 func (ctrl *Controller) getControllerClient(ip string) Client {
 	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() Client { return ctrl.newClientFunc(ip, FlagPort.Value()) })
 	return controllerClient
@@ -196,9 +201,4 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (ctrl *Controller) isResponsibleForFunction(fn function.Function) bool {
-	ctrlIP := ctrl.ring.Get(fn.RingKey())
-	return ctrlIP == FlagPodIP.Value()
 }
