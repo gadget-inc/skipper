@@ -172,7 +172,7 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			}
 
 			currentInstances := len(instances)
-			desiredInstances, err := calculateDesiredInstances(instances, now)
+			desiredInstances, err := calculateDesiredInstances(ctx, instances, now)
 			if err != nil {
 				log.Warn(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
 				return

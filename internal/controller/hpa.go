@@ -106,6 +106,11 @@ func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Ins
 		}
 	}
 
+	if targetUsage == 0 {
+		// target usage = 0 means don't scale on this metric
+		return currentInstances, nil
+	}
+
 	averageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
 	usageRatio := averageUsage / float64(targetUsage)
 	usageDiscrepancy := math.Abs(1.0 - usageRatio)
@@ -146,16 +151,16 @@ func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Ins
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(instances []*function.Instance, timestamp time.Time) (int, error) {
+func calculateDesiredInstances(ctx context.Context, instances []*function.Instance, timestamp time.Time) (int, error) {
 	currentInstances := len(instances)
 	maxDesiredInstances := 0
 	scaleDownErrors := 0
 	scaleDownSuggested := false
 
-	for _, metric := range []Metric{MetricCPU /*, MetricMemory*/} {
+	for _, metric := range []Metric{MetricCPU, MetricMemory} {
 		desiredInstances, err := calculateDesiredInstancesForMetric(metric, instances, timestamp)
 		if err != nil {
-			log.Trace(context.Background(), "failed to calculate desired instances for metric", key.Error.Field(err))
+			log.Trace(ctx, "failed to calculate desired instances for metric", key.Error.Field(err))
 			if desiredInstances < currentInstances {
 				scaleDownErrors++
 			}

@@ -47,6 +47,14 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, po
 	must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
 }
 
+func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
+	must.MapNotContainsKey(t, pod.Labels, key.Tenant.Label)
+	must.MapNotContainsKey(t, pod.Annotations, key.Function.Label)
+	must.MapNotContainsKey(t, pod.Annotations, key.ReplicaSet.Label)
+	must.MapNotContainsKey(t, pod.Annotations, key.AssignedAt.Label)
+	must.MapNotContainsKey(t, pod.Annotations, key.ReadyAt.Label)
+}
+
 func TestScaleFunctions(t *testing.T) {
 	testCases := []struct {
 		name  string
@@ -106,8 +114,8 @@ func TestScaleFunctions(t *testing.T) {
 				assignedPod2.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod2)
 
-				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli/2) + "m"    // 0.5x target
-				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB) + "Mi" // 1x target
+				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli/2) + "m"      // 0.5x target
+				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB/2) + "Mi" // 0.5x target
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod1, cpuUsage, memoryUsage))
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod2, cpuUsage, memoryUsage))
 				return fn
@@ -121,6 +129,38 @@ func TestScaleFunctions(t *testing.T) {
 
 				must.Eq(t, fn, instance1.Function)
 				must.Len(t, 1, pods.Items)
+			},
+		},
+		{
+			name: "no scale",
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				fn.Scale.TargetMemoryUsageMiB = 0 // don't scale on memory
+				c.heartbeats.Store(fn, time.Now())
+
+				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				fakeKubernetes.Tracker().Add(assignedPod)
+				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+
+				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli) + "m"        // 1x target
+				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB*2) + "Mi" // 2x target
+				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+
+				instance1, err := function.FromPod(&pods.Items[0])
+				must.NoError(t, err)
+				must.Eq(t, fn, instance1.Function)
+
+				ensurePodIsNotAssignedToFunction(t, pods.Items[1])
+				must.Len(t, 2, pods.Items)
 			},
 		},
 		{
