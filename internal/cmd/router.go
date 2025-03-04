@@ -58,7 +58,7 @@ func NewRouter() *cobra.Command {
 			}
 
 			log.Info(ctx, "router shutdown")
-			return ctx.Err()
+			return nil
 		},
 	}
 

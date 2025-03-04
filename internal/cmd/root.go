@@ -7,17 +7,15 @@ import (
 )
 
 func NewRoot() *cobra.Command {
-	var shutdownTelemetry func()
-
 	cmd := &cobra.Command{
 		Use: "fusion",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			log.Init()
-			shutdownTelemetry = telemetry.Init(cmd.Context(), cmd.Name())
-			return nil
-		},
-		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-			shutdownTelemetry()
+			shutdownTelemetry := telemetry.Init(cmd.Context(), cmd.Name())
+
+			// we can't use PersistentPostRunE because it doesn't run if RunE returns an error
+			// https://github.com/spf13/cobra/issues/1893
+			cobra.OnFinalize(shutdownTelemetry)
 			return nil
 		},
 	}

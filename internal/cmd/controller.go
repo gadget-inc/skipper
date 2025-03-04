@@ -89,7 +89,7 @@ func NewController() *cobra.Command {
 			}
 
 			log.Info(ctx, "controller shutdown")
-			return ctx.Err()
+			return nil
 		},
 	}
 
