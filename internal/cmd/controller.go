@@ -57,17 +57,12 @@ func NewController() *cobra.Command {
 				return fmt.Errorf("failed to start controller: %w", err)
 			}
 
-			var protocols http.Protocols
-			protocols.SetHTTP1(true)
-			protocols.SetUnencryptedHTTP2(true)
-
 			httpServer := &http.Server{
 				Addr: net.JoinHostPort(controller.FlagHost.Value(), strconv.Itoa(controller.FlagPort.Value())),
 				Handler: otelhttp.NewHandler(ctrl, "",
 					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
 					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
 				),
-				Protocols: &protocols,
 			}
 
 			httpServerError := make(chan error, 1)
