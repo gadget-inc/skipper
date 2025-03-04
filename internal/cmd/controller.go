@@ -35,8 +35,8 @@ func NewController() *cobra.Command {
 				return fmt.Errorf("failed to load kubernetes config: %w", err)
 			}
 
-			config.QPS = 100
-			config.Burst = 200
+			config.QPS = controller.FlagKubeConfigQPS.Value()
+			config.Burst = controller.FlagKubeConfigBurst.Value()
 			config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper { return otelhttp.NewTransport(rt) }
 
 			clientset, err := kubernetes.NewForConfig(config)
@@ -103,6 +103,8 @@ func NewController() *cobra.Command {
 	controller.FlagHPATolerance.Bind(cmd)
 	controller.FlagHeartbeatTimeout.Bind(cmd)
 	controller.FlagHost.Bind(cmd)
+	controller.FlagKubeConfigBurst.Bind(cmd)
+	controller.FlagKubeConfigQPS.Bind(cmd)
 	controller.FlagNamespace.Bind(cmd)
 	controller.FlagPasetoPrivateKey.Bind(cmd)
 	controller.FlagPodIP.Bind(cmd)

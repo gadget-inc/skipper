@@ -201,6 +201,12 @@ func (f *Flag[T]) Set(s string) error {
 		*value, err = strconv.ParseInt(s, 10, 64)
 	case *uint64:
 		*value, err = strconv.ParseUint(s, 10, 64)
+	case *float32:
+		f, err := strconv.ParseFloat(s, 32)
+		if err != nil {
+			return err
+		}
+		*value = float32(f)
 	case *float64:
 		*value, err = strconv.ParseFloat(s, 64)
 	case *bool:
@@ -282,6 +288,8 @@ func (f *Flag[T]) String() string {
 		return strconv.FormatInt(*value, 10)
 	case *uint64:
 		return strconv.FormatUint(*value, 10)
+	case *float32:
+		return strconv.FormatFloat(float64(*value), 'f', -1, 32)
 	case *float64:
 		return strconv.FormatFloat(*value, 'f', -1, 64)
 	case *bool:

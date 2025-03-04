@@ -52,6 +52,18 @@ var (
 		Required:    true,
 	}
 
+	FlagKubeConfigQPS = flag.Flag[float32]{
+		Name:        "controller-kubeconfig-qps",
+		Description: "The QPS for the kubeconfig client.",
+		Default:     100,
+	}
+
+	FlagKubeConfigBurst = flag.Flag[int]{
+		Name:        "controller-kubeconfig-burst",
+		Description: "The burst for the kubeconfig client.",
+		Default:     200,
+	}
+
 	FlagPasetoPrivateKey = flag.Flag[paseto.V2AsymmetricSecretKey]{
 		Name:        "controller-paseto-private-key",
 		Description: "The private key used to sign PASETO tokens for assigned pods.",
