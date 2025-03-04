@@ -3,7 +3,6 @@ package telemetry
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
@@ -14,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
-	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("github.com/gadget-inc/fusion")
@@ -67,26 +65,11 @@ func Init(ctx context.Context, component string) func() {
 	log.Info(ctx, "telemetry enabled", slog.String("component", component))
 
 	return func() {
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, FlagTelemetryShutdownTimeout.Value())
 		defer cancel()
 		err = traceProvider.Shutdown(ctx)
 		if err != nil {
 			log.Error(ctx, "failed to shutdown telemetry", key.Error.Field(err))
 		}
 	}
-}
-
-func Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return tracer.Start(ctx, spanName, opts...)
-}
-
-func StartRoot(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	opts = append(opts, trace.WithNewRoot(), trace.WithLinks(trace.LinkFromContext(ctx)))
-	return tracer.Start(ctx, spanName, opts...)
-}
-
-func Trace[T any](ctx context.Context, spanName string, fn func(context.Context, trace.Span) (T, error)) (T, error) {
-	ctx, span := Start(ctx, spanName)
-	defer span.End()
-	return fn(ctx, span)
 }

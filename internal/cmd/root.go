@@ -25,8 +25,10 @@ func NewRoot() *cobra.Command {
 	cmd.AddCommand(NewController())
 	cmd.AddCommand(NewRouter())
 
-	log.FlagLogLevel.BindPersistent(cmd)
 	log.FlagLogFormat.BindPersistent(cmd)
+	log.FlagLogLevel.BindPersistent(cmd)
 	telemetry.FlagTelemetry.BindPersistent(cmd)
+	telemetry.FlagTelemetryShutdownTimeout.BindPersistent(cmd)
+
 	return cmd
 }
