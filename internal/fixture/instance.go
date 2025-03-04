@@ -15,8 +15,6 @@ func NewInstance(t *testing.T, fn function.Function, handler http.HandlerFunc) *
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
-	replicaSetCounter.Add(1)
-
 	return &function.Instance{
 		Function:   fn,
 		Name:       uuid.NewString(),
