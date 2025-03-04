@@ -3,8 +3,11 @@ package telemetry
 import (
 	"context"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("github.com/gadget-inc/fusion")
 
 func Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	return tracer.Start(ctx, spanName, opts...)

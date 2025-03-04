@@ -19,7 +19,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
+	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
 func NewController() *cobra.Command {
@@ -39,12 +39,12 @@ func NewController() *cobra.Command {
 			config.Burst = controller.FlagKubeConfigBurst.Value()
 			config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper { return otelhttp.NewTransport(rt) }
 
-			clientset, err := kubernetes.NewForConfig(config)
+			kubernetes, err := kubernetes.NewForConfig(config)
 			if err != nil {
 				return fmt.Errorf("failed to create kubernetes client: %w", err)
 			}
 
-			metricsClientset, err := metricsclientset.NewForConfig(config)
+			kubernetesMetrics, err := kubernetesmetrics.NewForConfig(config)
 			if err != nil {
 				return fmt.Errorf("failed to create metrics client: %w", err)
 			}
@@ -52,7 +52,7 @@ func NewController() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			ctrl := controller.New(controller.NewHTTPClient, clientset, metricsClientset)
+			ctrl := controller.New(controller.NewHTTPClient, kubernetes, kubernetesMetrics)
 			if err := ctrl.Start(ctx); err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)
 			}

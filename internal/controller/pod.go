@@ -11,8 +11,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
-func (c *Controller) getInstances(fn function.Function) ([]*function.Instance, error) {
-	assignedPods, err := c.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
+func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance, error) {
+	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
 	}))
@@ -46,8 +46,8 @@ func (c *Controller) getInstances(fn function.Function) ([]*function.Instance, e
 	return instances, nil
 }
 
-func (c *Controller) listPods(namespace string, selector labels.Selector) ([]*v1.Pod, error) {
-	podListerEntry, found := c.namespaceListers[namespace]
+func (ctrl *Controller) listPods(namespace string, selector labels.Selector) ([]*v1.Pod, error) {
+	podListerEntry, found := ctrl.namespaceListers[namespace]
 	if !found {
 		return nil, fmt.Errorf("managed pod lister not started for namespace %s", namespace)
 	}
@@ -67,8 +67,8 @@ func (c *Controller) listPods(namespace string, selector labels.Selector) ([]*v1
 	return pods, nil
 }
 
-func (c *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
-	namespaceLister, found := c.namespaceListers[pod.Namespace]
+func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
+	namespaceLister, found := ctrl.namespaceListers[pod.Namespace]
 	if !found {
 		log.Warn(ctx, "managed pod lister not started for namespace", key.Namespace.Field(pod.Namespace))
 		return

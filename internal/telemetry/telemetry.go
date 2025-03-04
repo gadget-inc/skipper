@@ -15,8 +15,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
-var tracer = otel.Tracer("github.com/gadget-inc/fusion")
-
 func Init(ctx context.Context, component string) func() {
 	if !FlagTelemetry.Value() {
 		log.Info(ctx, "telemetry disabled", slog.String("component", component))

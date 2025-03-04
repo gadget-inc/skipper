@@ -28,17 +28,17 @@ import (
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
-func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error {
+func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) error {
 	ctx, span := telemetry.StartRoot(ctx, "controller.scale_functions")
 	defer span.End()
 
-	pods, err := c.listPods(namespace, hasTenantSelector)
+	pods, err := ctrl.listPods(namespace, hasTenantSelector)
 	if err != nil {
 		return fmt.Errorf("failed to get assigned pods: %w", err)
 	}
 
 	// TODO: paginate
-	metrics, err := c.metricsClientset.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{LabelSelector: key.Tenant.Label})
+	metrics, err := ctrl.kubernetesMetrics.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{LabelSelector: key.Tenant.Label})
 	if err != nil {
 		// TODO: make this recoverable
 		return fmt.Errorf("failed to get metrics: %w", err)
@@ -55,14 +55,14 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 		instance, err := function.FromPod(pod)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance from pod", key.Error.Field(err), key.Pod.Field(pod))
-			err = c.clientset.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(pod))
 			}
 			continue
 		}
 
-		if !c.isResponsibleForFunction(instance.Function) {
+		if !ctrl.isResponsibleForFunction(instance.Function) {
 			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.Function.Field(instance.Function))
 			continue
 		}
@@ -73,7 +73,7 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 
 		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > function.FlagAssignTimeout.Value()*2 {
 			log.Warn(ctx, "terminating instance stuck in assigned state", key.Instance.Field(instance))
-			err = c.clientset.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
+			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Field(err), key.Pod.Field(pod))
 			}
@@ -99,7 +99,7 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 			}
 		}
 
-		replicaSet, err := c.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
+		replicaSet, err := ctrl.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
 		if err != nil {
 			log.Error(ctx, "failed to get replica set for instance", key.Error.Field(err), key.Instance.Field(instance))
 			continue
@@ -112,7 +112,7 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 		}
 
 		// this is a stale instance, find the active replica set
-		replicaSets, err := c.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Deployment}))
+		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Deployment}))
 		if err != nil {
 			log.Error(ctx, "failed to list replica sets", key.Error.Field(err), key.Instance.Field(instance))
 			continue
@@ -131,10 +131,10 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 			continue
 		}
 
-		scaleMu, _ := c.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
+		scaleMu, _ := ctrl.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
 		scaleMu.Lock()
 		log.Info(ctx, "terminating stale instance", key.Instance.Field(instance))
-		err = c.clientset.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 		if err != nil {
 			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err), key.Instance.Field(instance))
 		}
@@ -152,7 +152,7 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 			defer span.End()
 			defer wg.Done()
 
-			heartbeat, _ := c.heartbeats.Load(fn)
+			heartbeat, _ := ctrl.heartbeats.Load(fn)
 			for _, instance := range instances {
 				if instance.AssignedAt.After(heartbeat) {
 					heartbeat = instance.AssignedAt
@@ -161,13 +161,13 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 
 			if time.Since(heartbeat) >= FlagHeartbeatTimeout.Value() {
 				log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat))
-				_, err := c.scaleFunction(ctx, fn, 0)
+				_, err := ctrl.scaleFunction(ctx, fn, 0)
 				if err != nil {
 					log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
 				}
-				c.scaleMu.Delete(fn)
-				c.heartbeats.Delete(fn)
-				c.stabilizationWindows.Delete(fn)
+				ctrl.scaleMu.Delete(fn)
+				ctrl.heartbeats.Delete(fn)
+				ctrl.stabilizationWindows.Delete(fn)
 				return
 			}
 
@@ -186,7 +186,7 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 				desiredInstances = fn.Scale.MaxInstances
 			}
 
-			stabilizationWindow, _ := c.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
+			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
 			stabilizationWindow.RecordRecommendation(desiredInstances, now)
 
 			if desiredInstances < currentInstances {
@@ -197,7 +197,7 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 				desiredInstances = 1 // only scale to 0 from a heartbeat timeout
 			}
 
-			_, err = c.scaleFunction(ctx, fn, desiredInstances)
+			_, err = ctrl.scaleFunction(ctx, fn, desiredInstances)
 			if err != nil {
 				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err), key.Function.Field(fn), key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
 			}
@@ -209,15 +209,15 @@ func (c *Controller) scaleFunctions(ctx context.Context, namespace string) error
 	return nil
 }
 
-func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+func (ctrl *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
 	ctx, span := telemetry.Start(ctx, "controller.scale_function")
 	defer span.End()
 
-	scaleMu, _ := c.scaleMu.LoadOrCompute(fn, func() *sync.Mutex { return new(sync.Mutex) })
+	scaleMu, _ := ctrl.scaleMu.LoadOrCompute(fn, func() *sync.Mutex { return new(sync.Mutex) })
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
 
-	instances, err := c.getInstances(fn)
+	instances, err := ctrl.getInstances(fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
@@ -227,10 +227,10 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 		return instances, nil
 	}
 
-	controllerIP := c.ring.Get(fn.RingKey())
+	controllerIP := ctrl.ring.Get(fn.RingKey())
 	if controllerIP != FlagPodIP.Value() {
 		log.Debug(ctx, "forwarding scale request", key.Function.Field(fn), key.ControllerIP.Field(controllerIP))
-		return c.getControllerClient(controllerIP).Scale(ctx, fn, desiredInstances)
+		return ctrl.getControllerClient(controllerIP).Scale(ctx, fn, desiredInstances)
 	}
 
 	log.Info(ctx, "scaling function",
@@ -241,7 +241,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 
 	if desiredInstances > currentInstances {
 		for range desiredInstances - currentInstances {
-			instance, err := c.assignPodToFunction(ctx, fn)
+			instance, err := ctrl.assignPodToFunction(ctx, fn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
@@ -255,7 +255,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 		// iterate over instances in reverse order, deleting the oldest ones first
 		for i := len(instances) - 1; i >= desiredInstances; i-- {
 			instance := instances[i]
-			err := c.clientset.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+			err := ctrl.kubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
@@ -267,7 +267,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	return instances, nil
 }
 
-func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Function) (*function.Instance, error) {
+func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Function) (*function.Instance, error) {
 	ctx, span := telemetry.Start(ctx, "controller.assign_pod_to_function", trace.WithAttributes(key.Function.Attributes(fn)...))
 	defer span.End()
 
@@ -275,7 +275,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		span := trace.SpanFromContext(ctx)
 		span.SetAttributes(key.Function.Attributes(fn)...)
 
-		availablePods, err := c.getAvailablePodsForFunction(fn)
+		availablePods, err := ctrl.getAvailablePodsForFunction(fn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list available pods: %w", err)
 		}
@@ -307,7 +307,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to marshal assign patch: %w", err)
 	}
 
-	pod, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		// there are many reasons this can fail, but one hard to debug
 		// one is that the pod doesn't have any annotations causing the
@@ -315,7 +315,7 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to patch pod: %w", err)
 	}
 
-	c.updatePodCache(ctx, pod)
+	ctrl.updatePodCache(ctx, pod)
 
 	var port string
 	for _, container := range pod.Spec.Containers {
@@ -366,23 +366,23 @@ func (c *Controller) assignPodToFunction(ctx context.Context, fn function.Functi
 		return nil, fmt.Errorf("failed to marshal set ready patch: %w", err)
 	}
 
-	pod, err = c.clientset.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		return nil, fmt.Errorf("failed to patch status: %w", err)
 	}
 
-	c.updatePodCache(ctx, pod)
+	ctrl.updatePodCache(ctx, pod)
 
 	return function.FromPod(pod)
 }
 
-func (c *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1.Pod, error) {
+func (ctrl *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1.Pod, error) {
 	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
 	if err != nil {
 		return nil, err
 	}
 
-	pods, err := c.listPods(fn.Namespace, doesNotHaveTenantSelector.Add(*equalDeploymentName))
+	pods, err := ctrl.listPods(fn.Namespace, doesNotHaveTenantSelector.Add(*equalDeploymentName))
 	if err != nil {
 		return nil, err
 	}

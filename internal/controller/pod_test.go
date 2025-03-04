@@ -26,59 +26,59 @@ func TestGetInstances(t *testing.T) {
 	}{
 		{
 			name: "one",
-			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
-				err := clientset.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, clientset *fake.Clientset, instances []*function.Instance) {
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 1, instances)
 			},
 		},
 		{
 			name: "many",
-			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
-				err := clientset.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 
-				err = clientset.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				err = fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, clientset *fake.Clientset, instances []*function.Instance) {
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 2, instances)
 			},
 		},
 		{
 			name: "deleted",
-			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.DeletionTimestamp = &metav1.Time{Time: time.Now()}
-				err := clientset.Tracker().Add(pod)
+				err := fakeKubernetes.Tracker().Add(pod)
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, clientset *fake.Clientset, instances []*function.Instance) {
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 0, instances)
 			},
 		},
 		{
 			name: "failed",
-			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Phase = v1.PodFailed
-				err := clientset.Tracker().Add(pod)
+				err := fakeKubernetes.Tracker().Add(pod)
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, clientset *fake.Clientset, instances []*function.Instance) {
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 0, instances)
 			},
 		},
 		{
 			name: "different metadata",
-			setup: func(t *testing.T, clientset *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				fn.Metadata = "different"
-				err := clientset.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, clientset *fake.Clientset, instances []*function.Instance) {
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 0, instances)
 			},
 		},
@@ -89,24 +89,23 @@ func TestGetInstances(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			t.Cleanup(cancel)
 
-			clientset := fake.NewClientset(fixture.NewControllerPod())
+			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			fn := fixture.NewFunction()
 
-			tc.setup(t, clientset, fn)
+			tc.setup(t, fakeKubernetes, fn)
 
-			c := New(nil, clientset, nil)
-
-			err := c.startInformers(ctx)
+			ctrl := New(nil, fakeKubernetes, nil)
+			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
 
-			instances, err := c.getInstances(fn)
+			instances, err := ctrl.getInstances(fn)
 			if tc.err != nil {
 				must.ErrorIs(t, err, tc.err)
 			} else {
 				must.NoError(t, err)
 			}
 
-			tc.check(t, clientset, instances)
+			tc.check(t, fakeKubernetes, instances)
 		})
 	}
 }
