@@ -11,7 +11,6 @@ import (
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/router"
-	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
@@ -23,9 +22,6 @@ func NewRouter() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
-
-			shutdownTelemetry := telemetry.Init(ctx, telemetry.ComponentRouter)
-			defer shutdownTelemetry()
 
 			r := router.New(controller.NewHTTPClient(router.FlagControllerServiceHost.Value(), router.FlagControllerServicePort.Value()))
 			r.Start(ctx)
@@ -62,8 +58,7 @@ func NewRouter() *cobra.Command {
 			}
 
 			log.Info(ctx, "router shutdown")
-
-			return nil
+			return ctx.Err()
 		},
 	}
 

@@ -13,7 +13,6 @@ import (
 	"github.com/gadget-inc/fusion/internal/function"
 	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/gadget-inc/fusion/internal/log"
-	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"k8s.io/client-go/kubernetes"
@@ -52,9 +51,6 @@ func NewController() *cobra.Command {
 
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
-
-			shutdownTelemetry := telemetry.Init(ctx, telemetry.ComponentController)
-			defer shutdownTelemetry()
 
 			ctrl := controller.New(controller.NewHTTPClient, clientset, metricsClientset)
 			if err := ctrl.Start(ctx); err != nil {

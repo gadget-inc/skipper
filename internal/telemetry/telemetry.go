@@ -19,9 +19,9 @@ import (
 
 var tracer = otel.Tracer("github.com/gadget-inc/fusion")
 
-func Init(ctx context.Context, component Component) func() {
+func Init(ctx context.Context, component string) func() {
 	if !FlagTelemetry.Value() {
-		log.Info(ctx, "telemetry disabled", slog.String("component", component.String()))
+		log.Info(ctx, "telemetry disabled", slog.String("component", component))
 		return func() {}
 	}
 
@@ -44,7 +44,7 @@ func Init(ctx context.Context, component Component) func() {
 		resource.WithProcessRuntimeDescription(),
 		resource.WithTelemetrySDK(),
 		resource.WithAttributes(
-			semconv.ServiceNameKey.String("fusion." + component.String()),
+			semconv.ServiceNameKey.String("fusion." + component),
 			// semconv.ServiceNamespaceKey.String("fusion"),
 			// semconv.ServiceVersionKey.String(version.Version),
 		),
@@ -64,7 +64,7 @@ func Init(ctx context.Context, component Component) func() {
 
 	otel.SetTracerProvider(traceProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-	log.Info(ctx, "telemetry enabled", slog.String("component", component.String()))
+	log.Info(ctx, "telemetry enabled", slog.String("component", component))
 
 	return func() {
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
