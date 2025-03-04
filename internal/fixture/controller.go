@@ -18,13 +18,13 @@ type (
 )
 
 const (
-	DefaultControllerIP        = "127.0.0.1"
-	DefaultControllerNamespace = "fusion-test"
+	ControllerIP        = "127.0.0.1"
+	ControllerNamespace = "fusion-test"
 )
 
 var (
-	DefaultControllerPasetoSecretKey = paseto.NewV2AsymmetricSecretKey()
-	DefaultControllerPasetoPublicKey = DefaultControllerPasetoSecretKey.Public()
+	ControllerPasetoSecretKey = paseto.NewV2AsymmetricSecretKey()
+	ControllerPasetoPublicKey = ControllerPasetoSecretKey.Public()
 )
 
 type MockControllerClient struct {
@@ -98,7 +98,7 @@ func NewControllerPod() *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "controller-" + rand.String(6),
-			Namespace: DefaultControllerNamespace,
+			Namespace: ControllerNamespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/name":      "fusion",
 				"app.kubernetes.io/component": "controller",
@@ -106,7 +106,7 @@ func NewControllerPod() *v1.Pod {
 		},
 		Status: v1.PodStatus{
 			Phase: v1.PodRunning,
-			PodIP: DefaultControllerIP,
+			PodIP: ControllerIP,
 		},
 	}
 }

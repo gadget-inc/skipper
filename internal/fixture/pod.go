@@ -84,7 +84,7 @@ func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.Handler
 
 		parser := paseto.NewParserForValidNow()
 		parser.AddRule(paseto.Subject(fn.Tenant))
-		_, err = parser.ParseV2Public(DefaultControllerPasetoPublicKey, req.Header.Get(key.Token.Header))
+		_, err = parser.ParseV2Public(ControllerPasetoPublicKey, req.Header.Get(key.Token.Header))
 		must.NoError(t, err)
 
 		rw.WriteHeader(http.StatusOK)
@@ -172,7 +172,7 @@ func NewReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
 	return CurrentReplicaSet(t, fn)
 }
 
-// NewPodMetrics returns a new PodMetrics for the given pod.
+// NewPodMetrics returns PodMetrics for the given pod.
 //
 // This returns 4 values because it is meant to be used with
 // metricsClientset.Tracker().Create() rather than
@@ -181,20 +181,23 @@ func NewReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
 // making the pod metrics not show up in future
 // metricsClientset.MetricsV1beta1().PodMetricses() calls.
 func NewPodMetrics(t *testing.T, pod *v1.Pod, cpu, memory string) (schema.GroupVersionResource, *metricsv1beta1.PodMetrics, string, metav1.CreateOptions) {
-	return metricsv1beta1.SchemeGroupVersion.WithResource("pods"), &metricsv1beta1.PodMetrics{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pod.Name,
-			Namespace: pod.Namespace,
-			Labels:    pod.Labels,
-		},
-		Containers: []metricsv1beta1.ContainerMetrics{
-			{
-				Name: pod.Spec.Containers[0].Name,
-				Usage: v1.ResourceList{
-					v1.ResourceCPU:    resource.MustParse(cpu),
-					v1.ResourceMemory: resource.MustParse(memory),
+	return metricsv1beta1.SchemeGroupVersion.WithResource("pods"),
+		&metricsv1beta1.PodMetrics{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pod.Name,
+				Namespace: pod.Namespace,
+				Labels:    pod.Labels,
+			},
+			Containers: []metricsv1beta1.ContainerMetrics{
+				{
+					Name: pod.Spec.Containers[0].Name,
+					Usage: v1.ResourceList{
+						v1.ResourceCPU:    resource.MustParse(cpu),
+						v1.ResourceMemory: resource.MustParse(memory),
+					},
 				},
 			},
 		},
-	}, pod.Namespace, metav1.CreateOptions{}
+		pod.Namespace,
+		metav1.CreateOptions{}
 }

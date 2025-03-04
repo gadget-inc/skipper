@@ -95,7 +95,7 @@ func TestHandleHeartbeat(t *testing.T) {
 
 				mcc.HandleHeartbeat(func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 					must.Eq(t, hbs, heartbeats)
-					must.Eq(t, []string{fixture.DefaultControllerIP}, forwardedFor)
+					must.Eq(t, []string{fixture.ControllerIP}, forwardedFor)
 					return nil
 				})
 

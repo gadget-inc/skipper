@@ -8,8 +8,10 @@ import (
 	"github.com/goccy/go-json"
 )
 
-func NewEchoFunction(opts ...FunctionOption) function.Function {
-	return NewFunction(append(opts, WithDeployment("echo"), WithNamespace(DefaultFunctionNamespace))...)
+func NewEchoFunction() function.Function {
+	fn := NewFunction()
+	fn.Deployment = "echo"
+	return fn
 }
 
 type EchoResponse struct {
@@ -24,8 +26,7 @@ func (er *EchoResponse) Header() http.Header {
 	if er.header == nil {
 		er.header = make(http.Header)
 		for k, v := range er.Headers {
-			values := strings.Split(v, ",")
-			for _, value := range values {
+			for value := range strings.SplitSeq(v, ",") {
 				er.header.Add(k, strings.TrimLeft(value, " "))
 			}
 		}

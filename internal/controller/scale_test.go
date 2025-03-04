@@ -20,7 +20,7 @@ import (
 )
 
 func init() {
-	_ = function.FlagNamespaces.SetValue([]string{fixture.DefaultFunctionNamespace})
+	_ = function.FlagNamespaces.SetValue([]string{fixture.FunctionNamespace})
 	function.FlagAssignPath.Init()
 	function.FlagAssignTimeout.Init()
 	function.FlagPort.Init()
@@ -30,9 +30,9 @@ func init() {
 	FlagHPATolerance.Init()
 	FlagHeartbeatTimeout.Init()
 	FlagPort.Init()
-	_ = FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
-	_ = FlagPasetoPrivateKey.SetValue(fixture.DefaultControllerPasetoSecretKey)
-	_ = FlagPodIP.SetValue(fixture.DefaultControllerIP)
+	_ = FlagNamespace.SetValue(fixture.ControllerNamespace)
+	_ = FlagPasetoPrivateKey.SetValue(fixture.ControllerPasetoSecretKey)
+	_ = FlagPodIP.SetValue(fixture.ControllerIP)
 }
 
 func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, pod v1.Pod) {

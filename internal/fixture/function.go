@@ -14,18 +14,18 @@ import (
 )
 
 const (
-	DefaultFunctionNamespace = "fusion-fixtures-test"
-	DefaultDeployment        = "test"
+	FunctionNamespace  = "fusion-fixtures-test"
+	FunctionDeployment = "test"
 )
 
-func NewFunction(opts ...FunctionOption) function.Function {
+func NewFunction() function.Function {
 	tenantCounter.Add(1)
 
-	fn := function.Function{
+	return function.Function{
 		Tenant:     "tenant-" + strconv.Itoa(int(tenantCounter.Load())),
 		Metadata:   uuid.NewString(),
-		Namespace:  DefaultFunctionNamespace,
-		Deployment: DefaultDeployment,
+		Namespace:  FunctionNamespace,
+		Deployment: FunctionDeployment,
 		Scale: function.Scale{
 			MinInstances:         0,
 			MaxInstances:         5,
@@ -33,12 +33,6 @@ func NewFunction(opts ...FunctionOption) function.Function {
 			TargetMemoryUsageMiB: 200,
 		},
 	}
-
-	for _, opt := range opts {
-		opt(&fn)
-	}
-
-	return fn
 }
 
 func NewFunctionRequest(t *testing.T, fn function.Function, method string, path string, body io.Reader) *http.Request {
@@ -47,24 +41,4 @@ func NewFunctionRequest(t *testing.T, fn function.Function, method string, path 
 	req := httptest.NewRequestWithContext(ctx, method, path, body)
 	fn.SetHeader(req)
 	return req
-}
-
-type FunctionOption func(*function.Function)
-
-func WithNamespace(namespace string) FunctionOption {
-	return func(fn *function.Function) {
-		fn.Namespace = namespace
-	}
-}
-
-func WithMetadata(metadata string) FunctionOption {
-	return func(fn *function.Function) {
-		fn.Metadata = metadata
-	}
-}
-
-func WithDeployment(deployment string) FunctionOption {
-	return func(fn *function.Function) {
-		fn.Deployment = deployment
-	}
 }
