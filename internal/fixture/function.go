@@ -42,3 +42,17 @@ func NewFunctionRequest(t *testing.T, fn function.Function, method string, path 
 	fn.SetHeader(req)
 	return req
 }
+
+func NewInstance(t *testing.T, fn function.Function, handler http.HandlerFunc) *function.Instance {
+	testServer := httptest.NewServer(handler)
+	t.Cleanup(testServer.Close)
+
+	return &function.Instance{
+		Function:   fn,
+		Name:       uuid.NewString(),
+		Addr:       testServer.Listener.Addr().String(),
+		ReplicaSet: fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load())),
+		AssignedAt: time.Now(),
+		ReadyAt:    time.Now(),
+	}
+}
