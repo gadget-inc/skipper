@@ -20,6 +20,10 @@ func NewRouter() *cobra.Command {
 		Use:   "router",
 		Short: "Start the router",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// flags have been parsed and validated by now, so don't print usage or errors anymore
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 

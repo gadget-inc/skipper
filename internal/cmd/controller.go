@@ -27,6 +27,10 @@ func NewController() *cobra.Command {
 		Use:   "controller",
 		Short: "Start the controller",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// flags have been parsed and validated by now, so don't print usage or errors anymore
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+
 			config, err := rest.InClusterConfig()
 			if errors.Is(err, rest.ErrNotInCluster) {
 				config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
