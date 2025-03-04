@@ -271,7 +271,7 @@ func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Fun
 	ctx, span := telemetry.Start(ctx, "controller.assign_pod_to_function", trace.WithAttributes(key.Function.Attributes(fn)...))
 	defer span.End()
 
-	pod, err := timer.PollUntil(ctx, "controller.assign_pod_to_function.get_unassigned_pod", 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
+	pod, err := timer.PollUntil(ctx, "controller.get_unassigned_pod", 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		span := trace.SpanFromContext(ctx)
 		span.SetAttributes(key.Function.Attributes(fn)...)
 
