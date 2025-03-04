@@ -15,22 +15,22 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (c *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (ctrl *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	switch req.URL.Path {
 	case "/healthz":
 		rw.WriteHeader(http.StatusOK)
 	case "/instance":
-		c.handleInstance(rw, req)
+		ctrl.handleInstance(rw, req)
 	case "/scale":
-		c.handleScale(rw, req)
+		ctrl.handleScale(rw, req)
 	case "/heartbeat":
-		c.handleHeartbeat(rw, req)
+		ctrl.handleHeartbeat(rw, req)
 	default:
 		http.NotFound(rw, req)
 	}
 }
 
-func (c *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {
+func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	fn, err := function.FromHeader(req)
 	if err != nil {
@@ -39,7 +39,7 @@ func (c *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	instances, err := c.getInstances(fn)
+	instances, err := ctrl.getInstances(fn)
 	if err != nil {
 		log.Error(ctx, "failed to get instances", key.Error.Field(err), key.Function.Field(fn))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -47,7 +47,7 @@ func (c *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	for len(instances) == 0 {
-		instances, err = c.scaleFunction(ctx, fn, 1)
+		instances, err = ctrl.scaleFunction(ctx, fn, 1)
 		if err != nil {
 			log.Error(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -65,7 +65,7 @@ func (c *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
+func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	fn, err := function.FromHeader(req)
 	if err != nil {
@@ -84,7 +84,7 @@ func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	instances, err := c.scaleFunction(ctx, fn, desiredInstances)
+	instances, err := ctrl.scaleFunction(ctx, fn, desiredInstances)
 	if err != nil {
 		log.Error(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -99,7 +99,7 @@ func (c *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) {
+func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) {
 	var heartbeats []function.Heartbeat
 	err := json.NewDecoder(req.Body).Decode(&heartbeats)
 	if err != nil {
@@ -109,7 +109,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 	}
 
 	for _, heartbeat := range heartbeats {
-		c.heartbeats.Compute(heartbeat.Function, func(timestamp time.Time, loaded bool) (time.Time, bool) {
+		ctrl.heartbeats.Compute(heartbeat.Function, func(timestamp time.Time, loaded bool) (time.Time, bool) {
 			if !loaded || heartbeat.Timestamp.After(timestamp) {
 				return heartbeat.Timestamp, false
 			}
@@ -123,7 +123,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 	forwardedFor := req.Header.Values(key.ForwardedFor.Header)
 	forwardedFor = append(forwardedFor, FlagPodIP.Value())
 
-	for _, controllerIP := range c.ring.List() {
+	for _, controllerIP := range ctrl.ring.List() {
 		if slices.Contains(forwardedFor, controllerIP) {
 			continue
 		}
@@ -132,7 +132,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			err := c.getControllerClient(controllerIP).Heartbeat(ctx, heartbeats, forwardedFor...)
+			err := ctrl.getControllerClient(controllerIP).Heartbeat(ctx, heartbeats, forwardedFor...)
 			if err != nil {
 				log.Warn(req.Context(), "failed to forward heartbeats", key.Error.Field(err), key.ControllerIP.Field(controllerIP))
 			}
