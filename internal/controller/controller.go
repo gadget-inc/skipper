@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/gadget-inc/fusion/internal/timer"
+	"github.com/goccy/go-json"
 	"github.com/puzpuzpuz/xsync/v3"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -218,7 +221,7 @@ func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance
 			continue
 		}
 
-		instance, err := function.FromPod(pod)
+		instance, err := instanceFromPod(pod)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get function from pod: %w", err)
 		}
@@ -270,4 +273,74 @@ func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
 	if err != nil {
 		log.Warn(ctx, "failed to update pod cache", key.Error.Field(err), key.Pod.Field(pod))
 	}
+}
+
+func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
+	if pod == nil {
+		return nil, fmt.Errorf("pod is nil")
+	}
+
+	instance := &function.Instance{
+		Name: pod.Name,
+	}
+
+	if fnJson, ok := pod.Annotations[key.Function.Label]; ok {
+		err := json.Unmarshal([]byte(fnJson), &instance.Function)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("missing function annotation")
+	}
+
+	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Label]
+	if instance.ReplicaSet == "" {
+		return nil, fmt.Errorf("missing replica set annotation")
+	}
+
+	var err error
+	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Label])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
+	}
+
+	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Label]; ok {
+		instance.ReadyAt, err = time.Parse(time.RFC3339, readyAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)
+		}
+	}
+
+	port, err := portFromPod(pod)
+	if err != nil {
+		return nil, err
+	}
+
+	instance.Addr = net.JoinHostPort(pod.Status.PodIP, port)
+
+	return instance, nil
+}
+
+func portFromPod(pod *v1.Pod) (string, error) {
+	port := pod.Annotations[key.Port.Label]
+	if port == "" {
+		// grab the port from the first container if the port annotation is not present
+		if len(pod.Spec.Containers) > 0 && len(pod.Spec.Containers[0].Ports) > 0 {
+			port = strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort))
+		}
+	} else {
+		// get the actual port if the port annotation is a named port
+		for _, container := range pod.Spec.Containers {
+			for _, containerPort := range container.Ports {
+				if containerPort.Name == port {
+					port = strconv.Itoa(int(containerPort.ContainerPort))
+					break
+				}
+			}
+		}
+	}
+	if port == "" {
+		return "", fmt.Errorf("failed to get port for pod %s", pod.Name)
+	}
+	return port, nil
 }

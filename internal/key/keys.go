@@ -21,6 +21,7 @@ var (
 	Name                 = stringKey{new("name")}
 	Namespace            = stringKey{new("namespace")}
 	Pod                  = podKey{new("pod")}
+	Port                 = stringKey{new("port")}
 	ReadyAt              = timeKey{new("ready-at")}
 	ReplicaSet           = replicaSetKey{new("replica-set")}
 	Request              = requestKey{new("request")}

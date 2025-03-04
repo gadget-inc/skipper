@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -43,8 +44,11 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, po
 	must.NoError(t, err)
 	must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
 
+	port, err := portFromPod(&pod)
+	must.NoError(t, err)
+
 	must.Eq(t, instance.Name, pod.Name)
-	must.Eq(t, instance.Addr, pod.Status.PodIP+":"+strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort)))
+	must.Eq(t, instance.Addr, net.JoinHostPort(pod.Status.PodIP, port))
 	must.Eq(t, instance.ReplicaSet, pod.Annotations[key.ReplicaSet.Label])
 	must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
 	must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
@@ -88,10 +92,10 @@ func TestScaleFunctions(t *testing.T) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 
-				instance1, err := function.FromPod(&pods.Items[0])
+				instance1, err := instanceFromPod(&pods.Items[0])
 				must.NoError(t, err)
 
-				instance2, err := function.FromPod(&pods.Items[1])
+				instance2, err := instanceFromPod(&pods.Items[1])
 				must.NoError(t, err)
 
 				must.Eq(t, fn, instance1.Function)
@@ -127,7 +131,7 @@ func TestScaleFunctions(t *testing.T) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 
-				instance1, err := function.FromPod(&pods.Items[0])
+				instance1, err := instanceFromPod(&pods.Items[0])
 				must.NoError(t, err)
 
 				must.Eq(t, fn, instance1.Function)
@@ -158,7 +162,7 @@ func TestScaleFunctions(t *testing.T) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 
-				instance1, err := function.FromPod(&pods.Items[0])
+				instance1, err := instanceFromPod(&pods.Items[0])
 				must.NoError(t, err)
 				must.Eq(t, fn, instance1.Function)
 
@@ -244,7 +248,7 @@ func TestScaleFunctions(t *testing.T) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 
-				instance, err := function.FromPod(&pods.Items[0])
+				instance, err := instanceFromPod(&pods.Items[0])
 				must.NoError(t, err)
 				must.Eq(t, fn, instance.Function)
 				must.Len(t, 1, pods.Items)
@@ -273,7 +277,7 @@ func TestScaleFunctions(t *testing.T) {
 				must.NoError(t, err)
 
 				// the assigned pod should still be around because we're not responsible for it
-				instance, err := function.FromPod(&pods.Items[0])
+				instance, err := instanceFromPod(&pods.Items[0])
 				must.NoError(t, err)
 				must.Eq(t, fn, instance.Function)
 				must.Len(t, 1, pods.Items)
@@ -366,6 +370,47 @@ func TestAssignPodToFunction(t *testing.T) {
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
 				must.Nil(t, instance)
+			},
+		},
+		{
+			name: "multiple ports",
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// ensure the pod has a port annotation
+				pod := fixture.NewAvailablePod(t, fn, nil)
+				must.Eq(t, "http", pod.Annotations[key.Port.Label])
+				must.Eq(t, "http", pod.Spec.Containers[0].Ports[0].Name)
+
+				// add another container with a different port
+				pod.Spec.Containers = append(pod.Spec.Containers, v1.Container{
+					Name: "other",
+					Ports: []v1.ContainerPort{
+						{ContainerPort: 8080, Name: "other"},
+					},
+				})
+
+				err := fakeKubernetes.Tracker().Add(pod)
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
+				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 1, pods.Items)
+				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
+			},
+		},
+		{
+			name: "no port annotation",
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				pod := fixture.NewAvailablePod(t, fn, nil)
+				pod.Annotations[key.Port.Label] = ""
+				err := fakeKubernetes.Tracker().Add(pod)
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
+				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 1, pods.Items)
+				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
 			},
 		},
 	}

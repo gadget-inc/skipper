@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -53,7 +53,7 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 	fnInstances := make(map[function.Function][]*function.Instance)
 
 	for _, pod := range pods {
-		instance, err := function.FromPod(pod)
+		instance, err := instanceFromPod(pod)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance from pod", key.Error.Field(err), key.Pod.Field(pod))
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
@@ -318,19 +318,12 @@ func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Fun
 
 	ctrl.updatePodCache(ctx, pod)
 
-	var port string
-	for _, container := range pod.Spec.Containers {
-		for _, containerPort := range container.Ports {
-			port = strconv.Itoa(int(containerPort.ContainerPort))
-			break
-		}
-	}
-	if port == "" {
-		err = fmt.Errorf("no port found for pod")
+	port, err := portFromPod(pod)
+	if err != nil {
 		return nil, err
 	}
 
-	assignURL := "http://" + pod.Status.PodIP + ":" + port + function.FlagAssignPath.Value()
+	assignURL := "http://" + net.JoinHostPort(pod.Status.PodIP, port) + function.FlagAssignPath.Value()
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
 	defer cancel()
 
@@ -374,7 +367,7 @@ func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Fun
 
 	ctrl.updatePodCache(ctx, pod)
 
-	return function.FromPod(pod)
+	return instanceFromPod(pod)
 }
 
 func (ctrl *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1.Pod, error) {

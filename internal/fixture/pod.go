@@ -52,22 +52,36 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 				key.Deployment.Label: fn.Deployment,
 			},
 			Annotations: map[string]string{
-				"": "", // needed to avoid "add operation does not apply: doc is missing path: /metadata/annotations/...: missing value"
+				key.Port.Label: "http",
 			},
 			OwnerReferences: []metav1.OwnerReference{
-				{Kind: "ReplicaSet", Name: fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load()))},
+				{
+					Kind: "ReplicaSet",
+					Name: CurrentReplicaSetName(fn),
+				},
 			},
 		},
 		Status: v1.PodStatus{
 			PodIP: ip,
 			Phase: v1.PodRunning,
 			Conditions: []v1.PodCondition{
-				{Type: v1.PodReady, Status: v1.ConditionTrue},
+				{
+					Type:   v1.PodReady,
+					Status: v1.ConditionTrue,
+				},
 			},
 		},
 		Spec: v1.PodSpec{
 			Containers: []v1.Container{
-				{Ports: []v1.ContainerPort{{ContainerPort: int32(port)}}},
+				{
+					Name: "main",
+					Ports: []v1.ContainerPort{
+						{
+							Name:          "http",
+							ContainerPort: int32(port),
+						},
+					},
+				},
 			},
 		},
 	}
