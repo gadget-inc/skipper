@@ -200,5 +200,5 @@ func (c *Controller) startInformers(ctx context.Context) error {
 
 func (c *Controller) isResponsibleForFunction(fn function.Function) bool {
 	controllerIP := c.ring.Get(fn.RingKey())
-	return controllerIP == FlagIP.Value()
+	return controllerIP == FlagPodIP.Value()
 }

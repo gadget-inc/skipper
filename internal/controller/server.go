@@ -121,7 +121,7 @@ func (c *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) 
 	rw.WriteHeader(http.StatusOK)
 
 	forwardedFor := req.Header.Values(key.ForwardedFor.Header)
-	forwardedFor = append(forwardedFor, FlagIP.Value())
+	forwardedFor = append(forwardedFor, FlagPodIP.Value())
 
 	for _, controllerIP := range c.ring.List() {
 		if slices.Contains(forwardedFor, controllerIP) {

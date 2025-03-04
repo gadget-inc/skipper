@@ -18,8 +18,13 @@
           go = pkgs.go_1_24;
           golangci-lint = pkgs.golangci-lint;
           krane = pkgs.krane;
+          kubectl = pkgs.kubectl;
           stern = pkgs.stern;
           task = pkgs.go-task;
+
+          fusion = pkgs.writeShellScriptBin "fusion" ''
+            go run main.go "$@"
+          '';
         };
 
         devShell = pkgs.mkShell {

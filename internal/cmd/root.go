@@ -2,13 +2,15 @@ package cmd
 
 import (
 	"context"
+	"os/signal"
+	"syscall"
 
 	"github.com/gadget-inc/fusion/internal/log"
 	"github.com/gadget-inc/fusion/internal/telemetry"
 	"github.com/spf13/cobra"
 )
 
-func NewCmdRoot() *cobra.Command {
+func NewRoot() *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "fusion",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -17,8 +19,8 @@ func NewCmdRoot() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(NewCmdController())
-	cmd.AddCommand(NewCmdRouter())
+	cmd.AddCommand(NewController())
+	cmd.AddCommand(NewRouter())
 
 	log.FlagLogLevel.BindPersistent(cmd)
 	log.FlagLogFormat.BindPersistent(cmd)
@@ -26,6 +28,8 @@ func NewCmdRoot() *cobra.Command {
 	return cmd
 }
 
-func Execute(ctx context.Context) error {
-	return NewCmdRoot().ExecuteContext(ctx)
+func Run(ctx context.Context) error {
+	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	return NewRoot().ExecuteContext(ctx)
 }

@@ -15,16 +15,10 @@ import (
 )
 
 var (
-	FlagNamespace = flag.Flag[string]{
-		Name:        "controller-namespace",
-		Description: "The namespace the controller is in.",
-		Required:    true,
-	}
-
-	FlagIP = flag.Flag[string]{
-		Name:        "controller-ip",
-		Description: "The IP the controller listens on.",
-		Required:    true,
+	FlagHost = flag.Flag[string]{
+		Name:        "controller-host",
+		Description: "The hostname the controller listens on.",
+		Default:     "0.0.0.0",
 	}
 
 	FlagPort = flag.Flag[int]{
@@ -38,6 +32,24 @@ var (
 			}
 			return strconv.Atoi(s)
 		},
+	}
+
+	FlagShutdownTimeout = flag.Flag[time.Duration]{
+		Name:        "controller-shutdown-timeout",
+		Description: "The timeout for shutting down the controller.",
+		Default:     5 * time.Second,
+	}
+
+	FlagNamespace = flag.Flag[string]{
+		Name:        "controller-namespace",
+		Description: "The namespace the controller is in.",
+		Required:    true,
+	}
+
+	FlagPodIP = flag.Flag[string]{
+		Name:        "controller-pod-ip",
+		Description: "The pod IP the controller is running on.",
+		Required:    true,
 	}
 
 	FlagPasetoPrivateKey = flag.Flag[paseto.V2AsymmetricSecretKey]{

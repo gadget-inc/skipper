@@ -10,6 +10,12 @@ import (
 )
 
 var (
+	FlagHost = flag.Flag[string]{
+		Name:        "router-host",
+		Description: "The hostname the router listens on.",
+		Default:     "0.0.0.0",
+	}
+
 	FlagPort = flag.Flag[int]{
 		Name:        "router-port",
 		Description: "The port the router listens on.",
@@ -21,6 +27,12 @@ var (
 			}
 			return strconv.Atoi(s)
 		},
+	}
+
+	FlagShutdownTimeout = flag.Flag[time.Duration]{
+		Name:        "router-shutdown-timeout",
+		Description: "The timeout for shutting down the router.",
+		Default:     5 * time.Second,
 	}
 
 	FlagHeartbeatInterval = flag.Flag[time.Duration]{

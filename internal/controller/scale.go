@@ -228,7 +228,7 @@ func (c *Controller) scaleFunction(ctx context.Context, fn function.Function, de
 	}
 
 	controllerIP := c.ring.Get(fn.RingKey())
-	if controllerIP != FlagIP.Value() {
+	if controllerIP != FlagPodIP.Value() {
 		log.Debug(ctx, "forwarding scale request", key.Function.Field(fn), key.ControllerIP.Field(controllerIP))
 		return c.getControllerClient(controllerIP).Scale(ctx, fn, desiredInstances)
 	}

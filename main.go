@@ -2,18 +2,15 @@ package main
 
 import (
 	"context"
-	"os"
+	"log"
 
-	"github.com/gadget-inc/fusion/cmd"
-	"github.com/gadget-inc/fusion/internal/key"
-	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/fusion/internal/cmd"
 )
 
 func main() {
 	ctx := context.Background()
-	err := cmd.Execute(ctx)
+	err := cmd.Run(ctx)
 	if err != nil {
-		log.Error(ctx, "failed to execute command", key.Error.Field(err))
-		os.Exit(1)
+		log.Fatal(err)
 	}
 }

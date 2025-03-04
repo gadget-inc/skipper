@@ -27,7 +27,7 @@ func init() {
 
 	FlagPort.Init()
 	FlagHeartbeatTimeout.Init()
-	_ = FlagIP.SetValue(fixture.DefaultControllerIP)
+	_ = FlagPodIP.SetValue(fixture.DefaultControllerIP)
 	_ = FlagNamespace.SetValue(fixture.DefaultControllerNamespace)
 	_ = FlagPasetoPrivateKey.SetValue(fixture.DefaultControllerPasetoSecretKey)
 }

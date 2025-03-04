@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
-	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
-	"syscall"
-	"time"
 
 	"github.com/gadget-inc/fusion/internal/controller"
 	"github.com/gadget-inc/fusion/internal/function"
@@ -26,10 +23,10 @@ import (
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-func NewCmdController() *cobra.Command {
+func NewController() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "controller",
-		Short: "Start the fusion controller",
+		Short: "Start the controller",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			config, err := rest.InClusterConfig()
 			if errors.Is(err, rest.ErrNotInCluster) {
@@ -60,8 +57,7 @@ func NewCmdController() *cobra.Command {
 			defer shutdownTelemetry()
 
 			ctrl := controller.New(controller.NewHTTPClient, clientset, metricsClientset)
-			err = ctrl.Start(ctx)
-			if err != nil {
+			if err := ctrl.Start(ctx); err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)
 			}
 
@@ -69,8 +65,8 @@ func NewCmdController() *cobra.Command {
 			protocols.SetHTTP1(true)
 			protocols.SetUnencryptedHTTP2(true)
 
-			srv := &http.Server{
-				Addr: ":" + strconv.Itoa(controller.FlagPort.Value()),
+			httpServer := &http.Server{
+				Addr: net.JoinHostPort(controller.FlagHost.Value(), strconv.Itoa(controller.FlagPort.Value())),
 				Handler: otelhttp.NewHandler(ctrl, "",
 					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
 					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
@@ -78,38 +74,31 @@ func NewCmdController() *cobra.Command {
 				Protocols: &protocols,
 			}
 
-			serverErrors := make(chan error, 1)
+			httpServerError := make(chan error, 1)
 
 			go func() {
-				err := srv.ListenAndServe()
-				if err != nil && err != http.ErrServerClosed {
-					log.Error(ctx, "failed to serve listen and serve", key.Error.Field(err))
-					serverErrors <- err
+				log.Info(ctx, "serving controller", key.Addr.Field(httpServer.Addr))
+				if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					httpServerError <- err
 				}
 			}()
 
-			log.Info(ctx, "server started", key.Addr.Field(srv.Addr))
-			quit := make(chan os.Signal, 1)
-			signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 			select {
-			case err := <-serverErrors:
-				return fmt.Errorf("server error: %w", err)
-			case sig := <-quit:
-				log.Info(ctx, "received signal, shutting down", key.Signal.Field(sig.String()))
+			case err := <-httpServerError:
+				return fmt.Errorf("failed to serve controller: %w", err)
+			case <-ctx.Done():
+				log.Info(ctx, "shutting down controller")
 			}
 
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), controller.FlagShutdownTimeout.Value())
 			defer cancel()
 
-			err = srv.Shutdown(shutdownCtx)
-			if err != nil {
-				return fmt.Errorf("failed to shutdown server: %w", err)
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("failed to shutdown controller: %w", err)
 			}
 
-			log.Info(ctx, "server shutdown")
-
-			return nil
+			log.Info(ctx, "controller shutdown")
+			return ctx.Err()
 		},
 	}
 
@@ -117,11 +106,13 @@ func NewCmdController() *cobra.Command {
 	controller.FlagHPAInitialReadinessDelay.Bind(cmd)
 	controller.FlagHPATolerance.Bind(cmd)
 	controller.FlagHeartbeatTimeout.Bind(cmd)
-	controller.FlagIP.Bind(cmd)
+	controller.FlagHost.Bind(cmd)
 	controller.FlagNamespace.Bind(cmd)
 	controller.FlagPasetoPrivateKey.Bind(cmd)
+	controller.FlagPodIP.Bind(cmd)
 	controller.FlagPort.Bind(cmd)
 	controller.FlagScaleInterval.Bind(cmd)
+	controller.FlagShutdownTimeout.Bind(cmd)
 	function.FlagAssignPath.Bind(cmd)
 	function.FlagAssignTimeout.Bind(cmd)
 	function.FlagNamespaces.Bind(cmd)

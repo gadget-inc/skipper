@@ -3,12 +3,9 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
-	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
-	"time"
 
 	"github.com/gadget-inc/fusion/internal/controller"
 	"github.com/gadget-inc/fusion/internal/key"
@@ -19,10 +16,10 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-func NewCmdRouter() *cobra.Command {
+func NewRouter() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "router",
-		Short: "Start the fusion router",
+		Short: "Start the router",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
@@ -30,48 +27,41 @@ func NewCmdRouter() *cobra.Command {
 			shutdownTelemetry := telemetry.Init(ctx, telemetry.ComponentRouter)
 			defer shutdownTelemetry()
 
-			controllerClient := controller.NewHTTPClient(router.FlagControllerServiceHost.Value(), router.FlagControllerServicePort.Value())
-			r := router.New(controllerClient)
+			r := router.New(controller.NewHTTPClient(router.FlagControllerServiceHost.Value(), router.FlagControllerServicePort.Value()))
 			r.Start(ctx)
 
 			httpServer := &http.Server{
-				Addr: ":" + strconv.Itoa(router.FlagPort.Value()),
+				Addr: net.JoinHostPort(router.FlagHost.Value(), strconv.Itoa(router.FlagPort.Value())),
 				Handler: otelhttp.NewHandler(r, "",
 					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
 					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method }),
 				),
 			}
 
-			httpServerErrors := make(chan error, 1)
+			httpServerError := make(chan error, 1)
 
 			go func() {
-				err := httpServer.ListenAndServe()
-				if err != http.ErrServerClosed {
-					log.Error(ctx, "failed to listen and serve", key.Error.Field(err))
-					httpServerErrors <- err
+				log.Info(ctx, "serving router", key.Addr.Field(httpServer.Addr))
+				if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					httpServerError <- err
 				}
 			}()
 
-			log.Info(ctx, "server started", key.Addr.Field(httpServer.Addr))
-			quit := make(chan os.Signal, 1)
-			signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 			select {
-			case err := <-httpServerErrors:
-				return fmt.Errorf("server error: %w", err)
-			case sig := <-quit:
-				log.Info(ctx, "received signal, shutting down", key.Signal.Field(sig.String()))
+			case err := <-httpServerError:
+				return fmt.Errorf("failed to serve router: %w", err)
+			case <-ctx.Done():
+				log.Info(ctx, "shutting down router")
 			}
 
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), router.FlagShutdownTimeout.Value())
 			defer cancel()
 
-			err := httpServer.Shutdown(shutdownCtx)
-			if err != nil {
-				return fmt.Errorf("failed to shutdown server: %w", err)
+			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+				return fmt.Errorf("failed to shutdown router: %w", err)
 			}
 
-			log.Info(ctx, "server shutdown")
+			log.Info(ctx, "router shutdown")
 
 			return nil
 		},
@@ -80,10 +70,12 @@ func NewCmdRouter() *cobra.Command {
 	router.FlagControllerServiceHost.Bind(cmd)
 	router.FlagControllerServicePort.Bind(cmd)
 	router.FlagHeartbeatInterval.Bind(cmd)
+	router.FlagHost.Bind(cmd)
 	router.FlagMaxRoundTripAttempts.Bind(cmd)
 	router.FlagPort.Bind(cmd)
 	router.FlagRoundTripRetryMaxTimeout.Bind(cmd)
 	router.FlagRoundTripRetryMinTimeout.Bind(cmd)
+	router.FlagShutdownTimeout.Bind(cmd)
 
 	return cmd
 }
