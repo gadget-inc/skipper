@@ -14,13 +14,14 @@ type bufPool struct {
 var bufferPool = &bufPool{
 	sync.Pool{
 		New: func() any {
-			return make([]byte, 0, bufCapacity)
+			buf := make([]byte, 0, bufCapacity)
+			return &buf
 		},
 	},
 }
 
 func (bp *bufPool) Get() []byte {
-	return bp.Pool.Get().([]byte)
+	return *bp.Pool.Get().(*[]byte)
 }
 
 func (bp *bufPool) Put(buf []byte) {
@@ -29,5 +30,5 @@ func (bp *bufPool) Put(buf []byte) {
 		return
 	}
 	buf = buf[:0] // reset the buffer
-	bp.Pool.Put(buf)
+	bp.Pool.Put(&buf)
 }
