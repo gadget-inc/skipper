@@ -74,7 +74,7 @@ func TestScaleFunctions(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 
 				instance1, err := function.FromPod(&pods.Items[0])
@@ -113,7 +113,7 @@ func TestScaleFunctions(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 
 				instance1, err := function.FromPod(&pods.Items[0])
@@ -141,7 +141,7 @@ func TestScaleFunctions(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
 
@@ -172,7 +172,7 @@ func TestScaleFunctions(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
 			},
@@ -198,7 +198,7 @@ func TestScaleFunctions(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 
 				instance, err := function.FromPod(&pods.Items[0])
@@ -226,7 +226,7 @@ func TestScaleFunctions(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(context.Background(), metav1.ListOptions{})
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 
 				// the assigned pod should still be around because we're not responsible for it
@@ -278,7 +278,7 @@ func TestAssignPodToFunction(t *testing.T) {
 				must.NoError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
+				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
@@ -304,7 +304,7 @@ func TestAssignPodToFunction(t *testing.T) {
 				}()
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{})
+				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
@@ -329,7 +329,7 @@ func TestAssignPodToFunction(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			t.Cleanup(cancel)
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
@@ -386,7 +386,7 @@ func TestScaleFunction(t *testing.T) {
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 1, instances)
 				instance := instances[0]
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(context.Background(), metav1.ListOptions{
+				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{
 					LabelSelector: doesNotHaveTenantRequirement.String(),
 				})
 				must.NoError(t, err)
@@ -447,7 +447,7 @@ func TestScaleFunction(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			t.Cleanup(cancel)
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
@@ -473,7 +473,7 @@ func TestScaleFunction(t *testing.T) {
 }
 
 func TestScaleFunctionForwarding(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	t.Cleanup(cancel)
 
 	ctrlPod := fixture.NewControllerPod()

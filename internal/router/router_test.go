@@ -274,7 +274,7 @@ func TestBody(t *testing.T) {
 }
 
 func TestHeartbeats(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
 	fn := fixture.NewFunction()
 	testStartTime := time.Now()
 
