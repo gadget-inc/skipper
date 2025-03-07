@@ -14,10 +14,8 @@ func Init() {
 	logOptions := slog.HandlerOptions{
 		Level: FlagLogLevel.Value(),
 		ReplaceAttr: func(groups []string, field slog.Attr) slog.Attr {
-			if field.Key == slog.LevelKey {
-				if field.Value.Any().(slog.Level) == LevelTrace {
-					field.Value = slog.StringValue("TRACE")
-				}
+			if field.Key == slog.LevelKey && field.Value.Any().(slog.Level) == LevelTrace {
+				field.Value = slog.StringValue("TRACE")
 			}
 			return field
 		},
