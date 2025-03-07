@@ -111,10 +111,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			minTimeout := float64(FlagRoundTripRetryMinTimeout.Value())
 			maxTimeout := float64(FlagRoundTripRetryMaxTimeout.Value())
 			factor := 1 + rand.Float64() // randomize the factor between 1 and 2 to add jitter
-			delay := factor * float64(minTimeout) * math.Pow(2, float64(attempt))
-			if delay > maxTimeout {
-				delay = maxTimeout
-			}
+			delay := min(factor*minTimeout*math.Pow(2, float64(attempt)), maxTimeout)
 			time.Sleep(time.Duration(delay))
 		}
 
