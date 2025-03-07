@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
+	"k8s.io/klog/v2"
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
@@ -30,6 +32,9 @@ func NewController() *cobra.Command {
 			// flags have been parsed and validated by now, so don't print usage or errors anymore
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
+
+			// make klog use slog which will have already been configured by the root command
+			klog.SetSlogLogger(slog.Default())
 
 			config, err := rest.InClusterConfig()
 			if errors.Is(err, rest.ErrNotInCluster) {
