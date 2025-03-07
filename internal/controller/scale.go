@@ -149,7 +149,7 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 		wg.Add(1)
 
 		go func() {
-			ctx, span := telemetry.Start(ctx, "controller.scale_functions.scale_function", trace.WithAttributes(key.Function.Attributes(fn)...))
+			ctx, span := telemetry.StartRoot(ctx, "controller.scale_functions.scale_function", trace.WithAttributes(key.Function.Attributes(fn)...))
 			defer span.End()
 			defer wg.Done()
 
