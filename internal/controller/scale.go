@@ -85,17 +85,11 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			for _, container := range podMetric.Containers {
 				if container.Usage.Cpu() != nil {
 					cpuUsage := container.Usage.Cpu().MilliValue()
-					if instance.CPUUsage == nil {
-						instance.CPUUsage = new(int64)
-					}
-					*instance.CPUUsage += cpuUsage
+					instance.CPUUsage += int(cpuUsage)
 				}
 				if container.Usage.Memory() != nil {
 					memUsage := container.Usage.Memory().Value()
-					if instance.MemoryUsage == nil {
-						instance.MemoryUsage = new(int64)
-					}
-					*instance.MemoryUsage += memUsage
+					instance.MemoryUsage += int(memUsage)
 				}
 			}
 		}
@@ -174,22 +168,10 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			}
 
 			currentInstances := len(instances)
-			desiredInstances, err := calculateDesiredInstances(ctx, instances, now)
-			if err != nil {
-				log.Warn(ctx, "failed to calculate desired instances", key.Error.Field(err), key.Function.Field(fn))
-				return
-			}
+			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances, now)
 
-			if desiredInstances < heartbeat.Requests/currentInstances {
-				desiredInstances = heartbeat.Requests / currentInstances
-			}
-
-			if desiredInstances < fn.Scale.MinInstances {
-				desiredInstances = fn.Scale.MinInstances
-			}
-
-			if desiredInstances > fn.Scale.MaxInstances {
-				desiredInstances = fn.Scale.MaxInstances
+			if fn.Scale.TargetRequestsPerInstance > 0 {
+				desiredInstances = min(desiredInstances, int(math.Ceil(float64(heartbeat.Requests)/float64(fn.Scale.TargetRequestsPerInstance))))
 			}
 
 			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
@@ -455,20 +437,20 @@ func (sw *StabilizationWindow) GetMaxRecommendation() int {
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Instance, timestamp time.Time) (int, error) {
+func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instances []*function.Instance, timestamp time.Time) int {
 	currentInstances := len(instances)
 	var instancesWithMetrics []*function.Instance
 	var instancesWithoutMetrics []*function.Instance
 
 	for _, instance := range instances {
-		var usage *int64
+		var usage int
 		switch metric {
 		case MetricCPU:
 			usage = instance.CPUUsage
 		case MetricMemory:
 			usage = instance.MemoryUsage
 		default:
-			return currentInstances, fmt.Errorf("unsupported metric: %v", metric)
+			return currentInstances
 		}
 
 		if metric == MetricCPU && (instance.ReadyAt.IsZero() || timestamp.Sub(instance.ReadyAt) <= FlagHPAInitialReadinessDelay.Value()) {
@@ -477,7 +459,7 @@ func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Ins
 			continue
 		}
 
-		if usage == nil {
+		if usage == 0 {
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 		} else {
 			instancesWithMetrics = append(instancesWithMetrics, instance)
@@ -485,7 +467,7 @@ func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Ins
 	}
 
 	if len(instancesWithMetrics) == 0 {
-		return currentInstances, fmt.Errorf("no metrics available for metric %v", metric)
+		return currentInstances
 	}
 
 	var targetUsage int
@@ -495,16 +477,16 @@ func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Ins
 		switch metric {
 		case MetricCPU:
 			targetUsage = instance.Scale.TargetCPUUsageMilli
-			totalUsage += int(*instance.CPUUsage)
+			totalUsage += instance.CPUUsage
 		case MetricMemory:
 			targetUsage = instance.Scale.TargetMemoryUsageMiB
-			totalUsage += int(*instance.MemoryUsage / 1024 / 1024) // convert memory usage from bytes to MiB
+			totalUsage += instance.MemoryUsage / 1024 / 1024 // convert memory usage from bytes to MiB
 		}
 	}
 
 	if targetUsage == 0 {
 		// target usage = 0 means don't scale on this metric
-		return currentInstances, nil
+		return currentInstances
 	}
 
 	averageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
@@ -514,7 +496,7 @@ func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Ins
 
 	if usageDiscrepancy <= FlagHPATolerance.Value()+1e-10 { // add a small epsilon to avoid floating point errors
 		// the average usage is within tolerance of the target utilization, so we should not scale
-		return currentInstances, nil
+		return currentInstances
 	}
 
 	if len(instancesWithoutMetrics) > 0 {
@@ -537,50 +519,34 @@ func calculateDesiredInstancesForMetric(metric Metric, instances []*function.Ins
 			// usage ratio, or the adjusted usage ratio is within
 			// tolerance of the target utilization. either way, we
 			// should noop and not scale
-			return currentInstances, nil
+			return currentInstances
 		}
 
 		desiredInstances = int(math.Ceil(float64(currentInstances) * adjustedUsageRatio))
 	}
 
-	return desiredInstances, nil
+	return desiredInstances
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, instances []*function.Instance, timestamp time.Time) (int, error) {
-	currentInstances := len(instances)
+func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance, timestamp time.Time) int {
 	maxDesiredInstances := 0
-	scaleDownErrors := 0
-	scaleDownSuggested := false
 
 	for _, metric := range []Metric{MetricCPU, MetricMemory} {
-		desiredInstances, err := calculateDesiredInstancesForMetric(metric, instances, timestamp)
-		if err != nil {
-			log.Trace(ctx, "failed to calculate desired instances for metric", key.Error.Field(err))
-			if desiredInstances < currentInstances {
-				scaleDownErrors++
-			}
-			continue
-		}
-
+		desiredInstances := calculateDesiredInstancesForMetric(ctx, metric, instances, timestamp)
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
 		}
+	}
 
-		if desiredInstances < currentInstances {
-			scaleDownSuggested = true
+	if heartbeat.Function.Scale.TargetRequestsPerInstance > 0 {
+		desiredInstances := int(math.Ceil(float64(heartbeat.Requests) / float64(heartbeat.Function.Scale.TargetRequestsPerInstance)))
+		if desiredInstances > maxDesiredInstances {
+			maxDesiredInstances = desiredInstances
 		}
 	}
 
-	if maxDesiredInstances == 0 {
-		return currentInstances, fmt.Errorf("no metrics available")
-	}
-
-	if scaleDownSuggested && scaleDownErrors > 0 {
-		return currentInstances, nil
-	}
-
-	return maxDesiredInstances, nil
+	return min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
 }
 
 type RouterHeartbeats map[string]function.Heartbeat

@@ -80,9 +80,7 @@ func (c *httpClient) Heartbeat(ctx context.Context, routerIP string, heartbeats 
 	}
 
 	req.Header[key.RouterIP.Header] = []string{routerIP}
-	for _, forwardedForIP := range forwardedFor {
-		req.Header[key.ForwardedFor.Header] = append(req.Header[key.ForwardedFor.Header], forwardedForIP)
-	}
+	req.Header[key.ForwardedFor.Header] = append(req.Header[key.ForwardedFor.Header], forwardedFor...)
 
 	res, err := c.Do(req)
 	if err != nil {

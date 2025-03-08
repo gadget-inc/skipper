@@ -16,18 +16,18 @@ type Instance struct {
 	ReplicaSet  string    // replica set name
 	AssignedAt  time.Time // time the instance was assigned to the pod
 	ReadyAt     time.Time // time the instance was ready to receive traffic
-	CPUUsage    *int64    // cpu usage in millicores
-	MemoryUsage *int64    // memory usage in bytes
+	CPUUsage    int       // cpu usage in millicores
+	MemoryUsage int       // memory usage in bytes
 }
 
 func (instance *Instance) Fields() []slog.Attr {
 	cpuUsage := "unknown"
-	if instance.CPUUsage != nil {
-		cpuUsage = strconv.FormatInt(*instance.CPUUsage, 10)
+	if instance.CPUUsage != 0 {
+		cpuUsage = strconv.Itoa(instance.CPUUsage)
 	}
 	memoryUsage := "unknown"
-	if instance.MemoryUsage != nil {
-		memoryUsage = strconv.FormatInt(*instance.MemoryUsage/1024/1024, 10)
+	if instance.MemoryUsage != 0 {
+		memoryUsage = strconv.Itoa(instance.MemoryUsage / 1024 / 1024)
 	}
 	return []slog.Attr{
 		key.Name.Field(instance.Name),
@@ -42,12 +42,12 @@ func (instance *Instance) Fields() []slog.Attr {
 
 func (instance *Instance) Attributes() []attribute.KeyValue {
 	cpuUsage := "unknown"
-	if instance.CPUUsage != nil {
-		cpuUsage = strconv.FormatInt(*instance.CPUUsage, 10)
+	if instance.CPUUsage != 0 {
+		cpuUsage = strconv.Itoa(instance.CPUUsage)
 	}
 	memoryUsage := "unknown"
-	if instance.MemoryUsage != nil {
-		memoryUsage = strconv.FormatInt(*instance.MemoryUsage/1024/1024, 10)
+	if instance.MemoryUsage != 0 {
+		memoryUsage = strconv.Itoa(instance.MemoryUsage / 1024 / 1024)
 	}
 	return append(key.Function.Attributes(instance.Function),
 		key.Name.Attribute(instance.Name),
