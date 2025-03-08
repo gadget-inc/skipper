@@ -93,17 +93,20 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return nil
 	})
 
+	go func() {
+		<-req.Context().Done()
+		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
+			heartbeat.Function = fn
+			heartbeat.Timestamp = time.Now()
+			heartbeat.Requests--
+			return heartbeat, false
+		})
+	}()
+
 	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.Requests++
-		return heartbeat, false
-	})
-
-	defer r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
-		heartbeat.Function = fn
-		heartbeat.Timestamp = time.Now()
-		heartbeat.Requests--
 		return heartbeat, false
 	})
 
