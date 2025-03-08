@@ -180,6 +180,10 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 				return
 			}
 
+			if desiredInstances < heartbeat.Requests/currentInstances {
+				desiredInstances = heartbeat.Requests / currentInstances
+			}
+
 			if desiredInstances < fn.Scale.MinInstances {
 				desiredInstances = fn.Scale.MinInstances
 			}
