@@ -15,7 +15,7 @@ import (
 
 type Client interface {
 	Instance(ctx context.Context, fn function.Function) (instance *function.Instance, err error)
-	Heartbeat(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error
+	Heartbeat(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
 }
 
@@ -64,7 +64,7 @@ func (c *httpClient) Instance(ctx context.Context, fn function.Function) (instan
 	return instance, nil
 }
 
-func (c *httpClient) Heartbeat(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+func (c *httpClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 	if len(heartbeats) == 0 {
 		return nil
 	}
@@ -79,8 +79,9 @@ func (c *httpClient) Heartbeat(ctx context.Context, heartbeats []function.Heartb
 		return fmt.Errorf("failed to create heartbeat request: %w", err)
 	}
 
+	req.Header[key.RouterIP.Header] = []string{routerIP}
 	for _, forwardedForIP := range forwardedFor {
-		req.Header.Add(key.ForwardedFor.Header, forwardedForIP)
+		req.Header[key.ForwardedFor.Header] = append(req.Header[key.ForwardedFor.Header], forwardedForIP)
 	}
 
 	res, err := c.Do(req)

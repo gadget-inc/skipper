@@ -153,15 +153,16 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			defer span.End()
 			defer wg.Done()
 
-			heartbeat, _ := ctrl.heartbeats.Load(fn)
+			heartbeats, _ := ctrl.heartbeats.Load(fn)
+			heartbeat := heartbeats.Combined()
 			for _, instance := range instances {
-				if instance.AssignedAt.After(heartbeat) {
-					heartbeat = instance.AssignedAt
+				if instance.AssignedAt.After(heartbeat.Timestamp) {
+					heartbeat.Timestamp = instance.AssignedAt
 				}
 			}
 
-			if time.Since(heartbeat) >= FlagHeartbeatTimeout.Value() {
-				log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat))
+			if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
+				log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat.Timestamp))
 				_, err := ctrl.scaleFunction(ctx, fn, 0)
 				if err != nil {
 					log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
@@ -576,4 +577,17 @@ func calculateDesiredInstances(ctx context.Context, instances []*function.Instan
 	}
 
 	return maxDesiredInstances, nil
+}
+
+type RouterHeartbeats map[string]function.Heartbeat
+
+func (r RouterHeartbeats) Combined() function.Heartbeat {
+	var combined function.Heartbeat
+	for _, heartbeat := range r {
+		combined.Requests += heartbeat.Requests
+		if combined.Timestamp.Before(heartbeat.Timestamp) {
+			combined.Timestamp = heartbeat.Timestamp
+		}
+	}
+	return combined
 }

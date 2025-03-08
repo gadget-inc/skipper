@@ -17,10 +17,11 @@ import (
 )
 
 func init() {
-	_ = FlagHeartbeatInterval.SetValue(time.Millisecond)
 	FlagMaxRoundTripAttempts.Init()
-	_ = FlagRoundTripRetryMaxTimeout.SetValue(time.Millisecond)
 	FlagRoundTripRetryMinTimeout.Init()
+	_ = FlagHeartbeatInterval.SetValue(time.Millisecond)
+	_ = FlagPodIP.SetValue(fixture.RouterIP)
+	_ = FlagRoundTripRetryMaxTimeout.SetValue(time.Millisecond)
 }
 
 func TestHealthz(t *testing.T) {
@@ -95,7 +96,7 @@ func TestMethods(t *testing.T) {
 		// integration tests
 		t.Run(tc.method+" integration", func(t *testing.T) {
 			fn := fixture.NewEchoFunction()
-			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterURL, nil)
+			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterIntegrationURL, nil)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
 			must.NoError(t, err)
@@ -173,7 +174,7 @@ func TestHeaders(t *testing.T) {
 		// integration tests
 		t.Run(tc.name+" integration", func(t *testing.T) {
 			fn := fixture.NewEchoFunction()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, fixture.RouterURL, nil)
+			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, fixture.RouterIntegrationURL, nil)
 			req.Header.Set("User-Agent", "") // disable the default User-Agent header
 			tc.setHeaders(fn, req)
 
@@ -258,7 +259,7 @@ func TestBody(t *testing.T) {
 			fn := fixture.NewEchoFunction()
 
 			contentType, body := tc.getBody()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodPost, fixture.RouterURL, body)
+			req := fixture.NewFunctionRequest(t, fn, http.MethodPost, fixture.RouterIntegrationURL, body)
 			req.Header.Set("Content-Type", contentType)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
@@ -274,7 +275,9 @@ func TestBody(t *testing.T) {
 }
 
 func TestHeartbeats(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), FlagHeartbeatInterval.Value()+time.Second)
+	t.Cleanup(cancel)
+
 	fn := fixture.NewFunction()
 	testStartTime := time.Now()
 
@@ -285,12 +288,13 @@ func TestHeartbeats(t *testing.T) {
 			rw.Write([]byte("Hello, " + fn.Tenant))
 		}), nil
 	})
-	mcc.HandleHeartbeat(func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 		if len(heartbeats) == 0 {
 			// ignore the initial heartbeats
 			return nil
 		}
 
+		must.Eq(t, fixture.RouterIP, routerIP)
 		must.Eq(t, 1, len(heartbeats))
 		must.Eq(t, fn, heartbeats[0].Function)
 		must.True(t, heartbeats[0].Timestamp.After(testStartTime))
@@ -300,7 +304,7 @@ func TestHeartbeats(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil).WithContext(ctx)
+	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil).WithContext(t.Context())
 
 	router := New(mcc)
 	router.Start(ctx)

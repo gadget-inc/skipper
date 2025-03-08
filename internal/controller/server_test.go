@@ -10,6 +10,7 @@ import (
 
 	"github.com/gadget-inc/fusion/internal/fixture"
 	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/fusion/internal/key"
 	"github.com/goccy/go-json"
 	"github.com/shoenig/test/must"
 	"k8s.io/client-go/kubernetes/fake"
@@ -43,7 +44,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				must.Eq(t, 1, ctrl.heartbeats.Size())
 				heartbeat, ok := ctrl.heartbeats.Load(heartbeats[0].Function)
 				must.True(t, ok)
-				must.Eq(t, heartbeats[0].Timestamp, heartbeat)
+				must.Eq(t, heartbeats[0].Timestamp, heartbeat[fixture.RouterIP].Timestamp)
 			},
 		},
 		{
@@ -59,7 +60,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				for _, hb := range heartbeats {
 					heartbeat, ok := ctrl.heartbeats.Load(hb.Function)
 					must.True(t, ok)
-					must.Eq(t, hb.Timestamp, heartbeat)
+					must.Eq(t, hb.Timestamp, heartbeat[fixture.RouterIP].Timestamp)
 				}
 			},
 		},
@@ -69,7 +70,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				// seed the controller with a recent heartbeat
 				fn := fixture.NewFunction()
 				heartbeat := time.Now()
-				ctrl.heartbeats.Store(fn, heartbeat)
+				ctrl.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: heartbeat}})
 
 				// send an old heartbeat
 				return []function.Heartbeat{
@@ -83,8 +84,8 @@ func TestHandleHeartbeat(t *testing.T) {
 				keptTimestamp, ok := ctrl.heartbeats.Load(heartbeats[0].Function)
 
 				must.True(t, ok)
-				must.NotEq(t, keptTimestamp, sentTimestamp)
-				must.Eq(t, keptTimestamp, sentTimestamp.Add(time.Hour))
+				must.NotEq(t, keptTimestamp[fixture.RouterIP].Timestamp, sentTimestamp)
+				must.Eq(t, keptTimestamp[fixture.RouterIP].Timestamp, sentTimestamp.Add(time.Hour))
 			},
 		},
 		{
@@ -93,7 +94,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				ctrl.ring.Add("127.0.0.2")
 				hbs := []function.Heartbeat{{Function: fixture.NewFunction(), Timestamp: time.Now()}}
 
-				mcc.HandleHeartbeat(func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 					must.Eq(t, hbs, heartbeats)
 					must.Eq(t, []string{fixture.ControllerIP}, forwardedFor)
 					return nil
@@ -118,6 +119,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			must.NoError(t, err)
 
 			req := httptest.NewRequest(http.MethodPost, "/heartbeat", bytes.NewReader(heartbeatBytes))
+			req.Header.Set(key.RouterIP.Header, fixture.RouterIP)
 			rw := httptest.NewRecorder()
 			ctrl.ServeHTTP(rw, req)
 

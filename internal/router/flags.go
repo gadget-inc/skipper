@@ -35,6 +35,12 @@ var (
 		Default:     5 * time.Second,
 	}
 
+	FlagPodIP = flag.Flag[string]{
+		Name:        "router-pod-ip",
+		Description: "The pod IP the router is running on.",
+		Required:    true,
+	}
+
 	FlagHeartbeatInterval = flag.Flag[time.Duration]{
 		Name:        "router-heartbeat-interval",
 		Description: "The interval at which to send heartbeats to the controller.",

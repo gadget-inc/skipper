@@ -26,6 +26,7 @@ var (
 	ReplicaSet           = replicaSetKey{new("replica-set")}
 	Request              = requestKey{new("request")}
 	Response             = responseKey{new("response")}
+	RouterIP             = stringKey{new("router-ip")}
 	Scale                = groupValueKey{new("scale")}
 	TargetCPUUsageMilli  = intKey{new("target-cpu-usage-milli")}
 	TargetMemoryUsageMiB = intKey{new("target-memory-usage-mib")}

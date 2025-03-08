@@ -278,6 +278,10 @@ spec:
             - name: http
               containerPort: 8080
           env:
+            - name: FUSION_ROUTER_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
             - name: FUSION_LOG_LEVEL
               value: "<%= router_log_level %>"
             - name: FUSION_LOG_FORMAT

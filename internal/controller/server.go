@@ -100,6 +100,13 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) {
+	routerIP := req.Header.Get(key.RouterIP.Header)
+	if routerIP == "" {
+		log.Error(req.Context(), "failed to get router IP from header")
+		http.Error(rw, "missing "+key.RouterIP.Header, http.StatusBadRequest)
+		return
+	}
+
 	var heartbeats []function.Heartbeat
 	err := json.NewDecoder(req.Body).Decode(&heartbeats)
 	if err != nil {
@@ -109,11 +116,14 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	for _, heartbeat := range heartbeats {
-		ctrl.heartbeats.Compute(heartbeat.Function, func(timestamp time.Time, loaded bool) (time.Time, bool) {
-			if !loaded || heartbeat.Timestamp.After(timestamp) {
-				return heartbeat.Timestamp, false
+		ctrl.heartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
+			if !loaded {
+				routerHeartbeats = make(RouterHeartbeats)
 			}
-			return timestamp, false
+			if routerHeartbeats[routerIP].Timestamp.Before(heartbeat.Timestamp) {
+				routerHeartbeats[routerIP] = heartbeat
+			}
+			return routerHeartbeats, false
 		})
 	}
 
@@ -132,7 +142,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			err := ctrl.getControllerClient(controllerIP).Heartbeat(ctx, heartbeats, forwardedFor...)
+			err := ctrl.getControllerClient(controllerIP).Heartbeat(ctx, routerIP, heartbeats, forwardedFor...)
 			if err != nil {
 				log.Warn(req.Context(), "failed to forward heartbeats", key.Error.Field(err), key.ControllerIP.Field(controllerIP))
 			}

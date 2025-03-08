@@ -2,6 +2,7 @@ package fixture
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"aidanwoods.dev/go-paseto"
@@ -14,11 +15,11 @@ import (
 type (
 	InstanceHandler  func(ctx context.Context, fn function.Function) (*function.Instance, error)
 	ScaleHandler     func(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
-	HeartbeatHandler func(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error
+	HeartbeatHandler func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error
 )
 
-const (
-	ControllerIP        = "127.0.0.1"
+var (
+	ControllerIP        = "127.0.0." + strconv.Itoa(rand.Intn(256))
 	ControllerNamespace = "fusion-test"
 )
 
@@ -86,12 +87,12 @@ func (f *MockControllerClient) Scale(ctx context.Context, fn function.Function, 
 }
 
 // Heartbeat implements controller.Client.
-func (f *MockControllerClient) Heartbeat(ctx context.Context, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+func (f *MockControllerClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 	if f.heartbeatHandler == nil {
 		f.t.Fatalf("mcc.Heartbeat was called but not mocked")
 	}
 	f.heartbeatWasCalled = true
-	return f.heartbeatHandler(ctx, heartbeats, forwardedFor...)
+	return f.heartbeatHandler(ctx, routerIP, heartbeats, forwardedFor...)
 }
 
 func NewControllerPod() *v1.Pod {

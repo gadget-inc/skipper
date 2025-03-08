@@ -22,7 +22,7 @@ import (
 
 type Router struct {
 	controller   controller.Client
-	heartbeats   *xsync.MapOf[function.Function, time.Time]
+	heartbeats   *xsync.MapOf[function.Function, function.Heartbeat]
 	reverseProxy *httputil.ReverseProxy
 	roundTripper http.RoundTripper
 }
@@ -30,7 +30,7 @@ type Router struct {
 func New(controllerClient controller.Client) *Router {
 	r := &Router{
 		controller: controllerClient,
-		heartbeats: xsync.NewMapOf[function.Function, time.Time](),
+		heartbeats: xsync.NewMapOf[function.Function, function.Heartbeat](),
 		roundTripper: otelhttp.NewTransport(&http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -58,13 +58,13 @@ func New(controllerClient controller.Client) *Router {
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
 		var heartbeats []function.Heartbeat
-		r.heartbeats.Range(func(fn function.Function, timestamp time.Time) bool {
+		r.heartbeats.Range(func(fn function.Function, heartbeat function.Heartbeat) bool {
 			r.heartbeats.Delete(fn)
-			heartbeats = append(heartbeats, function.Heartbeat{Function: fn, Timestamp: timestamp})
+			heartbeats = append(heartbeats, heartbeat)
 			return true
 		})
 
-		err := r.controller.Heartbeat(ctx, heartbeats)
+		err := r.controller.Heartbeat(ctx, FlagPodIP.Value(), heartbeats)
 		if err != nil {
 			log.Warn(ctx, "failed to send heartbeats", key.Error.Field(err))
 		}
@@ -85,8 +85,26 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	go timer.Loop(req.Context(), FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
-		r.heartbeats.Store(fn, time.Now())
+		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
+			heartbeat.Function = fn
+			heartbeat.Timestamp = time.Now()
+			return heartbeat, false
+		})
 		return nil
+	})
+
+	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
+		heartbeat.Function = fn
+		heartbeat.Timestamp = time.Now()
+		heartbeat.Requests++
+		return heartbeat, false
+	})
+
+	defer r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
+		heartbeat.Function = fn
+		heartbeat.Timestamp = time.Now()
+		heartbeat.Requests--
+		return heartbeat, false
 	})
 
 	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(req.Context(), fn)))
@@ -102,7 +120,6 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 	attempt := 0
 	for {
 		attempt++
-
 		if attempt > FlagMaxRoundTripAttempts.Value() {
 			return nil, fmt.Errorf("failed to proxy request after %d attempts", FlagMaxRoundTripAttempts.Value())
 		}

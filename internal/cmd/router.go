@@ -71,6 +71,7 @@ func NewRouter() *cobra.Command {
 	router.FlagHeartbeatInterval.Bind(cmd)
 	router.FlagHost.Bind(cmd)
 	router.FlagMaxRoundTripAttempts.Bind(cmd)
+	router.FlagPodIP.Bind(cmd)
 	router.FlagPort.Bind(cmd)
 	router.FlagRoundTripRetryMaxTimeout.Bind(cmd)
 	router.FlagRoundTripRetryMinTimeout.Bind(cmd)
