@@ -71,7 +71,7 @@ type Controller struct {
 	kubernetesMetrics    kubernetesmetrics.Interface
 	namespaceListers     map[string]namespaceLister
 	scaleMu              *xsync.MapOf[function.Function, *sync.Mutex]
-	heartbeats           *xsync.MapOf[function.Function, RouterHeartbeats]
+	routerHeartbeats     *xsync.MapOf[function.Function, RouterHeartbeats]
 	stabilizationWindows *xsync.MapOf[function.Function, *StabilizationWindow]
 }
 
@@ -84,7 +84,7 @@ func New(newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernete
 		kubernetesMetrics:    kubernetesMetrics,
 		namespaceListers:     make(map[string]namespaceLister, len(function.FlagNamespaces.Value())),
 		scaleMu:              xsync.NewMapOf[function.Function, *sync.Mutex](),
-		heartbeats:           xsync.NewMapOf[function.Function, RouterHeartbeats](),
+		routerHeartbeats:     xsync.NewMapOf[function.Function, RouterHeartbeats](),
 		stabilizationWindows: xsync.NewMapOf[function.Function, *StabilizationWindow](),
 	}
 }

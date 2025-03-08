@@ -73,7 +73,7 @@ func TestScaleFunctions(t *testing.T) {
 			name: "scale up",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
@@ -107,7 +107,7 @@ func TestScaleFunctions(t *testing.T) {
 			name: "scale down",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
@@ -143,7 +143,7 @@ func TestScaleFunctions(t *testing.T) {
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
 				fn.Scale.TargetMemoryUsageMiB = 0 // don't scale on memory
-				c.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
@@ -174,7 +174,7 @@ func TestScaleFunctions(t *testing.T) {
 			name: "heartbeat timeout",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}})
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}})
 				c.scaleMu.Store(fn, new(sync.Mutex))
 				c.stabilizationWindows.Store(fn, new(StabilizationWindow))
 
@@ -192,7 +192,7 @@ func TestScaleFunctions(t *testing.T) {
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
 
-				_, ok := c.heartbeats.Load(fn)
+				_, ok := c.routerHeartbeats.Load(fn)
 				must.False(t, ok)
 
 				_, ok = c.scaleMu.Load(fn)
@@ -206,7 +206,7 @@ func TestScaleFunctions(t *testing.T) {
 			name: "stale instance",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
 
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
 				fakeKubernetes.Tracker().Add(assignedPod)
@@ -228,7 +228,7 @@ func TestScaleFunctions(t *testing.T) {
 			name: "stale instance without enough available pods",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now()}})
 
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
 				fakeKubernetes.Tracker().Add(assignedPod)
@@ -258,7 +258,7 @@ func TestScaleFunctions(t *testing.T) {
 			name: "different controller pod",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}}) // heartbeat timeout
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}}) // heartbeat timeout
 
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
 				fakeKubernetes.Tracker().Add(assignedPod) // add an assigned pod that needs to be terminated

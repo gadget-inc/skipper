@@ -3,11 +3,13 @@ package controller
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -147,8 +149,8 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			defer span.End()
 			defer wg.Done()
 
-			heartbeats, _ := ctrl.heartbeats.Load(fn)
-			heartbeat := heartbeats.Combined()
+			routerHeartbeats, _ := ctrl.routerHeartbeats.Load(fn)
+			heartbeat := routerHeartbeats.Combined()
 			for _, instance := range instances {
 				if instance.AssignedAt.After(heartbeat.Timestamp) {
 					heartbeat.Timestamp = instance.AssignedAt
@@ -156,27 +158,23 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			}
 
 			if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
-				log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Function.Field(fn), key.Timestamp.Field(heartbeat.Timestamp))
+				log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Heartbeat.Field(heartbeat))
 				_, err := ctrl.scaleFunction(ctx, fn, 0)
 				if err != nil {
 					log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
 				}
 				ctrl.scaleMu.Delete(fn)
-				ctrl.heartbeats.Delete(fn)
+				ctrl.routerHeartbeats.Delete(fn)
 				ctrl.stabilizationWindows.Delete(fn)
 				return
 			}
 
-			currentInstances := len(instances)
 			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances, now)
-
-			if fn.Scale.TargetRequestsPerInstance > 0 {
-				desiredInstances = min(desiredInstances, int(math.Ceil(float64(heartbeat.Requests)/float64(fn.Scale.TargetRequestsPerInstance))))
-			}
 
 			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
 			stabilizationWindow.RecordRecommendation(desiredInstances, now)
 
+			currentInstances := len(instances)
 			if desiredInstances < currentInstances {
 				desiredInstances = min(currentInstances, stabilizationWindow.GetMaxRecommendation()) // scale down to the max recommendation within the stabilization window
 			}
@@ -546,7 +544,23 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 		}
 	}
 
-	return min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
+	desiredInstances := min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
+
+	instanceAttrs := make([]any, 0, len(instances))
+	for i, instance := range instances {
+		instanceAttrs = append(instanceAttrs, slog.Group(strconv.Itoa(i),
+			slog.String("name", instance.Name),
+			slog.String("addr", instance.Addr),
+			slog.String("replica_set", instance.ReplicaSet),
+			slog.Time("assigned_at", instance.AssignedAt),
+			slog.Time("ready_at", instance.ReadyAt),
+			slog.Int("cpu_usage", instance.CPUUsage),
+			slog.Int("memory_usage", instance.MemoryUsage),
+		))
+	}
+	log.Info(ctx, "calculated desired instances", key.DesiredInstances.Field(desiredInstances), key.Heartbeat.Field(heartbeat), slog.Group("instances", instanceAttrs...))
+
+	return desiredInstances
 }
 
 type RouterHeartbeats map[string]function.Heartbeat

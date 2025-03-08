@@ -13,6 +13,7 @@ var (
 	Error                     = errorKey{new("error")}
 	ForwardedFor              = stringSliceKey{new("forwarded-for")}
 	Function                  = groupValueKey{new("function")}
+	Heartbeat                 = groupValueKey{new("heartbeat")}
 	Instance                  = groupValueKey{new("instance")}
 	Labels                    = mapStringString{new("labels")}
 	MaxInstances              = intKey{new("max-instances")}
@@ -25,6 +26,7 @@ var (
 	ReadyAt                   = timeKey{new("ready-at")}
 	ReplicaSet                = replicaSetKey{new("replica-set")}
 	Request                   = requestKey{new("request")}
+	Requests                  = intKey{new("requests")}
 	Response                  = responseKey{new("response")}
 	RouterIP                  = stringKey{new("router-ip")}
 	Scale                     = groupValueKey{new("scale")}

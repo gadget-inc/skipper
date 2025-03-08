@@ -41,8 +41,8 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 1, ctrl.heartbeats.Size())
-				heartbeat, ok := ctrl.heartbeats.Load(heartbeats[0].Function)
+				must.Eq(t, 1, ctrl.routerHeartbeats.Size())
+				heartbeat, ok := ctrl.routerHeartbeats.Load(heartbeats[0].Function)
 				must.True(t, ok)
 				must.Eq(t, heartbeats[0].Timestamp, heartbeat[fixture.RouterIP].Timestamp)
 			},
@@ -56,9 +56,9 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 2, ctrl.heartbeats.Size())
+				must.Eq(t, 2, ctrl.routerHeartbeats.Size())
 				for _, hb := range heartbeats {
-					heartbeat, ok := ctrl.heartbeats.Load(hb.Function)
+					heartbeat, ok := ctrl.routerHeartbeats.Load(hb.Function)
 					must.True(t, ok)
 					must.Eq(t, hb.Timestamp, heartbeat[fixture.RouterIP].Timestamp)
 				}
@@ -70,7 +70,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				// seed the controller with a recent heartbeat
 				fn := fixture.NewFunction()
 				heartbeat := time.Now()
-				ctrl.heartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: heartbeat}})
+				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: heartbeat}})
 
 				// send an old heartbeat
 				return []function.Heartbeat{
@@ -78,10 +78,10 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 1, ctrl.heartbeats.Size())
+				must.Eq(t, 1, ctrl.routerHeartbeats.Size())
 
 				sentTimestamp := heartbeats[0].Timestamp
-				keptTimestamp, ok := ctrl.heartbeats.Load(heartbeats[0].Function)
+				keptTimestamp, ok := ctrl.routerHeartbeats.Load(heartbeats[0].Function)
 
 				must.True(t, ok)
 				must.NotEq(t, keptTimestamp[fixture.RouterIP].Timestamp, sentTimestamp)

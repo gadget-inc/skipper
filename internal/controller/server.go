@@ -116,7 +116,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	for _, heartbeat := range heartbeats {
-		ctrl.heartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
+		ctrl.routerHeartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
 			if !loaded {
 				routerHeartbeats = make(RouterHeartbeats)
 			}
