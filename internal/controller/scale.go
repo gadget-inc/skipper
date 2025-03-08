@@ -157,18 +157,6 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 				}
 			}
 
-			if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
-				log.Info(ctx, "scaling function to 0 due to heartbeat timeout", key.Heartbeat.Field(heartbeat))
-				_, err := ctrl.scaleFunction(ctx, fn, 0)
-				if err != nil {
-					log.Error(ctx, "failed to scale function to 0", key.Error.Field(err), key.Function.Field(fn))
-				}
-				ctrl.scaleMu.Delete(fn)
-				ctrl.routerHeartbeats.Delete(fn)
-				ctrl.stabilizationWindows.Delete(fn)
-				return
-			}
-
 			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances, now)
 
 			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
@@ -176,11 +164,16 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 
 			currentInstances := len(instances)
 			if desiredInstances < currentInstances {
-				desiredInstances = min(currentInstances, stabilizationWindow.GetMaxRecommendation()) // scale down to the max recommendation within the stabilization window
-			}
-
-			if desiredInstances == 0 {
-				desiredInstances = 1 // only scale to 0 from a heartbeat timeout
+				// we're scaling down
+				if desiredInstances == 0 {
+					// we're scaling to 0, so forget about this function after we're done
+					defer ctrl.scaleMu.Delete(fn)
+					defer ctrl.routerHeartbeats.Delete(fn)
+					defer ctrl.stabilizationWindows.Delete(fn)
+				} else {
+					// we're scaling down, but not to 0, so scale down to the max recommendation within the stabilization window
+					desiredInstances = min(currentInstances, stabilizationWindow.GetMaxRecommendation())
+				}
 			}
 
 			_, err = ctrl.scaleFunction(ctx, fn, desiredInstances)
@@ -528,7 +521,25 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
 func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance, timestamp time.Time) int {
-	maxDesiredInstances := 0
+	instanceAttrs := make([]any, 0, len(instances))
+	for i, instance := range instances {
+		instanceAttrs = append(instanceAttrs, slog.Group(strconv.Itoa(i),
+			slog.String("name", instance.Name),
+			slog.String("addr", instance.Addr),
+			slog.String("replica_set", instance.ReplicaSet),
+			slog.Time("assigned_at", instance.AssignedAt),
+			slog.Time("ready_at", instance.ReadyAt),
+			slog.Int("cpu_usage", instance.CPUUsage),
+			slog.Int("memory_usage", instance.MemoryUsage),
+		))
+	}
+
+	if timestamp.Sub(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
+		log.Info(ctx, "calculated desired instances", key.DesiredInstances.Field(0), key.Heartbeat.Field(heartbeat), slog.Group("instances", instanceAttrs...))
+		return 0
+	}
+
+	maxDesiredInstances := 1 // we only scale to 0 from a heartbeat timeout, so we start at 1
 
 	for _, metric := range []Metric{MetricCPU, MetricMemory} {
 		desiredInstances := calculateDesiredInstancesForMetric(ctx, metric, instances, timestamp)
@@ -545,21 +556,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 	}
 
 	desiredInstances := min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
-
-	instanceAttrs := make([]any, 0, len(instances))
-	for i, instance := range instances {
-		instanceAttrs = append(instanceAttrs, slog.Group(strconv.Itoa(i),
-			slog.String("name", instance.Name),
-			slog.String("addr", instance.Addr),
-			slog.String("replica_set", instance.ReplicaSet),
-			slog.Time("assigned_at", instance.AssignedAt),
-			slog.Time("ready_at", instance.ReadyAt),
-			slog.Int("cpu_usage", instance.CPUUsage),
-			slog.Int("memory_usage", instance.MemoryUsage),
-		))
-	}
 	log.Info(ctx, "calculated desired instances", key.DesiredInstances.Field(desiredInstances), key.Heartbeat.Field(heartbeat), slog.Group("instances", instanceAttrs...))
-
 	return desiredInstances
 }
 
@@ -568,6 +565,7 @@ type RouterHeartbeats map[string]function.Heartbeat
 func (r RouterHeartbeats) Combined() function.Heartbeat {
 	var combined function.Heartbeat
 	for _, heartbeat := range r {
+		combined.Function = heartbeat.Function
 		combined.Requests += heartbeat.Requests
 		if combined.Timestamp.Before(heartbeat.Timestamp) {
 			combined.Timestamp = heartbeat.Timestamp
