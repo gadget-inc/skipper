@@ -59,8 +59,11 @@ func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
 		var heartbeats []function.Heartbeat
 		r.heartbeats.Range(func(fn function.Function, heartbeat function.Heartbeat) bool {
-			r.heartbeats.Delete(fn)
-			heartbeats = append(heartbeats, heartbeat)
+			if time.Since(heartbeat.Timestamp) > FlagHeartbeatInterval.Value()*3 {
+				r.heartbeats.Delete(fn) // remove the heartbeat if it hasn't been updated in 3 intervals
+			} else {
+				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
+			}
 			return true
 		})
 
