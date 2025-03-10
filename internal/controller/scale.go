@@ -146,8 +146,13 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			defer span.End()
 			defer wg.Done()
 
-			routerHeartbeats, _ := ctrl.routerHeartbeats.Load(fn)
-			heartbeat := routerHeartbeats.Combined()
+			var heartbeat function.Heartbeat
+			if routerHeartbeats, ok := ctrl.routerHeartbeats.Load(fn); ok {
+				heartbeat = routerHeartbeats.Combined() // use the combined heartbeat from all the routers
+			} else {
+				heartbeat.Function = fn // use the empty heartbeat and associate it with the function
+			}
+
 			for _, instance := range instances {
 				if instance.AssignedAt.After(heartbeat.Timestamp) {
 					heartbeat.Timestamp = instance.AssignedAt
