@@ -3,13 +3,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -140,7 +138,6 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 
 	var wg sync.WaitGroup
 
-	now := time.Now()
 	for fn, instances := range fnInstances {
 		wg.Add(1)
 
@@ -157,10 +154,10 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 				}
 			}
 
-			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances, now)
+			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances)
 
 			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
-			stabilizationWindow.RecordRecommendation(desiredInstances, now)
+			stabilizationWindow.RecordRecommendation(desiredInstances)
 
 			currentInstances := len(instances)
 			if desiredInstances < currentInstances {
@@ -389,8 +386,8 @@ const (
 
 // Recommendation represents a scaling recommendation at a point in time
 type Recommendation struct {
-	Instances int
-	Timestamp time.Time
+	DesiredInstances int
+	Timestamp        time.Time
 }
 
 // StabilizationWindow represents a window of scaling recommendations
@@ -399,14 +396,15 @@ type StabilizationWindow struct {
 }
 
 // RecordRecommendation adds a new recommendation and prunes old ones
-func (sw *StabilizationWindow) RecordRecommendation(desiredInstances int, timestamp time.Time) {
+func (sw *StabilizationWindow) RecordRecommendation(desiredInstances int) {
+	now := time.Now()
 	sw.Recommendations = append(sw.Recommendations, Recommendation{
-		Instances: desiredInstances,
-		Timestamp: timestamp,
+		DesiredInstances: desiredInstances,
+		Timestamp:        now,
 	})
 
 	// Remove old recommendations
-	cutoff := timestamp.Add(-FlagHPADownscaleStabilization.Value())
+	cutoff := now.Add(-FlagHPADownscaleStabilization.Value())
 	var newRecommendations []Recommendation
 	for _, rec := range sw.Recommendations {
 		if rec.Timestamp.After(cutoff) {
@@ -418,17 +416,17 @@ func (sw *StabilizationWindow) RecordRecommendation(desiredInstances int, timest
 
 // GetMaxRecommendation returns the maximum recommended instances in the window
 func (sw *StabilizationWindow) GetMaxRecommendation() int {
-	var maxInstances int
+	var maxDesiredInstances int
 	for _, rec := range sw.Recommendations {
-		if rec.Instances > maxInstances {
-			maxInstances = rec.Instances
+		if rec.DesiredInstances > maxDesiredInstances {
+			maxDesiredInstances = rec.DesiredInstances
 		}
 	}
-	return maxInstances
+	return maxDesiredInstances
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instances []*function.Instance, timestamp time.Time) int {
+func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instances []*function.Instance) int {
 	currentInstances := len(instances)
 	var instancesWithMetrics []*function.Instance
 	var instancesWithoutMetrics []*function.Instance
@@ -444,7 +442,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 			return currentInstances
 		}
 
-		if metric == MetricCPU && (instance.ReadyAt.IsZero() || timestamp.Sub(instance.ReadyAt) <= FlagHPAInitialReadinessDelay.Value()) {
+		if metric == MetricCPU && (instance.ReadyAt.IsZero() || time.Since(instance.ReadyAt) <= FlagHPAInitialReadinessDelay.Value()) {
 			// ignore CPU metrics for pods that have been ready for less than the initial readiness delay
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 			continue
@@ -493,10 +491,10 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 	if len(instancesWithoutMetrics) > 0 {
 		adjustedTotalUsage := totalUsage
 		if desiredInstances < currentInstances {
-			// we wanted to scale down, so we assume that instances without metrics are consuming 100% of target usage
+			// we wanted to scale down, so we assume that instances without metrics are consuming 100% of the target usage
 			adjustedTotalUsage += len(instancesWithoutMetrics) * targetUsage
 		} else {
-			// we wanted to scale up, so we assume that instances without metrics are consuming 0% of target usage
+			// we wanted to scale up, so we assume that instances without metrics are consuming 0% of the target usage
 			adjustedTotalUsage += len(instancesWithoutMetrics) * 0
 		}
 
@@ -520,44 +518,29 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance, timestamp time.Time) int {
-	instanceAttrs := make([]any, 0, len(instances))
-	for i, instance := range instances {
-		instanceAttrs = append(instanceAttrs, slog.Group(strconv.Itoa(i),
-			slog.String("name", instance.Name),
-			slog.String("addr", instance.Addr),
-			slog.String("replica_set", instance.ReplicaSet),
-			slog.Time("assigned_at", instance.AssignedAt),
-			slog.Time("ready_at", instance.ReadyAt),
-			slog.Int("cpu_usage", instance.CPUUsage),
-			slog.Int("memory_usage", instance.MemoryUsage),
-		))
-	}
-
-	if timestamp.Sub(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
-		log.Info(ctx, "calculated desired instances", key.DesiredInstances.Field(0), key.Heartbeat.Field(heartbeat), slog.Group("instances", instanceAttrs...))
+func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance) int {
+	if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
 		return 0
 	}
 
 	maxDesiredInstances := 1 // we only scale to 0 from a heartbeat timeout, so we start at 1
 
-	for _, metric := range []Metric{MetricCPU, MetricMemory} {
-		desiredInstances := calculateDesiredInstancesForMetric(ctx, metric, instances, timestamp)
-		if desiredInstances > maxDesiredInstances {
-			maxDesiredInstances = desiredInstances
-		}
+	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
+		desiredInstances := int(math.Ceil(float64(heartbeat.InFlightRequests) / float64(heartbeat.Function.Scale.TargetInFlightRequests)))
+		maxDesiredInstances = max(maxDesiredInstances, desiredInstances)
 	}
 
-	if heartbeat.Function.Scale.TargetRequestsPerInstance > 0 {
-		desiredInstances := int(math.Ceil(float64(heartbeat.Requests) / float64(heartbeat.Function.Scale.TargetRequestsPerInstance)))
-		if desiredInstances > maxDesiredInstances {
-			maxDesiredInstances = desiredInstances
-		}
+	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
+		desiredInstances := calculateDesiredInstancesForMetric(ctx, MetricCPU, instances)
+		maxDesiredInstances = max(maxDesiredInstances, desiredInstances)
 	}
 
-	desiredInstances := min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
-	log.Info(ctx, "calculated desired instances", key.DesiredInstances.Field(desiredInstances), key.Heartbeat.Field(heartbeat), slog.Group("instances", instanceAttrs...))
-	return desiredInstances
+	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
+		desiredInstances := calculateDesiredInstancesForMetric(ctx, MetricMemory, instances)
+		maxDesiredInstances = max(maxDesiredInstances, desiredInstances)
+	}
+
+	return min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
 }
 
 type RouterHeartbeats map[string]function.Heartbeat
@@ -566,7 +549,7 @@ func (r RouterHeartbeats) Combined() function.Heartbeat {
 	var combined function.Heartbeat
 	for _, heartbeat := range r {
 		combined.Function = heartbeat.Function
-		combined.Requests += heartbeat.Requests
+		combined.InFlightRequests += heartbeat.InFlightRequests
 		if combined.Timestamp.Before(heartbeat.Timestamp) {
 			combined.Timestamp = heartbeat.Timestamp
 		}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,9 +20,9 @@ import (
 func init() {
 	FlagMaxRoundTripAttempts.Init()
 	FlagRoundTripRetryMinTimeout.Init()
-	_ = FlagHeartbeatInterval.SetValue(time.Millisecond)
+	_ = FlagHeartbeatInterval.SetValue(100 * time.Millisecond)
 	_ = FlagPodIP.SetValue(fixture.RouterIP)
-	_ = FlagRoundTripRetryMaxTimeout.SetValue(time.Millisecond)
+	_ = FlagRoundTripRetryMaxTimeout.SetValue(10 * time.Millisecond)
 }
 
 func TestHealthz(t *testing.T) {
@@ -275,17 +276,21 @@ func TestBody(t *testing.T) {
 }
 
 func TestHeartbeats(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), FlagHeartbeatInterval.Value()+time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	t.Cleanup(cancel)
 
-	fn := fixture.NewFunction()
 	testStartTime := time.Now()
+	fn := fixture.NewFunction()
+	once := new(sync.Once)
+	done := make(chan struct{})
+	defer close(done)
 
 	mcc := fixture.NewMockControllerClient(t)
 	mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
+			<-done
 		}), nil
 	})
 	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
@@ -296,15 +301,21 @@ func TestHeartbeats(t *testing.T) {
 
 		must.Eq(t, fixture.RouterIP, routerIP)
 		must.Eq(t, 1, len(heartbeats))
-		must.Eq(t, fn, heartbeats[0].Function)
-		must.True(t, heartbeats[0].Timestamp.After(testStartTime))
 		must.Len(t, 0, forwardedFor)
-		cancel()
+
+		heartbeat := heartbeats[0]
+		must.Eq(t, fn, heartbeat.Function)
+		must.True(t, heartbeat.Timestamp.After(testStartTime))
+		if heartbeat.InFlightRequests > 0 {
+			once.Do(func() {
+				done <- struct{}{}
+			})
+		}
 		return nil
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil).WithContext(t.Context())
+	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil).WithContext(ctx)
 
 	router := New(mcc)
 	router.Start(ctx)
@@ -313,8 +324,11 @@ func TestHeartbeats(t *testing.T) {
 	must.Eq(t, http.StatusOK, rw.Code)
 	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 
-	<-ctx.Done()
-	must.ErrorIs(t, ctx.Err(), context.Canceled) // ensure context was canceled by heartbeat
+	heartbeat, ok := router.heartbeats.Load(fn)
+	must.True(t, ok)
+	must.Eq(t, fn, heartbeat.Function)
+	must.True(t, heartbeat.Timestamp.After(testStartTime))
+	must.Eq(t, 0, heartbeat.InFlightRequests) // ensure the number of in-flight requests is 0 now that the request is complete
 }
 
 func TestRetries(t *testing.T) {

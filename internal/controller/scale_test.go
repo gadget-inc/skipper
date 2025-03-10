@@ -675,7 +675,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				}
 			}
 
-			instances := calculateDesiredInstancesForMetric(t.Context(), tc.metricName, tc.podMetrics, time.Now())
+			instances := calculateDesiredInstancesForMetric(t.Context(), tc.metricName, tc.podMetrics)
 			must.Eq(t, tc.expectedInstances, instances)
 		})
 	}

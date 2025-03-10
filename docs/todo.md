@@ -1,10 +1,11 @@
 # TODO
 
+- prometheus metrics
+- design doc
+
 ## Tests
 
 - controller doesn't assign a function to a pod from an outdated replica set, unless it's the only option
-- controller terminates outdated functions based on number of available new pods
-- clean up pods that fail to be assigned a function
 
 ## Deployment Verifier
 

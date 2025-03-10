@@ -87,6 +87,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(req.Context(), FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
 		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
 			heartbeat.Function = fn
@@ -96,20 +97,19 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return nil
 	})
 
-	go func() {
-		<-req.Context().Done()
-		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
-			heartbeat.Function = fn
-			heartbeat.Timestamp = time.Now()
-			heartbeat.Requests--
-			return heartbeat, false
-		})
-	}()
-
+	// increment the in-flight requests for this function
 	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
-		heartbeat.Requests++
+		heartbeat.InFlightRequests++
+		return heartbeat, false
+	})
+
+	// decrement the in-flight requests for this function when the request is complete
+	defer r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
+		heartbeat.Function = fn
+		heartbeat.Timestamp = time.Now()
+		heartbeat.InFlightRequests--
 		return heartbeat, false
 	})
 

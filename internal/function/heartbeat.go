@@ -9,22 +9,22 @@ import (
 )
 
 type Heartbeat struct {
-	Function  Function  `json:"function"`
-	Timestamp time.Time `json:"timestamp"`
-	Requests  int       `json:"requests"`
+	Function         Function  `json:"function"`
+	Timestamp        time.Time `json:"timestamp"`
+	InFlightRequests int       `json:"in_flight_requests"`
 }
 
 func (h Heartbeat) Fields() []slog.Attr {
 	return []slog.Attr{
 		key.Function.Field(h.Function),
 		key.Timestamp.Field(h.Timestamp),
-		key.Requests.Field(h.Requests),
+		key.InFlightRequests.Field(h.InFlightRequests),
 	}
 }
 
 func (h Heartbeat) Attributes() []attribute.KeyValue {
 	return append(h.Function.Attributes(),
 		key.Timestamp.Attribute(h.Timestamp),
-		key.Requests.Attribute(h.Requests),
+		key.InFlightRequests.Attribute(h.InFlightRequests),
 	)
 }
