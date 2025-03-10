@@ -95,15 +95,15 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start informers: %w", err)
 	}
 
-	go timer.Loop(ctx, FlagScaleInterval.Value(), func(ctx context.Context) error {
-		for _, namespace := range function.FlagNamespaces.Value() {
+	for _, namespace := range function.FlagNamespaces.Value() {
+		go timer.Loop(ctx, FlagScaleInterval.Value(), func(ctx context.Context) error {
 			err := ctrl.scaleFunctions(ctx, namespace)
 			if err != nil {
-				log.Error(ctx, "failed to scale functions", key.Error.Field(err))
+				log.Error(ctx, "failed to scale functions", key.Error.Field(err), key.Namespace.Field(namespace))
 			}
-		}
-		return nil
-	})
+			return nil
+		})
+	}
 
 	return nil
 }
