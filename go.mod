@@ -1,6 +1,6 @@
 module github.com/gadget-inc/fusion
 
-go 1.24
+go 1.24.1
 
 require (
 	aidanwoods.dev/go-paseto v1.5.3
