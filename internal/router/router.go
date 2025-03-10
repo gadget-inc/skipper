@@ -21,15 +21,15 @@ import (
 )
 
 type Router struct {
-	controller   controller.Client
+	ctrl         controller.Client
 	heartbeats   *xsync.MapOf[function.Function, function.Heartbeat]
 	reverseProxy *httputil.ReverseProxy
 	roundTripper http.RoundTripper
 }
 
-func New(controllerClient controller.Client) *Router {
+func New(ctrl controller.Client) *Router {
 	r := &Router{
-		controller: controllerClient,
+		ctrl:       ctrl,
 		heartbeats: xsync.NewMapOf[function.Function, function.Heartbeat](),
 		roundTripper: otelhttp.NewTransport(&http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -67,7 +67,7 @@ func (r *Router) Start(ctx context.Context) {
 			return true
 		})
 
-		err := r.controller.Heartbeat(ctx, FlagPodIP.Value(), heartbeats)
+		err := r.ctrl.Heartbeat(ctx, FlagPodIP.Value(), heartbeats)
 		if err != nil {
 			log.Warn(ctx, "failed to send heartbeats", key.Error.Field(err))
 		}
@@ -144,7 +144,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		default:
 		}
 
-		instance, err := r.controller.Instance(ctx, fn)
+		instance, err := r.ctrl.Instance(ctx, fn)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Function.Field(fn), key.Attempt.Field(attempt))
 			continue
