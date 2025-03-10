@@ -10,10 +10,12 @@ var (
 	CurrentInstances       = intKey{new("current-instances")}
 	Deployment             = stringKey{new("deployment")}
 	DesiredInstances       = intKey{new("desired-instances")}
+	Duration               = durationKey{new("duration")}
 	Error                  = errorKey{new("error")}
 	ForwardedFor           = stringSliceKey{new("forwarded-for")}
 	Function               = groupValueKey{new("function")}
 	Heartbeat              = groupValueKey{new("heartbeat")}
+	InFlightRequests       = intKey{new("in-flight-requests")}
 	Instance               = groupValueKey{new("instance")}
 	Labels                 = mapStringString{new("labels")}
 	MaxInstances           = intKey{new("max-instances")}
@@ -26,13 +28,12 @@ var (
 	ReadyAt                = timeKey{new("ready-at")}
 	ReplicaSet             = replicaSetKey{new("replica-set")}
 	Request                = requestKey{new("request")}
-	InFlightRequests       = intKey{new("in-flight-requests")}
 	Response               = responseKey{new("response")}
 	RouterIP               = stringKey{new("router-ip")}
 	Scale                  = groupValueKey{new("scale")}
 	TargetCPUUsageMilli    = intKey{new("target-cpu-usage-milli")}
-	TargetMemoryUsageMiB   = intKey{new("target-memory-usage-mib")}
 	TargetInFlightRequests = intKey{new("target-in-flight-requests")}
+	TargetMemoryUsageMiB   = intKey{new("target-memory-usage-mib")}
 	Tenant                 = stringKey{new("tenant")}
 	Timestamp              = timeKey{new("timestamp")}
 	Token                  = stringKey{new("token")}

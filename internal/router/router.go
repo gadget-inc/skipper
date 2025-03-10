@@ -154,20 +154,22 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.URL.Host = instance.Addr
 
 		log.Info(ctx, "forwarding request", key.Instance.Field(instance), key.Attempt.Field(attempt), key.Request.Field(req))
+		start := time.Now()
 		res, err := r.roundTripper.RoundTrip(req)
+		duration := time.Since(start)
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt))
+				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt), key.Duration.Field(duration))
 				continue
 			}
 		}
 
 		if err != nil {
-			log.Error(ctx, "failed to forward request", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt), key.Request.Field(req))
+			log.Error(ctx, "failed to forward request", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt), key.Request.Field(req), key.Duration.Field(duration))
 		} else {
-			log.Info(ctx, "received response", key.Instance.Field(instance), key.Attempt.Field(attempt), key.Response.Field(res))
+			log.Info(ctx, "forwarding response", key.Instance.Field(instance), key.Attempt.Field(attempt), key.Response.Field(res), key.Duration.Field(duration))
 		}
 
 		return res, err
