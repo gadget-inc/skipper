@@ -123,6 +123,12 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 			if routerHeartbeats[routerIP].Timestamp.Before(heartbeat.Timestamp) {
 				routerHeartbeats[routerIP] = heartbeat
 			}
+			// garbage collect router heartbeats that haven't been updated in the timeout period
+			for routerIP := range routerHeartbeats {
+				if time.Since(routerHeartbeats[routerIP].Timestamp) > FlagHeartbeatTimeout.Value() {
+					delete(routerHeartbeats, routerIP)
+				}
+			}
 			return routerHeartbeats, false
 		})
 	}

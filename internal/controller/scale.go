@@ -543,8 +543,10 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 	return min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
 }
 
+// RouterHeartbeats is a map of router IP to heartbeat
 type RouterHeartbeats map[string]function.Heartbeat
 
+// Combined returns a heartbeat that is the sum of all the heartbeats from all the routers
 func (r RouterHeartbeats) Combined() function.Heartbeat {
 	var combined function.Heartbeat
 	for _, heartbeat := range r {
