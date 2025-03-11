@@ -22,9 +22,9 @@ for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) 
   $.cwd = fixture;
   const name = path.basename(fixture);
 
-  await $`docker buildx build . --load --tag=fusion-fixtures-${name}:latest --platform=${flags.platform} ${cacheFromTo}`;
+  await $`docker buildx build . --load --tag=skipper-fixtures-${name}:latest --platform=${flags.platform} ${cacheFromTo}`;
 
   if (flags.kind) {
-    await $`kind load docker-image fusion-fixtures-${name}:latest`;
+    await $`kind load docker-image skipper-fixtures-${name}:latest`;
   }
 }

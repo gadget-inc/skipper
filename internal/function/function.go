@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"strconv"
 
-	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/skipper/internal/key"
 	"go.opentelemetry.io/otel/attribute"
 )
 

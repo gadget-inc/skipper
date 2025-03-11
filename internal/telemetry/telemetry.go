@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/gadget-inc/fusion/internal/key"
-	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -40,8 +40,8 @@ func Init(ctx context.Context, component string) func() {
 		resource.WithProcessRuntimeDescription(),
 		resource.WithTelemetrySDK(),
 		resource.WithAttributes(
-			semconv.ServiceNameKey.String("fusion." + component),
-			// semconv.ServiceNamespaceKey.String("fusion"),
+			semconv.ServiceNameKey.String("skipper." + component),
+			// semconv.ServiceNamespaceKey.String("skipper"),
 			// semconv.ServiceVersionKey.String(version.Version),
 		),
 	}

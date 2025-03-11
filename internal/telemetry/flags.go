@@ -3,7 +3,7 @@ package telemetry
 import (
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/flag"
+	"github.com/gadget-inc/skipper/internal/flag"
 )
 
 var (

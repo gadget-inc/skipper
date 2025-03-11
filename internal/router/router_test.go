@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/fixture"
-	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/skipper/internal/fixture"
+	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/shoenig/test/must"
 )
 

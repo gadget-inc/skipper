@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"aidanwoods.dev/go-paseto"
-	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/goccy/go-json"
 	"github.com/shoenig/test/must"
 	appsv1 "k8s.io/api/apps/v1"

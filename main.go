@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/gadget-inc/fusion/internal/cmd"
+	"github.com/gadget-inc/skipper/internal/cmd"
 )
 
 func main() {

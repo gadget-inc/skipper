@@ -1,4 +1,4 @@
-module github.com/gadget-inc/fusion
+module github.com/gadget-inc/skipper
 
 go 1.24.1
 

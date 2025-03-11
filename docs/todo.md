@@ -9,9 +9,9 @@
 
 ## Deployment Verifier
 
-- has "fusion/deployment" label
-- has "fusion/port" annotation
-- has "fusion/tenant" does not exist match expression
+- has "skipper/deployment" label
+- has "skipper/port" annotation
+- has "skipper/tenant" does not exist match expression
 
 ## UI
 

@@ -11,11 +11,11 @@ import (
 	"net/http/httputil"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/controller"
-	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/gadget-inc/fusion/internal/key"
-	"github.com/gadget-inc/fusion/internal/log"
-	"github.com/gadget-inc/fusion/internal/timer"
+	"github.com/gadget-inc/skipper/internal/controller"
+	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"aidanwoods.dev/go-paseto"
-	"github.com/gadget-inc/fusion/internal/flag"
+	"github.com/gadget-inc/skipper/internal/flag"
 )
 
 var (

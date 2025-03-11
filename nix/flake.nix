@@ -1,5 +1,5 @@
 {
-  description = "fusion development environment";
+  description = "skipper development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -22,7 +22,7 @@
           stern = pkgs.stern;
           task = pkgs.go-task;
 
-          fusion = pkgs.writeShellScriptBin "fusion" ''
+          skipper = pkgs.writeShellScriptBin "skipper" ''
             go run main.go "$@"
           '';
         };

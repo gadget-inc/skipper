@@ -3,7 +3,7 @@ package fixture
 import (
 	"os"
 
-	"github.com/gadget-inc/fusion/internal/log"
+	"github.com/gadget-inc/skipper/internal/log"
 )
 
 func init() {

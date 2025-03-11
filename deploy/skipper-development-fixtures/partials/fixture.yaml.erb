@@ -6,30 +6,30 @@ kind: Deployment
 metadata:
   name: <%= name %>
   labels:
-    fusion/deployment: <%= name %>
+    skipper/deployment: <%= name %>
   annotations:
     shipit.shopify.io/restart: "true"
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      fusion/deployment: <%= name %>
+      skipper/deployment: <%= name %>
     matchExpressions:
-      - key: fusion/tenant
+      - key: skipper/tenant
         operator: DoesNotExist
   template:
     metadata:
       labels:
-        fusion/deployment: <%= name %>
+        skipper/deployment: <%= name %>
       annotations:
-        fusion/port: "http"
+        skipper/port: "http"
     spec:
       volumes:
         - name: empty-dir
           emptyDir: {}
       containers:
         - name: <%= name %>
-          image: fusion-fixtures-<%= name %>:latest
+          image: skipper-fixtures-<%= name %>:latest
           imagePullPolicy: Never
           ports:
             - name: http

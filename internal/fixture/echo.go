@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/goccy/go-json"
 )
 

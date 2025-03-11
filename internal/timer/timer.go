@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/telemetry"
+	"github.com/gadget-inc/skipper/internal/telemetry"
 )
 
 // Poll polls the given function until it returns a non-nil result or the timeout is reached.

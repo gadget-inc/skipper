@@ -4,10 +4,10 @@ import WebSocket from "npm:ws";
 import { delay } from "jsr:@std/async";
 
 const routerUrl = "http://127.0.0.1:31020";
-// const routerUrl = "http://fusion-development-router.fusion-development.svc.cluster.local";
+// const routerUrl = "http://skipper-development-router.skipper-development.svc.cluster.local";
 
 const echoFunction = {
-  namespace: "fusion-fixtures-development",
+  namespace: "skipper-development-fixtures",
   deployment: "echo",
   tenant: "123",
   metadata: JSON.stringify({ foo: "bar" }),
@@ -21,7 +21,7 @@ const echoFunction = {
 
 const socket = new WebSocket(routerUrl, undefined, {
   headers: {
-    "x-fusion-function": JSON.stringify(echoFunction),
+    "x-skipper-function": JSON.stringify(echoFunction),
   },
 });
 

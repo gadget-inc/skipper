@@ -24,9 +24,9 @@ const server = Deno.serve({ port: 8888 }, async (request) => {
       return new Response("already assigned", { status: 409 });
     }
 
-    const token = request.headers.get("x-fusion-token") ?? "";
+    const token = request.headers.get("x-skipper-token") ?? "";
     const payload = await V2.verify(token, Deno.env.get("FUSION_PUBLIC_KEY")!);
-    const fn = JSON.parse(request.headers.get("x-fusion-function")!);
+    const fn = JSON.parse(request.headers.get("x-skipper-function")!);
     log.info({ token, payload, fn }, "assigned");
 
     await Deno.writeTextFile(tokenFilepath, token);

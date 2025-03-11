@@ -10,7 +10,7 @@ const flags = parseArgs(Deno.args, {
   boolean: ["latest", "load", "push", "kind"],
   negatable: ["kind"],
   default: {
-    repo: "fusion",
+    repo: "skipper",
     tag: await defaultImageTag(),
     platform: await currentDockerPlatform(),
     kind: isCI,

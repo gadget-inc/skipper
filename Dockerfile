@@ -8,7 +8,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 COPY . .
 ARG TARGETOS TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/fusion .
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/skipper .
 
 FROM debian:bookworm-slim
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
@@ -22,8 +22,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     less \
     vim
 RUN update-ca-certificates
-RUN useradd -ms /bin/bash fusion
-WORKDIR /home/fusion
-USER fusion
-COPY --from=build --chown=fusion /out/fusion .
-ENTRYPOINT ["./fusion"]
+RUN useradd -ms /bin/bash skipper
+WORKDIR /home/skipper
+USER skipper
+COPY --from=build --chown=skipper /out/skipper .
+ENTRYPOINT ["./skipper"]

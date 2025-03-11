@@ -28,7 +28,7 @@ tasks:
       - generate-paseto-keypair
       - build-fixtures
     sources:
-      - deploy/fusion-fixtures-*/**
+      - deploy/skipper-*-fixtures/**
       - scripts/deploy-fixtures.ts
     cmds:
       - scripts/deploy-fixtures.ts

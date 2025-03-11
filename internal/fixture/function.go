@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/google/uuid"
 )
 
 const (
-	FunctionNamespace  = "fusion-fixtures-test"
+	FunctionNamespace  = "skipper-test-fixtures"
 	FunctionDeployment = "test"
 )
 

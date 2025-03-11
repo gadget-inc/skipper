@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"aidanwoods.dev/go-paseto"
-	"github.com/gadget-inc/fusion/internal/function"
+	"github.com/gadget-inc/skipper/internal/function"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -19,7 +19,7 @@ type (
 
 var (
 	ControllerIP        = "127.0.2.1"
-	ControllerNamespace = "fusion-test"
+	ControllerNamespace = "skipper-test"
 )
 
 var (
@@ -100,7 +100,7 @@ func NewControllerPod() *v1.Pod {
 			Name:      "controller-" + rand.String(6),
 			Namespace: ControllerNamespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/name":      "fusion",
+				"app.kubernetes.io/name":      "skipper",
 				"app.kubernetes.io/component": "controller",
 			},
 		},

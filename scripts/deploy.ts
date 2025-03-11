@@ -4,9 +4,9 @@ import { abs, deployKraneNamespace, isCI } from "./_utils.ts";
 const enableOtel = !isCI;
 
 if (!isCI) {
-  await deployKraneNamespace("fusion-development", {
-    namespace: "fusion-development",
-    function_namespaces: ["fusion-fixtures-development"],
+  await deployKraneNamespace("skipper-development", {
+    namespace: "skipper-development",
+    function_namespaces: ["skipper-development-fixtures"],
     unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
     router_node_port: 31020,
     env: {
@@ -17,9 +17,9 @@ if (!isCI) {
   });
 }
 
-await deployKraneNamespace("fusion-test", {
-  namespace: "fusion-test",
-  function_namespaces: ["fusion-fixtures-test"],
+await deployKraneNamespace("skipper-test", {
+  namespace: "skipper-test",
+  function_namespaces: ["skipper-test-fixtures"],
   unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
   router_node_port: 31021,
   env: {

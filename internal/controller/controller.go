@@ -8,12 +8,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/gadget-inc/fusion/internal/hashring"
-	"github.com/gadget-inc/fusion/internal/key"
-	"github.com/gadget-inc/fusion/internal/log"
-	"github.com/gadget-inc/fusion/internal/telemetry"
-	"github.com/gadget-inc/fusion/internal/timer"
+	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/hashring"
+	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/telemetry"
+	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/goccy/go-json"
 	"github.com/puzpuzpuz/xsync/v3"
 	v1 "k8s.io/api/core/v1"
@@ -127,7 +127,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		5*time.Minute,
 		informers.WithNamespace(FlagNamespace.Value()),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.LabelSelector = "app.kubernetes.io/name=fusion,app.kubernetes.io/component=controller"
+			options.LabelSelector = "app.kubernetes.io/name=skipper,app.kubernetes.io/component=controller"
 		}),
 	)
 

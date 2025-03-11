@@ -2,10 +2,10 @@
 import { sleep } from "npm:zx";
 
 const routerUrl = "http://127.0.0.1:31020";
-// const routerUrl = "http://fusion-development-router.fusion-development.svc.cluster.local";
+// const routerUrl = "http://skipper-development-router.skipper-development.svc.cluster.local";
 
 const echoFunction = {
-  namespace: "fusion-fixtures-development",
+  namespace: "skipper-development-fixtures",
   deployment: "echo",
   tenant: "123",
   metadata: JSON.stringify({ foo: "bar" }),
@@ -25,7 +25,7 @@ async function sendRequest() {
     const response = await fetch(routerUrl, {
       method: "POST",
       headers: {
-        "x-fusion-function": JSON.stringify(echoFunction),
+        "x-skipper-function": JSON.stringify(echoFunction),
         "content-type": "application/json",
       },
       body: JSON.stringify({ hello: "world" }),

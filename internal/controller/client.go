@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/goccy/go-json"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )

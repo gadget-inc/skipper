@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gadget-inc/fusion/internal/fixture"
-	"github.com/gadget-inc/fusion/internal/function"
-	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/skipper/internal/fixture"
+	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/goccy/go-json"
 	"github.com/shoenig/test/must"
 	v1 "k8s.io/api/core/v1"

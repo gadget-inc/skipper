@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gadget-inc/fusion/internal/key"
+	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/goccy/go-json"
 )
 

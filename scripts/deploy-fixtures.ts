@@ -4,7 +4,7 @@ import { deployKraneNamespace, isCI } from "./_utils.ts";
 const enableOtel = !isCI;
 
 if (!isCI) {
-  await deployKraneNamespace("fusion-fixtures-development", {
+  await deployKraneNamespace("skipper-development-fixtures", {
     extra_env: {
       OTEL_DENO: enableOtel,
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
@@ -13,7 +13,7 @@ if (!isCI) {
   });
 }
 
-await deployKraneNamespace("fusion-fixtures-test", {
+await deployKraneNamespace("skipper-test-fixtures", {
   extra_env: {
     OTEL_DENO: enableOtel,
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",

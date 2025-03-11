@@ -1,5 +1,5 @@
 <%-
-image_repository ||= "fusion"
+image_repository ||= "skipper"
 image_tag ||= "latest"
 image_pull_policy ||= "IfNotPresent"
 
@@ -88,7 +88,7 @@ kind: Deployment
 metadata:
   name: <%= controller_name %>
   labels:
-    app.kubernetes.io/name: fusion
+    app.kubernetes.io/name: skipper
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: <%= namespace %>
   annotations:
@@ -102,13 +102,13 @@ spec:
       maxUnavailable: <%= controller_max_unavailable %>
   selector:
     matchLabels:
-      app.kubernetes.io/name: fusion
+      app.kubernetes.io/name: skipper
       app.kubernetes.io/component: controller
       app.kubernetes.io/instance: <%= namespace %>
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: fusion
+        app.kubernetes.io/name: skipper
         app.kubernetes.io/component: controller
         app.kubernetes.io/instance: <%= namespace %>
     spec:
@@ -205,7 +205,7 @@ spec:
                     - key: app.kubernetes.io/name
                       operator: In
                       values:
-                      - fusion
+                      - skipper
                     - key: app.kubernetes.io/component
                       operator: In
                       values:
@@ -221,7 +221,7 @@ metadata:
   name: <%= controller_name %>
 spec:
   selector:
-    app.kubernetes.io/name: fusion
+    app.kubernetes.io/name: skipper
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: <%= namespace %>
   ports:
@@ -238,7 +238,7 @@ kind: Deployment
 metadata:
   name: <%= router_name %>
   labels:
-    app.kubernetes.io/name: fusion
+    app.kubernetes.io/name: skipper
     app.kubernetes.io/component: router
     app.kubernetes.io/instance: <%= namespace %>
   annotations:
@@ -252,13 +252,13 @@ spec:
       maxUnavailable: <%= router_max_unavailable %>
   selector:
     matchLabels:
-      app.kubernetes.io/name: fusion
+      app.kubernetes.io/name: skipper
       app.kubernetes.io/component: router
       app.kubernetes.io/instance: <%= namespace %>
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: fusion
+        app.kubernetes.io/name: skipper
         app.kubernetes.io/component: router
         app.kubernetes.io/instance: <%= namespace %>
     spec:
@@ -341,7 +341,7 @@ spec:
                     - key: app.kubernetes.io/name
                       operator: In
                       values:
-                      - fusion
+                      - skipper
                     - key: app.kubernetes.io/instance
                       operator: In
                       values:
@@ -356,7 +356,7 @@ spec:
   type: NodePort
   <%- end -%>
   selector:
-    app.kubernetes.io/name: fusion
+    app.kubernetes.io/name: skipper
     app.kubernetes.io/component: router
     app.kubernetes.io/instance: <%= namespace %>
   ports:
