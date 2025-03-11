@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -162,7 +163,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	controllerPodInformerFactory.Start(ctx.Done())
 	synced := cache.WaitForCacheSync(ctx.Done(), controllerPodHandler.HasSynced)
 	if !synced {
-		return fmt.Errorf("failed to sync controller pod informer")
+		return errors.New("failed to sync controller pod informer")
 	}
 
 	for _, namespace := range function.FlagNamespaces.Value() {
@@ -215,7 +216,7 @@ func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance
 		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
 	}
 
-	var instances []*function.Instance
+	instances := make([]*function.Instance, 0, len(assignedPods))
 	for _, pod := range assignedPods {
 		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil {
 			continue
@@ -238,6 +239,7 @@ func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance
 
 		instances = append(instances, instance)
 	}
+
 	return instances, nil
 }
 
@@ -252,13 +254,14 @@ func (ctrl *Controller) listPods(namespace string, selector labels.Selector) ([]
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	var pods []*v1.Pod
+	pods := make([]*v1.Pod, 0, len(listedPods))
 	for _, pod := range listedPods {
 		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil {
 			continue
 		}
 		pods = append(pods, pod)
 	}
+
 	return pods, nil
 }
 
@@ -277,7 +280,7 @@ func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
 
 func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 	if pod == nil {
-		return nil, fmt.Errorf("pod is nil")
+		return nil, errors.New("pod is nil")
 	}
 
 	instance := &function.Instance{
@@ -290,12 +293,12 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
 		}
 	} else {
-		return nil, fmt.Errorf("missing function annotation")
+		return nil, errors.New("missing function annotation")
 	}
 
 	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Label]
 	if instance.ReplicaSet == "" {
-		return nil, fmt.Errorf("missing replica set annotation")
+		return nil, errors.New("missing replica set annotation")
 	}
 
 	var err error

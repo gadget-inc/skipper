@@ -326,6 +326,7 @@ func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Fun
 	if err != nil {
 		return nil, fmt.Errorf("failed to send assign request: %w", err)
 	}
+	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("assign request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))

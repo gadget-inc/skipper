@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -101,6 +102,7 @@ func TestMethods(t *testing.T) {
 
 			res, err := http.DefaultTransport.RoundTrip(req)
 			must.NoError(t, err)
+			defer res.Body.Close()
 			must.Eq(t, http.StatusOK, res.StatusCode)
 
 			echoResponse, err := fixture.ParseEchoResponse(res)
@@ -182,6 +184,7 @@ func TestHeaders(t *testing.T) {
 			transport := &http.Transport{DisableCompression: true} // disable the default "Accept-Encoding: gzip" header
 			res, err := transport.RoundTrip(req)
 			must.NoError(t, err)
+			defer res.Body.Close()
 			must.Eq(t, http.StatusOK, res.StatusCode)
 
 			echoResponse, err := fixture.ParseEchoResponse(res)
@@ -265,6 +268,7 @@ func TestBody(t *testing.T) {
 
 			res, err := http.DefaultTransport.RoundTrip(req)
 			must.NoError(t, err)
+			defer res.Body.Close()
 			must.Eq(t, http.StatusOK, res.StatusCode)
 
 			echoResponse, err := fixture.ParseEchoResponse(res)
@@ -350,7 +354,7 @@ func TestRetries(t *testing.T) {
 		{
 			name:        "controller.get arbitrary error",
 			maxAttempts: 2,
-			getErrs:     []error{fmt.Errorf("arbitrary error")},
+			getErrs:     []error{errors.New("arbitrary error")},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
@@ -359,7 +363,7 @@ func TestRetries(t *testing.T) {
 		{
 			name:          "round trip dial error",
 			maxAttempts:   2,
-			roundTripErrs: []error{&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")}},
+			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
@@ -368,9 +372,9 @@ func TestRetries(t *testing.T) {
 		{
 			name:        "controller.get and round trip errors",
 			maxAttempts: 4,
-			getErrs:     []error{fmt.Errorf("arbitrary error")},
+			getErrs:     []error{errors.New("arbitrary error")},
 			roundTripErrs: []error{
-				&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")},
+				&net.OpError{Op: "dial", Err: errors.New("arbitrary error")},
 			},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
@@ -380,8 +384,8 @@ func TestRetries(t *testing.T) {
 		{
 			name:          "controller.get and round trip errors exceed max attempts",
 			maxAttempts:   2,
-			getErrs:       []error{fmt.Errorf("arbitrary error")},
-			roundTripErrs: []error{&net.OpError{Op: "dial", Err: fmt.Errorf("arbitrary error")}},
+			getErrs:       []error{errors.New("arbitrary error")},
+			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusBadGateway, rw.Code)
 				must.Length(t, 0, rw.Body)

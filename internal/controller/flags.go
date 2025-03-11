@@ -4,6 +4,7 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -72,7 +73,7 @@ var (
 		Parse: func(s string) (paseto.V2AsymmetricSecretKey, error) {
 			block, _ := pem.Decode([]byte(s))
 			if block == nil {
-				return paseto.NewV2AsymmetricSecretKey(), fmt.Errorf("invalid PEM block")
+				return paseto.NewV2AsymmetricSecretKey(), errors.New("invalid PEM block")
 			}
 			if block.Type != "PRIVATE KEY" {
 				return paseto.NewV2AsymmetricSecretKey(), fmt.Errorf("invalid PEM block type: %s", block.Type)
@@ -83,7 +84,7 @@ var (
 			}
 			ed25519PrivateKey, ok := key.(ed25519.PrivateKey)
 			if !ok {
-				return paseto.NewV2AsymmetricSecretKey(), fmt.Errorf("invalid private key type")
+				return paseto.NewV2AsymmetricSecretKey(), errors.New("invalid private key type")
 			}
 			return paseto.NewV2AsymmetricSecretKeyFromEd25519(ed25519PrivateKey)
 		},
@@ -125,7 +126,7 @@ var (
 		Default:     2,
 		Action: func(value int32) error {
 			if value < 1 {
-				return fmt.Errorf("available replica divisor must be greater than 0")
+				return errors.New("available replica divisor must be greater than 0")
 			}
 			return nil
 		},

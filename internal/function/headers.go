@@ -1,6 +1,7 @@
 package function
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -26,7 +27,7 @@ func FromHeader(req *http.Request) (Function, error) {
 
 	header, ok := req.Header[key.Function.Header]
 	if !ok || len(header) == 0 {
-		return fn, fmt.Errorf("missing %s header", key.Function.Header)
+		return fn, errors.New("missing " + key.Function.Header)
 	}
 
 	err := json.Unmarshal([]byte(header[0]), &fn)
@@ -35,28 +36,28 @@ func FromHeader(req *http.Request) (Function, error) {
 	}
 
 	if fn.Namespace == "" {
-		return fn, fmt.Errorf("missing namespace")
+		return fn, errors.New("missing namespace")
 	}
 	if fn.Deployment == "" {
-		return fn, fmt.Errorf("missing deployment")
+		return fn, errors.New("missing deployment")
 	}
 	if fn.Tenant == "" {
-		return fn, fmt.Errorf("missing tenant")
+		return fn, errors.New("missing tenant")
 	}
 	if fn.Scale.MinInstances < 0 {
-		return fn, fmt.Errorf("min instances must be greater than or equal to 0")
+		return fn, errors.New("min instances must be greater than or equal to 0")
 	}
 	if fn.Scale.MaxInstances < 0 {
-		return fn, fmt.Errorf("max instances must be greater than or equal to 0")
+		return fn, errors.New("max instances must be greater than or equal to 0")
 	}
 	if fn.Scale.TargetCPUUsageMilli < 0 {
-		return fn, fmt.Errorf("target cpu usage must be greater than or equal to 0")
+		return fn, errors.New("target cpu usage must be greater than or equal to 0")
 	}
 	if fn.Scale.TargetMemoryUsageMiB < 0 {
-		return fn, fmt.Errorf("target memory usage must be greater than or equal to 0")
+		return fn, errors.New("target memory usage must be greater than or equal to 0")
 	}
 	if fn.Scale.TargetInFlightRequests < 0 {
-		return fn, fmt.Errorf("target in flight requests must be greater than or equal to 0")
+		return fn, errors.New("target in flight requests must be greater than or equal to 0")
 	}
 
 	return fn, nil

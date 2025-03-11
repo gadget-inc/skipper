@@ -2,7 +2,7 @@ package function
 
 import (
 	"context"
-	"fmt"
+	"errors"
 )
 
 type ctxKey struct{}
@@ -12,7 +12,7 @@ var k = ctxKey{}
 func From(ctx context.Context) (Function, error) {
 	fn, ok := ctx.Value(k).(Function)
 	if !ok {
-		return fn, fmt.Errorf("function not found in context")
+		return fn, errors.New("function not found in context")
 	}
 	return fn, nil
 }
