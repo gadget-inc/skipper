@@ -35,7 +35,7 @@ spec:
             - name: http
               containerPort: 8888
           env:
-            - name: FUSION_PUBLIC_KEY
+            - name: SKIPPER_PUBLIC_KEY
               value: <%= File.read("#{workspace_dir}/tmp/paseto/public.pem").to_json %>
             <%- extra_env.each do |key, value| -%>
             - name: "<%= key %>"

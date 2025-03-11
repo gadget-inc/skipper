@@ -31,9 +31,9 @@ func new(kebabCasedName string) key {
 	return key{
 		KebabCased:      kebabCasedName,
 		Underscored:     strings.ReplaceAll(kebabCasedName, "-", "_"),
-		Header:          "X-Fusion-" + textproto.CanonicalMIMEHeaderKey(kebabCasedName),
-		Label:           "fusion/" + kebabCasedName,
-		PatchLabel:      "/metadata/labels/fusion~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
-		PatchAnnotation: "/metadata/annotations/fusion~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
+		Header:          "X-Skipper-" + textproto.CanonicalMIMEHeaderKey(kebabCasedName),
+		Label:           "skipper/" + kebabCasedName,
+		PatchLabel:      "/metadata/labels/skipper~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
+		PatchAnnotation: "/metadata/annotations/skipper~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
 	}
 }

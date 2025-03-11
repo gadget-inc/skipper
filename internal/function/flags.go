@@ -16,7 +16,7 @@ var (
 	FlagAssignPath = flag.Flag[string]{
 		Name:        "function-assign-path",
 		Description: "The path used to assign a function to a pod.",
-		Default:     "/__fusion/assign",
+		Default:     "/__skipper/assign",
 	}
 
 	FlagAssignTimeout = flag.Flag[time.Duration]{

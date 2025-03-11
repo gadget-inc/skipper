@@ -2,7 +2,6 @@ package function
 
 import (
 	"log/slog"
-	"strconv"
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,13 +16,7 @@ type Function struct {
 }
 
 func (f Function) RingKey() string {
-	return f.Tenant +
-		f.Namespace +
-		f.Deployment +
-		strconv.Itoa(f.Scale.MinInstances) +
-		strconv.Itoa(f.Scale.MaxInstances) +
-		strconv.Itoa(f.Scale.TargetCPUUsageMilli) +
-		strconv.Itoa(f.Scale.TargetMemoryUsageMiB)
+	return f.Namespace + f.Deployment + f.Tenant
 }
 
 func (f Function) Fields() []slog.Attr {
@@ -31,6 +24,7 @@ func (f Function) Fields() []slog.Attr {
 		key.Namespace.Field(f.Namespace),
 		key.Deployment.Field(f.Deployment),
 		key.Tenant.Field(f.Tenant),
+		key.Metadata.Field(f.Metadata),
 		key.Scale.Field(f.Scale),
 	}
 }

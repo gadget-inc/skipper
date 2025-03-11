@@ -21,7 +21,7 @@ var (
 		Description: "The port the router listens on.",
 		Default:     8080,
 		Parse: func(s string) (int, error) {
-			if strings.HasPrefix(s, "tcp://") && s == os.Getenv("FUSION_ROUTER_PORT") {
+			if strings.HasPrefix(s, "tcp://") && s == os.Getenv("SKIPPER_ROUTER_PORT") {
 				// this environment variable was set by kubernetes, ignore it and use the default
 				return 8080, nil
 			}

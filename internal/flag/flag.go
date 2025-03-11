@@ -19,9 +19,9 @@ type Flag[T any] struct {
 	// This is used as the double-dashed flag name in the command line
 	// and as the name of the environment variable. The name of the
 	// environment variable is derived by upper-casing, replacing
-	// hyphens with underscores, and prefixing with "FUSION_". For
+	// hyphens with underscores, and prefixing with "SKIPPER_". For
 	// example, the name "foo-bar" would result in a flag named
-	// --foo-bar and an environment variable named FUSION_FOO_BAR.
+	// --foo-bar and an environment variable named SKIPPER_FOO_BAR.
 	Name string
 
 	// EnvVarName is the name of the environment variable.
@@ -126,7 +126,7 @@ func (f *Flag[T]) Init() {
 	f.ptr = any(&f.value)
 	f.value = f.Default
 	if f.EnvVarName == "" {
-		f.EnvVarName = "FUSION_" + strings.ToUpper(strings.ReplaceAll(f.Name, "-", "_"))
+		f.EnvVarName = "SKIPPER_" + strings.ToUpper(strings.ReplaceAll(f.Name, "-", "_"))
 	}
 	f.Description += " (env " + f.EnvVarName + ")"
 	f.isInitialized = true

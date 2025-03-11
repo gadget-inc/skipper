@@ -128,23 +128,23 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            - name: FUSION_CONTROLLER_NAMESPACE
+            - name: SKIPPER_CONTROLLER_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: FUSION_CONTROLLER_POD_IP
+            - name: SKIPPER_CONTROLLER_POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: FUSION_LOG_LEVEL
+            - name: SKIPPER_LOG_LEVEL
               value: "<%= controller_log_level %>"
-            - name: FUSION_LOG_FORMAT
+            - name: SKIPPER_LOG_FORMAT
               value: "<%= controller_log_format %>"
-            - name: FUSION_FUNCTION_NAMESPACES
+            - name: SKIPPER_FUNCTION_NAMESPACES
               value: "<%= function_namespaces.join(',') %>"
-            - name: FUSION_SKIP_FORBIDDEN_NAMESPACES
+            - name: SKIPPER_SKIP_FORBIDDEN_NAMESPACES
               value: "<%= skip_forbidden_namespaces %>"
-            - name: FUSION_CONTROLLER_SHUTDOWN_TIMEOUT
+            - name: SKIPPER_CONTROLLER_SHUTDOWN_TIMEOUT
               value: "<%= controller_shutdown_timeout_seconds %>s"
             <%- env.each do |key, value| -%>
             - name: "<%= key %>"
@@ -155,7 +155,7 @@ spec:
               value: "<%= value %>"
             <%- end -%>
             <%- if defined? unsafe_controller_paseto_private_key -%>
-            - name: FUSION_CONTROLLER_PASETO_PRIVATE_KEY
+            - name: SKIPPER_CONTROLLER_PASETO_PRIVATE_KEY
               value: <%= unsafe_controller_paseto_private_key.to_json %>
             <%- else -%>
           envFrom:
@@ -278,17 +278,17 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            - name: FUSION_ROUTER_POD_IP
+            - name: SKIPPER_ROUTER_POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: FUSION_LOG_LEVEL
+            - name: SKIPPER_LOG_LEVEL
               value: "<%= router_log_level %>"
-            - name: FUSION_LOG_FORMAT
+            - name: SKIPPER_LOG_FORMAT
               value: "<%= router_log_format %>"
-            - name: FUSION_CONTROLLER_SERVICE_HOST
+            - name: SKIPPER_CONTROLLER_SERVICE_HOST
               value: "<%= controller_name %>.<%= namespace %>.svc.cluster.local"
-            - name: FUSION_ROUTER_SHUTDOWN_TIMEOUT
+            - name: SKIPPER_ROUTER_SHUTDOWN_TIMEOUT
               value: "<%= router_shutdown_timeout_seconds %>s"
             <%- env.each do |key, value| -%>
             - name: "<%= key %>"

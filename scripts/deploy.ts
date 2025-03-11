@@ -10,7 +10,7 @@ if (!isCI) {
     unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
     router_node_port: 31020,
     env: {
-      FUSION_TELEMETRY: enableOtel,
+      SKIPPER_TELEMETRY: enableOtel,
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
     },
@@ -23,7 +23,7 @@ await deployKraneNamespace("skipper-test", {
   unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
   router_node_port: 31021,
   env: {
-    FUSION_TELEMETRY: enableOtel,
+    SKIPPER_TELEMETRY: enableOtel,
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
     OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
   },
