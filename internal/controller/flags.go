@@ -118,4 +118,16 @@ var (
 		Description: "The stabilization window for downscaling in the HPA algorithm.",
 		Default:     90 * time.Second,
 	}
+
+	FlagAvailableReplicaDivisor = flag.Flag[int32]{
+		Name:        "controller-available-replica-divisor",
+		Description: "The divisor for the number of available replicas needed to terminate a stale instance.",
+		Default:     2,
+		Action: func(value int32) error {
+			if value < 1 {
+				return fmt.Errorf("available replica divisor must be greater than 0")
+			}
+			return nil
+		},
+	}
 )

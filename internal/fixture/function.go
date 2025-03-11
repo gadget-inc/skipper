@@ -27,10 +27,11 @@ func NewFunction() function.Function {
 		Namespace:  FunctionNamespace,
 		Deployment: FunctionDeployment,
 		Scale: function.Scale{
-			MinInstances:         0,
-			MaxInstances:         5,
-			TargetCPUUsageMilli:  100,
-			TargetMemoryUsageMiB: 200,
+			MinInstances:           0,
+			MaxInstances:           5,
+			TargetCPUUsageMilli:    100,
+			TargetMemoryUsageMiB:   200,
+			TargetInFlightRequests: 50,
 		},
 	}
 }

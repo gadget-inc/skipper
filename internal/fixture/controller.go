@@ -2,7 +2,6 @@ package fixture
 
 import (
 	"context"
-	"strconv"
 	"testing"
 
 	"aidanwoods.dev/go-paseto"
@@ -19,7 +18,7 @@ type (
 )
 
 var (
-	ControllerIP        = "127.0.0." + strconv.Itoa(rand.Intn(256))
+	ControllerIP        = "127.0.2.1"
 	ControllerNamespace = "fusion-test"
 )
 

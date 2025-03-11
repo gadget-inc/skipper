@@ -69,23 +69,23 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				// seed the controller with a recent heartbeat
 				fn := fixture.NewFunction()
-				heartbeat := time.Now()
-				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: heartbeat}})
+				heartbeatTimestamp := time.Now()
+				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: heartbeatTimestamp}})
 
 				// send an old heartbeat
 				return []function.Heartbeat{
-					{Function: fn, Timestamp: heartbeat.Add(-time.Hour)},
+					{Function: fn, Timestamp: heartbeatTimestamp.Add(-time.Hour)},
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
 				must.Eq(t, 1, ctrl.routerHeartbeats.Size())
 
-				sentTimestamp := heartbeats[0].Timestamp
-				keptTimestamp, ok := ctrl.routerHeartbeats.Load(heartbeats[0].Function)
+				sentHeartbeat := heartbeats[0]
+				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
 
 				must.True(t, ok)
-				must.NotEq(t, keptTimestamp[fixture.RouterIP].Timestamp, sentTimestamp)
-				must.Eq(t, keptTimestamp[fixture.RouterIP].Timestamp, sentTimestamp.Add(time.Hour))
+				must.NotEq(t, keptHeartbeat[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp)
+				must.Eq(t, keptHeartbeat[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp.Add(time.Hour))
 			},
 		},
 		{
@@ -105,6 +105,26 @@ func TestHandleHeartbeat(t *testing.T) {
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
 				// give the goroutine that forwards the heartbeats a chance to run
 				time.Sleep(10 * time.Millisecond)
+			},
+		},
+		{
+			name: "garbage collects old heartbeats",
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+				// seed the controller with a old heartbeat from a different router
+				fn := fixture.NewFunction()
+				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP2: {Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))}})
+
+				return []function.Heartbeat{
+					{Function: fn, Timestamp: time.Now()},
+				}
+			},
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+				sentHeartbeat := heartbeats[0]
+				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
+				must.True(t, ok)
+				must.Eq(t, 1, len(keptHeartbeat))
+				must.MapNotContainsKey(t, keptHeartbeat, fixture.RouterIP2)
+				must.Eq(t, sentHeartbeat.Timestamp, keptHeartbeat[fixture.RouterIP].Timestamp)
 			},
 		},
 	}

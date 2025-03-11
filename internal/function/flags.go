@@ -13,12 +13,6 @@ var (
 		Required:    true,
 	}
 
-	FlagPort = flag.Flag[int]{
-		Name:        "function-port",
-		Description: "The port on which the function server listens.",
-		Default:     8888,
-	}
-
 	FlagAssignPath = flag.Flag[string]{
 		Name:        "function-assign-path",
 		Description: "The path used to assign a function to a pod.",

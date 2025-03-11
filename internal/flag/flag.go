@@ -197,6 +197,12 @@ func (f *Flag[T]) Set(s string) error {
 		}
 	case *int:
 		*value, err = strconv.Atoi(s)
+	case *int32:
+		i, err := strconv.ParseInt(s, 10, 32)
+		if err != nil {
+			return err
+		}
+		*value = int32(i)
 	case *int64:
 		*value, err = strconv.ParseInt(s, 10, 64)
 	case *uint64:
@@ -286,6 +292,8 @@ func (f *Flag[T]) String() string {
 		return strconv.Itoa(*value)
 	case *int64:
 		return strconv.FormatInt(*value, 10)
+	case *int32:
+		return strconv.Itoa(int(*value))
 	case *uint64:
 		return strconv.FormatUint(*value, 10)
 	case *float32:

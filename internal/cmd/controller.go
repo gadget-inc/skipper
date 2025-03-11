@@ -102,6 +102,7 @@ func NewController() *cobra.Command {
 		},
 	}
 
+	controller.FlagAvailableReplicaDivisor.Bind(cmd)
 	controller.FlagHPADownscaleStabilization.Bind(cmd)
 	controller.FlagHPAInitialReadinessDelay.Bind(cmd)
 	controller.FlagHPATolerance.Bind(cmd)
@@ -118,7 +119,6 @@ func NewController() *cobra.Command {
 	function.FlagAssignPath.Bind(cmd)
 	function.FlagAssignTimeout.Bind(cmd)
 	function.FlagNamespaces.Bind(cmd)
-	function.FlagPort.Bind(cmd)
 	function.FlagSkipForbiddenNamespaces.Bind(cmd)
 
 	return cmd

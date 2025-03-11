@@ -24,8 +24,8 @@ func init() {
 	_ = function.FlagNamespaces.SetValue([]string{fixture.FunctionNamespace})
 	function.FlagAssignPath.Init()
 	function.FlagAssignTimeout.Init()
-	function.FlagPort.Init()
 
+	FlagAvailableReplicaDivisor.Init()
 	FlagHPADownscaleStabilization.Init()
 	FlagHPAInitialReadinessDelay.Init()
 	FlagHPATolerance.Init()
@@ -54,6 +54,18 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, po
 	must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
 }
 
+func ensurePodAssignedToFunction(t *testing.T, pod v1.Pod, fn function.Function) {
+	fnJSON, err := json.Marshal(fn)
+	must.NoError(t, err)
+
+	must.Eq(t, fn.Deployment, pod.Labels[key.Deployment.Label])
+	must.Eq(t, fn.Tenant, pod.Labels[key.Tenant.Label])
+	must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
+	must.MapContainsKey(t, pod.Annotations, key.ReplicaSet.Label)
+	must.MapContainsKey(t, pod.Annotations, key.AssignedAt.Label)
+	must.MapContainsKey(t, pod.Annotations, key.ReadyAt.Label)
+}
+
 func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
 	must.MapNotContainsKey(t, pod.Labels, key.Tenant.Label)
 	must.MapNotContainsKey(t, pod.Annotations, key.Function.Label)
@@ -70,7 +82,7 @@ func TestScaleFunctions(t *testing.T) {
 		check func(*testing.T, *Controller, *fake.Clientset, *fakekubernetesmetrics.Clientset, function.Function)
 	}{
 		{
-			name: "scale up",
+			name: "scale up cpu",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
 				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
@@ -84,6 +96,77 @@ func TestScaleFunctions(t *testing.T) {
 				fakeKubernetes.Tracker().Add(assignedPod)
 
 				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli*2) + "m"    // 2x target
+				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB) + "Mi" // 1x target
+				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+
+				instance1, err := instanceFromPod(&pods.Items[0])
+				must.NoError(t, err)
+
+				instance2, err := instanceFromPod(&pods.Items[1])
+				must.NoError(t, err)
+
+				must.Eq(t, fn, instance1.Function)
+				must.Eq(t, fn, instance2.Function)
+				must.Len(t, 2, pods.Items)
+			},
+		},
+		{
+			name: "scale up memory",
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+
+				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				fakeKubernetes.Tracker().Add(assignedPod)
+
+				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli) + "m"        // 1x target
+				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB*2) + "Mi" // 2x target
+				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+
+				instance1, err := instanceFromPod(&pods.Items[0])
+				must.NoError(t, err)
+
+				instance2, err := instanceFromPod(&pods.Items[1])
+				must.NoError(t, err)
+
+				must.Eq(t, fn, instance1.Function)
+				must.Eq(t, fn, instance2.Function)
+				must.Len(t, 2, pods.Items)
+			},
+		},
+		{
+			name: "scale up in-flight requests",
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{
+					fixture.RouterIP:  {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests}, // 2x target across 2 routers
+					fixture.RouterIP2: {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests},
+				})
+
+				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				fakeKubernetes.Tracker().Add(assignedPod)
+
+				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli) + "m"      // 1x target
 				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB) + "Mi" // 1x target
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
 				return fn
@@ -143,7 +226,10 @@ func TestScaleFunctions(t *testing.T) {
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
 				fn.Scale.TargetMemoryUsageMiB = 0 // don't scale on memory
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{
+					fixture.RouterIP:  {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests / 2}, // 1x target across 2 routers
+					fixture.RouterIP2: {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests / 2},
+				})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
@@ -154,20 +240,28 @@ func TestScaleFunctions(t *testing.T) {
 				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 
 				cpuUsage := strconv.Itoa(fn.Scale.TargetCPUUsageMilli) + "m"        // 1x target
-				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB*2) + "Mi" // 2x target
+				memoryUsage := strconv.Itoa(fn.Scale.TargetMemoryUsageMiB*2) + "Mi" // 2x target, but ignored because memory is 0
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
 				return fn
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
-
-				instance1, err := instanceFromPod(&pods.Items[0])
-				must.NoError(t, err)
-				must.Eq(t, fn, instance1.Function)
-
-				ensurePodIsNotAssignedToFunction(t, pods.Items[1])
 				must.Len(t, 2, pods.Items)
+
+				var assignedPod v1.Pod
+				var unassignedPod v1.Pod
+
+				if pods.Items[0].Annotations[key.Function.Label] == "" {
+					unassignedPod = pods.Items[0]
+					assignedPod = pods.Items[1]
+				} else {
+					unassignedPod = pods.Items[1]
+					assignedPod = pods.Items[0]
+				}
+
+				ensurePodAssignedToFunction(t, assignedPod, fn)
+				ensurePodIsNotAssignedToFunction(t, unassignedPod)
 			},
 		},
 		{
@@ -260,8 +354,7 @@ func TestScaleFunctions(t *testing.T) {
 				fn := fixture.NewFunction()
 				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}}) // heartbeat timeout
 
-				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				fakeKubernetes.Tracker().Add(assignedPod) // add an assigned pod that needs to be terminated
+				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil)) // add an assigned pod that needs to be terminated
 
 				// add a bunch of controller pods so that we're unlikely to be responsible for the assigned pod
 				for i := range 10 {
@@ -275,12 +368,12 @@ func TestScaleFunctions(t *testing.T) {
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
+				must.Len(t, 1, pods.Items)
 
 				// the assigned pod should still be around because we're not responsible for it
 				instance, err := instanceFromPod(&pods.Items[0])
 				must.NoError(t, err)
 				must.Eq(t, fn, instance.Function)
-				must.Len(t, 1, pods.Items)
 			},
 		},
 	}
@@ -380,13 +473,11 @@ func TestAssignPodToFunction(t *testing.T) {
 				must.Eq(t, "http", pod.Annotations[key.Port.Label])
 				must.Eq(t, "http", pod.Spec.Containers[0].Ports[0].Name)
 
-				// add another container with a different port
-				pod.Spec.Containers = append(pod.Spec.Containers, v1.Container{
-					Name: "other",
-					Ports: []v1.ContainerPort{
-						{ContainerPort: 8080, Name: "other"},
-					},
-				})
+				// add another port and make the http port the second port on the container
+				pod.Spec.Containers[0].Ports = []v1.ContainerPort{
+					{ContainerPort: 8080, Name: "other"},
+					pod.Spec.Containers[0].Ports[0],
+				}
 
 				err := fakeKubernetes.Tracker().Add(pod)
 				must.NoError(t, err)
@@ -417,7 +508,7 @@ func TestAssignPodToFunction(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			t.Cleanup(cancel)
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())

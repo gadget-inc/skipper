@@ -55,6 +55,9 @@ func FromHeader(req *http.Request) (Function, error) {
 	if fn.Scale.TargetMemoryUsageMiB < 0 {
 		return fn, fmt.Errorf("target memory usage must be greater than or equal to 0")
 	}
+	if fn.Scale.TargetInFlightRequests < 0 {
+		return fn, fmt.Errorf("target in flight requests must be greater than or equal to 0")
+	}
 
 	return fn, nil
 }

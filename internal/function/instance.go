@@ -2,7 +2,6 @@ package function
 
 import (
 	"log/slog"
-	"strconv"
 	"time"
 
 	"github.com/gadget-inc/fusion/internal/key"
@@ -21,41 +20,25 @@ type Instance struct {
 }
 
 func (instance *Instance) Fields() []slog.Attr {
-	cpuUsage := "unknown"
-	if instance.CPUUsage != 0 {
-		cpuUsage = strconv.Itoa(instance.CPUUsage)
-	}
-	memoryUsage := "unknown"
-	if instance.MemoryUsage != 0 {
-		memoryUsage = strconv.Itoa(instance.MemoryUsage / 1024 / 1024)
-	}
 	return []slog.Attr{
 		key.Name.Field(instance.Name),
 		key.Addr.Field(instance.Addr),
 		key.AssignedAt.Field(instance.AssignedAt),
 		key.ReadyAt.Field(instance.ReadyAt),
 		key.Function.Field(instance.Function),
-		slog.String("cpu_usage", cpuUsage),
-		slog.String("memory_usage", memoryUsage),
+		key.CPUUsage.Field(instance.CPUUsage),
+		key.MemoryUsage.Field(instance.MemoryUsage),
 	}
 }
 
 func (instance *Instance) Attributes() []attribute.KeyValue {
-	cpuUsage := "unknown"
-	if instance.CPUUsage != 0 {
-		cpuUsage = strconv.Itoa(instance.CPUUsage)
-	}
-	memoryUsage := "unknown"
-	if instance.MemoryUsage != 0 {
-		memoryUsage = strconv.Itoa(instance.MemoryUsage / 1024 / 1024)
-	}
 	return append(key.Function.Attributes(instance.Function),
 		key.Name.Attribute(instance.Name),
 		key.Addr.Attribute(instance.Addr),
 		attribute.String("replica_set", instance.ReplicaSet),
 		key.AssignedAt.Attribute(instance.AssignedAt),
 		key.ReadyAt.Attribute(instance.ReadyAt),
-		attribute.String("cpu_usage", cpuUsage),
-		attribute.String("memory_usage", memoryUsage),
+		key.CPUUsage.Attribute(instance.CPUUsage),
+		key.MemoryUsage.Attribute(instance.MemoryUsage),
 	)
 }
