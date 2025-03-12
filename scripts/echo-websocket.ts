@@ -2,22 +2,7 @@
 // @deno-types="npm:@types/ws"
 import WebSocket from "npm:ws";
 import { delay } from "jsr:@std/async";
-
-const routerUrl = "http://127.0.0.1:31020";
-// const routerUrl = "http://skipper-development-router.skipper-development.svc.cluster.local";
-
-const echoFunction = {
-  namespace: "skipper-development-fixtures",
-  deployment: "echo",
-  tenant: "123",
-  metadata: JSON.stringify({ foo: "bar" }),
-  scale: {
-    min_instances: 0,
-    max_instances: 5,
-    target_cpu_usage_milli: 100,
-    target_memory_usage_mib: 200,
-  },
-};
+import { echoFunction, routerUrl } from "./_echo_utils.ts";
 
 const socket = new WebSocket(routerUrl, undefined, {
   headers: {

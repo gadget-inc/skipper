@@ -2,76 +2,6 @@
 version: 3
 
 tasks:
-  test:
-    cmds:
-      - go test -v ./... {{ .CLI_ARGS }}
-
-  build:
-    cmds:
-      - scripts/build.ts {{ .CLI_ARGS }}
-
-  build-fixtures:
-    sources:
-      - fixtures/**/*
-    cmds:
-      - scripts/build-fixtures.ts
-
-  deploy:
-    deps:
-      - generate-paseto-keypair
-      - build
-    cmds:
-      - scripts/deploy.ts
-
-  deploy-fixtures:
-    deps:
-      - generate-paseto-keypair
-      - build-fixtures
-    sources:
-      - deploy/skipper-*-fixtures/**
-      - scripts/deploy-fixtures.ts
-    cmds:
-      - scripts/deploy-fixtures.ts
-
-  deploy-metrics-server:
-    sources:
-      - deploy/cluster/metrics-server.yaml
-      - deploy/kube-system/metrics-server.yaml
-      - scripts/deploy-metrics-server.ts
-    cmds:
-      - scripts/deploy-metrics-server.ts
-
-  deploy-otel-lgtm:
-    sources:
-      - deploy/otel-lgtm/**
-      - scripts/deploy-otel-lgtm.ts
-    cmds:
-      - scripts/deploy-otel-lgtm.ts
-
-  deploy-all:
-    cmds:
-      - task: deploy-metrics-server
-      - task: deploy-otel-lgtm
-      - task: deploy-fixtures
-      - task: deploy
-
-  echo-request:
-    cmds:
-      - scripts/echo-request.ts
-
-  echo-websocket:
-    cmds:
-      - scripts/echo-websocket.ts
-
-  generate-paseto-keypair:
-    sources:
-      - scripts/generate-paseto-keypair.ts
-    generates:
-      - tmp/paseto/public.pem
-      - tmp/paseto/private.pem
-    cmds:
-      - scripts/generate-paseto-keypair.ts
-
   lint:
     sources:
       - cmd/**/*.go
@@ -83,3 +13,44 @@ tasks:
       - main.go
     cmds:
       - golangci-lint run
+
+  test: go test -v ./... {{ .CLI_ARGS }}
+
+  build: scripts/build.ts {{ .CLI_ARGS }}
+
+  deploy:
+    deps: [generate-paseto-keypair, build]
+    cmd: scripts/deploy.ts
+
+  build-fixtures:
+    sources: [fixtures/**/*]
+    cmd: scripts/build-fixtures.ts
+
+  deploy-fixtures:
+    deps: [generate-paseto-keypair, build-fixtures]
+    sources: [deploy/skipper-*-fixtures/**, scripts/deploy-fixtures.ts]
+    cmd: scripts/deploy-fixtures.ts
+
+  deploy-metrics-server:
+    sources: [deploy/cluster/metrics-server.yaml, deploy/kube-system/metrics-server.yaml, scripts/deploy-metrics-server.ts]
+    cmd: scripts/deploy-metrics-server.ts
+
+  deploy-otel-lgtm:
+    sources: [deploy/otel-lgtm/**, scripts/deploy-otel-lgtm.ts]
+    cmd: scripts/deploy-otel-lgtm.ts
+
+  deploy-all:
+    cmds:
+      - task: deploy-metrics-server
+      - task: deploy-otel-lgtm
+      - task: deploy-fixtures
+      - task: deploy
+
+  echo-request: scripts/echo-request.ts
+  echo-websocket: scripts/echo-websocket.ts
+  echo-load-test: scripts/echo-load-test.ts
+
+  generate-paseto-keypair:
+    sources: [scripts/generate-paseto-keypair.ts]
+    generates: [tmp/paseto/public.pem, tmp/paseto/private.pem]
+    cmd: scripts/generate-paseto-keypair.ts
