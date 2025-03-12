@@ -63,7 +63,7 @@ func Init(ctx context.Context, component string) func() {
 	log.Info(ctx, "telemetry enabled", slog.String("component", component))
 
 	return func() {
-		ctx, cancel := context.WithTimeout(ctx, FlagTelemetryShutdownTimeout.Value())
+		ctx, cancel := context.WithTimeout(context.Background(), FlagTelemetryShutdownTimeout.Value())
 		defer cancel()
 		err = traceProvider.Shutdown(ctx)
 		if err != nil {
