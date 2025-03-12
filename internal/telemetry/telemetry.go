@@ -6,6 +6,7 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/go-logr/logr"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -13,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func Init(ctx context.Context, component string) func() {
@@ -60,6 +62,17 @@ func Init(ctx context.Context, component string) func() {
 
 	otel.SetTracerProvider(traceProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	otel.SetLogger(logr.FromSlogHandler(log.Handler()))
+
+	log.AddHook(func(ctx context.Context, record *slog.Record) {
+		if span := trace.SpanContextFromContext(ctx); span.IsValid() {
+			record.AddAttrs(
+				slog.String("trace_id", span.TraceID().String()),
+				slog.String("span_id", span.SpanID().String()),
+			)
+		}
+	})
+
 	log.Info(ctx, "telemetry enabled", slog.String("component", component))
 
 	return func() {
