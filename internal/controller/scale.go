@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -20,6 +21,7 @@ import (
 	"github.com/goccy/go-json"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
+	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,6 +30,27 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
+
+var (
+	hasTenantSelector         labels.Selector
+	doesNotHaveTenantSelector labels.Selector
+)
+
+func init() {
+	hasTenant, err := labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	hasTenantSelector = labels.NewSelector().Add(*hasTenant)
+
+	doesNotHaveTenant, err := labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	doesNotHaveTenantSelector = labels.NewSelector().Add(*doesNotHaveTenant)
+}
 
 func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) error {
 	ctx, span := telemetry.StartRoot(ctx, "controller.scale_namespace", trace.WithAttributes(key.Namespace.Attribute(namespace)))
@@ -250,6 +273,7 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (*f
 	ctx, span := telemetry.Start(ctx, "controller.assign_pod")
 	defer span.End()
 
+GET_UNASSIGNED_POD:
 	pod, err := timer.PollUntil(ctx, "controller.get_unassigned_pod", 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		availablePods, err := ctrl.getAvailablePods(fn)
 		if err != nil {
@@ -287,6 +311,10 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (*f
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod))
 	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
+		if errors.Is(err, jsonpatch.ErrTestFailed) {
+			log.Warn(ctx, "failed to patch pod, retrying", key.Error.Field(err), key.Pod.Field(pod))
+			goto GET_UNASSIGNED_POD
+		}
 		// there are many reasons this can fail, but one hard to debug
 		// one is that the pod doesn't have any annotations, causing the
 		// json patch to fail: https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12

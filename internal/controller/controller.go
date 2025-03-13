@@ -23,7 +23,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	listerappsv1 "k8s.io/client-go/listers/apps/v1"
@@ -31,32 +30,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
-
-var (
-	hasTenantRequirement labels.Requirement
-	hasTenantSelector    labels.Selector
-
-	doesNotHaveTenantRequirement labels.Requirement
-	doesNotHaveTenantSelector    labels.Selector
-)
-
-func init() {
-	hasTenant, err := labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	hasTenantRequirement = *hasTenant
-	hasTenantSelector = labels.NewSelector().Add(hasTenantRequirement)
-
-	doesNotHaveTenant, err := labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	doesNotHaveTenantRequirement = *doesNotHaveTenant
-	doesNotHaveTenantSelector = labels.NewSelector().Add(doesNotHaveTenantRequirement)
-}
 
 type namespaceLister struct {
 	podIndexer        cache.Indexer

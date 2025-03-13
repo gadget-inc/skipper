@@ -11,6 +11,12 @@ import (
 
 // Poll polls the given function until it returns a non-nil result or the timeout is reached.
 func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	result, err := fn(ctx)
 	if err != nil {
 		return nil, err

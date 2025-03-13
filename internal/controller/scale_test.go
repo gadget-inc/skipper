@@ -472,6 +472,34 @@ func TestAssignPod(t *testing.T) {
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
 			},
 		},
+		{
+			name: "has tenant",
+			err:  context.DeadlineExceeded, // the patch should fail because the pod is already assigned, but we should retry until the test times out
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// make getAvailablePods return assigned pods
+				originalDoesNotHaveTenantSelector := doesNotHaveTenantSelector
+				t.Cleanup(func() {
+					doesNotHaveTenantSelector = originalDoesNotHaveTenantSelector
+				})
+				doesNotHaveTenantSelector = hasTenantSelector
+
+				// add a pod that has a tenant label
+				pod := fixture.NewAvailablePod(t, fn, nil)
+				pod.Labels[key.Tenant.Label] = "other"
+				err := fakeKubernetes.Tracker().Add(pod)
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 1, pods.Items)
+
+				pod := pods.Items[0]
+				must.Eq(t, "other", pod.Labels[key.Tenant.Label])
+				delete(pod.Labels, key.Tenant.Label)
+				ensurePodIsNotAssignedToFunction(t, pod)
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -534,7 +562,7 @@ func TestScale(t *testing.T) {
 				must.Len(t, 1, instances)
 				instance := instances[0]
 				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{
-					LabelSelector: doesNotHaveTenantRequirement.String(),
+					LabelSelector: doesNotHaveTenantSelector.String(),
 				})
 				must.NoError(t, err)
 				must.Len(t, 4, pods.Items)
