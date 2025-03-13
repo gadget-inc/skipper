@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -137,23 +139,23 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 			pod := obj.(*v1.Pod)
 			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
 				ctrl.ring.Add(pod.Status.PodIP)
-				log.Trace(ctx, "added controller", key.Pod.Field(pod))
+				log.Debug(ctx, "added controller", key.Pod.Field(pod), key.ControllerIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 			}
 		},
 		UpdateFunc: func(_, newObj any) {
 			pod := newObj.(*v1.Pod)
-			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
+			if pod.Status.Phase == v1.PodRunning && pod.DeletionTimestamp == nil && pod.Status.PodIP != "" {
 				ctrl.ring.Add(pod.Status.PodIP)
-				log.Trace(ctx, "updated controller", key.Pod.Field(pod))
+				log.Debug(ctx, "updated controller", key.Pod.Field(pod), key.ControllerIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 			} else {
 				ctrl.ring.Remove(pod.Status.PodIP)
-				log.Trace(ctx, "removed updated controller", key.Pod.Field(pod))
+				log.Debug(ctx, "removed updated controller", key.Pod.Field(pod), key.ControllerIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 			}
 		},
 		DeleteFunc: func(obj any) {
 			pod := obj.(*v1.Pod)
 			ctrl.ring.Remove(pod.Status.PodIP)
-			log.Trace(ctx, "removed deleted controller", key.Pod.Field(pod))
+			log.Debug(ctx, "removed deleted controller", key.Pod.Field(pod), key.ControllerIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 		},
 	})
 	if err != nil {
@@ -218,10 +220,6 @@ func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance
 
 	instances := make([]*function.Instance, 0, len(assignedPods))
 	for _, pod := range assignedPods {
-		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil {
-			continue
-		}
-
 		instance, err := instanceFromPod(pod)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get function from pod: %w", err)
