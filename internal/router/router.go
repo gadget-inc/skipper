@@ -15,6 +15,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -50,6 +51,7 @@ func New(ctrl controller.Client) *Router {
 		BufferPool: bufferPool,
 		Rewrite:    rewriteHeaders,
 		Transport:  r,
+		ErrorLog:   log.StdLogger(),
 	}
 
 	return r
@@ -87,8 +89,12 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	ctx := function.With(req.Context(), fn)
+	ctx = log.With(ctx, key.Function.Field(fn))
+	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
+
 	// continuously update the heartbeat timestamp for this function while the request is in flight
-	go timer.Loop(req.Context(), FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
+	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
 		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
 			heartbeat.Function = fn
 			heartbeat.Timestamp = time.Now()
@@ -113,7 +119,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return heartbeat, false
 	})
 
-	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(req.Context(), fn)))
+	r.reverseProxy.ServeHTTP(rw, req.WithContext(ctx))
 }
 
 func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -146,7 +152,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		instance, err := r.ctrl.Instance(ctx, fn)
 		if err != nil {
-			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Function.Field(fn), key.Attempt.Field(attempt))
+			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Attempt.Field(attempt))
 			continue
 		}
 

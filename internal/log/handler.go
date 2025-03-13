@@ -5,20 +5,6 @@ import (
 	"log/slog"
 )
 
-type (
-	contextKey struct{}
-	Hook       func(ctx context.Context, record *slog.Record)
-)
-
-var (
-	ctxKey = contextKey{}
-	hooks  []Hook
-)
-
-func AddHook(hook Hook) {
-	hooks = append(hooks, hook)
-}
-
 type slogHandler struct {
 	slog.Handler
 }
