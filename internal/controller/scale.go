@@ -318,7 +318,6 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (*f
 	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
-	log.Info(ctx, "sending assign request", key.Pod.Field(pod))
 	res, err := otelhttp.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send assign request: %w", err)
