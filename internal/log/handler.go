@@ -11,8 +11,8 @@ type (
 )
 
 var (
-	key   = contextKey{}
-	hooks []Hook
+	ctxKey = contextKey{}
+	hooks  []Hook
 )
 
 func AddHook(hook Hook) {
@@ -26,7 +26,7 @@ type slogHandler struct {
 var _ slog.Handler = slogHandler{}
 
 func (sh slogHandler) Handle(ctx context.Context, record slog.Record) error {
-	if fields, ok := ctx.Value(key).([]slog.Attr); ok {
+	if fields, ok := ctx.Value(ctxKey).([]slog.Attr); ok {
 		record.AddAttrs(fields...)
 	}
 	for _, hook := range hooks {

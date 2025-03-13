@@ -36,10 +36,10 @@ func Handler() slog.Handler {
 }
 
 func With(ctx context.Context, fields ...slog.Attr) context.Context {
-	if contextFields, ok := ctx.Value(key).([]slog.Attr); ok {
+	if contextFields, ok := ctx.Value(ctxKey).([]slog.Attr); ok {
 		fields = append(contextFields, fields...)
 	}
-	return context.WithValue(ctx, key, fields)
+	return context.WithValue(ctx, ctxKey, fields)
 }
 
 func Trace(ctx context.Context, msg string, fields ...slog.Attr) {

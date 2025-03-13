@@ -74,7 +74,7 @@ func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
 	must.MapNotContainsKey(t, pod.Annotations, key.ReadyAt.Label)
 }
 
-func TestScaleFunctions(t *testing.T) {
+func TestScaleNamespace(t *testing.T) {
 	testCases := []struct {
 		name  string
 		err   error
@@ -360,7 +360,7 @@ func TestScaleFunctions(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
 
-			err = ctrl.scaleFunctions(ctx, fn.Namespace)
+			err = ctrl.scaleNamespace(ctx, fn.Namespace)
 			if tc.err != nil {
 				must.ErrorIs(t, err, tc.err)
 			} else {
@@ -372,7 +372,7 @@ func TestScaleFunctions(t *testing.T) {
 	}
 }
 
-func TestAssignPodToFunction(t *testing.T) {
+func TestAssignPod(t *testing.T) {
 	testCases := []struct {
 		name  string
 		err   error
@@ -488,7 +488,7 @@ func TestAssignPodToFunction(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
 
-			instance, err := ctrl.assignPodToFunction(ctx, fn)
+			instance, err := ctrl.assignPod(ctx, fn)
 			if tc.err != nil {
 				must.ErrorIs(t, err, tc.err)
 			} else {
@@ -500,7 +500,7 @@ func TestAssignPodToFunction(t *testing.T) {
 	}
 }
 
-func TestScaleFunction(t *testing.T) {
+func TestScale(t *testing.T) {
 	testCases := []struct {
 		name             string
 		desiredInstances int
@@ -607,7 +607,7 @@ func TestScaleFunction(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
 
-			instances, err := ctrl.scaleFunction(ctx, fn, tc.desiredInstances)
+			instances, err := ctrl.scale(ctx, fn, tc.desiredInstances)
 			if tc.err != nil {
 				must.ErrorIs(t, err, tc.err)
 			} else {
@@ -619,7 +619,7 @@ func TestScaleFunction(t *testing.T) {
 	}
 }
 
-func TestScaleFunctionForwarding(t *testing.T) {
+func TestScaleForwarding(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	t.Cleanup(cancel)
 
@@ -639,7 +639,7 @@ func TestScaleFunctionForwarding(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	must.NoError(t, err)
 
-	instances, err := ctrl.scaleFunction(ctx, fn, 1)
+	instances, err := ctrl.scale(ctx, fn, 1)
 	must.NoError(t, err)
 	must.Len(t, 1, instances)
 }
@@ -659,7 +659,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*function.Instance{
-				{ReadyAt: readyAt, CPUUsage: 200},
+				{ReadyAt: readyAt, CPUUsageMilli: 200},
 			},
 			expectedInstances: 2,
 		},
@@ -668,8 +668,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*function.Instance{
-				{ReadyAt: readyAt, CPUUsage: 50},
-				{ReadyAt: readyAt, CPUUsage: 50},
+				{ReadyAt: readyAt, CPUUsageMilli: 50},
+				{ReadyAt: readyAt, CPUUsageMilli: 50},
 			},
 			expectedInstances: 1,
 		},
@@ -678,7 +678,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*function.Instance{
-				{ReadyAt: readyAt, CPUUsage: 100},
+				{ReadyAt: readyAt, CPUUsageMilli: 100},
 			},
 			expectedInstances: 1,
 		},
@@ -687,7 +687,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*function.Instance{
-				{ReadyAt: readyAt, CPUUsage: 110},
+				{ReadyAt: readyAt, CPUUsageMilli: 110},
 			},
 			expectedInstances: 1,
 		},
@@ -696,8 +696,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*function.Instance{
-				{ReadyAt: readyAt, CPUUsage: 150}, // causes scale up   (averageUsage = 150, usageRatio = 15)
-				{ReadyAt: readyAt, CPUUsage: 0},   // causes scale down (adjustedAverageUsage = 75, adjustedUsageRatio = 0.75), therefor no scaling
+				{ReadyAt: readyAt, CPUUsageMilli: 150}, // causes scale up   (averageUsage = 150, usageRatio = 15)
+				{ReadyAt: readyAt, CPUUsageMilli: 0},   // causes scale down (adjustedAverageUsage = 75, adjustedUsageRatio = 0.75), therefor no scaling
 			},
 			expectedInstances: 2,
 		},
@@ -706,8 +706,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*function.Instance{
-				{ReadyAt: readyAt, CPUUsage: 150},    // causes scale up   (averageUsage = 150, usageRatio = 15)
-				{ReadyAt: time.Now(), CPUUsage: 150}, // causes scale down (adjustedAverageUsage = 75, adjustedUsageRatio = 0.75), therefor no scalng
+				{ReadyAt: readyAt, CPUUsageMilli: 150},    // causes scale up   (averageUsage = 150, usageRatio = 15)
+				{ReadyAt: time.Now(), CPUUsageMilli: 150}, // causes scale down (adjustedAverageUsage = 75, adjustedUsageRatio = 0.75), therefor no scalng
 			},
 			expectedInstances: 2,
 		},
@@ -716,8 +716,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*function.Instance{
-				{ReadyAt: readyAt, CPUUsage: 0},
-				{ReadyAt: readyAt, CPUUsage: 0},
+				{ReadyAt: readyAt, CPUUsageMilli: 0},
+				{ReadyAt: readyAt, CPUUsageMilli: 0},
 			},
 			expectedInstances: 2,
 		},

@@ -11,8 +11,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/goccy/go-json"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func (ctrl *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -39,17 +39,19 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 		return
 	}
 
+	ctx = log.With(ctx, key.Function.Field(fn))
+	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
+
 	instances, err := ctrl.getInstances(fn)
 	if err != nil {
-		log.Error(ctx, "failed to get instances", key.Error.Field(err), key.Function.Field(fn))
+		log.Error(ctx, "failed to get instances", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	for len(instances) == 0 {
-		instances, err = ctrl.scaleFunction(ctx, fn, 1)
-		if err != nil {
-			log.Error(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
+		if instances, err = ctrl.scale(ctx, fn, 1); err != nil {
+			log.Error(ctx, "failed to scale function", key.Error.Field(err))
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -59,9 +61,8 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(rw).Encode(instance)
-	if err != nil {
-		log.Error(ctx, "failed to encode get response", key.Error.Field(err))
+	if err := json.NewEncoder(rw).Encode(instance); err != nil {
+		log.Error(ctx, "failed to encode instance response", key.Error.Field(err))
 	}
 }
 
@@ -74,8 +75,8 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(key.Function.Attributes(fn)...)
+	ctx = log.With(ctx, key.Function.Field(fn))
+	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
 
 	desiredInstances, err := strconv.Atoi(req.Header.Get(key.DesiredInstances.Header))
 	if err != nil {
@@ -84,17 +85,16 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	instances, err := ctrl.scaleFunction(ctx, fn, desiredInstances)
+	instances, err := ctrl.scale(ctx, fn, desiredInstances)
 	if err != nil {
-		log.Error(ctx, "failed to scale function", key.Error.Field(err), key.Function.Field(fn))
+		log.Error(ctx, "failed to scale function", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(rw).Encode(instances)
-	if err != nil {
+	if err := json.NewEncoder(rw).Encode(instances); err != nil {
 		log.Error(ctx, "failed to encode scale response", key.Error.Field(err))
 	}
 }
@@ -108,8 +108,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	var heartbeats []function.Heartbeat
-	err := json.NewDecoder(req.Body).Decode(&heartbeats)
-	if err != nil {
+	if err := json.NewDecoder(req.Body).Decode(&heartbeats); err != nil {
 		log.Error(req.Context(), "failed to decode heartbeats", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
@@ -145,11 +144,10 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 		}
 
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 5*time.Second)
 			defer cancel()
 
-			err := ctrl.getControllerClient(controllerIP).Heartbeat(ctx, routerIP, heartbeats, forwardedFor...)
-			if err != nil {
+			if err := ctrl.getControllerClient(controllerIP).Heartbeat(ctx, routerIP, heartbeats, forwardedFor...); err != nil {
 				log.Warn(req.Context(), "failed to forward heartbeats", key.Error.Field(err), key.ControllerIP.Field(controllerIP))
 			}
 		}()

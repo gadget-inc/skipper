@@ -10,13 +10,13 @@ import (
 
 type Instance struct {
 	Function
-	Name        string    // pod name
-	Addr        string    // pod ip : pod port
-	ReplicaSet  string    // replica set name
-	AssignedAt  time.Time // time the instance was assigned to the pod
-	ReadyAt     time.Time // time the instance was ready to receive traffic
-	CPUUsage    int       // cpu usage in millicores
-	MemoryUsage int       // memory usage in bytes
+	Name           string    // pod name
+	Addr           string    // pod ip : pod port
+	ReplicaSet     string    // replica set name
+	AssignedAt     time.Time // time the instance was assigned to the pod
+	ReadyAt        time.Time // time the instance was ready to receive traffic
+	CPUUsageMilli  int       // cpu usage in millicores
+	MemoryUsageMiB int       // memory usage in MiB
 }
 
 func (instance *Instance) Fields() []slog.Attr {
@@ -26,8 +26,8 @@ func (instance *Instance) Fields() []slog.Attr {
 		key.AssignedAt.Field(instance.AssignedAt),
 		key.ReadyAt.Field(instance.ReadyAt),
 		key.Function.Field(instance.Function),
-		key.CPUUsage.Field(instance.CPUUsage),
-		key.MemoryUsage.Field(instance.MemoryUsage),
+		key.CPUUsageMilli.Field(instance.CPUUsageMilli),
+		key.MemoryUsageMiB.Field(instance.MemoryUsageMiB),
 	}
 }
 
@@ -38,7 +38,7 @@ func (instance *Instance) Attributes() []attribute.KeyValue {
 		attribute.String("replica_set", instance.ReplicaSet),
 		key.AssignedAt.Attribute(instance.AssignedAt),
 		key.ReadyAt.Attribute(instance.ReadyAt),
-		key.CPUUsage.Attribute(instance.CPUUsage),
-		key.MemoryUsage.Attribute(instance.MemoryUsage),
+		key.CPUUsageMilli.Attribute(instance.CPUUsageMilli),
+		key.MemoryUsageMiB.Attribute(instance.MemoryUsageMiB),
 	)
 }

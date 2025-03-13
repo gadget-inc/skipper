@@ -29,8 +29,8 @@ import (
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
-func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) error {
-	ctx, span := telemetry.StartRoot(ctx, "controller.scale_functions")
+func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) error {
+	ctx, span := telemetry.StartRoot(ctx, "controller.scale_namespace", trace.WithAttributes(key.Namespace.Attribute(namespace)))
 	defer span.End()
 
 	pods, err := ctrl.listPods(namespace, hasTenantSelector)
@@ -68,15 +68,17 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			continue
 		}
 
+		ctx = log.With(ctx, key.Instance.Field(instance), key.Pod.Field(pod))
+
 		if _, ok := fnInstances[instance.Function]; !ok {
 			fnInstances[instance.Function] = nil // ensure the function is in the map so that we loop over all the functions in the next step
 		}
 
 		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > function.FlagAssignTimeout.Value()*2 {
-			log.Warn(ctx, "terminating instance stuck in assigned state", key.Instance.Field(instance))
+			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
-				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Field(err), key.Pod.Field(pod))
+				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Field(err))
 			}
 			continue
 		}
@@ -84,32 +86,30 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 		if podMetric, exists := podNameToMetric[pod.Name]; exists {
 			for _, container := range podMetric.Containers {
 				if container.Usage.Cpu() != nil {
-					cpuUsage := container.Usage.Cpu().MilliValue()
-					instance.CPUUsage += int(cpuUsage)
+					instance.CPUUsageMilli += int(container.Usage.Cpu().MilliValue())
 				}
 				if container.Usage.Memory() != nil {
-					memUsage := container.Usage.Memory().Value()
-					instance.MemoryUsage += int(memUsage)
+					instance.MemoryUsageMiB += int(container.Usage.Memory().Value() / 1024 / 1024) // convert to MiB
 				}
 			}
 		}
 
 		replicaSet, err := ctrl.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
 		if err != nil {
-			log.Error(ctx, "failed to get replica set for instance", key.Error.Field(err), key.Instance.Field(instance))
+			log.Error(ctx, "failed to get replica set for instance", key.Error.Field(err))
 			continue
 		}
 
 		if replicaSet.Status.Replicas > 0 {
-			// instance is running on the latest replica set
+			// instance is running on a replica set that has replicas, so it isn't stale
 			fnInstances[instance.Function] = append(fnInstances[instance.Function], instance)
 			continue
 		}
 
-		// this is a stale instance, find the active replica set
+		// this is a stale instance, find a replica set that has replicas
 		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Deployment}))
 		if err != nil {
-			log.Error(ctx, "failed to list replica sets", key.Error.Field(err), key.Instance.Field(instance))
+			log.Error(ctx, "failed to list replica sets", key.Error.Field(err))
 			continue
 		}
 
@@ -121,17 +121,19 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 			}
 		}
 
+		ctx = log.With(ctx, key.ReplicaSet.Field(activeReplicaSet))
+
 		if activeReplicaSet != nil && activeReplicaSet.Status.AvailableReplicas < max(1, activeReplicaSet.Status.Replicas/FlagAvailableReplicaDivisor.Value()) {
-			log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance", key.Instance.Field(instance), key.ReplicaSet.Field(activeReplicaSet))
+			log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance")
 			continue
 		}
 
 		scaleMu, _ := ctrl.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
 		scaleMu.Lock()
-		log.Info(ctx, "terminating stale instance", key.Instance.Field(instance))
+		log.Info(ctx, "terminating stale instance")
 		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 		if err != nil {
-			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err), key.Instance.Field(instance))
+			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err))
 		}
 		scaleMu.Unlock()
 	}
@@ -142,7 +144,9 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 		wg.Add(1)
 
 		go func() {
-			ctx, span := telemetry.StartRoot(ctx, "controller.scale_functions.scale_function", trace.WithAttributes(key.Function.Attributes(fn)...))
+			ctx, span := telemetry.StartRoot(ctx, "controller.scale_function")
+			ctx = log.With(ctx, key.Function.Field(fn))
+			ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
 			defer span.End()
 			defer wg.Done()
 
@@ -178,9 +182,9 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 				}
 			}
 
-			_, err = ctrl.scaleFunction(ctx, fn, desiredInstances)
+			_, err = ctrl.scale(ctx, fn, desiredInstances)
 			if err != nil {
-				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err), key.Function.Field(fn), key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err), key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
 			}
 		}()
 	}
@@ -190,8 +194,8 @@ func (ctrl *Controller) scaleFunctions(ctx context.Context, namespace string) er
 	return nil
 }
 
-func (ctrl *Controller) scaleFunction(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
-	ctx, span := telemetry.Start(ctx, "controller.scale_function")
+func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+	ctx, span := telemetry.Start(ctx, "controller.scale")
 	defer span.End()
 
 	scaleMu, _ := ctrl.scaleMu.LoadOrCompute(fn, func() *sync.Mutex { return new(sync.Mutex) })
@@ -210,24 +214,19 @@ func (ctrl *Controller) scaleFunction(ctx context.Context, fn function.Function,
 
 	controllerIP := ctrl.ring.Get(fn.RingKey())
 	if controllerIP != FlagPodIP.Value() {
-		log.Debug(ctx, "forwarding scale request", key.Function.Field(fn), key.ControllerIP.Field(controllerIP))
+		log.Debug(ctx, "forwarding scale request", key.ControllerIP.Field(controllerIP))
 		return ctrl.getControllerClient(controllerIP).Scale(ctx, fn, desiredInstances)
 	}
 
-	log.Info(ctx, "scaling function",
-		key.Function.Field(fn),
-		key.CurrentInstances.Field(currentInstances),
-		key.DesiredInstances.Field(desiredInstances),
-	)
+	log.Info(ctx, "scaling function", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
 
 	if desiredInstances > currentInstances {
 		for range desiredInstances - currentInstances {
-			instance, err := ctrl.assignPodToFunction(ctx, fn)
+			instance, err := ctrl.assignPod(ctx, fn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
 			instances = append(instances, instance)
-			log.Trace(ctx, "assigned pod", key.Instance.Field(instance))
 		}
 	} else {
 		// sort instances by assigned at in ascending order
@@ -241,27 +240,23 @@ func (ctrl *Controller) scaleFunction(ctx context.Context, fn function.Function,
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
 			instances = instances[:i]
-			log.Trace(ctx, "deleted pod", key.Instance.Field(instance))
 		}
 	}
 
 	return instances, nil
 }
 
-func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Function) (*function.Instance, error) {
-	ctx, span := telemetry.Start(ctx, "controller.assign_pod_to_function", trace.WithAttributes(key.Function.Attributes(fn)...))
+func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	ctx, span := telemetry.Start(ctx, "controller.assign_pod")
 	defer span.End()
 
 	pod, err := timer.PollUntil(ctx, "controller.get_unassigned_pod", 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
-		span := trace.SpanFromContext(ctx)
-		span.SetAttributes(key.Function.Attributes(fn)...)
-
-		availablePods, err := ctrl.getAvailablePodsForFunction(fn)
+		availablePods, err := ctrl.getAvailablePods(fn)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list available pods: %w", err)
 		}
 		if len(availablePods) == 0 {
-			log.Warn(ctx, "no available pods", key.Function.Field(fn))
+			log.Warn(ctx, "no available pods")
 			return nil, nil
 		}
 		return availablePods[rand.Intn(len(availablePods))], nil
@@ -270,29 +265,31 @@ func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Fun
 		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
 	}
 
-	fnBytes, err := json.Marshal(fn)
+	fnJSON, err := json.Marshal(fn)
+	if err == nil {
+		fnJSON, err = json.Marshal(string(fnJSON)) // escape the json so it can be used in the json patch
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal function: %w", err)
 	}
 
-	assignPatches := []patchOperation{
-		{Op: "test", Path: "/metadata/ownerReferences/0/kind", Value: "ReplicaSet"},                     // ensure the pod is assigned to a replica set
-		{Op: "copy", From: "/metadata/ownerReferences/0/name", Path: key.ReplicaSet.PatchAnnotation},    // copy its name so we know which replica set the pod belonged to before it was assigned
-		{Op: "add", Path: key.Tenant.PatchLabel, Value: fn.Tenant},                                      // label the pod with the tenant it belongs to
-		{Op: "add", Path: key.Function.PatchAnnotation, Value: string(fnBytes)},                         // annotate the pod with the function it is assigned to
-		{Op: "add", Path: key.AssignedAt.PatchAnnotation, Value: time.Now().UTC().Format(time.RFC3339)}, // annotate the pod with the time it was assigned
-	}
+	// ensure the pod is part of a replica set and isn't already assigned to a function (operations 1-4)
+	// then copy the replica set name and label/annotate the pod with the function (operations 5-8)
+	patches := []byte(`[{ "op": "test", "path": "/metadata/ownerReferences/0/kind", "value": "ReplicaSet" },
+{ "op": "test", "path": "` + key.Tenant.PatchLabel + `", "value": null },
+{ "op": "test", "path": "` + key.Function.PatchAnnotation + `", "value": null },
+{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
+{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
+{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.Tenant + `" },
+{ "op": "add", "path": "` + key.Function.PatchAnnotation + `", "value": ` + string(fnJSON) + ` },
+{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }]`)
 
-	patchBody, err := json.Marshal(assignPatches)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal assign patch: %w", err)
-	}
-
-	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	log.Info(ctx, "assigning pod", key.Pod.Field(pod))
+	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		// there are many reasons this can fail, but one hard to debug
-		// one is that the pod doesn't have any annotations causing the
-		// json patch to fail: https://github.com/kubernetes-sigs/kustomize/issues/2986#issuecomment-692891118
+		// one is that the pod doesn't have any annotations, causing the
+		// json patch to fail: https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12
 		return nil, fmt.Errorf("failed to patch pod: %w", err)
 	}
 
@@ -321,7 +318,7 @@ func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Fun
 	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
-	log.Info(ctx, "assigning pod", key.Pod.Field(pod), key.Function.Field(fn))
+	log.Info(ctx, "sending assign request", key.Pod.Field(pod))
 	res, err := otelhttp.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send assign request: %w", err)
@@ -332,16 +329,9 @@ func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Fun
 		return nil, fmt.Errorf("assign request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
-	setReadyPatches := []patchOperation{
-		{Op: "add", Path: key.ReadyAt.PatchAnnotation, Value: time.Now().UTC().Format(time.RFC3339)},
-	}
-
-	patchBody, err = json.Marshal(setReadyPatches)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal set ready patch: %w", err)
-	}
-
-	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patchBody, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	// set the pod as ready
+	patches = []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }]`)
+	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		return nil, fmt.Errorf("failed to patch status: %w", err)
 	}
@@ -351,7 +341,7 @@ func (ctrl *Controller) assignPodToFunction(ctx context.Context, fn function.Fun
 	return instanceFromPod(pod)
 }
 
-func (ctrl *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1.Pod, error) {
+func (ctrl *Controller) getAvailablePods(fn function.Function) ([]*v1.Pod, error) {
 	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
 	if err != nil {
 		return nil, err
@@ -364,23 +354,19 @@ func (ctrl *Controller) getAvailablePodsForFunction(fn function.Function) ([]*v1
 
 	var availablePods []*v1.Pod
 	for _, pod := range pods {
-		if pod.Status.PodIP != "" {
-			for _, cond := range pod.Status.Conditions {
-				if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
-					availablePods = append(availablePods, pod)
-				}
+		if pod.DeletionTimestamp != nil || pod.Status.PodIP == "" {
+			continue
+		}
+
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
+				availablePods = append(availablePods, pod)
+				break
 			}
 		}
 	}
 
 	return availablePods, nil
-}
-
-type patchOperation struct {
-	Op    string `json:"op"`
-	From  string `json:"from,omitempty"`
-	Path  string `json:"path"`
-	Value string `json:"value,omitempty"`
 }
 
 type Metric string
@@ -409,7 +395,7 @@ func (sw *StabilizationWindow) RecordRecommendation(desiredInstances int) {
 		Timestamp:        now,
 	})
 
-	// Remove old recommendations
+	// remove old recommendations
 	cutoff := now.Add(-FlagHPADownscaleStabilization.Value())
 	var newRecommendations []Recommendation
 	for _, rec := range sw.Recommendations {
@@ -441,9 +427,9 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 		var usage int
 		switch metric {
 		case MetricCPU:
-			usage = instance.CPUUsage
+			usage = instance.CPUUsageMilli
 		case MetricMemory:
-			usage = instance.MemoryUsage
+			usage = instance.MemoryUsageMiB
 		default:
 			return currentInstances
 		}
@@ -472,10 +458,10 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 		switch metric {
 		case MetricCPU:
 			targetUsage = instance.Scale.TargetCPUUsageMilli
-			totalUsage += instance.CPUUsage
+			totalUsage += instance.CPUUsageMilli
 		case MetricMemory:
 			targetUsage = instance.Scale.TargetMemoryUsageMiB
-			totalUsage += instance.MemoryUsage / 1024 / 1024 // convert memory usage from bytes to MiB
+			totalUsage += instance.MemoryUsageMiB
 		}
 	}
 

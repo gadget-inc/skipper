@@ -4,7 +4,7 @@ var (
 	Addr                   = stringKey{new("address")}
 	AssignedAt             = timeKey{new("assigned-at")}
 	Attempt                = intKey{new("attempt")}
-	CPUUsage               = intKey{new("cpu-usage")}
+	CPUUsageMilli          = intKey{new("cpu-usage-milli")}
 	Controller             = stringKey{new("controller")}
 	ControllerIP           = stringKey{new("controller-ip")}
 	Count                  = intKey{new("count")}
@@ -20,7 +20,7 @@ var (
 	Instance               = groupValueKey{new("instance")}
 	Labels                 = mapStringString{new("labels")}
 	MaxInstances           = intKey{new("max-instances")}
-	MemoryUsage            = intKey{new("memory-usage")}
+	MemoryUsageMiB         = intKey{new("memory-usage-mib")}
 	Metadata               = stringKey{new("metadata")}
 	MinInstances           = intKey{new("min-instances")}
 	Name                   = stringKey{new("name")}

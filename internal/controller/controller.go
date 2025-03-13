@@ -98,7 +98,7 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 
 	for _, namespace := range function.FlagNamespaces.Value() {
 		go timer.Loop(ctx, FlagScaleInterval.Value(), func(ctx context.Context) error {
-			err := ctrl.scaleFunctions(ctx, namespace)
+			err := ctrl.scaleNamespace(ctx, namespace)
 			if err != nil {
 				log.Error(ctx, "failed to scale functions", key.Error.Field(err), key.Namespace.Field(namespace))
 			}
@@ -327,12 +327,14 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 func portFromPod(pod *v1.Pod) (string, error) {
 	port := pod.Annotations[key.Port.Label]
 	if port == "" {
-		// grab the port from the first container if the port annotation is not present
+		// no port annotation, grab the first port from the first container
 		if len(pod.Spec.Containers) > 0 && len(pod.Spec.Containers[0].Ports) > 0 {
 			port = strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort))
 		}
 	} else {
-		// get the actual port if the port annotation is a named port
+		// assume the port annotation is a named port and try to find
+		// the actual port. if we don't find a matching named port,
+		// we'll use the port annotation as the actual port
 		for _, container := range pod.Spec.Containers {
 			for _, containerPort := range container.Ports {
 				if containerPort.Name == port {
