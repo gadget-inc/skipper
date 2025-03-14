@@ -130,6 +130,9 @@ func (k errorKey) Field(value error) slog.Attr {
 }
 
 func (k errorKey) Attribute(value error) attribute.KeyValue {
+	if value == nil {
+		return attribute.KeyValue{}
+	}
 	return attribute.String(k.Underscored, value.Error())
 }
 
@@ -143,10 +146,16 @@ type groupValueKey struct{ key }
 var _ GroupKey[GroupValue] = groupValueKey{}
 
 func (k groupValueKey) Field(value GroupValue) slog.Attr {
+	if value == nil {
+		return slog.Attr{}
+	}
 	return slog.Attr{Key: k.Underscored, Value: slog.GroupValue(value.Fields()...)}
 }
 
 func (k groupValueKey) Attributes(value GroupValue) []attribute.KeyValue {
+	if value == nil {
+		return []attribute.KeyValue{}
+	}
 	attrs := value.Attributes()
 	for i := range attrs {
 		attrs[i].Key = attribute.Key(k.Underscored) + "." + attrs[i].Key
@@ -159,6 +168,9 @@ type podKey struct{ key }
 var _ GroupKey[*v1.Pod] = podKey{}
 
 func (k podKey) Field(value *v1.Pod) slog.Attr {
+	if value == nil {
+		return slog.Attr{}
+	}
 	return slog.Attr{
 		Key: k.Underscored,
 		Value: slog.GroupValue(
@@ -170,6 +182,9 @@ func (k podKey) Field(value *v1.Pod) slog.Attr {
 }
 
 func (k podKey) Attributes(value *v1.Pod) []attribute.KeyValue {
+	if value == nil {
+		return []attribute.KeyValue{}
+	}
 	return []attribute.KeyValue{
 		attribute.String(k.Underscored+".name", value.Name),
 		attribute.String(k.Underscored+".namespace", value.Namespace),
@@ -182,6 +197,9 @@ type deploymentKey struct{ key }
 var _ GroupKey[*appsv1.Deployment] = deploymentKey{}
 
 func (k deploymentKey) Field(value *appsv1.Deployment) slog.Attr {
+	if value == nil {
+		return slog.Attr{}
+	}
 	return slog.Attr{
 		Key: k.Underscored,
 		Value: slog.GroupValue(
@@ -192,6 +210,9 @@ func (k deploymentKey) Field(value *appsv1.Deployment) slog.Attr {
 }
 
 func (k deploymentKey) Attributes(value *appsv1.Deployment) []attribute.KeyValue {
+	if value == nil {
+		return []attribute.KeyValue{}
+	}
 	return []attribute.KeyValue{
 		attribute.String(k.Underscored+".name", value.Name),
 		attribute.String(k.Underscored+".namespace", value.Namespace),
@@ -203,6 +224,9 @@ type replicaSetKey struct{ key }
 var _ GroupKey[*appsv1.ReplicaSet] = replicaSetKey{}
 
 func (k replicaSetKey) Field(value *appsv1.ReplicaSet) slog.Attr {
+	if value == nil {
+		return slog.Attr{}
+	}
 	return slog.Attr{
 		Key: k.Underscored,
 		Value: slog.GroupValue(
@@ -215,15 +239,14 @@ func (k replicaSetKey) Field(value *appsv1.ReplicaSet) slog.Attr {
 }
 
 func (k replicaSetKey) Attributes(value *appsv1.ReplicaSet) []attribute.KeyValue {
-	var desiredReplicas int64
-	if value.Spec.Replicas != nil {
-		desiredReplicas = int64(*value.Spec.Replicas)
+	if value == nil {
+		return []attribute.KeyValue{}
 	}
-
 	return []attribute.KeyValue{
 		attribute.String(k.Underscored+".name", value.Name),
 		attribute.String(k.Underscored+".namespace", value.Namespace),
-		attribute.Int64(k.Underscored+".desired_replicas", desiredReplicas),
+		attribute.Int(k.Underscored+".replicas", int(value.Status.Replicas)),
+		attribute.Int(k.Underscored+".available_replicas", int(value.Status.AvailableReplicas)),
 	}
 }
 
@@ -232,6 +255,10 @@ type mapStringString struct{ key }
 var _ GroupKey[map[string]string] = mapStringString{}
 
 func (k mapStringString) Field(value map[string]string) slog.Attr {
+	if value == nil {
+		return slog.Attr{}
+	}
+
 	keyValues := make([]slog.Attr, 0, len(value))
 	for k, v := range value {
 		keyValues = append(keyValues, slog.String(k, v))
@@ -244,6 +271,9 @@ func (k mapStringString) Field(value map[string]string) slog.Attr {
 }
 
 func (k mapStringString) Attributes(value map[string]string) []attribute.KeyValue {
+	if value == nil {
+		return []attribute.KeyValue{}
+	}
 	attributes := make([]attribute.KeyValue, 0, len(value))
 	for mapKey, v := range value {
 		attributes = append(attributes, attribute.String(k.Underscored+"."+mapKey, v))
@@ -256,6 +286,9 @@ type requestKey struct{ key }
 var _ GroupKey[*http.Request] = requestKey{}
 
 func (r requestKey) Field(value *http.Request) slog.Attr {
+	if value == nil {
+		return slog.Attr{}
+	}
 	return slog.Attr{
 		Key: r.Underscored,
 		Value: slog.GroupValue(
@@ -268,6 +301,9 @@ func (r requestKey) Field(value *http.Request) slog.Attr {
 }
 
 func (r requestKey) Attributes(value *http.Request) []attribute.KeyValue {
+	if value == nil {
+		return []attribute.KeyValue{}
+	}
 	return []attribute.KeyValue{
 		attribute.String(r.Underscored+".method", value.Method),
 		attribute.String(r.Underscored+".url", value.URL.String()),
@@ -281,6 +317,9 @@ type responseKey struct{ key }
 var _ GroupKey[*http.Response] = responseKey{}
 
 func (r responseKey) Field(value *http.Response) slog.Attr {
+	if value == nil {
+		return slog.Attr{}
+	}
 	return slog.Attr{
 		Key: r.Underscored,
 		Value: slog.GroupValue(
@@ -295,6 +334,9 @@ func (r responseKey) Field(value *http.Response) slog.Attr {
 }
 
 func (r responseKey) Attributes(value *http.Response) []attribute.KeyValue {
+	if value == nil {
+		return []attribute.KeyValue{}
+	}
 	return []attribute.KeyValue{
 		attribute.String(r.Underscored+".method", value.Request.Method),
 		attribute.String(r.Underscored+".url", value.Request.URL.String()),
