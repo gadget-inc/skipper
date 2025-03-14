@@ -14,6 +14,9 @@ if (!isCI) {
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
     },
+    annotations: {
+      "shipit.shopify.io/restart": "true",
+    },
   });
 }
 
@@ -26,5 +29,8 @@ await deployKraneNamespace("skipper-test", {
     SKIPPER_TELEMETRY: enableOtel,
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
     OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
+  },
+  annotations: {
+    "shipit.shopify.io/restart": "true",
   },
 });

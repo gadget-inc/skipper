@@ -18,6 +18,7 @@ limit_memory ||= request_memory
 pre_stop_sleep ||= 20
 shutdown_timeout_seconds ||= 5
 env ||= {}
+annotations ||= {}
 
 controller_name = "#{namespace}-controller"
 controller_log_level ||= log_level
@@ -36,6 +37,7 @@ controller_pre_stop_sleep ||= pre_stop_sleep
 controller_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + controller_shutdown_timeout_seconds + 5
 controller_env ||= {}
+controller_annotations ||= {}
 
 router_name = "#{namespace}-router"
 router_log_level ||= log_level
@@ -54,6 +56,7 @@ router_pre_stop_sleep ||= pre_stop_sleep
 router_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 router_termination_grace_period_seconds ||= router_pre_stop_sleep + router_shutdown_timeout_seconds + 5
 router_env ||= {}
+router_annotations ||= {}
 -%>
 ---
 apiVersion: v1
@@ -91,8 +94,15 @@ metadata:
     app.kubernetes.io/name: skipper
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: <%= namespace %>
+  <%- if annotations.any? || controller_annotations.any? -%>
   annotations:
-    shipit.shopify.io/restart: "true"
+    <%- annotations.each do |key, value| -%>
+    <%= key %>: "<%= value %>"
+    <%- end -%>
+    <%- controller_annotations.each do |key, value| -%>
+    <%= key %>: "<%= value %>"
+    <%- end -%>
+  <%- end -%>
 spec:
   replicas: <%= controller_replicas %>
   strategy:
@@ -111,6 +121,15 @@ spec:
         app.kubernetes.io/name: skipper
         app.kubernetes.io/component: controller
         app.kubernetes.io/instance: <%= namespace %>
+      <%- if annotations.any? || controller_annotations.any? -%>
+      annotations:
+        <%- annotations.each do |key, value| -%>
+        <%= key %>: "<%= value %>"
+        <%- end -%>
+        <%- controller_annotations.each do |key, value| -%>
+        <%= key %>: "<%= value %>"
+        <%- end -%>
+      <%- end -%>
     spec:
       serviceAccountName: <%= controller_name %>
       terminationGracePeriodSeconds: <%= controller_termination_grace_period_seconds %>
@@ -127,6 +146,8 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: metrics
+              containerPort: 9090
           env:
             - name: SKIPPER_CONTROLLER_NAMESPACE
               valueFrom:
@@ -241,8 +262,15 @@ metadata:
     app.kubernetes.io/name: skipper
     app.kubernetes.io/component: router
     app.kubernetes.io/instance: <%= namespace %>
+  <%- if annotations.any? || router_annotations.any? -%>
   annotations:
-    shipit.shopify.io/restart: "true"
+    <%- annotations.each do |key, value| -%>
+    <%= key %>: "<%= value %>"
+    <%- end -%>
+    <%- router_annotations.each do |key, value| -%>
+    <%= key %>: "<%= value %>"
+    <%- end -%>
+  <%- end -%>
 spec:
   replicas: <%= router_replicas %>
   strategy:
@@ -261,6 +289,15 @@ spec:
         app.kubernetes.io/name: skipper
         app.kubernetes.io/component: router
         app.kubernetes.io/instance: <%= namespace %>
+      <%- if annotations.any? || router_annotations.any? -%>
+      annotations:
+        <%- annotations.each do |key, value| -%>
+        <%= key %>: "<%= value %>"
+        <%- end -%>
+        <%- router_annotations.each do |key, value| -%>
+        <%= key %>: "<%= value %>"
+        <%- end -%>
+      <%- end -%>
     spec:
       serviceAccountName: <%= router_name %>
       terminationGracePeriodSeconds: <%= router_termination_grace_period_seconds %>
@@ -277,6 +314,8 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: metrics
+              containerPort: 9090
           env:
             - name: SKIPPER_ROUTER_POD_IP
               valueFrom:
