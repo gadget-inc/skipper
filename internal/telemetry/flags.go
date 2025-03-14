@@ -18,4 +18,16 @@ var (
 		Default:     5 * time.Second,
 		Description: "The timeout for shutting down the telemetry",
 	}
+
+	FlagTelemetryPrometheusHost = flag.Flag[string]{
+		Name:        "telemetry-prometheus-host",
+		Default:     "0.0.0.0",
+		Description: "The host for the Prometheus metrics endpoint",
+	}
+
+	FlagTelemetryPrometheusPort = flag.Flag[int]{
+		Name:        "telemetry-prometheus-port",
+		Default:     9090,
+		Description: "The port for the Prometheus metrics endpoint",
+	}
 )

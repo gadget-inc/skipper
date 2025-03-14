@@ -19,6 +19,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/goccy/go-json"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
@@ -269,11 +271,28 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	return instances, nil
 }
 
+var waitingForPod = promauto.NewGauge(prometheus.GaugeOpts{
+	Namespace: "skipper",
+	Subsystem: "controller",
+	Name:      "waiting_for_pod_count",
+	Help:      "The number of functions that are waiting for a pod to be assigned",
+})
+
+var waitingForPodDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+	Namespace: "skipper",
+	Subsystem: "controller",
+	Name:      "waiting_for_pod_duration_seconds",
+	Help:      "The duration of the waiting for a pod to be assigned",
+	Buckets:   []float64{.01, .25, .5, 1, 2, 4, 8, 16, 32, 64, 128},
+})
+
 func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (*function.Instance, error) {
 	ctx, span := telemetry.Start(ctx, "controller.assign_pod")
 	defer span.End()
 
 GET_UNASSIGNED_POD:
+	waitingForPod.Inc()
+	start := time.Now()
 	pod, err := timer.PollUntil(ctx, "controller.get_unassigned_pod", 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		availablePods, err := ctrl.getAvailablePods(fn)
 		if err != nil {
@@ -285,9 +304,11 @@ GET_UNASSIGNED_POD:
 		}
 		return availablePods[rand.Intn(len(availablePods))], nil
 	})
+	waitingForPod.Dec()
 	if err != nil {
 		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
 	}
+	waitingForPodDuration.Observe(time.Since(start).Seconds())
 
 	fnJSON, err := json.Marshal(fn)
 	if err == nil {
