@@ -180,8 +180,8 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 				}
 			}
 
-			ctx = log.With(ctx, key.Function.Field(fn))
-			ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
+			ctx = log.With(ctx, key.Heartbeat.Field(heartbeat))
+			ctx = telemetry.WithPropagatedAttributes(ctx, key.Heartbeat.Attributes(heartbeat)...)
 
 			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances)
 
@@ -189,9 +189,6 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			stabilizationWindow.RecordRecommendation(desiredInstances)
 
 			currentInstances := len(instances)
-			ctx = log.With(ctx, key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-			ctx = telemetry.WithPropagatedAttributes(ctx, key.CurrentInstances.Attribute(currentInstances), key.DesiredInstances.Attribute(desiredInstances))
-
 			if desiredInstances < currentInstances {
 				// we're scaling down
 				if desiredInstances == 0 {
