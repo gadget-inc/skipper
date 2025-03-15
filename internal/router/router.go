@@ -19,6 +19,19 @@ import (
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/puzpuzpuz/xsync/v3"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/metric"
+)
+
+var (
+	requestsCounter = unwrap(telemetry.Meter.Int64Counter("skipper.router.requests",
+		metric.WithDescription("The number of requests handled by the router"),
+		metric.WithUnit("{request}"),
+	))
+
+	inFlightRequestsCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.router.in_flight_requests",
+		metric.WithDescription("The number of in-flight requests handled by the router"),
+		metric.WithUnit("{request}"),
+	))
 )
 
 type Router struct {
@@ -89,6 +102,8 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	requestsCounter.Add(req.Context(), 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+
 	ctx := function.With(req.Context(), fn)
 	ctx = log.With(ctx, key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
@@ -108,6 +123,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests++
+		inFlightRequestsCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 		return heartbeat, false
 	})
 
@@ -116,6 +132,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests--
+		inFlightRequestsCounter.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 		return heartbeat, false
 	})
 

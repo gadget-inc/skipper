@@ -36,7 +36,7 @@ var (
 	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
 	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
 
-	waitingForPodGauge = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.function.waiting_for_pod",
+	waitingForPodCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.function.waiting_for_pod",
 		metric.WithDescription("The number of functions that are waiting for a pod"),
 		metric.WithUnit("{function}"),
 	))
@@ -193,8 +193,9 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 					defer ctrl.routerHeartbeats.Delete(fn)
 					defer ctrl.stabilizationWindows.Delete(fn)
 				} else {
-					// we're scaling down, but not to 0, so scale down to the max recommendation within the stabilization window
-					desiredInstances = min(currentInstances, stabilizationWindow.GetMaxRecommendation())
+					// we're scaling down, but not to 0, so scale down to the max recommended instances within the stabilization window
+					// if we're already lower than the max recommended instances, then use the current number of instances (i.e. don't scale up)
+					desiredInstances = min(stabilizationWindow.GetMaxRecommendation(), currentInstances)
 				}
 			}
 
@@ -374,8 +375,8 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 	ctx, span := telemetry.Start(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	waitingForPodGauge.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
-	defer waitingForPodGauge.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+	waitingForPodCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+	defer waitingForPodCounter.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		unassignedPods, err := ctrl.getUnassignedPods(fn)
