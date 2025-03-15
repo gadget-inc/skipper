@@ -35,5 +35,5 @@ func (f Function) Attributes() []attribute.KeyValue {
 		key.Deployment.Attribute(f.Deployment),
 		key.Tenant.Attribute(f.Tenant),
 		key.Metadata.Attribute(f.Metadata),
-	}, f.Scale.Attributes()...)
+	}, key.Scale.Attributes(f.Scale)...)
 }

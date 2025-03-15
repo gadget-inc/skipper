@@ -23,7 +23,7 @@ func (h Heartbeat) Fields() []slog.Attr {
 }
 
 func (h Heartbeat) Attributes() []attribute.KeyValue {
-	return append(h.Function.Attributes(),
+	return append(key.Function.Attributes(h.Function),
 		key.Timestamp.Attribute(h.Timestamp),
 		key.InFlightRequests.Attribute(h.InFlightRequests),
 	)

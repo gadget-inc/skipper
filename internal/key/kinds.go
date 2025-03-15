@@ -350,12 +350,9 @@ func (r responseKey) Field(value *http.Response) slog.Attr {
 	return slog.Attr{
 		Key: r.Underscored,
 		Value: slog.GroupValue(
-			slog.String("method", value.Request.Method),
-			slog.String("url", value.Request.URL.String()),
-			slog.String("host", value.Request.Host),
-			slog.String("remote_address", value.Request.RemoteAddr),
 			slog.Int("status_code", value.StatusCode),
 			slog.String("status", value.Status),
+			slog.Int64("content_length", value.ContentLength),
 		),
 	}
 }
@@ -365,12 +362,9 @@ func (r responseKey) Attributes(value *http.Response) []attribute.KeyValue {
 		return []attribute.KeyValue{}
 	}
 	return []attribute.KeyValue{
-		attribute.String(r.Underscored+".method", value.Request.Method),
-		attribute.String(r.Underscored+".url", value.Request.URL.String()),
-		attribute.String(r.Underscored+".host", value.Request.Host),
-		attribute.String(r.Underscored+".remote_address", value.Request.RemoteAddr),
 		attribute.Int(r.Underscored+".status_code", value.StatusCode),
 		attribute.String(r.Underscored+".status", value.Status),
+		attribute.Int64(r.Underscored+".content_length", value.ContentLength),
 	}
 }
 

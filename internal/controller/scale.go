@@ -48,7 +48,7 @@ var (
 )
 
 func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) error {
-	ctx, span := telemetry.StartRoot(ctx, "controller.scale_namespace", trace.WithAttributes(key.Namespace.Attribute(namespace)))
+	ctx, span := telemetry.TraceRoot(ctx, "controller.scale_namespace", trace.WithAttributes(key.Namespace.Attribute(namespace)))
 	defer span.End()
 
 	pods, err := ctrl.listPods(namespace, hasTenantSelector)
@@ -159,7 +159,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 		wg.Add(1)
 
 		go func() {
-			ctx, span := telemetry.StartRoot(ctx, "controller.scale_function")
+			ctx, span := telemetry.TraceRoot(ctx, "controller.scale_function")
 			defer span.End()
 			defer wg.Done()
 
@@ -212,7 +212,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 }
 
 func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
-	ctx, span := telemetry.Start(ctx, "controller.scale")
+	ctx, span := telemetry.Trace(ctx, "controller.scale")
 	defer span.End()
 
 	scaleMu, _ := ctrl.scaleMu.LoadOrCompute(fn, func() *sync.Mutex { return new(sync.Mutex) })
@@ -264,7 +264,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 }
 
 func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
-	ctx, span := telemetry.Start(ctx, "controller.assign_pod")
+	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
 GET_UNASSIGNED_POD:
@@ -372,7 +372,7 @@ GET_UNASSIGNED_POD:
 }
 
 func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
-	ctx, span := telemetry.Start(ctx, "controller.get_unassigned_pod")
+	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
 	waitingForPodCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))

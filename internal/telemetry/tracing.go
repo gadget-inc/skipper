@@ -22,6 +22,17 @@ type contextKey struct{}
 
 var ctxKey = contextKey{}
 
+type contextSpanProcessor struct {
+	sdktrace.SpanProcessor
+}
+
+func (c contextSpanProcessor) OnStart(ctx context.Context, s sdktrace.ReadWriteSpan) {
+	if attributes, ok := ctx.Value(ctxKey).([]attribute.KeyValue); ok {
+		s.SetAttributes(attributes...)
+	}
+	c.SpanProcessor.OnStart(ctx, s)
+}
+
 func initTracing(ctx context.Context, res *resource.Resource) func(context.Context) error {
 	traceExporter, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
@@ -31,7 +42,7 @@ func initTracing(ctx context.Context, res *resource.Resource) func(context.Conte
 
 	traceProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
-		sdktrace.WithBatcher(traceExporter),
+		sdktrace.WithSpanProcessor(contextSpanProcessor{sdktrace.NewBatchSpanProcessor(traceExporter)}),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
 	)
 
@@ -50,22 +61,13 @@ func initTracing(ctx context.Context, res *resource.Resource) func(context.Conte
 	return traceProvider.Shutdown
 }
 
-func Start(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	if attributes, ok := ctx.Value(ctxKey).([]attribute.KeyValue); ok {
-		opts = append(opts, trace.WithAttributes(attributes...))
-	}
+func Trace(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	return tracer.Start(ctx, spanName, opts...)
 }
 
-func StartRoot(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+func TraceRoot(ctx context.Context, spanName string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
 	opts = append(opts, trace.WithNewRoot(), trace.WithLinks(trace.LinkFromContext(ctx)))
-	return Start(ctx, spanName, opts...)
-}
-
-func Trace[T any](ctx context.Context, spanName string, fn func(context.Context, trace.Span) (T, error)) (T, error) {
-	ctx, span := Start(ctx, spanName)
-	defer span.End()
-	return fn(ctx, span)
+	return Trace(ctx, spanName, opts...)
 }
 
 func SetAttributes(ctx context.Context, attributes ...attribute.KeyValue) {

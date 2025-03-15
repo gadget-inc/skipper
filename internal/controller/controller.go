@@ -90,7 +90,7 @@ func (ctrl *Controller) getControllerClient(ip string) Client {
 }
 
 func (ctrl *Controller) startInformers(ctx context.Context) error {
-	ctx, span := telemetry.Start(ctx, "controller.start_informers")
+	ctx, span := telemetry.Trace(ctx, "controller.start_informers")
 	defer span.End()
 
 	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(

@@ -102,11 +102,9 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	requestsCounter.Add(req.Context(), 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
-
-	ctx := function.With(req.Context(), fn)
-	ctx = log.With(ctx, key.Function.Field(fn))
+	ctx := log.With(req.Context(), key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
+	requestsCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
@@ -136,12 +134,11 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return heartbeat, false
 	})
 
-	r.reverseProxy.ServeHTTP(rw, req.WithContext(ctx))
+	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(ctx, fn)))
 }
 
 func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
-	ctx := req.Context()
-	fn, err := function.From(ctx)
+	fn, err := function.From(req.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -162,37 +159,47 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
 		default:
 		}
 
+		ctx := log.With(req.Context(), key.Attempt.Field(attempt))
+		ctx = telemetry.WithPropagatedAttributes(ctx, key.Attempt.Attribute(attempt))
+
 		instance, err := r.ctrl.Instance(ctx, fn)
 		if err != nil {
-			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err), key.Attempt.Field(attempt))
+			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
 			continue
 		}
 
+		ctx = log.With(ctx, key.Instance.Field(instance))
+		ctx = telemetry.WithPropagatedAttributes(ctx, key.Instance.Attributes(instance)...)
+
+		req := req.WithContext(ctx)
 		req.URL.Scheme = "http"
 		req.URL.Host = instance.Addr
 
-		log.Info(ctx, "forwarding request", key.Instance.Field(instance), key.Attempt.Field(attempt), key.Request.Field(req))
+		log.Info(ctx, "forwarding request")
 		start := time.Now()
 		res, err := r.roundTripper.RoundTrip(req)
 		duration := time.Since(start)
 
+		ctx = log.With(ctx, key.Response.Field(res), key.Duration.Field(duration))
+		ctx = telemetry.WithPropagatedAttributes(ctx, append(key.Response.Attributes(res), key.Duration.Attribute(duration))...)
+
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt), key.Duration.Field(duration))
+				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err))
 				continue
 			}
 		}
 
 		if err != nil {
-			log.Error(ctx, "failed to forward request", key.Error.Field(err), key.Instance.Field(instance), key.Attempt.Field(attempt), key.Request.Field(req), key.Duration.Field(duration))
+			log.Error(ctx, "failed to forward request", key.Error.Field(err))
 		} else {
-			log.Info(ctx, "forwarding response", key.Instance.Field(instance), key.Attempt.Field(attempt), key.Response.Field(res), key.Duration.Field(duration))
+			log.Info(ctx, "forwarding response")
 		}
 
 		return res, err
