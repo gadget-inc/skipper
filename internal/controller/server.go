@@ -138,14 +138,19 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	log.Trace(req.Context(), "received heartbeats", key.Count.Field(len(heartbeats)))
 	rw.WriteHeader(http.StatusOK)
 
-	controllerIPs := ctrl.ring.List()
-	forwardedFor := append(slices.Clone(req.Header[key.ForwardedFor.Header]), controllerIPs...)
+	controllersThatHaveReceivedHeartbeats := slices.Clone(req.Header[key.ForwardedFor.Header])
+	controllersThatHaveReceivedHeartbeats = append(controllersThatHaveReceivedHeartbeats, FlagPodIP.Value())
 
-	for _, controllerIP := range controllerIPs {
-		if controllerIP == FlagPodIP.Value() || slices.Contains(req.Header[key.ForwardedFor.Header], controllerIP) {
-			continue
+	var controllersThatWillReceivedHeartbeats []string
+	for _, controllerIP := range ctrl.ring.List() {
+		if !slices.Contains(controllersThatHaveReceivedHeartbeats, controllerIP) {
+			controllersThatWillReceivedHeartbeats = append(controllersThatWillReceivedHeartbeats, controllerIP)
 		}
+	}
 
+	forwardedFor := append(controllersThatHaveReceivedHeartbeats, controllersThatWillReceivedHeartbeats...)
+
+	for _, controllerIP := range controllersThatWillReceivedHeartbeats {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 5*time.Second)
 			defer cancel()
