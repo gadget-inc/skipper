@@ -26,7 +26,6 @@ func NewRoot() *cobra.Command {
 	log.FlagLogFormat.BindPersistent(cmd)
 	log.FlagLogLevel.BindPersistent(cmd)
 	telemetry.FlagTelemetry.BindPersistent(cmd)
-	telemetry.FlagTelemetryMetricInterval.BindPersistent(cmd)
 	telemetry.FlagTelemetryPrometheusHost.BindPersistent(cmd)
 	telemetry.FlagTelemetryPrometheusPort.BindPersistent(cmd)
 	telemetry.FlagTelemetryShutdownTimeout.BindPersistent(cmd)

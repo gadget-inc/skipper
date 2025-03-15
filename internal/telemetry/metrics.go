@@ -36,7 +36,7 @@ func initMetrics(ctx context.Context, res *resource.Resource) func(context.Conte
 			log.Error(ctx, "failed to create otlp metric exporter", key.Error.Field(err))
 			// keep going and just use the prometheus exporter
 		} else {
-			opts = append(opts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(FlagTelemetryMetricInterval.Value()))))
+			opts = append(opts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter)))
 		}
 	}
 
