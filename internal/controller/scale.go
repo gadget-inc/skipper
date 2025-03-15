@@ -235,9 +235,9 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		return ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, desiredInstances)
 	}
 
-	log.Info(ctx, "scaling function", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-
 	if desiredInstances > currentInstances {
+		log.Info(ctx, "scaling function up", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+
 		for range desiredInstances - currentInstances {
 			instance, err := ctrl.assignPod(ctx, fn)
 			if err != nil {
@@ -246,6 +246,8 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 			instances = append(instances, instance)
 		}
 	} else {
+		log.Info(ctx, "scaling function down", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+
 		// sort instances by assigned at in ascending order
 		slices.SortFunc(instances, func(a, b *function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
 
