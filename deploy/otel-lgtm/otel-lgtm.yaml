@@ -19,6 +19,10 @@ spec:
       containers:
         - name: otel-lgtm
           image: grafana/otel-lgtm:latest
+          imagePullPolicy: Always
+          env:
+            - name: ENABLE_LOGS_ALL
+              value: "true"
           ports:
             - name: grafana
               containerPort: 3000

@@ -12,7 +12,7 @@ if (!isCI) {
     env: {
       SKIPPER_TELEMETRY: enableOtel,
       SKIPPER_TELEMETRY_METRIC_OTLP: enableOtel,
-      OTEL_METRIC_EXPORT_INTERVAL: "1s",
+      OTEL_METRIC_EXPORT_INTERVAL: "1000",
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
     },
@@ -30,7 +30,7 @@ await deployKraneNamespace("skipper-test", {
   env: {
     SKIPPER_TELEMETRY: enableOtel,
     SKIPPER_TELEMETRY_METRIC_OTLP: enableOtel,
-    OTEL_METRIC_EXPORT_INTERVAL: "1s",
+    OTEL_METRIC_EXPORT_INTERVAL: "1000",
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
     OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
   },
