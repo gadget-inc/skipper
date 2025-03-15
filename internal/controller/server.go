@@ -13,6 +13,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/goccy/go-json"
+	"go.opentelemetry.io/otel/metric"
 )
 
 func (ctrl *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -115,6 +116,8 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	for _, heartbeat := range heartbeats {
+		heartbeatCounter.Add(req.Context(), 1, metric.WithAttributeSet(key.Heartbeat.AttributesSet(heartbeat)))
+
 		ctrl.routerHeartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
 			if !loaded {
 				routerHeartbeats = make(RouterHeartbeats)
@@ -135,11 +138,11 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	log.Trace(req.Context(), "received heartbeats", key.Count.Field(len(heartbeats)))
 	rw.WriteHeader(http.StatusOK)
 
-	forwardedFor := req.Header.Values(key.ForwardedFor.Header)
-	forwardedFor = append(forwardedFor, FlagPodIP.Value())
+	controllerIPs := ctrl.ring.List()
+	forwardedFor := append(slices.Clone(req.Header[key.ForwardedFor.Header]), controllerIPs...)
 
-	for _, controllerIP := range ctrl.ring.List() {
-		if slices.Contains(forwardedFor, controllerIP) {
+	for _, controllerIP := range controllerIPs {
+		if controllerIP == FlagPodIP.Value() || slices.Contains(req.Header[key.ForwardedFor.Header], controllerIP) {
 			continue
 		}
 
@@ -148,7 +151,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 			defer cancel()
 
 			if err := ctrl.getControllerClient(controllerIP).Heartbeat(ctx, routerIP, heartbeats, forwardedFor...); err != nil {
-				log.Warn(req.Context(), "failed to forward heartbeats", key.Error.Field(err), key.ControllerIP.Field(controllerIP))
+				log.Warn(ctx, "failed to forward heartbeats", key.Error.Field(err), key.ResponsibleIP.Field(controllerIP))
 			}
 		}()
 	}

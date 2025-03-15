@@ -19,9 +19,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/goccy/go-json"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	appsv1 "k8s.io/api/apps/v1"
@@ -34,25 +33,19 @@ import (
 )
 
 var (
-	hasTenantSelector         labels.Selector
-	doesNotHaveTenantSelector labels.Selector
+	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
+	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
+
+	waitingForPodGauge = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.function.waiting_for_pod",
+		metric.WithDescription("The number of functions that are waiting for a pod"),
+		metric.WithUnit("{function}"),
+	))
+
+	heartbeatCounter = unwrap(telemetry.Meter.Int64Counter("skipper.function.heartbeat",
+		metric.WithDescription("The total number of heartbeats received for a function"),
+		metric.WithUnit("{heartbeat}"),
+	))
 )
-
-func init() {
-	hasTenant, err := labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	hasTenantSelector = labels.NewSelector().Add(*hasTenant)
-
-	doesNotHaveTenant, err := labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	doesNotHaveTenantSelector = labels.NewSelector().Add(*doesNotHaveTenant)
-}
 
 func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) error {
 	ctx, span := telemetry.StartRoot(ctx, "controller.scale_namespace", trace.WithAttributes(key.Namespace.Attribute(namespace)))
@@ -88,8 +81,9 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			continue
 		}
 
-		if !ctrl.isResponsibleForFunction(instance.Function) {
-			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.Function.Field(instance.Function))
+		responsibleIP := ctrl.ring.Get(instance)
+		if responsibleIP != FlagPodIP.Value() {
+			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.Instance.Field(instance), key.ResponsibleIP.Field(responsibleIP))
 			continue
 		}
 
@@ -170,8 +164,6 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 		go func() {
 			ctx, span := telemetry.StartRoot(ctx, "controller.scale_function")
-			ctx = log.With(ctx, key.Function.Field(fn))
-			ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
 			defer span.End()
 			defer wg.Done()
 
@@ -188,12 +180,18 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 				}
 			}
 
+			ctx = log.With(ctx, key.Function.Field(fn))
+			ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
+
 			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances)
 
 			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
 			stabilizationWindow.RecordRecommendation(desiredInstances)
 
 			currentInstances := len(instances)
+			ctx = log.With(ctx, key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+			ctx = telemetry.WithPropagatedAttributes(ctx, key.CurrentInstances.Attribute(currentInstances), key.DesiredInstances.Attribute(desiredInstances))
+
 			if desiredInstances < currentInstances {
 				// we're scaling down
 				if desiredInstances == 0 {
@@ -209,7 +207,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 			_, err = ctrl.scale(ctx, fn, desiredInstances)
 			if err != nil {
-				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err), key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err))
 			}
 		}()
 	}
@@ -237,10 +235,10 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		return instances, nil
 	}
 
-	controllerIP := ctrl.ring.Get(fn.RingKey())
-	if controllerIP != FlagPodIP.Value() {
-		log.Debug(ctx, "forwarding scale request", key.ControllerIP.Field(controllerIP))
-		return ctrl.getControllerClient(controllerIP).Scale(ctx, fn, desiredInstances)
+	responsibleIP := ctrl.ring.Get(fn)
+	if responsibleIP != FlagPodIP.Value() {
+		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Field(responsibleIP))
+		return ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, desiredInstances)
 	}
 
 	log.Info(ctx, "scaling function", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
@@ -271,46 +269,25 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	return instances, nil
 }
 
-var waitingForPod = promauto.NewGauge(prometheus.GaugeOpts{
-	Namespace: "skipper",
-	Subsystem: "controller",
-	Name:      "waiting_for_pod_count",
-	Help:      "The number of functions that are waiting for a pod to be assigned",
-})
-
-var waitingForPodDuration = promauto.NewHistogram(prometheus.HistogramOpts{
-	Namespace: "skipper",
-	Subsystem: "controller",
-	Name:      "waiting_for_pod_duration_seconds",
-	Help:      "The duration of the waiting for a pod to be assigned",
-	Buckets:   []float64{.01, .25, .5, 1, 2, 4, 8, 16, 32, 64, 128},
-})
-
-func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (*function.Instance, error) {
+func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
 	ctx, span := telemetry.Start(ctx, "controller.assign_pod")
 	defer span.End()
 
 GET_UNASSIGNED_POD:
-	waitingForPod.Inc()
-	start := time.Now()
-	pod, err := timer.PollUntil(ctx, "controller.get_unassigned_pod", 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
-		availablePods, err := ctrl.getAvailablePods(fn)
-		if err != nil {
-			return nil, fmt.Errorf("failed to list available pods: %w", err)
-		}
-		if len(availablePods) == 0 {
-			log.Warn(ctx, "no available pods")
-			return nil, nil
-		}
-		return availablePods[rand.Intn(len(availablePods))], nil
-	})
-	waitingForPod.Dec()
+	var pod *v1.Pod
+	pod, err = ctrl.getUnassignedPod(ctx, fn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to poll for available pod: %w", err)
+		return nil, fmt.Errorf("failed to get unassigned pod: %w", err)
 	}
-	waitingForPodDuration.Observe(time.Since(start).Seconds())
 
-	fnJSON, err := json.Marshal(fn)
+	var port string
+	port, err = portFromPod(pod)
+	if err != nil {
+		return nil, err
+	}
+
+	var fnJSON []byte
+	fnJSON, err = json.Marshal(fn)
 	if err == nil {
 		fnJSON, err = json.Marshal(string(fnJSON)) // escape the json so it can be used in the json patch
 	}
@@ -320,14 +297,16 @@ GET_UNASSIGNED_POD:
 
 	// ensure the pod is part of a replica set and isn't already assigned to a function (operations 1-4)
 	// then copy the replica set name and label/annotate the pod with the function (operations 5-8)
-	patches := []byte(`[{ "op": "test", "path": "/metadata/ownerReferences/0/kind", "value": "ReplicaSet" },
-{ "op": "test", "path": "` + key.Tenant.PatchLabel + `", "value": null },
-{ "op": "test", "path": "` + key.Function.PatchAnnotation + `", "value": null },
-{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
-{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
-{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.Tenant + `" },
-{ "op": "add", "path": "` + key.Function.PatchAnnotation + `", "value": ` + string(fnJSON) + ` },
-{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }]`)
+	patches := []byte(`[
+		{ "op": "test", "path": "/metadata/ownerReferences/0/kind", "value": "ReplicaSet" },
+		{ "op": "test", "path": "` + key.Tenant.PatchLabel + `", "value": null },
+		{ "op": "test", "path": "` + key.Function.PatchAnnotation + `", "value": null },
+		{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
+		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
+		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.Tenant + `" },
+		{ "op": "add", "path": "` + key.Function.PatchAnnotation + `", "value": ` + string(fnJSON) + ` },
+		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
+	]`)
 
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod))
 	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
@@ -342,24 +321,30 @@ GET_UNASSIGNED_POD:
 		return nil, fmt.Errorf("failed to patch pod: %w", err)
 	}
 
-	ctrl.updatePodCache(ctx, pod)
+	// at this point, terminate the pod if we fail to finish assigning the function
+	defer func() {
+		if err != nil {
+			if deleteErr := ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); deleteErr != nil {
+				log.Error(ctx, "failed to delete pod after failed assign request", key.Error.Field(deleteErr), key.Pod.Field(pod))
+			}
+		}
+	}()
 
-	port, err := portFromPod(pod)
-	if err != nil {
-		return nil, err
-	}
+	ctrl.updatePodCache(ctx, pod)
 
 	assignURL := "http://" + net.JoinHostPort(pod.Status.PodIP, port) + function.FlagAssignPath.Value()
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
 	defer cancel()
 
+	now := time.Now()
 	token := paseto.NewToken()
 	token.SetSubject(fn.Tenant)
-	token.SetIssuedAt(time.Now())
-	token.SetNotBefore(time.Now())
-	token.SetExpiration(time.Now().Add(7 * 24 * time.Hour))
+	token.SetIssuedAt(now)
+	token.SetNotBefore(now)
+	token.SetExpiration(now.Add(7 * 24 * time.Hour))
 
-	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
+	var req *http.Request
+	req, err = http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}
@@ -367,29 +352,52 @@ GET_UNASSIGNED_POD:
 	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
-	res, err := otelhttp.DefaultClient.Do(req)
+	var res *http.Response
+	res, err = otelhttp.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send assign request: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("assign request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
+		err = fmt.Errorf("assign request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
+		return nil, err
 	}
 
-	// set the pod as ready
-	patches = []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }]`)
+	// annotate the pod as ready
+	patches = []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + now.UTC().Format(time.RFC3339) + `" }]`)
 	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
-		return nil, fmt.Errorf("failed to patch status: %w", err)
+		return nil, fmt.Errorf("failed to patch pod as ready: %w", err)
 	}
 
 	ctrl.updatePodCache(ctx, pod)
 
-	return instanceFromPod(pod)
+	instance, err = instanceFromPod(pod)
+	return
 }
 
-func (ctrl *Controller) getAvailablePods(fn function.Function) ([]*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
+	ctx, span := telemetry.Start(ctx, "controller.get_unassigned_pod")
+	defer span.End()
+
+	waitingForPodGauge.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+	defer waitingForPodGauge.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+
+	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
+		unassignedPods, err := ctrl.getUnassignedPods(fn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list unassigned pods: %w", err)
+		}
+		if len(unassignedPods) == 0 {
+			log.Warn(ctx, "no unassigned pods")
+			return nil, nil
+		}
+		return unassignedPods[rand.Intn(len(unassignedPods))], nil
+	})
+}
+
+func (ctrl *Controller) getUnassignedPods(fn function.Function) ([]*v1.Pod, error) {
 	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
 	if err != nil {
 		return nil, err
@@ -400,7 +408,7 @@ func (ctrl *Controller) getAvailablePods(fn function.Function) ([]*v1.Pod, error
 		return nil, err
 	}
 
-	var availablePods []*v1.Pod
+	var unassignedPods []*v1.Pod
 	for _, pod := range pods {
 		if pod.DeletionTimestamp != nil || pod.Status.PodIP == "" {
 			continue
@@ -408,13 +416,13 @@ func (ctrl *Controller) getAvailablePods(fn function.Function) ([]*v1.Pod, error
 
 		for _, cond := range pod.Status.Conditions {
 			if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
-				availablePods = append(availablePods, pod)
+				unassignedPods = append(unassignedPods, pod)
 				break
 			}
 		}
 	}
 
-	return availablePods, nil
+	return unassignedPods, nil
 }
 
 type Metric string

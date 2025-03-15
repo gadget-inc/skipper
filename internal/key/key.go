@@ -16,6 +16,7 @@ type Key[v any] interface {
 type GroupKey[v any] interface {
 	Field(value v) slog.Attr
 	Attributes(value v) []attribute.KeyValue
+	AttributesSet(value v) attribute.Set
 }
 
 type key struct {

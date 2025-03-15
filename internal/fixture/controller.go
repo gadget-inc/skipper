@@ -19,6 +19,7 @@ type (
 
 var (
 	ControllerIP        = "127.0.2.1"
+	ControllerIP2       = "127.0.2.2"
 	ControllerNamespace = "skipper-test"
 )
 

@@ -84,11 +84,6 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 	return nil
 }
 
-func (ctrl *Controller) isResponsibleForFunction(fn function.Function) bool {
-	ctrlIP := ctrl.ring.Get(fn.RingKey())
-	return ctrlIP == FlagPodIP.Value()
-}
-
 func (ctrl *Controller) getControllerClient(ip string) Client {
 	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() Client { return ctrl.newClientFunc(ip, FlagPort.Value()) })
 	return controllerClient
@@ -112,23 +107,23 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 			pod := obj.(*v1.Pod)
 			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
 				ctrl.ring.Add(pod.Status.PodIP)
-				log.Debug(ctx, "added controller", key.Pod.Field(pod), key.ControllerIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+				log.Debug(ctx, "added controller", key.Pod.Field(pod), key.ResponsibleIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 			}
 		},
 		UpdateFunc: func(_, newObj any) {
 			pod := newObj.(*v1.Pod)
 			if pod.Status.Phase == v1.PodRunning && pod.DeletionTimestamp == nil && pod.Status.PodIP != "" {
 				ctrl.ring.Add(pod.Status.PodIP)
-				log.Debug(ctx, "updated controller", key.Pod.Field(pod), key.ControllerIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+				log.Debug(ctx, "updated controller", key.Pod.Field(pod), key.ResponsibleIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 			} else {
 				ctrl.ring.Remove(pod.Status.PodIP)
-				log.Debug(ctx, "removed updated controller", key.Pod.Field(pod), key.ControllerIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+				log.Debug(ctx, "removed updated controller", key.Pod.Field(pod), key.ResponsibleIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 			}
 		},
 		DeleteFunc: func(obj any) {
 			pod := obj.(*v1.Pod)
 			ctrl.ring.Remove(pod.Status.PodIP)
-			log.Debug(ctx, "removed deleted controller", key.Pod.Field(pod), key.ControllerIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+			log.Debug(ctx, "removed deleted controller", key.Pod.Field(pod), key.ResponsibleIP.Field(pod.Status.PodIP), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 		},
 	})
 	if err != nil {

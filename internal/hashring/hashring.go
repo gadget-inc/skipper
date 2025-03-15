@@ -15,6 +15,10 @@ type HashRing struct {
 	mu     xsync.RBMutex     // Read-Write mutex to protect concurrent access
 }
 
+type RingKey interface {
+	RingKey() string
+}
+
 // New creates a new HashRing.
 //
 // Example:
@@ -87,7 +91,7 @@ func (h *HashRing) Remove(ip string) {
 // Example:
 //
 //	ip := ring.Get("my-cache-key")
-func (h *HashRing) Get(key string) string {
+func (h *HashRing) Get(value RingKey) string {
 	if len(h.hashes) == 0 {
 		panic("hash ring is empty")
 	}
@@ -96,7 +100,7 @@ func (h *HashRing) Get(key string) string {
 	defer h.mu.RUnlock(rt)
 
 	// Compute the hash of the key
-	hash := crc32.ChecksumIEEE([]byte(key))
+	hash := crc32.ChecksumIEEE([]byte(value.RingKey()))
 
 	// Locate the nearest ip greater than or equal to the key's hash
 	index, found := slices.BinarySearch(h.hashes, hash)

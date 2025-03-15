@@ -4,13 +4,14 @@ import { echoFunction, routerUrl } from "./_echo_utils.ts";
 
 let requestId = 0;
 const failures: ({ requestId: number; status: number; body: string } | { requestId: number; error: unknown })[] = [];
+const tenants = Array.from({ length: 5 }, (_, i) => `tenant${i + 1}`);
 
 async function sendRequest() {
   try {
     const response = await fetch(routerUrl, {
       method: "POST",
       headers: {
-        "x-skipper-function": JSON.stringify(echoFunction),
+        "x-skipper-function": JSON.stringify({ ...echoFunction, tenant: tenants[Math.floor(Math.random() * tenants.length)] }),
         "content-type": "application/json",
       },
       body: JSON.stringify({ hello: "world" }),

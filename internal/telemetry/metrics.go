@@ -10,10 +10,13 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
+
+var Meter = otel.Meter("github.com/gadget-inc/skipper")
 
 func initMetrics(ctx context.Context, res *resource.Resource) func(context.Context) error {
 	prometheusExporter, err := prometheus.New()
@@ -22,11 +25,22 @@ func initMetrics(ctx context.Context, res *resource.Resource) func(context.Conte
 		return func(context.Context) error { return nil }
 	}
 
-	metricProvider := sdkmetric.NewMeterProvider(
+	opts := []sdkmetric.Option{
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(prometheusExporter),
-	)
+	}
 
+	if FlagTelemetryMetricOTLP.Value() {
+		metricExporter, err := otlpmetrichttp.New(ctx)
+		if err != nil {
+			log.Error(ctx, "failed to create otlp metric exporter", key.Error.Field(err))
+			// keep going and just use the prometheus exporter
+		} else {
+			opts = append(opts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter, sdkmetric.WithInterval(FlagTelemetryMetricInterval.Value()))))
+		}
+	}
+
+	metricProvider := sdkmetric.NewMeterProvider(opts...)
 	otel.SetMeterProvider(metricProvider)
 
 	mux := http.NewServeMux()

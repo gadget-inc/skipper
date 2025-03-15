@@ -11,6 +11,8 @@ if (!isCI) {
     router_node_port: 31020,
     env: {
       SKIPPER_TELEMETRY: enableOtel,
+      SKIPPER_TELEMETRY_METRIC_OTLP: enableOtel,
+      SKIPPER_TELEMETRY_METRIC_INTERVAL: "1s",
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
     },
@@ -27,6 +29,8 @@ await deployKraneNamespace("skipper-test", {
   router_node_port: 31021,
   env: {
     SKIPPER_TELEMETRY: enableOtel,
+    SKIPPER_TELEMETRY_METRIC_OTLP: enableOtel,
+    SKIPPER_TELEMETRY_METRIC_INTERVAL: "1s",
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
     OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
   },

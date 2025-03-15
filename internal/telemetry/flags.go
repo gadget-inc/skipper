@@ -30,4 +30,16 @@ var (
 		Default:     9090,
 		Description: "The port for the Prometheus metrics endpoint",
 	}
+
+	FlagTelemetryMetricInterval = flag.Flag[time.Duration]{
+		Name:        "telemetry-metric-interval",
+		Default:     10 * time.Second,
+		Description: "The interval for the metrics endpoint",
+	}
+
+	FlagTelemetryMetricOTLP = flag.Flag[bool]{
+		Name:        "telemetry-metric-otlp",
+		Default:     false,
+		Description: "Whether to send metrics to the OTLP endpoint",
+	}
 )

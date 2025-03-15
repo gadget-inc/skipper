@@ -6,7 +6,7 @@ var (
 	Attempt                = intKey{new("attempt")}
 	CPUUsageMilli          = intKey{new("cpu-usage-milli")}
 	Controller             = stringKey{new("controller")}
-	ControllerIP           = stringKey{new("controller-ip")}
+	ResponsibleIP          = stringKey{new("responsible-ip")}
 	Count                  = intKey{new("count")}
 	CurrentInstances       = intKey{new("current-instances")}
 	Deployment             = stringKey{new("deployment")}

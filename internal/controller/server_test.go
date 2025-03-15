@@ -91,12 +91,13 @@ func TestHandleHeartbeat(t *testing.T) {
 		{
 			name: "forwards heartbeats",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
-				ctrl.ring.Add("127.0.0.2")
+				ctrl.ring.Add(fixture.ControllerIP)
+				ctrl.ring.Add(fixture.ControllerIP2)
 				hbs := []function.Heartbeat{{Function: fixture.NewFunction(), Timestamp: time.Now()}}
 
 				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 					must.Eq(t, hbs, heartbeats)
-					must.Eq(t, []string{fixture.ControllerIP}, forwardedFor)
+					must.Eq(t, []string{fixture.ControllerIP, fixture.ControllerIP2}, forwardedFor)
 					return nil
 				})
 

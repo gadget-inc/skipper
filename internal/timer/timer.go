@@ -2,15 +2,16 @@ package timer
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"time"
-
-	"github.com/gadget-inc/skipper/internal/telemetry"
 )
 
-// Poll polls the given function until it returns a non-nil result or the timeout is reached.
-func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
+// Poll calls the given function until it returns a non-nil result or the context is cancelled
+func Poll[T any](ctx context.Context, interval time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
+	if ctx.Done() == nil {
+		panic("timer.Poll context must be cancellable")
+	}
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -25,17 +26,11 @@ func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(c
 		return result, nil
 	}
 
-	start := time.Now()
-	tick := time.Tick(interval)
 	for {
-		if time.Since(start) >= timeout {
-			return nil, fmt.Errorf("poll timed out after %v", timeout)
-		}
-
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-tick:
+		case <-time.After(addJitter(interval)):
 			result, err := fn(ctx)
 			if err != nil {
 				return nil, err
@@ -47,21 +42,16 @@ func Poll[T any](ctx context.Context, interval, timeout time.Duration, fn func(c
 	}
 }
 
-// PollUntil polls the given function until it returns a non-nil result or the context is cancelled.
-func PollUntil[T any](ctx context.Context, spanName string, interval time.Duration, fn func(context.Context) (*T, error)) (*T, error) {
-	if ctx.Done() == nil {
-		panic("timer.PollUntil context must be cancellable")
-	}
-
-	ctx, span := telemetry.Start(ctx, spanName)
-	defer span.End()
-	return Poll(ctx, interval, time.Duration(1<<63-1), fn)
-}
-
-// Loop calls the given function at the given interval until the it returns an error or the context is cancelled.
+// Loop calls the given function at the given interval until it returns an error or the context is cancelled.
 func Loop(ctx context.Context, interval time.Duration, fn func(context.Context) error) error {
 	if ctx.Done() == nil {
 		panic("timer.Loop context must be cancellable")
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
 
 	err := fn(ctx)
