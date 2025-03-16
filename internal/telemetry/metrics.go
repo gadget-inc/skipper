@@ -45,15 +45,15 @@ func initMetrics(ctx context.Context, res *resource.Resource) func(context.Conte
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	server := &http.Server{Addr: net.JoinHostPort(FlagTelemetryPrometheusHost.Value(), strconv.Itoa(FlagTelemetryPrometheusPort.Value())), Handler: mux}
+	promServer := &http.Server{Addr: net.JoinHostPort(FlagTelemetryPrometheusHost.Value(), strconv.Itoa(FlagTelemetryPrometheusPort.Value())), Handler: mux}
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := promServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error(ctx, "failed to serve prometheus metrics", key.Error.Field(err))
 		}
 	}()
 
 	return func(ctx context.Context) error {
-		err := server.Shutdown(ctx)
+		err := promServer.Shutdown(ctx)
 		if err != nil {
 			log.Error(ctx, "failed to shutdown prometheus server", key.Error.Field(err))
 		}
