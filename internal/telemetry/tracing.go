@@ -18,16 +18,24 @@ import (
 
 var tracer = otel.Tracer("github.com/gadget-inc/skipper")
 
-type contextKey struct{}
+type attrsContextKey struct{}
 
-var ctxKey = contextKey{}
+var attrsCtxKey = attrsContextKey{}
 
-type contextSpanProcessor struct {
+func WithPropagatedAttributes(ctx context.Context, attributes ...attribute.KeyValue) context.Context {
+	SetAttributes(ctx, attributes...)
+	if existing, ok := ctx.Value(attrsCtxKey).([]attribute.KeyValue); ok {
+		attributes = append(existing, attributes...)
+	}
+	return context.WithValue(ctx, attrsCtxKey, attributes)
+}
+
+type attrsContextSpanProcessor struct {
 	sdktrace.SpanProcessor
 }
 
-func (c contextSpanProcessor) OnStart(ctx context.Context, s sdktrace.ReadWriteSpan) {
-	if attributes, ok := ctx.Value(ctxKey).([]attribute.KeyValue); ok {
+func (c attrsContextSpanProcessor) OnStart(ctx context.Context, s sdktrace.ReadWriteSpan) {
+	if attributes, ok := ctx.Value(attrsCtxKey).([]attribute.KeyValue); ok {
 		s.SetAttributes(attributes...)
 	}
 	c.SpanProcessor.OnStart(ctx, s)
@@ -42,7 +50,7 @@ func initTracing(ctx context.Context, res *resource.Resource) func(context.Conte
 
 	traceProvider := sdktrace.NewTracerProvider(
 		sdktrace.WithResource(res),
-		sdktrace.WithSpanProcessor(contextSpanProcessor{sdktrace.NewBatchSpanProcessor(traceExporter)}),
+		sdktrace.WithSpanProcessor(attrsContextSpanProcessor{sdktrace.NewBatchSpanProcessor(traceExporter)}),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
 	)
 
@@ -51,10 +59,7 @@ func initTracing(ctx context.Context, res *resource.Resource) func(context.Conte
 
 	log.AddHook(func(ctx context.Context, record *slog.Record) {
 		if span := trace.SpanContextFromContext(ctx); span.IsValid() {
-			record.AddAttrs(
-				slog.String("trace_id", span.TraceID().String()),
-				slog.String("span_id", span.SpanID().String()),
-			)
+			record.AddAttrs(slog.String("trace_id", span.TraceID().String()), slog.String("span_id", span.SpanID().String()))
 		}
 	})
 
@@ -72,12 +77,4 @@ func TraceRoot(ctx context.Context, spanName string, opts ...trace.SpanStartOpti
 
 func SetAttributes(ctx context.Context, attributes ...attribute.KeyValue) {
 	trace.SpanFromContext(ctx).SetAttributes(attributes...)
-}
-
-func WithPropagatedAttributes(ctx context.Context, attributes ...attribute.KeyValue) context.Context {
-	SetAttributes(ctx, attributes...)
-	if existing, ok := ctx.Value(ctxKey).([]attribute.KeyValue); ok {
-		attributes = append(existing, attributes...)
-	}
-	return context.WithValue(ctx, ctxKey, attributes)
 }

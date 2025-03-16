@@ -164,10 +164,7 @@ func (k groupValueKey) Attributes(value GroupValue) []attribute.KeyValue {
 }
 
 func (k groupValueKey) AttributesSet(value GroupValue) attribute.Set {
-	if value == nil {
-		return attribute.NewSet()
-	}
-	return attribute.NewSet(value.Attributes()...)
+	return attribute.NewSet(k.Attributes(value)...)
 }
 
 type podKey struct{ key }
@@ -335,8 +332,8 @@ func (r requestKey) Attributes(value *http.Request) []attribute.KeyValue {
 	}
 }
 
-func (r requestKey) AttributesSet(value *http.Request) attribute.Set {
-	return attribute.NewSet(r.Attributes(value)...)
+func (k requestKey) AttributesSet(value *http.Request) attribute.Set {
+	return attribute.NewSet(k.Attributes(value)...)
 }
 
 type responseKey struct{ key }
@@ -368,6 +365,6 @@ func (r responseKey) Attributes(value *http.Response) []attribute.KeyValue {
 	}
 }
 
-func (r responseKey) AttributesSet(value *http.Response) attribute.Set {
-	return attribute.NewSet(r.Attributes(value)...)
+func (k responseKey) AttributesSet(value *http.Response) attribute.Set {
+	return attribute.NewSet(k.Attributes(value)...)
 }
