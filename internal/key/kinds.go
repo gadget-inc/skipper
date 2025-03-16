@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -152,14 +154,28 @@ func (k groupValueKey) Field(value GroupValue) slog.Attr {
 	return slog.Attr{Key: k.Underscored, Value: slog.GroupValue(value.Fields()...)}
 }
 
+type AttributesToNotPrefix interface {
+	AttributesToNotPrefix() []string
+}
+
 func (k groupValueKey) Attributes(value GroupValue) []attribute.KeyValue {
 	if value == nil {
 		return []attribute.KeyValue{}
 	}
+
+	var attrsToNotPrefix []string
+	if value, ok := value.(AttributesToNotPrefix); ok {
+		attrsToNotPrefix = value.AttributesToNotPrefix()
+	}
+
 	attrs := value.Attributes()
 	for i := range attrs {
+		if slices.ContainsFunc(attrsToNotPrefix, func(attr string) bool { return strings.HasPrefix(string(attrs[i].Key), attr) }) {
+			continue
+		}
 		attrs[i].Key = attribute.Key(k.Underscored) + "." + attrs[i].Key
 	}
+
 	return attrs
 }
 

@@ -30,10 +30,11 @@ func (f Function) Fields() []slog.Attr {
 }
 
 func (f Function) Attributes() []attribute.KeyValue {
-	return append([]attribute.KeyValue{
+	return append(
+		key.Scale.Attributes(f.Scale),
 		key.Namespace.Attribute(f.Namespace),
 		key.Deployment.Attribute(f.Deployment),
 		key.Tenant.Attribute(f.Tenant),
 		key.Metadata.Attribute(f.Metadata),
-	}, key.Scale.Attributes(f.Scale)...)
+	)
 }

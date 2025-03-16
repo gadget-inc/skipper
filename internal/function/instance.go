@@ -21,18 +21,19 @@ type Instance struct {
 
 func (instance *Instance) Fields() []slog.Attr {
 	return []slog.Attr{
+		key.Function.Field(instance.Function),
 		key.Name.Field(instance.Name),
 		key.Addr.Field(instance.Addr),
 		key.AssignedAt.Field(instance.AssignedAt),
 		key.ReadyAt.Field(instance.ReadyAt),
-		key.Function.Field(instance.Function),
 		key.CPUUsageMilli.Field(instance.CPUUsageMilli),
 		key.MemoryUsageMiB.Field(instance.MemoryUsageMiB),
 	}
 }
 
 func (instance *Instance) Attributes() []attribute.KeyValue {
-	return append(key.Function.Attributes(instance.Function),
+	return append(
+		key.Function.Attributes(instance.Function),
 		key.Name.Attribute(instance.Name),
 		key.Addr.Attribute(instance.Addr),
 		attribute.String("replica_set", instance.ReplicaSet),
@@ -41,4 +42,8 @@ func (instance *Instance) Attributes() []attribute.KeyValue {
 		key.CPUUsageMilli.Attribute(instance.CPUUsageMilli),
 		key.MemoryUsageMiB.Attribute(instance.MemoryUsageMiB),
 	)
+}
+
+func (instance *Instance) AttributesToNotPrefix() []string {
+	return []string{"function"}
 }
