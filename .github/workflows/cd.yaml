@@ -38,6 +38,46 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
+      - name: Cache apt-get mounts
+        uses: actions/cache@v4
+        id: apt-get-mounts-cache
+        with:
+          key: apt-get-mounts-${{ hashFiles('Dockerfile') }}
+          restore-keys: apt-get-mounts-
+          path: |
+            var-cache-apt
+            var-lib-apt
+
+      - name: Inject apt-get mounts cache into Docker
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: |
+            {
+              "var-cache-apt": "/var/cache/apt",
+              "var-lib-apt": "/var/lib/apt"
+            }
+          skip-extraction: ${{ steps.apt-get-mounts-cache.outputs.cache-hit }}
+
+      - name: Cache go build mounts
+        uses: actions/cache@v4
+        id: go-build-mounts-cache
+        with:
+          key: go-build-mounts-${{ hashFiles('Dockerfile') }}
+          restore-keys: go-build-mounts-
+          path: |
+            go-pkg-mod
+            go-build
+
+      - name: Inject go build mounts cache into Docker
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: |
+            {
+              "go-pkg-mod": "/go/pkg/mod",
+              "go-build": "/root/.cache/go-build"
+            }
+          skip-extraction: ${{ steps.go-build-mounts-cache.outputs.cache-hit }}
+
       - name: Authenticate gcloud
         id: auth
         uses: google-github-actions/auth@v2
