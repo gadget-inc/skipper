@@ -62,6 +62,10 @@ jobs:
         with:
           oidc: true
 
+      - name: Configure Depot
+        run: |
+          depot configure-docker
+
       - name: Create kind cluster
         run: |
           cat << EOF > kind-config.yaml

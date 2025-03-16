@@ -45,6 +45,10 @@ jobs:
         with:
           oidc: true
 
+      - name: Configure Depot
+        run: |
+          depot configure-docker
+
       - name: Authenticate gcloud
         id: auth
         uses: google-github-actions/auth@v2
