@@ -58,7 +58,7 @@ jobs:
 
       - name: Configure Depot
         run: |
-          depot configure-docker --project=${{ secrets.DEPOT_PROJECT_ID }}
+          depot configure-docker --project=t300vzjlgt
 
       - name: Create kind cluster
         run: |
