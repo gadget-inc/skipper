@@ -76,5 +76,8 @@ func SetAttributes(ctx context.Context, attributes ...attribute.KeyValue) {
 
 func WithPropagatedAttributes(ctx context.Context, attributes ...attribute.KeyValue) context.Context {
 	SetAttributes(ctx, attributes...)
+	if existing, ok := ctx.Value(ctxKey).([]attribute.KeyValue); ok {
+		attributes = append(existing, attributes...)
+	}
 	return context.WithValue(ctx, ctxKey, attributes)
 }
