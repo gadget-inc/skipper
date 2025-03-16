@@ -8,6 +8,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
@@ -58,8 +59,23 @@ func initTracing(ctx context.Context, res *resource.Resource) func(context.Conte
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
 	log.AddHook(func(ctx context.Context, record *slog.Record) {
-		if span := trace.SpanContextFromContext(ctx); span.IsValid() {
-			record.AddAttrs(slog.String("trace_id", span.TraceID().String()), slog.String("span_id", span.SpanID().String()))
+		span := trace.SpanFromContext(ctx)
+		spanContext := span.SpanContext()
+		if spanContext.IsValid() {
+			record.AddAttrs(slog.String("trace_id", spanContext.TraceID().String()), slog.String("span_id", spanContext.SpanID().String()))
+		}
+
+		if span.IsRecording() && record.Level == slog.LevelError {
+			record.Attrs(func(attr slog.Attr) bool {
+				if attr.Key == key.Error.Underscored {
+					if err, ok := attr.Value.Any().(error); ok {
+						span.RecordError(err)
+						span.SetStatus(codes.Error, err.Error())
+					}
+					return false
+				}
+				return true
+			})
 		}
 	})
 
