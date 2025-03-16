@@ -4,12 +4,13 @@ on:
   workflow_call:
   pull_request:
 
+permissions:
+  contents: "read"
+  id-token: "write"
+
 jobs:
   go-lint:
     runs-on: depot-ubuntu-latest
-    permissions:
-      contents: "read"
-      id-token: "write"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,12 +29,7 @@ jobs:
           install-mode: "none"
 
   go-test:
-    runs-on: ubuntu-latest-l
-    permissions:
-      contents: "read"
-      id-token: "write"
-    env:
-      DEPOT_PROJECT_ID: ${{ secrets.DEPOT_PROJECT_ID }}
+    runs-on: depot-ubuntu-latest-8
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -105,11 +101,6 @@ jobs:
 
   deno-lint:
     runs-on: depot-ubuntu-latest
-    permissions:
-      contents: "read"
-      id-token: "write"
-    env:
-      DEPOT_PROJECT_ID: ${{ secrets.DEPOT_PROJECT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
