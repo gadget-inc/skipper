@@ -30,7 +30,7 @@ jobs:
           install-mode: "none"
 
   go-test:
-    runs-on: depot-ubuntu-latest-8
+    runs-on: ubuntu-latest-lg
     permissions:
       contents: "read"
       id-token: "write"
