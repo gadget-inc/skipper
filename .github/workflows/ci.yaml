@@ -4,10 +4,6 @@ on:
   workflow_call:
   pull_request:
 
-permissions:
-  contents: "read"
-  id-token: "write"
-
 jobs:
   go-lint:
     runs-on: ubuntu-latest
@@ -17,11 +13,6 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup
-
-      - name: Setup Depot
-        uses: depot/setup-action@v1
-        with:
-          oidc: true
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
@@ -50,15 +41,6 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Setup Depot
-        uses: depot/setup-action@v1
-        with:
-          oidc: true
-
-      - name: Configure Depot
-        run: |
-          depot configure-docker --project=t300vzjlgt
 
       - name: Create kind cluster
         run: |
