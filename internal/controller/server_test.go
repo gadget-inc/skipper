@@ -21,7 +21,7 @@ func TestHealthz(t *testing.T) {
 	rw := httptest.NewRecorder()
 
 	ctrl := New(nil, fake.NewClientset(), nil)
-	ctrl.ServeHTTP(rw, req)
+	ctrl.Handler().ServeHTTP(rw, req)
 
 	must.Eq(t, http.StatusOK, rw.Code)
 	must.Length(t, 0, rw.Body)
@@ -142,7 +142,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/heartbeat", bytes.NewReader(heartbeatBytes))
 			req.Header.Set(key.RouterIP.Header, fixture.RouterIP)
 			rw := httptest.NewRecorder()
-			ctrl.ServeHTTP(rw, req)
+			ctrl.Handler().ServeHTTP(rw, req)
 
 			must.Eq(t, http.StatusOK, rw.Code)
 			must.Length(t, 0, rw.Body)

@@ -17,6 +17,7 @@
           git = pkgs.git;
           go = pkgs.go_1_24;
           golangci-lint = pkgs.golangci-lint;
+          graphviz = pkgs.graphviz;
           krane = pkgs.krane;
           kubectl = pkgs.kubectl;
           stern = pkgs.stern;

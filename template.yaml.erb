@@ -241,6 +241,9 @@ kind: Service
 metadata:
   name: <%= controller_name %>
 spec:
+  <%- if defined? controller_node_port -%>
+  type: NodePort
+  <%- end -%>
   selector:
     app.kubernetes.io/name: skipper
     app.kubernetes.io/component: controller
@@ -248,6 +251,9 @@ spec:
   ports:
     - port: 80
       targetPort: http
+      <%- if defined? controller_node_port -%>
+      nodePort: <%= controller_node_port %>
+      <%- end -%>
 ---
 apiVersion: v1
 kind: ServiceAccount

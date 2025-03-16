@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand"
 	"net/http"
+	"net/http/pprof"
 	"slices"
 	"strconv"
 	"time"
@@ -16,19 +17,30 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-func (ctrl *Controller) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	switch req.URL.Path {
-	case "/healthz":
-		rw.WriteHeader(http.StatusOK)
-	case "/instance":
-		ctrl.handleInstance(rw, req)
-	case "/scale":
-		ctrl.handleScale(rw, req)
-	case "/heartbeat":
-		ctrl.handleHeartbeat(rw, req)
-	default:
-		http.NotFound(rw, req)
-	}
+func (ctrl *Controller) Handler() http.Handler {
+	mux := http.NewServeMux()
+
+	// controller endpoints
+	mux.HandleFunc("GET /healthz", ctrl.handleHealthz)
+	mux.HandleFunc("GET /instance", ctrl.handleInstance)
+	mux.HandleFunc("POST /scale", ctrl.handleScale)
+	mux.HandleFunc("POST /heartbeat", ctrl.handleHeartbeat)
+
+	// pprof endpoints
+	mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+	mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
+
+	// not found handler
+	mux.Handle("/", http.NotFoundHandler())
+
+	return mux
+}
+
+func (ctrl *Controller) handleHealthz(rw http.ResponseWriter, req *http.Request) {
+	rw.WriteHeader(http.StatusOK)
 }
 
 func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {

@@ -68,7 +68,7 @@ func NewController() *cobra.Command {
 
 			httpServer := &http.Server{
 				Addr: net.JoinHostPort(controller.FlagHost.Value(), strconv.Itoa(controller.FlagPort.Value())),
-				Handler: otelhttp.NewHandler(ctrl, "",
+				Handler: otelhttp.NewHandler(ctrl.Handler(), "",
 					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
 					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
 				),

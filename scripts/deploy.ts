@@ -9,6 +9,7 @@ if (!isCI) {
     function_namespaces: ["skipper-development-fixtures"],
     unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
     router_node_port: 31020,
+    controller_node_port: 31021,
     env: {
       SKIPPER_TELEMETRY: enableOtel,
       SKIPPER_TELEMETRY_METRIC_OTLP: enableOtel,
@@ -26,7 +27,8 @@ await deployKraneNamespace("skipper-test", {
   namespace: "skipper-test",
   function_namespaces: ["skipper-test-fixtures"],
   unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
-  router_node_port: 31021,
+  router_node_port: 31030,
+  controller_node_port: 31031,
   env: {
     SKIPPER_TELEMETRY: enableOtel,
     SKIPPER_TELEMETRY_METRIC_OTLP: enableOtel,
