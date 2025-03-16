@@ -29,7 +29,7 @@ var (
 		metric.WithUnit("{request}"),
 	))
 
-	inFlightRequestsCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.router.in_flight_requests",
+	requestsInFlightCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.router.requests_in_flight",
 		metric.WithDescription("The number of requests that are currently being handled by the router"),
 		metric.WithUnit("{request}"),
 	))
@@ -128,7 +128,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests++
-		inFlightRequestsCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+		requestsInFlightCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 		return heartbeat, false
 	})
 
@@ -137,7 +137,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests--
-		inFlightRequestsCounter.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+		requestsInFlightCounter.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 		return heartbeat, false
 	})
 

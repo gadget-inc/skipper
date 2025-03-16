@@ -1,5 +1,5 @@
-name: "Setup environment"
-description: ""
+name: "Set up environment"
+description: "Set up the environment for the runner"
 inputs: {}
 outputs: {}
 runs:
@@ -11,7 +11,7 @@ runs:
     - name: Cache nix
       uses: DeterminateSystems/magic-nix-cache-action@main
 
-    - name: Setup nix environment
+    - name: Set up nix environment
       run: |
         cd nix
         source <(nix print-dev-env --show-trace)

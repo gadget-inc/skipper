@@ -18,65 +18,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup environment
-        uses: ./.github/actions/setup
+      - name: Set up environment
+        uses: ./.github/actions/setup-environment
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@v4
-        with:
-          daemon-config: |
-            {
-              "debug": true,
-              "features": {
-                "containerd-snapshotter": true
-              }
-            }
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Cache apt-get mounts
-        uses: actions/cache@v4
-        id: apt-get-mounts-cache
-        with:
-          key: apt-get-mounts-${{ hashFiles('Dockerfile') }}
-          restore-keys: apt-get-mounts-
-          path: |
-            var-cache-apt
-            var-lib-apt
-
-      - name: Inject apt-get mounts cache into Docker
-        uses: reproducible-containers/buildkit-cache-dance@v3
-        with:
-          skip-extraction: ${{ steps.apt-get-mounts-cache.outputs.cache-hit }}
-          cache-map: |
-            {
-              "var-cache-apt": "/var/cache/apt",
-              "var-lib-apt": "/var/lib/apt"
-            }
-
-      - name: Cache go build mounts
-        uses: actions/cache@v4
-        id: go-build-mounts-cache
-        with:
-          key: go-build-mounts-${{ hashFiles('Dockerfile') }}
-          restore-keys: go-build-mounts-
-          path: |
-            go-pkg-mod
-            go-build
-
-      - name: Inject go build mounts cache into Docker
-        uses: reproducible-containers/buildkit-cache-dance@v3
-        with:
-          skip-extraction: ${{ steps.go-build-mounts-cache.outputs.cache-hit }}
-          cache-map: |
-            {
-              "go-pkg-mod": "/go/pkg/mod",
-              "go-build": "/root/.cache/go-build"
-            }
+        uses: ./.github/actions/setup-docker
 
       - name: Authenticate gcloud
         id: auth
