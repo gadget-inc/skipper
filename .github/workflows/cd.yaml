@@ -51,12 +51,12 @@ jobs:
       - name: Inject apt-get mounts cache into Docker
         uses: reproducible-containers/buildkit-cache-dance@v3
         with:
+          skip-extraction: ${{ steps.apt-get-mounts-cache.outputs.cache-hit }}
           cache-map: |
             {
               "var-cache-apt": "/var/cache/apt",
               "var-lib-apt": "/var/lib/apt"
             }
-          skip-extraction: ${{ steps.apt-get-mounts-cache.outputs.cache-hit }}
 
       - name: Cache go build mounts
         uses: actions/cache@v4
@@ -71,12 +71,12 @@ jobs:
       - name: Inject go build mounts cache into Docker
         uses: reproducible-containers/buildkit-cache-dance@v3
         with:
+          skip-extraction: ${{ steps.go-build-mounts-cache.outputs.cache-hit }}
           cache-map: |
             {
               "go-pkg-mod": "/go/pkg/mod",
               "go-build": "/root/.cache/go-build"
             }
-          skip-extraction: ${{ steps.go-build-mounts-cache.outputs.cache-hit }}
 
       - name: Authenticate gcloud
         id: auth
