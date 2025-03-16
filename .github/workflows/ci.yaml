@@ -7,6 +7,10 @@ on:
 jobs:
   go-lint:
     runs-on: depot-ubuntu-latest
+    permissions:
+      id-token: "write"
+    env:
+      DEPOT_PROJECT_ID: ${{ secrets.DEPOT_PROJECT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -14,14 +18,22 @@ jobs:
       - name: Setup environment
         uses: ./.github/actions/setup
 
+      - name: Setup Depot
+        uses: depot/setup-action@v1
+        with:
+          oidc: true
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
           install-mode: "none"
-          args: "--timeout 10m"
 
   go-test:
-    runs-on: depot-ubuntu-latest
+    runs-on: depot-ubuntu-latest-8
+    permissions:
+      id-token: "write"
+    env:
+      DEPOT_PROJECT_ID: ${{ secrets.DEPOT_PROJECT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,6 +54,11 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Setup Depot
+        uses: depot/setup-action@v1
+        with:
+          oidc: true
 
       - name: Create kind cluster
         run: |
@@ -84,6 +101,8 @@ jobs:
 
   deno-lint:
     runs-on: depot-ubuntu-latest
+    env:
+      DEPOT_PROJECT_ID: ${{ secrets.DEPOT_PROJECT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

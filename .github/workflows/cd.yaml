@@ -10,10 +10,12 @@ jobs:
     uses: ./.github/workflows/ci.yaml
   cd:
     needs: ci
-    runs-on: depot-ubuntu-latest
+    runs-on: depot-ubuntu-latest-8
     permissions:
       contents: "read"
       id-token: "write"
+    env:
+      DEPOT_PROJECT_ID: ${{ secrets.DEPOT_PROJECT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
