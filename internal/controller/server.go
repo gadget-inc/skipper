@@ -128,7 +128,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	for _, heartbeat := range heartbeats {
-		heartbeatCounter.Add(req.Context(), 1, metric.WithAttributeSet(key.Heartbeat.AttributesSet(heartbeat)))
+		heartbeatsCounter.Add(req.Context(), 1, metric.WithAttributeSet(key.Heartbeat.AttributesSet(heartbeat)))
 
 		ctrl.routerHeartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
 			if !loaded {

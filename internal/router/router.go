@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"math/rand/v2"
 	"net"
@@ -29,8 +30,13 @@ var (
 	))
 
 	inFlightRequestsCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.router.in_flight_requests",
-		metric.WithDescription("The number of in-flight requests handled by the router"),
+		metric.WithDescription("The number of requests that are currently being handled by the router"),
 		metric.WithUnit("{request}"),
+	))
+
+	heartbeatsCounter = unwrap(telemetry.Meter.Int64Counter("skipper.router.heartbeats",
+		metric.WithDescription("The number of heartbeats sent by the router"),
+		metric.WithUnit("{heartbeat}"),
 	))
 )
 
@@ -61,10 +67,10 @@ func New(ctrl controller.Client) *Router {
 	}
 
 	r.reverseProxy = &httputil.ReverseProxy{
-		BufferPool: bufferPool,
-		Rewrite:    rewriteHeaders,
 		Transport:  r,
-		ErrorLog:   log.StdLogger(),
+		Rewrite:    rewriteHeaders,
+		ErrorLog:   log.StdLogger(slog.LevelError),
+		BufferPool: bufferPool,
 	}
 
 	return r
@@ -78,6 +84,7 @@ func (r *Router) Start(ctx context.Context) {
 				r.heartbeats.Delete(fn) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
+				heartbeatsCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 			}
 			return true
 		})

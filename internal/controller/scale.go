@@ -36,14 +36,24 @@ var (
 	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
 	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
 
-	waitingForPodCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.function.waiting_for_pod",
-		metric.WithDescription("The number of functions that are waiting for a pod"),
+	waitingForUnassignedPodCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.controller.waiting_for_unassigned_pods",
+		metric.WithDescription("The number of functions that are waiting for an unassigned pod"),
 		metric.WithUnit("{function}"),
 	))
 
-	heartbeatCounter = unwrap(telemetry.Meter.Int64Counter("skipper.function.heartbeat",
-		metric.WithDescription("The total number of heartbeats received for a function"),
+	heartbeatsCounter = unwrap(telemetry.Meter.Int64Counter("skipper.controller.heartbeats",
+		metric.WithDescription("The number of heartbeats received by the controller"),
 		metric.WithUnit("{heartbeat}"),
+	))
+
+	scaleUpCounter = unwrap(telemetry.Meter.Int64Counter("skipper.controller.scale_ups",
+		metric.WithDescription("The number of times the controller has scaled a function up"),
+		metric.WithUnit("{scale_up}"),
+	))
+
+	scaleDownCounter = unwrap(telemetry.Meter.Int64Counter("skipper.controller.scale_downs",
+		metric.WithDescription("The number of times the controller has scaled a function down"),
+		metric.WithUnit("{scale_down}"),
 	))
 )
 
@@ -241,6 +251,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 
 	if desiredInstances > currentInstances {
 		log.Info(ctx, "scaling function up", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+		scaleUpCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 
 		for range desiredInstances - currentInstances {
 			instance, err := ctrl.assignPod(ctx, fn)
@@ -251,6 +262,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		}
 	} else {
 		log.Info(ctx, "scaling function down", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
+		scaleDownCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 
 		// sort instances by assigned at in ascending order
 		slices.SortFunc(instances, func(a, b *function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
@@ -381,8 +393,8 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	waitingForPodCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
-	defer waitingForPodCounter.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+	waitingForUnassignedPodCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+	defer waitingForUnassignedPodCounter.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		unassignedPods, err := ctrl.getUnassignedPods(fn)

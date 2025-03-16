@@ -28,3 +28,7 @@ func Warn(ctx context.Context, msg string, fields ...slog.Attr) {
 func Error(ctx context.Context, msg string, fields ...slog.Attr) {
 	slog.LogAttrs(ctx, slog.LevelError, msg, fields...)
 }
+
+func Log(ctx context.Context, level slog.Level, msg string, fields ...slog.Attr) {
+	slog.LogAttrs(ctx, level, msg, fields...)
+}

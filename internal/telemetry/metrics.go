@@ -2,16 +2,19 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	prometheus "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
-	"go.opentelemetry.io/otel/exporters/prometheus"
+	prometheusExporter "go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
@@ -19,7 +22,11 @@ import (
 var Meter = otel.Meter("github.com/gadget-inc/skipper")
 
 func initMetrics(ctx context.Context, res *resource.Resource) func(context.Context) error {
-	prometheusExporter, err := prometheus.New()
+	prometheusRegistry := prometheus.NewRegistry()
+	prometheusExporter, err := prometheusExporter.New(
+		prometheusExporter.WithNamespace("skipper"),
+		prometheusExporter.WithRegisterer(prometheusRegistry), // don't use the default registry to avoid process and go collector metrics
+	)
 	if err != nil {
 		log.Error(ctx, "failed to create prometheus exporter", key.Error.Field(err))
 		return func(context.Context) error { return nil }
@@ -44,8 +51,16 @@ func initMetrics(ctx context.Context, res *resource.Resource) func(context.Conte
 	otel.SetMeterProvider(metricProvider)
 
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	promServer := &http.Server{Addr: net.JoinHostPort(FlagTelemetryPrometheusHost.Value(), strconv.Itoa(FlagTelemetryPrometheusPort.Value())), Handler: mux}
+	mux.Handle("/metrics", promhttp.HandlerFor(prometheusRegistry, promhttp.HandlerOpts{
+		ProcessStartTime: time.Now(),
+		ErrorLog:         log.StdLogger(slog.LevelError),
+	}))
+
+	promServer := &http.Server{
+		Addr:    net.JoinHostPort(FlagTelemetryPrometheusHost.Value(), strconv.Itoa(FlagTelemetryPrometheusPort.Value())),
+		Handler: mux,
+	}
+
 	go func() {
 		if err := promServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error(ctx, "failed to serve prometheus metrics", key.Error.Field(err))
