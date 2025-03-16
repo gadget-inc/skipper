@@ -6,7 +6,7 @@ on:
 
 jobs:
   go-lint:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
           args: "--timeout 10m"
 
   go-test:
-    runs-on: ubuntu-latest-l
+    runs-on: depot-ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -83,7 +83,7 @@ jobs:
           path: tmp/logs/
 
   deno-lint:
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
