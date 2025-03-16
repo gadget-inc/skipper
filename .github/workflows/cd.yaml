@@ -14,8 +14,6 @@ jobs:
     permissions:
       contents: "read"
       id-token: "write"
-    env:
-      DEPOT_PROJECT_ID: ${{ secrets.DEPOT_PROJECT_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,7 +45,7 @@ jobs:
 
       - name: Configure Depot
         run: |
-          depot configure-docker --project ${{ secrets.DEPOT_PROJECT_ID }}
+          depot configure-docker --project=${{ secrets.DEPOT_PROJECT_ID }}
 
       - name: Authenticate gcloud
         id: auth
