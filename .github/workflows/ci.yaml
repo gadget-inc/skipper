@@ -30,7 +30,7 @@ jobs:
           install-mode: "none"
 
   go-test:
-    runs-on: ubuntu-latest-lg
+    runs-on: ubuntu-latest-l
     permissions:
       contents: "read"
       id-token: "write"
