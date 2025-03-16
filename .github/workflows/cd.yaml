@@ -10,7 +10,7 @@ jobs:
     uses: ./.github/workflows/ci.yaml
   cd:
     needs: ci
-    runs-on: ubuntu-latest-l
+    runs-on: depot-ubuntu-latest
     permissions:
       contents: "read"
       id-token: "write"
@@ -37,6 +37,11 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
+      - name: Setup Depot
+        uses: depot/setup-action@v1
+        with:
+          oidc: true
 
       - name: Authenticate gcloud
         id: auth
