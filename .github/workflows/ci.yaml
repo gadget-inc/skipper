@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   go-lint:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
           install-mode: "none"
 
   go-test:
-    runs-on: depot-ubuntu-latest-8
+    runs-on: ubuntu-latest-l
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -100,7 +100,7 @@ jobs:
           path: tmp/logs/
 
   deno-lint:
-    runs-on: depot-ubuntu-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

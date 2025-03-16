@@ -14,7 +14,7 @@ jobs:
     uses: ./.github/workflows/ci.yaml
   cd:
     needs: ci
-    runs-on: depot-ubuntu-latest-8
+    runs-on: ubuntu-latest-l
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
