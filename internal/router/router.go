@@ -24,17 +24,17 @@ import (
 )
 
 var (
-	requestsCounter = unwrap(telemetry.Meter.Int64Counter("skipper.router.requests",
+	requestsCounter = unwrap(telemetry.Meter.Int64Counter("router.requests",
 		metric.WithDescription("The number of requests handled by the router"),
 		metric.WithUnit("{request}"),
 	))
 
-	requestsInFlightCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.router.requests_in_flight",
+	requestsInFlightCounter = unwrap(telemetry.Meter.Int64UpDownCounter("router.requests_in_flight",
 		metric.WithDescription("The number of requests that are currently being handled by the router"),
 		metric.WithUnit("{request}"),
 	))
 
-	heartbeatsCounter = unwrap(telemetry.Meter.Int64Counter("skipper.router.heartbeats",
+	heartbeatsCounter = unwrap(telemetry.Meter.Int64Counter("router.heartbeats",
 		metric.WithDescription("The number of heartbeats sent by the router"),
 		metric.WithUnit("{heartbeat}"),
 	))

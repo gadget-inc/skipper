@@ -36,22 +36,22 @@ var (
 	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
 	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
 
-	waitingForUnassignedPodCounter = unwrap(telemetry.Meter.Int64UpDownCounter("skipper.controller.waiting_for_unassigned_pods",
+	waitingForUnassignedPodCounter = unwrap(telemetry.Meter.Int64UpDownCounter("controller.waiting_for_unassigned_pods",
 		metric.WithDescription("The number of functions that are waiting for an unassigned pod"),
 		metric.WithUnit("{function}"),
 	))
 
-	heartbeatsCounter = unwrap(telemetry.Meter.Int64Counter("skipper.controller.heartbeats",
+	heartbeatsCounter = unwrap(telemetry.Meter.Int64Counter("controller.heartbeats",
 		metric.WithDescription("The number of heartbeats received by the controller"),
 		metric.WithUnit("{heartbeat}"),
 	))
 
-	scaleUpCounter = unwrap(telemetry.Meter.Int64Counter("skipper.controller.scale_ups",
+	scaleUpCounter = unwrap(telemetry.Meter.Int64Counter("controller.scale_ups",
 		metric.WithDescription("The number of times the controller has scaled a function up"),
 		metric.WithUnit("{scale_up}"),
 	))
 
-	scaleDownCounter = unwrap(telemetry.Meter.Int64Counter("skipper.controller.scale_downs",
+	scaleDownCounter = unwrap(telemetry.Meter.Int64Counter("controller.scale_downs",
 		metric.WithDescription("The number of times the controller has scaled a function down"),
 		metric.WithUnit("{scale_down}"),
 	))
