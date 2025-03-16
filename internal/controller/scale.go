@@ -81,9 +81,11 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			continue
 		}
 
+		ctx := log.With(ctx, key.Instance.Field(instance))
+
 		responsibleIP := ctrl.ring.Get(instance)
 		if responsibleIP != FlagPodIP.Value() {
-			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.Instance.Field(instance), key.ResponsibleIP.Field(responsibleIP))
+			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.ResponsibleIP.Field(responsibleIP))
 			continue
 		}
 
@@ -95,7 +97,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
-				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Field(err), key.Instance.Field(instance))
+				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Field(err))
 			}
 			continue
 		}
@@ -113,7 +115,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 		replicaSet, err := ctrl.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
 		if err != nil {
-			log.Error(ctx, "failed to get replica set for instance", key.Error.Field(err), key.Instance.Field(instance))
+			log.Error(ctx, "failed to get replica set for instance", key.Error.Field(err))
 			continue
 		}
 
@@ -126,7 +128,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 		// this is a stale instance, find a replica set that has replicas
 		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Deployment}))
 		if err != nil {
-			log.Error(ctx, "failed to list replica sets", key.Error.Field(err), key.Instance.Field(instance))
+			log.Error(ctx, "failed to list replica sets", key.Error.Field(err))
 			continue
 		}
 
@@ -138,17 +140,19 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			}
 		}
 
+		ctx = log.With(ctx, key.ReplicaSet.Field(activeReplicaSet))
+
 		if activeReplicaSet != nil && activeReplicaSet.Status.AvailableReplicas < max(1, activeReplicaSet.Status.Replicas/FlagAvailableReplicaDivisor.Value()) {
-			log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance", key.Instance.Field(instance), key.ReplicaSet.Field(activeReplicaSet))
+			log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance")
 			continue
 		}
 
 		scaleMu, _ := ctrl.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
 		scaleMu.Lock()
-		log.Info(ctx, "terminating stale instance", key.Instance.Field(instance), key.ReplicaSet.Field(activeReplicaSet))
+		log.Info(ctx, "terminating stale instance")
 		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 		if err != nil {
-			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err), key.Instance.Field(instance), key.ReplicaSet.Field(activeReplicaSet))
+			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err))
 		}
 		scaleMu.Unlock()
 	}
