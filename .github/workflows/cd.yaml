@@ -47,7 +47,7 @@ jobs:
 
       - name: Configure Depot
         run: |
-          depot configure-docker
+          depot configure-docker --project ${{ secrets.DEPOT_PROJECT_ID }}
 
       - name: Authenticate gcloud
         id: auth
