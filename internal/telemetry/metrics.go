@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	prometheusExporter "go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/resource"
 )
 
@@ -36,7 +35,6 @@ func initMetrics(ctx context.Context, res *resource.Resource) func(context.Conte
 	opts := []sdkmetric.Option{
 		sdkmetric.WithResource(res),
 		sdkmetric.WithReader(prometheusExporter),
-		sdkmetric.WithExemplarFilter(exemplar.AlwaysOffFilter),
 	}
 
 	if FlagTelemetryMetricOTLP.Value() {
