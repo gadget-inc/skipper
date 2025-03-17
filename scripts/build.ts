@@ -7,7 +7,7 @@ $.cwd = abs();
 
 const flags = parseArgs(Deno.args, {
   string: ["repo", "tag", "platform", "cache-from-to"],
-  boolean: ["latest", "load", "push", "kind"],
+  boolean: ["latest", "load", "push", "kind", "provenance"],
   negatable: ["kind"],
   default: {
     repo: "skipper",
@@ -18,6 +18,7 @@ const flags = parseArgs(Deno.args, {
     latest: true,
     load: true,
     push: false,
+    provenance: false,
   },
 });
 
@@ -44,6 +45,10 @@ switch (flags["cache-from-to"]) {
     buildFlags.push(`--cache-from=type=registry,ref=${flags.repo}:buildcache`);
     buildFlags.push(`--cache-to=type=registry,ref=${flags.repo}:buildcache,mode=max`);
     break;
+}
+
+if (!flags.provenance) {
+  buildFlags.push("--provenance=false");
 }
 
 await $({ verbose: true })`docker buildx build . ${buildFlags}`;
