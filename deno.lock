@@ -11,6 +11,7 @@
     "npm:pino-pretty@*": "13.0.0",
     "npm:pino@*": "9.5.0",
     "npm:timers@*": "0.1.1",
+    "npm:ts-dedent@*": "2.2.0",
     "npm:ws@*": "8.18.0",
     "npm:zx@*": "8.2.1"
   },
@@ -193,6 +194,9 @@
     },
     "timers@0.1.1": {
       "integrity": "sha512-pkJC8uIP/gxDHxNQUBUbjHyl6oZfT+ofn7tbaHW+CFIUjI+Q2MBbHcx1JSBQfhDaTcO9bNg328q0i7Vk5PismQ=="
+    },
+    "ts-dedent@2.2.0": {
+      "integrity": "sha512-q5W7tVM71e2xjHZTlgfTDoPF/SmqKG5hddq9SzR49CH2hayqRKJtQ4mtRlSxKaJlR/+9rEM+mnBHf7I2/BQcpQ=="
     },
     "undici-types@6.19.8": {
       "integrity": "sha512-ve2KP6f/JnbPBFyobGHuerC9g1FYGn/F8n1LWTwNxCEzd6IfqTwUQcNXgEtmmQ6DlRrC1hrSrBnCZPokRrDHjw=="

@@ -1,19 +1,29 @@
 import { $, fs, path } from "npm:zx";
+import { dedent as tsDedent } from "npm:ts-dedent";
+
+export const dedent = tsDedent;
 
 export const isCI = Deno.env.get("CI") === "1" || Deno.env.get("CI") === "true";
 
 export const workspaceDir = new URL("..", import.meta.url).pathname;
 
-export const abs = (...segments: string[]) => path.join(workspaceDir, ...segments);
+export function abs(...segments: string[]) {
+  return path.join(workspaceDir, ...segments);
+}
 
-export const gitSha = async () => await $`git rev-parse --short HEAD`.then((res) => res.stdout.trim());
+export async function gitSha() {
+  return await $`git rev-parse --short HEAD`.then((res) => res.stdout.trim());
+}
 
-export const defaultImageTag = async () => `sha-${await gitSha()}`;
+export async function defaultImageTag() {
+  return `sha-${await gitSha()}`;
+}
 
-export const currentDockerPlatform = async () =>
-  await $`docker version --format '{{.Server.Os}}/{{.Server.Arch}}'`.then((res) => res.stdout.trim());
+export async function currentDockerPlatform() {
+  return await $`docker version --format '{{.Server.Os}}/{{.Server.Arch}}'`.then((res) => res.stdout.trim());
+}
 
-export const renderKraneNamespace = async (namespace: string, bindings: Record<string, unknown> = {}) => {
+export async function renderKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
   const deployDir = abs(`deploy/${namespace}`);
   const renderDir = abs(`tmp/krane/${namespace}`);
   await fs.emptyDir(renderDir);
@@ -32,9 +42,9 @@ export const renderKraneNamespace = async (namespace: string, bindings: Record<s
   await $`krane render --filenames=${deployDir} --bindings=${JSON.stringify(bindings)} > ${renderDir}/rendered.yaml`;
 
   return renderDir;
-};
+}
 
-export const deployKraneNamespace = async (namespace: string, bindings: Record<string, unknown> = {}) => {
+export async function deployKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
   $.env.KUBECTL_CONTEXT ??= "orbstack";
   const renderDir = await renderKraneNamespace(namespace, bindings);
   await $`kubectl --context="$KUBECTL_CONTEXT" create namespace ${namespace} || true`;
@@ -42,4 +52,4 @@ export const deployKraneNamespace = async (namespace: string, bindings: Record<s
   if (!isCI) {
     await $`krane restart ${namespace} "$KUBECTL_CONTEXT"`;
   }
-};
+}
