@@ -13,6 +13,18 @@ var (
 		Description: "Whether to enable OpenTelemetry",
 	}
 
+	FlagTelemetryTrace = flag.Flag[bool]{
+		Name:        "telemetry-trace",
+		Default:     true,
+		Description: "Whether to enable tracing if telemetry is enabled",
+	}
+
+	FlagTelemetryMetric = flag.Flag[bool]{
+		Name:        "telemetry-metric",
+		Default:     true,
+		Description: "Whether to enable metrics if telemetry is enabled",
+	}
+
 	FlagTelemetryShutdownTimeout = flag.Flag[time.Duration]{
 		Name:        "telemetry-shutdown-timeout",
 		Default:     5 * time.Second,

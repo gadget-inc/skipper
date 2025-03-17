@@ -22,6 +22,10 @@ import (
 var Meter = otel.Meter("github.com/gadget-inc/skipper")
 
 func initMetrics(ctx context.Context, res *resource.Resource) func(context.Context) error {
+	if !FlagTelemetryMetric.Value() {
+		return func(context.Context) error { return nil }
+	}
+
 	prometheusRegistry := prometheus.NewRegistry()
 	prometheusExporter, err := prometheusExporter.New(
 		prometheusExporter.WithNamespace("skipper"),
@@ -66,6 +70,8 @@ func initMetrics(ctx context.Context, res *resource.Resource) func(context.Conte
 			log.Error(ctx, "failed to serve prometheus metrics", key.Error.Field(err))
 		}
 	}()
+
+	log.Info(ctx, "metrics enabled")
 
 	return func(ctx context.Context) error {
 		err := promServer.Shutdown(ctx)

@@ -43,6 +43,10 @@ func (c attrsContextSpanProcessor) OnStart(ctx context.Context, s sdktrace.ReadW
 }
 
 func initTracing(ctx context.Context, res *resource.Resource) func(context.Context) error {
+	if !FlagTelemetryTrace.Value() {
+		return func(context.Context) error { return nil }
+	}
+
 	traceExporter, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
 		log.Error(ctx, "failed to create otlptrace exporter", key.Error.Field(err))
@@ -78,6 +82,8 @@ func initTracing(ctx context.Context, res *resource.Resource) func(context.Conte
 			})
 		}
 	})
+
+	log.Info(ctx, "tracing enabled")
 
 	return traceProvider.Shutdown
 }
