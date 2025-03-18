@@ -45,6 +45,13 @@ var (
 		Help:      "The number of functions that are waiting for an unassigned pod",
 	}, []string{"function_deployment"})
 
+	assignmentsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "skipper",
+		Subsystem: "controller",
+		Name:      "assignments_total",
+		Help:      "The number of times the controller has assigned a pod to a function",
+	}, []string{"function_deployment"})
+
 	scaleUpsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
@@ -287,6 +294,8 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
+
+	assignmentsTotal.WithLabelValues(fn.Deployment).Inc()
 
 GET_UNASSIGNED_POD:
 	var pod *v1.Pod
