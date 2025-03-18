@@ -179,10 +179,6 @@ func (k groupValueKey) Attributes(value GroupValue) []attribute.KeyValue {
 	return attrs
 }
 
-func (k groupValueKey) AttributesSet(value GroupValue) attribute.Set {
-	return attribute.NewSet(k.Attributes(value)...)
-}
-
 type podKey struct{ key }
 
 var _ GroupKey[*v1.Pod] = podKey{}
@@ -212,10 +208,6 @@ func (k podKey) Attributes(value *v1.Pod) []attribute.KeyValue {
 	}
 }
 
-func (k podKey) AttributesSet(value *v1.Pod) attribute.Set {
-	return attribute.NewSet(k.Attributes(value)...)
-}
-
 type deploymentKey struct{ key }
 
 var _ GroupKey[*appsv1.Deployment] = deploymentKey{}
@@ -241,10 +233,6 @@ func (k deploymentKey) Attributes(value *appsv1.Deployment) []attribute.KeyValue
 		attribute.String(k.Underscored+".name", value.Name),
 		attribute.String(k.Underscored+".namespace", value.Namespace),
 	}
-}
-
-func (k deploymentKey) AttributesSet(value *appsv1.Deployment) attribute.Set {
-	return attribute.NewSet(k.Attributes(value)...)
 }
 
 type replicaSetKey struct{ key }
@@ -278,10 +266,6 @@ func (k replicaSetKey) Attributes(value *appsv1.ReplicaSet) []attribute.KeyValue
 	}
 }
 
-func (k replicaSetKey) AttributesSet(value *appsv1.ReplicaSet) attribute.Set {
-	return attribute.NewSet(k.Attributes(value)...)
-}
-
 type mapStringString struct{ key }
 
 var _ GroupKey[map[string]string] = mapStringString{}
@@ -311,10 +295,6 @@ func (k mapStringString) Attributes(value map[string]string) []attribute.KeyValu
 		attributes = append(attributes, attribute.String(k.Underscored+"."+mapKey, v))
 	}
 	return attributes
-}
-
-func (k mapStringString) AttributesSet(value map[string]string) attribute.Set {
-	return attribute.NewSet(k.Attributes(value)...)
 }
 
 type requestKey struct{ key }
@@ -348,10 +328,6 @@ func (r requestKey) Attributes(value *http.Request) []attribute.KeyValue {
 	}
 }
 
-func (k requestKey) AttributesSet(value *http.Request) attribute.Set {
-	return attribute.NewSet(k.Attributes(value)...)
-}
-
 type responseKey struct{ key }
 
 var _ GroupKey[*http.Response] = responseKey{}
@@ -379,8 +355,4 @@ func (r responseKey) Attributes(value *http.Response) []attribute.KeyValue {
 		attribute.String(r.Underscored+".status", value.Status),
 		attribute.Int64(r.Underscored+".content_length", value.ContentLength),
 	}
-}
-
-func (k responseKey) AttributesSet(value *http.Response) attribute.Set {
-	return attribute.NewSet(k.Attributes(value)...)
 }

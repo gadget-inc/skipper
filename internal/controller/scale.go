@@ -44,24 +44,17 @@ var (
 		Help:      "The number of functions that are waiting for an unassigned pod",
 	}, []string{"function_deployment"})
 
-	heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "skipper",
-		Subsystem: "controller",
-		Name:      "heartbeats",
-		Help:      "The number of heartbeats received by the controller",
-	}, []string{"function_deployment"})
-
 	scaleUpCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
-		Name:      "scale_ups",
+		Name:      "scale_ups_total",
 		Help:      "The number of times the controller has scaled up a function",
 	}, []string{"function_deployment"})
 
 	scaleDownCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
-		Name:      "scale_downs",
+		Name:      "scale_downs_total",
 		Help:      "The number of times the controller has scaled down a function",
 	}, []string{"function_deployment"})
 )

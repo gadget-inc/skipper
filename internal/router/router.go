@@ -28,7 +28,7 @@ var (
 	requestsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
-		Name:      "requests",
+		Name:      "requests_total",
 		Help:      "The number of requests handled by the router",
 	}, []string{"function_deployment"})
 
@@ -42,7 +42,7 @@ var (
 	heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
-		Name:      "heartbeats",
+		Name:      "heartbeats_total",
 		Help:      "The number of heartbeats sent by the router",
 	}, []string{"function_deployment"})
 )

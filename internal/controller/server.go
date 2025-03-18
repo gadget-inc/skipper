@@ -14,7 +14,16 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/goccy/go-json"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "skipper",
+	Subsystem: "controller",
+	Name:      "heartbeats_total",
+	Help:      "The number of heartbeats received by the controller",
+}, []string{"function_deployment"})
 
 func (ctrl *Controller) Handler() http.Handler {
 	mux := http.NewServeMux()
