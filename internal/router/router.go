@@ -18,26 +18,33 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v3"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/metric"
 )
 
 var (
-	requestsCounter = unwrap(telemetry.Meter.Int64Counter("router.requests",
-		metric.WithDescription("The number of requests handled by the router"),
-		metric.WithUnit("{request}"),
-	))
+	requestsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "skipper",
+		Subsystem: "router",
+		Name:      "requests",
+		Help:      "The number of requests handled by the router",
+	}, []string{"function_deployment"})
 
-	requestsInFlightCounter = unwrap(telemetry.Meter.Int64UpDownCounter("router.requests_in_flight",
-		metric.WithDescription("The number of requests that are currently being handled by the router"),
-		metric.WithUnit("{request}"),
-	))
+	requestsInFlightCounter = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "skipper",
+		Subsystem: "router",
+		Name:      "requests_in_flight",
+		Help:      "The number of requests that are currently being handled by the router",
+	}, []string{"function_deployment"})
 
-	heartbeatsCounter = unwrap(telemetry.Meter.Int64Counter("router.heartbeats",
-		metric.WithDescription("The number of heartbeats sent by the router"),
-		metric.WithUnit("{heartbeat}"),
-	))
+	heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "skipper",
+		Subsystem: "router",
+		Name:      "heartbeats",
+		Help:      "The number of heartbeats sent by the router",
+	}, []string{"function_deployment"})
 )
 
 type Router struct {
@@ -84,7 +91,7 @@ func (r *Router) Start(ctx context.Context) {
 				r.heartbeats.Delete(fn) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
-				heartbeatsCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+				heartbeatsCounter.WithLabelValues(fn.Deployment).Inc()
 			}
 			return true
 		})
@@ -111,7 +118,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	ctx := log.With(req.Context(), key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
-	requestsCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+	requestsCounter.WithLabelValues(fn.Deployment).Inc()
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
@@ -128,7 +135,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests++
-		requestsInFlightCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+		requestsInFlightCounter.WithLabelValues(fn.Deployment).Inc()
 		return heartbeat, false
 	})
 
@@ -137,7 +144,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests--
-		requestsInFlightCounter.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+		requestsInFlightCounter.WithLabelValues(fn.Deployment).Dec()
 		return heartbeat, false
 	})
 

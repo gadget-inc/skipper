@@ -19,8 +19,9 @@ import (
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/goccy/go-json"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	appsv1 "k8s.io/api/apps/v1"
@@ -36,25 +37,33 @@ var (
 	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
 	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
 
-	waitingForUnassignedPodCounter = unwrap(telemetry.Meter.Int64UpDownCounter("controller.waiting_for_unassigned_pods",
-		metric.WithDescription("The number of functions that are waiting for an unassigned pod"),
-		metric.WithUnit("{function}"),
-	))
+	waitingForUnassignedPodCounter = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "skipper",
+		Subsystem: "controller",
+		Name:      "waiting_for_unassigned_pods",
+		Help:      "The number of functions that are waiting for an unassigned pod",
+	}, []string{"function_deployment"})
 
-	heartbeatsCounter = unwrap(telemetry.Meter.Int64Counter("controller.heartbeats",
-		metric.WithDescription("The number of heartbeats received by the controller"),
-		metric.WithUnit("{heartbeat}"),
-	))
+	heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "skipper",
+		Subsystem: "controller",
+		Name:      "heartbeats",
+		Help:      "The number of heartbeats received by the controller",
+	}, []string{"function_deployment"})
 
-	scaleUpCounter = unwrap(telemetry.Meter.Int64Counter("controller.scale_ups",
-		metric.WithDescription("The number of times the controller has scaled a function up"),
-		metric.WithUnit("{scale_up}"),
-	))
+	scaleUpCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "skipper",
+		Subsystem: "controller",
+		Name:      "scale_ups",
+		Help:      "The number of times the controller has scaled up a function",
+	}, []string{"function_deployment"})
 
-	scaleDownCounter = unwrap(telemetry.Meter.Int64Counter("controller.scale_downs",
-		metric.WithDescription("The number of times the controller has scaled a function down"),
-		metric.WithUnit("{scale_down}"),
-	))
+	scaleDownCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "skipper",
+		Subsystem: "controller",
+		Name:      "scale_downs",
+		Help:      "The number of times the controller has scaled down a function",
+	}, []string{"function_deployment"})
 )
 
 func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) error {
@@ -251,7 +260,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 
 	if desiredInstances > currentInstances {
 		log.Info(ctx, "scaling function up", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		scaleUpCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+		scaleUpCounter.WithLabelValues(fn.Deployment).Add(float64(desiredInstances - currentInstances))
 
 		for range desiredInstances - currentInstances {
 			instance, err := ctrl.assignPod(ctx, fn)
@@ -262,7 +271,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		}
 	} else {
 		log.Info(ctx, "scaling function down", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		scaleDownCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+		scaleDownCounter.WithLabelValues(fn.Deployment).Add(float64(currentInstances - desiredInstances))
 
 		// sort instances by assigned at in ascending order
 		slices.SortFunc(instances, func(a, b *function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
@@ -393,8 +402,8 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	waitingForUnassignedPodCounter.Add(ctx, 1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
-	defer waitingForUnassignedPodCounter.Add(ctx, -1, metric.WithAttributeSet(key.Function.AttributesSet(fn)))
+	waitingForUnassignedPodCounter.WithLabelValues(fn.Deployment).Inc()
+	defer waitingForUnassignedPodCounter.WithLabelValues(fn.Deployment).Dec()
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		unassignedPods, err := ctrl.getUnassignedPods(fn)

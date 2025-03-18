@@ -10,52 +10,17 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
-	prometheus "github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
-	prometheusExporter "go.opentelemetry.io/otel/exporters/prometheus"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/resource"
 )
 
-var Meter = otel.Meter("github.com/gadget-inc/skipper")
-
-func initMetrics(ctx context.Context, res *resource.Resource) func(context.Context) error {
+func initMetrics(ctx context.Context) func(context.Context) error {
 	if !FlagTelemetryMetric.Value() {
 		return func(context.Context) error { return nil }
 	}
 
-	prometheusRegistry := prometheus.NewRegistry()
-	prometheusExporter, err := prometheusExporter.New(
-		prometheusExporter.WithNamespace("skipper"),
-		prometheusExporter.WithRegisterer(prometheusRegistry), // don't use the default registry to avoid process and go collector metrics
-	)
-	if err != nil {
-		log.Error(ctx, "failed to create prometheus exporter", key.Error.Field(err))
-		return func(context.Context) error { return nil }
-	}
-
-	opts := []sdkmetric.Option{
-		sdkmetric.WithResource(res),
-		sdkmetric.WithReader(prometheusExporter),
-	}
-
-	if FlagTelemetryMetricOTLP.Value() {
-		metricExporter, err := otlpmetrichttp.New(ctx)
-		if err != nil {
-			log.Error(ctx, "failed to create otlp metric exporter", key.Error.Field(err))
-			// keep going and just use the prometheus exporter
-		} else {
-			opts = append(opts, sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter)))
-		}
-	}
-
-	metricProvider := sdkmetric.NewMeterProvider(opts...)
-	otel.SetMeterProvider(metricProvider)
-
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(prometheusRegistry, promhttp.HandlerOpts{
+	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		ProcessStartTime: time.Now(),
 		ErrorLog:         log.StdLogger(slog.LevelError),
 	}))
@@ -72,12 +37,5 @@ func initMetrics(ctx context.Context, res *resource.Resource) func(context.Conte
 	}()
 
 	log.Info(ctx, "metrics enabled")
-
-	return func(ctx context.Context) error {
-		err := promServer.Shutdown(ctx)
-		if err != nil {
-			log.Error(ctx, "failed to shutdown prometheus server", key.Error.Field(err))
-		}
-		return metricProvider.Shutdown(ctx)
-	}
+	return promServer.Shutdown
 }

@@ -45,7 +45,7 @@ func Init(ctx context.Context, component string) func() {
 	}
 
 	shutdownTracing := initTracing(ctx, res)
-	shutdownMetrics := initMetrics(ctx, res)
+	shutdownMetrics := initMetrics(ctx)
 	log.Info(ctx, "telemetry enabled", slog.String("component", component))
 
 	return func() {

@@ -14,7 +14,6 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/goccy/go-json"
-	"go.opentelemetry.io/otel/metric"
 )
 
 func (ctrl *Controller) Handler() http.Handler {
@@ -128,7 +127,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	for _, heartbeat := range heartbeats {
-		heartbeatsCounter.Add(req.Context(), 1, metric.WithAttributeSet(key.Heartbeat.AttributesSet(heartbeat)))
+		heartbeatsCounter.WithLabelValues(heartbeat.Function.Deployment).Inc()
 
 		ctrl.routerHeartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
 			if !loaded {
