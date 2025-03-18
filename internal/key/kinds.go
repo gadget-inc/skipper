@@ -128,7 +128,7 @@ func (k errorKey) Field(value error) slog.Attr {
 	if value == nil {
 		return slog.Attr{}
 	}
-	return slog.String(k.Underscored, value.Error())
+	return slog.Any(k.Underscored, value)
 }
 
 func (k errorKey) Attribute(value error) attribute.KeyValue {

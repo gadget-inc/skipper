@@ -42,6 +42,27 @@ func (c attrsContextSpanProcessor) OnStart(ctx context.Context, s sdktrace.ReadW
 	c.SpanProcessor.OnStart(ctx, s)
 }
 
+func logHook(ctx context.Context, record *slog.Record) {
+	span := trace.SpanFromContext(ctx)
+	spanContext := span.SpanContext()
+	if spanContext.IsValid() {
+		record.AddAttrs(slog.String("trace_id", spanContext.TraceID().String()), slog.String("span_id", spanContext.SpanID().String()))
+	}
+
+	if span.IsRecording() && record.Level == slog.LevelError {
+		record.Attrs(func(attr slog.Attr) bool {
+			if attr.Key == key.Error.Underscored {
+				if err, ok := attr.Value.Any().(error); ok {
+					span.RecordError(err)
+					span.SetStatus(codes.Error, err.Error())
+				}
+				return false
+			}
+			return true
+		})
+	}
+}
+
 func initTracing(ctx context.Context, res *resource.Resource) func(context.Context) error {
 	if !FlagTelemetryTrace.Value() {
 		return func(context.Context) error { return nil }
@@ -62,27 +83,7 @@ func initTracing(ctx context.Context, res *resource.Resource) func(context.Conte
 	otel.SetTracerProvider(traceProvider)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
-	log.AddHook(func(ctx context.Context, record *slog.Record) {
-		span := trace.SpanFromContext(ctx)
-		spanContext := span.SpanContext()
-		if spanContext.IsValid() {
-			record.AddAttrs(slog.String("trace_id", spanContext.TraceID().String()), slog.String("span_id", spanContext.SpanID().String()))
-		}
-
-		if span.IsRecording() && record.Level == slog.LevelError {
-			record.Attrs(func(attr slog.Attr) bool {
-				if attr.Key == key.Error.Underscored {
-					if err, ok := attr.Value.Any().(error); ok {
-						span.RecordError(err)
-						span.SetStatus(codes.Error, err.Error())
-					}
-					return false
-				}
-				return true
-			})
-		}
-	})
-
+	log.AddHook(logHook)
 	log.Info(ctx, "tracing enabled")
 
 	return traceProvider.Shutdown

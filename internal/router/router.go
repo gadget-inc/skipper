@@ -25,21 +25,21 @@ import (
 )
 
 var (
-	requestsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	requestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "requests_total",
 		Help:      "The number of requests handled by the router",
 	}, []string{"function_deployment"})
 
-	requestsInFlightCounter = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	requestsInFlight = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "requests_in_flight",
 		Help:      "The number of requests that are currently being handled by the router",
 	}, []string{"function_deployment"})
 
-	heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	heartbeatsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "heartbeats_total",
@@ -91,7 +91,7 @@ func (r *Router) Start(ctx context.Context) {
 				r.heartbeats.Delete(fn) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
-				heartbeatsCounter.WithLabelValues(fn.Deployment).Inc()
+				heartbeatsTotal.WithLabelValues(fn.Deployment).Inc()
 			}
 			return true
 		})
@@ -118,7 +118,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	ctx := log.With(req.Context(), key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
-	requestsCounter.WithLabelValues(fn.Deployment).Inc()
+	requestsTotal.WithLabelValues(fn.Deployment).Inc()
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
@@ -135,7 +135,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests++
-		requestsInFlightCounter.WithLabelValues(fn.Deployment).Inc()
+		requestsInFlight.WithLabelValues(fn.Deployment).Inc()
 		return heartbeat, false
 	})
 
@@ -144,7 +144,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests--
-		requestsInFlightCounter.WithLabelValues(fn.Deployment).Dec()
+		requestsInFlight.WithLabelValues(fn.Deployment).Dec()
 		return heartbeat, false
 	})
 

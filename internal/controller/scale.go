@@ -26,6 +26,7 @@ import (
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -37,21 +38,21 @@ var (
 	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
 	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
 
-	waitingForUnassignedPodCounter = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	waitingForUnassignedPods = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "waiting_for_unassigned_pods",
 		Help:      "The number of functions that are waiting for an unassigned pod",
 	}, []string{"function_deployment"})
 
-	scaleUpCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	scaleUpsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "scale_ups_total",
 		Help:      "The number of times the controller has scaled up a function",
 	}, []string{"function_deployment"})
 
-	scaleDownCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	scaleDownsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "scale_downs_total",
@@ -253,7 +254,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 
 	if desiredInstances > currentInstances {
 		log.Info(ctx, "scaling function up", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		scaleUpCounter.WithLabelValues(fn.Deployment).Add(float64(desiredInstances - currentInstances))
+		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(desiredInstances - currentInstances))
 
 		for range desiredInstances - currentInstances {
 			instance, err := ctrl.assignPod(ctx, fn)
@@ -264,7 +265,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		}
 	} else {
 		log.Info(ctx, "scaling function down", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		scaleDownCounter.WithLabelValues(fn.Deployment).Add(float64(currentInstances - desiredInstances))
+		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(currentInstances - desiredInstances))
 
 		// sort instances by assigned at in ascending order
 		slices.SortFunc(instances, func(a, b *function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
@@ -325,17 +326,16 @@ GET_UNASSIGNED_POD:
 	log.Info(ctx, "assigning pod", key.Pod.Field(pod))
 	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
-		if errors.Is(err, jsonpatch.ErrTestFailed) {
+		if apierrors.IsInvalid(err) || errors.Is(err, jsonpatch.ErrTestFailed) {
 			log.Warn(ctx, "failed to patch pod, retrying", key.Error.Field(err), key.Pod.Field(pod))
+			// there are many reasons this can fail, but one hard to debug one is that the pod doesn't have any annotations
+			// see: https://stackoverflow.com/a/57480206, https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12
 			goto GET_UNASSIGNED_POD
 		}
-		// there are many reasons this can fail, but one hard to debug
-		// one is that the pod doesn't have any annotations, causing the
-		// json patch to fail: https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12
 		return nil, fmt.Errorf("failed to patch pod: %w", err)
 	}
 
-	// at this point, terminate the pod if we fail to finish assigning the function
+	// delete the pod if we fail to assign the function
 	defer func() {
 		if err != nil {
 			if deleteErr := ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); deleteErr != nil {
@@ -395,8 +395,8 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	waitingForUnassignedPodCounter.WithLabelValues(fn.Deployment).Inc()
-	defer waitingForUnassignedPodCounter.WithLabelValues(fn.Deployment).Dec()
+	waitingForUnassignedPods.WithLabelValues(fn.Deployment).Inc()
+	defer waitingForUnassignedPods.WithLabelValues(fn.Deployment).Dec()
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		unassignedPods, err := ctrl.getUnassignedPods(fn)
