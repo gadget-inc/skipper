@@ -419,7 +419,7 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 			return nil, fmt.Errorf("failed to list unassigned pods: %w", err)
 		}
 		if len(unassignedPods) == 0 {
-			log.Debug(ctx, "no unassigned pods")
+			log.Trace(ctx, "no unassigned pods")
 			return nil, nil
 		}
 		return unassignedPods[rand.Intn(len(unassignedPods))], nil
