@@ -89,6 +89,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 	}
 
 	fnInstances := make(map[function.Function][]*function.Instance)
+	terminatedStaleInstances := make(map[string]int32)
 
 	for _, pod := range pods {
 		instance, err := instanceFromPod(pod)
@@ -162,9 +163,14 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 		ctx = log.With(ctx, key.ReplicaSet.Field(activeReplicaSet))
 
-		if activeReplicaSet != nil && activeReplicaSet.Status.AvailableReplicas < max(1, activeReplicaSet.Status.Replicas/FlagAvailableReplicaDivisor.Value()) {
-			log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance")
-			continue
+		if activeReplicaSet != nil {
+			minAvailableReplicas := max(1, activeReplicaSet.Status.Replicas/FlagAvailableReplicaDivisor.Value())
+			availableReplicas := activeReplicaSet.Status.AvailableReplicas - terminatedStaleInstances[activeReplicaSet.Name]
+			if availableReplicas < minAvailableReplicas {
+				log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance")
+				continue
+			}
+			terminatedStaleInstances[activeReplicaSet.Name]++
 		}
 
 		scaleMu, _ := ctrl.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
@@ -332,7 +338,6 @@ GET_UNASSIGNED_POD:
 		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
 	]`)
 
-	log.Info(ctx, "assigning pod", key.Pod.Field(pod))
 	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		if apierrors.IsInvalid(err) || errors.Is(err, jsonpatch.ErrTestFailed) {
@@ -375,6 +380,7 @@ GET_UNASSIGNED_POD:
 	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
+	log.Info(ctx, "assigning pod", key.Pod.Field(pod))
 	var res *http.Response
 	res, err = otelhttp.DefaultClient.Do(req)
 	if err != nil {
@@ -413,7 +419,7 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 			return nil, fmt.Errorf("failed to list unassigned pods: %w", err)
 		}
 		if len(unassignedPods) == 0 {
-			log.Warn(ctx, "no unassigned pods")
+			log.Debug(ctx, "no unassigned pods")
 			return nil, nil
 		}
 		return unassignedPods[rand.Intn(len(unassignedPods))], nil
