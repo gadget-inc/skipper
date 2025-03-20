@@ -24,6 +24,7 @@ func (instance *Instance) Fields() []slog.Attr {
 		key.Function.Field(instance.Function),
 		key.Name.Field(instance.Name),
 		key.Addr.Field(instance.Addr),
+		slog.String("replica_set", instance.ReplicaSet),
 		key.AssignedAt.Field(instance.AssignedAt),
 		key.ReadyAt.Field(instance.ReadyAt),
 		key.CPUUsageMilli.Field(instance.CPUUsageMilli),
