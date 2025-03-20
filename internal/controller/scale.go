@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"math/rand"
 	"net"
@@ -167,7 +168,11 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			minAvailableReplicas := max(1, activeReplicaSet.Status.Replicas/FlagAvailableReplicaDivisor.Value())
 			availableReplicas := activeReplicaSet.Status.AvailableReplicas - terminatedStaleInstances[activeReplicaSet.Name]
 			if availableReplicas < minAvailableReplicas {
-				log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance")
+				log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance",
+					slog.Int("terminated_stale_instances", int(terminatedStaleInstances[activeReplicaSet.Name])),
+					slog.Int("min_available_replicas", int(minAvailableReplicas)),
+					slog.Int("available_replicas", int(availableReplicas)),
+				)
 				continue
 			}
 			terminatedStaleInstances[activeReplicaSet.Name]++
