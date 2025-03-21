@@ -1,5 +1,9 @@
 # Skipper
 
+Skipper is a Kubernetes controller that turns Kubernetes deployments into a pool of functions that can be assigned to tenants.
+
+## Overview
+
 Assume you have the following echo server:
 
 ```js
@@ -53,7 +57,7 @@ spec:
 ```
 
 > [!NOTE]
-> The `skipper/port` annotation isn't required, but your deployment must have at least one annotation defined, otherwise Skipper won't be able to add annotations to your pods because the JSON Patch will fail. See [this issue](https://github.com/kubernetes-sigs/kustomize/issues/2986#issuecomment-692891118) for more details.
+> The `skipper/port` annotation isn't required, but your deployment must have at least one annotation defined, otherwise Skipper won't be able to atomically add annotations to your pods because the JSON Patch will fail. See [this Stack Overflow answer](https://stackoverflow.com/a/57480206) and [this section of the JSON Patch RFC](https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12) for more details.
 
 This deployment can now be used as a pool of echo servers that are ready to be assigned to tenants. You can assign one of these echo servers to a tenant by sending a request to Skipper's router with the `x-skipper-function` header:
 
@@ -82,4 +86,4 @@ console.log(body);
 // }
 ```
 
-Skipper will assign one of the echo servers to the tenant and return the response from the assigned echo server.
+Skipper will assign one of the echo servers to the tenant and return the response from the assigned echo server. All subsequent requests to the same function will be sent to the same echo server. If the function doesn't receive a request within the `SKIPPER_CONTROLLER_HEARTBEAT_TIMEOUT` (default: 90s), the pod will be terminated.
