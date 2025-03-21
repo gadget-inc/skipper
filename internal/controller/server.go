@@ -13,7 +13,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/telemetry"
-	"github.com/goccy/go-json"
+	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -82,7 +82,7 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(rw).Encode(instance); err != nil {
+	if err := json.MarshalWrite(rw, instance); err != nil {
 		log.Error(ctx, "failed to encode instance response", key.Error.Field(err))
 	}
 }
@@ -115,7 +115,7 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(rw).Encode(instances); err != nil {
+	if err := json.MarshalWrite(rw, instances); err != nil {
 		log.Error(ctx, "failed to encode scale response", key.Error.Field(err))
 	}
 }
@@ -129,7 +129,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	var heartbeats []function.Heartbeat
-	if err := json.NewDecoder(req.Body).Decode(&heartbeats); err != nil {
+	if err := json.UnmarshalRead(req.Body, &heartbeats); err != nil {
 		log.Error(req.Context(), "failed to decode heartbeats", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return

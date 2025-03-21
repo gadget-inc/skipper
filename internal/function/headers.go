@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gadget-inc/skipper/internal/key"
-	"github.com/goccy/go-json"
+	"github.com/go-json-experiment/json"
 )
 
 func RemoveHeader(r *http.Request) {

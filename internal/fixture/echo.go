@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gadget-inc/skipper/internal/function"
-	"github.com/goccy/go-json"
+	"github.com/go-json-experiment/json"
 )
 
 func NewEchoFunction() function.Function {
@@ -36,6 +36,6 @@ func (er *EchoResponse) Header() http.Header {
 
 func ParseEchoResponse(res *http.Response) (EchoResponse, error) {
 	var response EchoResponse
-	err := json.NewDecoder(res.Body).Decode(&response)
+	err := json.UnmarshalRead(res.Body, &response)
 	return response, err
 }

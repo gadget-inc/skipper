@@ -12,7 +12,7 @@ import (
 	"aidanwoods.dev/go-paseto"
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
-	"github.com/goccy/go-json"
+	"github.com/go-json-experiment/json"
 	"github.com/shoenig/test/must"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"

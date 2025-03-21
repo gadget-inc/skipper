@@ -9,7 +9,7 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
-	"github.com/goccy/go-json"
+	"github.com/go-json-experiment/json"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -57,7 +57,7 @@ func (c *httpClient) Instance(ctx context.Context, fn function.Function) (instan
 		return nil, fmt.Errorf("instance request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
 	}
 
-	if err := json.NewDecoder(res.Body).Decode(&instance); err != nil {
+	if err := json.UnmarshalRead(res.Body, &instance); err != nil {
 		return nil, fmt.Errorf("failed to decode instance response: %w", err)
 	}
 
@@ -115,7 +115,7 @@ func (c *httpClient) Scale(ctx context.Context, fn function.Function, desiredIns
 	}
 
 	var instances []*function.Instance
-	if err := json.NewDecoder(res.Body).Decode(&instances); err != nil {
+	if err := json.UnmarshalRead(res.Body, &instances); err != nil {
 		return nil, fmt.Errorf("failed to decode scale response: %w", err)
 	}
 

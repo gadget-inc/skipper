@@ -19,7 +19,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
-	"github.com/goccy/go-json"
+	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
