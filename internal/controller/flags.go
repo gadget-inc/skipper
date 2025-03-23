@@ -120,13 +120,13 @@ var (
 		Default:     90 * time.Second,
 	}
 
-	FlagAvailableReplicaDivisor = flag.Flag[int32]{
+	FlagAvailableReplicaDivisor = flag.Flag[float32]{
 		Name:        "controller-available-replica-divisor",
 		Description: "The divisor for the number of available replicas needed to terminate a stale instance.",
-		Default:     2,
-		Action: func(value int32) error {
+		Default:     1.2,
+		Action: func(value float32) error {
 			if value < 1 {
-				return errors.New("available replica divisor must be greater than 0")
+				return errors.New("available replica divisor must be greater than 1")
 			}
 			return nil
 		},

@@ -165,7 +165,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 		ctx = log.With(ctx, key.ReplicaSet.Field(activeReplicaSet))
 
 		if activeReplicaSet != nil {
-			minAvailableReplicas := max(1, activeReplicaSet.Status.Replicas/FlagAvailableReplicaDivisor.Value())
+			minAvailableReplicas := max(1, int32(float32(activeReplicaSet.Status.Replicas)/FlagAvailableReplicaDivisor.Value()))
 			availableReplicas := activeReplicaSet.Status.AvailableReplicas - terminatedStaleInstances[activeReplicaSet.Name]
 			if availableReplicas < minAvailableReplicas {
 				log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance",
