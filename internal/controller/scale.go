@@ -226,7 +226,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 					// the controller hasn't been running long enough to
 					// record recommendations or receive heartbeats,
 					// so don't scale anything down yet
-					log.Debug(ctx, "skipping downscale because controller hasn't been running long enough", slog.Time("started_at", ctrl.startedAt))
+					log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", ctrl.startedAt))
 					return
 				}
 
