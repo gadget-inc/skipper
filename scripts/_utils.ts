@@ -47,7 +47,7 @@ export async function renderKraneNamespace(namespace: string, bindings: Record<s
 export async function deployKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
   $.env.KUBECTL_CONTEXT ??= "orbstack";
   const renderDir = await renderKraneNamespace(namespace, bindings);
-  await $`kubectl --context="$KUBECTL_CONTEXT" create namespace ${namespace} || true`;
+  await $`kubectl --context="$KUBECTL_CONTEXT" create namespace ${namespace}`.nothrow().quiet();
   await $`krane deploy ${namespace} "$KUBECTL_CONTEXT" -f ${renderDir}/*`;
   if (!isCI) {
     await $`krane restart ${namespace} "$KUBECTL_CONTEXT"`;
