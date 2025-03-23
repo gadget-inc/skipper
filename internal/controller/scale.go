@@ -222,6 +222,14 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			currentInstances := len(instances)
 			if desiredInstances < currentInstances {
 				// we're scaling down
+				if time.Since(ctrl.startedAt) < FlagHPADownscaleStabilization.Value() {
+					// the controller hasn't been running long enough to
+					// record recommendations or receive heartbeats,
+					// so don't scale anything down yet
+					log.Debug(ctx, "skipping downscale because controller hasn't been running long enough", slog.Time("started_at", ctrl.startedAt))
+					return
+				}
+
 				if desiredInstances == 0 {
 					// we're scaling to 0, so forget about this function after we're done
 					defer ctrl.scaleMu.Delete(fn)

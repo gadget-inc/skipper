@@ -272,6 +272,28 @@ func TestScaleNamespace(t *testing.T) {
 			},
 		},
 		{
+			name: "heartbeat timeout but just started",
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+				c.startedAt = time.Now()
+
+				fn := fixture.NewFunction()
+				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				fakeKubernetes.Tracker().Add(assignedPod)
+
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 1, pods.Items)
+				ensurePodIsAssignedToFunction(t, pods.Items[0], fn)
+			},
+		},
+		{
 			name: "stale instance",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
@@ -352,13 +374,18 @@ func TestScaleNamespace(t *testing.T) {
 			t.Cleanup(cancel)
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
-			metricsClientset := fakekubernetesmetrics.NewSimpleClientset()
-			ctrl := New(nil, fakeKubernetes, metricsClientset)
+			fakeKubernetesMetrics := fakekubernetesmetrics.NewSimpleClientset()
+			ctrl := New(nil, fakeKubernetes, fakeKubernetesMetrics)
 
-			fn := tc.setup(t, ctrl, fakeKubernetes, metricsClientset)
+			fn := tc.setup(t, ctrl, fakeKubernetes, fakeKubernetesMetrics)
 
 			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
+
+			if ctrl.startedAt.IsZero() {
+				// if the test doesn't set the startedAt time, assume the test is testing behavior that happens after the controller has been running for a while
+				ctrl.startedAt = time.Now().Add(-(FlagHPADownscaleStabilization.Value() + time.Second))
+			}
 
 			err = ctrl.scaleNamespace(ctx, fn.Namespace)
 			if tc.err != nil {
@@ -367,7 +394,7 @@ func TestScaleNamespace(t *testing.T) {
 				must.NoError(t, err)
 			}
 
-			tc.check(t, ctrl, fakeKubernetes, metricsClientset, fn)
+			tc.check(t, ctrl, fakeKubernetes, fakeKubernetesMetrics, fn)
 		})
 	}
 }

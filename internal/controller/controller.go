@@ -40,6 +40,7 @@ type namespaceLister struct {
 
 // TODO: combine these map[function.Function] data structures into a single struct that handles a single function
 type Controller struct {
+	startedAt            time.Time
 	ring                 *hashring.HashRing
 	newClientFunc        NewClientFunc
 	controllerClients    *xsync.MapOf[string, Client]
@@ -75,11 +76,13 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 		go timer.Loop(ctx, FlagScaleInterval.Value(), func(ctx context.Context) error {
 			err := ctrl.scaleNamespace(ctx, namespace)
 			if err != nil {
-				log.Error(ctx, "failed to scale functions", key.Error.Field(err), key.Namespace.Field(namespace))
+				log.Error(ctx, "failed to scale namespace", key.Error.Field(err), key.Namespace.Field(namespace))
 			}
 			return nil
 		})
 	}
+
+	ctrl.startedAt = time.Now()
 
 	return nil
 }
