@@ -57,8 +57,6 @@ jobs:
           nohup stern . --namespace=skipper-test,skipper-test-fixtures --template='{{ printf "%s/%s: %s\n" .Namespace .PodName .Message }}' | tee tmp/logs/stern.log &
 
       - name: Run tests
-        env:
-          LOG_LEVEL: debug
         run: |
           mkdir -p tmp/logs/
           task test | tee tmp/logs/test.log
