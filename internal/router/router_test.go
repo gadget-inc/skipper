@@ -339,7 +339,7 @@ func TestRetries(t *testing.T) {
 	testCases := []struct {
 		name          string
 		maxAttempts   int
-		getErrs       []error
+		instanceErrs  []error
 		roundTripErrs []error
 		check         func(*testing.T, function.Function, *httptest.ResponseRecorder)
 	}{
@@ -352,9 +352,9 @@ func TestRetries(t *testing.T) {
 			},
 		},
 		{
-			name:        "controller.get arbitrary error",
-			maxAttempts: 2,
-			getErrs:     []error{errors.New("arbitrary error")},
+			name:         "controller.get arbitrary error",
+			maxAttempts:  2,
+			instanceErrs: []error{errors.New("arbitrary error")},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
@@ -370,9 +370,9 @@ func TestRetries(t *testing.T) {
 			},
 		},
 		{
-			name:        "controller.get and round trip errors",
-			maxAttempts: 4,
-			getErrs:     []error{errors.New("arbitrary error")},
+			name:         "ctrl.instance and round trip errors",
+			maxAttempts:  4,
+			instanceErrs: []error{errors.New("arbitrary error")},
 			roundTripErrs: []error{
 				&net.OpError{Op: "dial", Err: errors.New("arbitrary error")},
 			},
@@ -382,9 +382,9 @@ func TestRetries(t *testing.T) {
 			},
 		},
 		{
-			name:          "controller.get and round trip errors exceed max attempts",
+			name:          "ctrl.instance and round trip errors exceed max attempts",
 			maxAttempts:   2,
-			getErrs:       []error{errors.New("arbitrary error")},
+			instanceErrs:  []error{errors.New("arbitrary error")},
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusBadGateway, rw.Code)
@@ -399,12 +399,12 @@ func TestRetries(t *testing.T) {
 
 			fn := fixture.NewFunction()
 
-			getErrsIndex := 0
+			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
 			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
-				if len(tc.getErrs) > 0 && getErrsIndex < len(tc.getErrs) {
-					getErrsIndex++
-					return nil, tc.getErrs[getErrsIndex-1]
+				if len(tc.instanceErrs) > 0 && instanceErrsIndex < len(tc.instanceErrs) {
+					instanceErrsIndex++
+					return nil, tc.instanceErrs[instanceErrsIndex-1]
 				}
 
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
