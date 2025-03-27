@@ -199,11 +199,14 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			defer wg.Done()
 
 			var heartbeat function.Heartbeat
-			if routerHeartbeats, ok := ctrl.routerHeartbeats.Load(fn); ok {
-				heartbeat = routerHeartbeats.Combined() // use the combined heartbeat from all the routers
-			} else {
-				heartbeat.Function = fn // use the empty heartbeat and associate it with the function
-			}
+			ctrl.routerHeartbeats.Compute(fn, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
+				if loaded {
+					heartbeat = routerHeartbeats.Combined() // use the combined heartbeat from all the routers
+				} else {
+					heartbeat.Function = fn // use the empty heartbeat and associate it with the function
+				}
+				return routerHeartbeats, false
+			})
 
 			for _, instance := range instances {
 				if instance.AssignedAt.After(heartbeat.Timestamp) {
