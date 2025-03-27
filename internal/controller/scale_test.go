@@ -240,6 +240,35 @@ func TestScaleNamespace(t *testing.T) {
 			},
 		},
 		{
+			name: "no heartbeat",
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+
+				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				fakeKubernetes.Tracker().Add(assignedPod)
+
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 0, pods.Items)
+
+				_, ok := c.routerHeartbeats.Load(fn)
+				must.False(t, ok)
+
+				_, ok = c.scaleMu.Load(fn)
+				must.False(t, ok)
+
+				_, ok = c.stabilizationWindows.Load(fn)
+				must.False(t, ok)
+			},
+		},
+		{
 			name: "heartbeat timeout",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
