@@ -1,5 +1,9 @@
 <%-
 env ||= {}
+image = "skipper-fixtures-#{name}:#{image_tag}"
+unless image_digest.empty?
+  image += "@#{image_digest}"
+end
 -%>
 apiVersion: apps/v1
 kind: Deployment
@@ -29,7 +33,7 @@ spec:
           emptyDir: {}
       containers:
         - name: <%= name %>
-          image: skipper-fixtures-<%= name %>:<%= image_tag %>
+          image: <%= image %>
           imagePullPolicy: Never
           ports:
             - name: http

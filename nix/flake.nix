@@ -23,6 +23,14 @@
           stern = pkgs.stern;
           task = pkgs.go-task;
 
+          build = pkgs.writeShellScriptBin "build" ''
+            task build "$@"
+          '';
+
+          build-fixtures = pkgs.writeShellScriptBin "build-fixtures" ''
+            task build-fixtures "$@"
+          '';
+
           deploy = pkgs.writeShellScriptBin "deploy" ''
             task deploy "$@"
           '';

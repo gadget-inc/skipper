@@ -19,9 +19,9 @@ export async function currentImageTag() {
   return `sha-${await gitSha()}`;
 }
 
-export async function currentImageDigest(imageRepository: string) {
+export async function currentImageDigest(name: string) {
   const tag = await currentImageTag();
-  return await $`docker inspect --format='{{index .RepoDigests 0}}' ${imageRepository}:${tag}`.then((res) => res.stdout.trim());
+  return await $`docker images --no-trunc --quiet ${name}:${tag}`.then((res) => res.stdout.trim());
 }
 
 export async function currentDockerPlatform() {

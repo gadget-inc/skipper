@@ -6,11 +6,12 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 $.cwd = abs();
 
 const flags = parseArgs(Deno.args, {
-  string: ["repo", "tag", "platform", "cache-from-to"],
+  string: ["registry", "name", "tag", "platform", "cache-from-to"],
   boolean: ["latest", "load", "push", "kind", "provenance"],
   negatable: ["kind"],
   default: {
-    repo: "skipper",
+    registry: "",
+    name: "skipper",
     tag: await currentImageTag(),
     platform: await currentDockerPlatform(),
     kind: isCI,
@@ -22,10 +23,11 @@ const flags = parseArgs(Deno.args, {
   },
 });
 
-const buildFlags = [`--platform=${flags.platform}`, `--tag=${flags.repo}:${flags.tag}`];
+const imageName = flags.registry ? `${flags.registry}/${flags.name}` : flags.name;
+const buildFlags = [`--platform=${flags.platform}`, `--tag=${imageName}:${flags.tag}`];
 
 if (flags.latest) {
-  buildFlags.push(`--tag=${flags.repo}:latest`);
+  buildFlags.push(`--tag=${imageName}:latest`);
 }
 
 if (flags.load) {
@@ -42,8 +44,8 @@ switch (flags["cache-from-to"]) {
     buildFlags.push("--cache-to=type=gha,mode=max");
     break;
   case "registry":
-    buildFlags.push(`--cache-from=type=registry,ref=${flags.repo}:buildcache`);
-    buildFlags.push(`--cache-to=type=registry,ref=${flags.repo}:buildcache,mode=max`);
+    buildFlags.push(`--cache-from=type=registry,ref=${imageName}:buildcache`);
+    buildFlags.push(`--cache-to=type=registry,ref=${imageName}:buildcache,mode=max`);
     break;
 }
 
@@ -54,8 +56,8 @@ if (!flags.provenance) {
 await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
 if (flags.kind) {
-  await $`kind load docker-image ${flags.repo}:${flags.tag}`;
+  await $`kind load docker-image ${imageName}:${flags.tag}`;
   if (flags.latest) {
-    await $`kind load docker-image ${flags.repo}:latest`;
+    await $`kind load docker-image ${imageName}:latest`;
   }
 }
