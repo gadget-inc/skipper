@@ -225,7 +225,7 @@ func (ctrl *Controller) listPods(namespace string, selector labels.Selector) ([]
 
 	pods := make([]*v1.Pod, 0, len(listedPods))
 	for _, pod := range listedPods {
-		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil {
+		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil || pod.Status.PodIP == "" {
 			continue
 		}
 		pods = append(pods, pod)

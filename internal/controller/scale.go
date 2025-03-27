@@ -452,10 +452,6 @@ func (ctrl *Controller) getUnassignedPods(fn function.Function) ([]*v1.Pod, erro
 
 	var unassignedPods []*v1.Pod
 	for _, pod := range pods {
-		if pod.DeletionTimestamp != nil || pod.Status.PodIP == "" {
-			continue
-		}
-
 		for _, cond := range pod.Status.Conditions {
 			if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
 				unassignedPods = append(unassignedPods, pod)
