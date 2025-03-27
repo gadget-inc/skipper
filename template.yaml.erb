@@ -1,3 +1,9 @@
+# THIS IS A COPY/PASTED FILE! DO NOT EDIT MANUALLY!
+#
+# All configuration changes should be made via config/values.yaml
+#
+# This file was copied from https://github.com/gadget-inc/skipper/blob/main/template.yaml.erb
+# We manually copy over new versions when we update skipper.
 <%-
 image_repository ||= "skipper"
 image_tag ||= "latest"
@@ -46,6 +52,8 @@ router_image_repository ||= image_repository
 router_image_tag ||= image_tag
 router_image_pull_policy ||= image_pull_policy
 router_replicas ||= replicas
+router_min_replicas ||= replicas
+router_max_replicas ||= replicas
 router_max_surge ||= max_surge
 router_max_unavailable ||= max_unavailable
 router_request_cpu ||= request_cpu
@@ -241,9 +249,6 @@ kind: Service
 metadata:
   name: <%= controller_name %>
 spec:
-  <%- if defined? controller_node_port -%>
-  type: NodePort
-  <%- end -%>
   selector:
     app.kubernetes.io/name: skipper
     app.kubernetes.io/component: controller
@@ -251,9 +256,18 @@ spec:
   ports:
     - port: 80
       targetPort: http
-      <%- if defined? controller_node_port -%>
-      nodePort: <%= controller_node_port %>
-      <%- end -%>
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: <%= controller_name %>-pdb
+spec:
+  minAvailable: <%= controller_replicas - 1 %>
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skipper
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/instance: <%= namespace %>
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -278,7 +292,9 @@ metadata:
     <%- end -%>
   <%- end -%>
 spec:
+  <%- if router_min_replicas == router_max_replicas -%>
   replicas: <%= router_replicas %>
+  <%- end -%>
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -410,3 +426,42 @@ spec:
       <%- if defined? router_node_port -%>
       nodePort: <%= router_node_port %>
       <%- end -%>
+<%- if router_min_replicas != router_max_replicas -%>
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: <%= router_name %>-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: <%= router_name %>
+  minReplicas: <%= router_min_replicas %>
+  maxReplicas: <%= router_max_replicas %>
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 90
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 90
+<%- end -%>
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: <%= router_name %>-pdb
+spec:
+  minAvailable: <%= router_min_replicas - 1 %>
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skipper
+      app.kubernetes.io/component: router
+      app.kubernetes.io/instance: <%= namespace %>
