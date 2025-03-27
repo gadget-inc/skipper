@@ -202,10 +202,11 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			ctrl.routerHeartbeats.Compute(fn, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
 				if loaded {
 					heartbeat = routerHeartbeats.Combined() // use the combined heartbeat from all the routers
+					return routerHeartbeats, false
 				} else {
-					heartbeat.Function = fn // use the empty heartbeat and associate it with the function
+					heartbeat.Function = fn       // use the empty heartbeat and associate it with the function
+					return routerHeartbeats, true // don't add this function to the map
 				}
-				return routerHeartbeats, false
 			})
 
 			for _, instance := range instances {
