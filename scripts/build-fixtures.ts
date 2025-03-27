@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run -A
 import { $, glob, path } from "npm:zx";
-import { abs, currentDockerPlatform, currentImageTag, isCI } from "./_utils.ts";
+import { abs, currentDockerPlatform, currentImageDigest, currentImageTag, isCI } from "./_utils.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 
 const flags = parseArgs(Deno.args, {
@@ -42,6 +42,12 @@ for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) 
   await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
   if (flags.kind) {
+    const digest = await currentImageDigest(`skipper-fixtures-${name}`);
     await $`kind load docker-image skipper-fixtures-${name}:${flags.tag}`;
+    await $`kind load docker-image skipper-fixtures-${name}:${flags.tag}@${digest}`;
+    if (flags.latest) {
+      await $`kind load docker-image skipper-fixtures-${name}:latest`;
+      await $`kind load docker-image skipper-fixtures-${name}:latest@${digest}`;
+    }
   }
 }
