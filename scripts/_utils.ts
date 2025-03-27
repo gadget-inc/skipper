@@ -15,8 +15,13 @@ export async function gitSha() {
   return await $`git rev-parse --short HEAD`.then((res) => res.stdout.trim());
 }
 
-export async function defaultImageTag() {
+export async function currentImageTag() {
   return `sha-${await gitSha()}`;
+}
+
+export async function currentImageDigest(imageRepository: string) {
+  const tag = await currentImageTag();
+  return await $`docker inspect --format='{{index .RepoDigests 0}}' ${imageRepository}:${tag}`.then((res) => res.stdout.trim());
 }
 
 export async function currentDockerPlatform() {
@@ -49,7 +54,4 @@ export async function deployKraneNamespace(namespace: string, bindings: Record<s
   const renderDir = await renderKraneNamespace(namespace, bindings);
   await $`kubectl --context="$KUBECTL_CONTEXT" create namespace ${namespace}`.nothrow().quiet();
   await $`krane deploy ${namespace} "$KUBECTL_CONTEXT" -f ${renderDir}/*`;
-  if (!isCI) {
-    await $`krane restart ${namespace} "$KUBECTL_CONTEXT"`;
-  }
 }

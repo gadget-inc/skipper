@@ -1,10 +1,11 @@
 #!/usr/bin/env -S deno run -A
-import { abs, deployKraneNamespace, isCI } from "./_utils.ts";
+import { abs, currentImageDigest, deployKraneNamespace, isCI } from "./_utils.ts";
 
 const enableOtel = !isCI;
 
 if (!isCI) {
   await deployKraneNamespace("skipper-development", {
+    image_tag: await currentImageDigest("skipper"),
     namespace: "skipper-development",
     function_namespaces: ["skipper-development-fixtures"],
     unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
@@ -24,6 +25,7 @@ if (!isCI) {
 }
 
 await deployKraneNamespace("skipper-test", {
+  image_tag: await currentImageDigest("skipper"),
   namespace: "skipper-test",
   function_namespaces: ["skipper-test-fixtures"],
   unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),

@@ -1,5 +1,5 @@
 <%-
-extra_env = locals[:extra_env] || {}
+env ||= {}
 -%>
 apiVersion: apps/v1
 kind: Deployment
@@ -29,7 +29,7 @@ spec:
           emptyDir: {}
       containers:
         - name: <%= name %>
-          image: skipper-fixtures-<%= name %>:latest
+          image: skipper-fixtures-<%= name %>:<%= image_tag %>
           imagePullPolicy: Never
           ports:
             - name: http
@@ -37,7 +37,7 @@ spec:
           env:
             - name: SKIPPER_PUBLIC_KEY
               value: <%= File.read("#{workspace_dir}/tmp/paseto/public.pem").to_json %>
-            <%- extra_env.each do |key, value| -%>
+            <%- env.each do |key, value| -%>
             - name: "<%= key %>"
               value: "<%= value %>"
             <%- end -%>

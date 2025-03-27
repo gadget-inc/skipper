@@ -23,8 +23,36 @@
           stern = pkgs.stern;
           task = pkgs.go-task;
 
+          deploy = pkgs.writeShellScriptBin "deploy" ''
+            task deploy "$@"
+          '';
+
+          deploy-fixtures = pkgs.writeShellScriptBin "deploy-fixtures" ''
+            task deploy-fixtures "$@"
+          '';
+
+          deploy-all = pkgs.writeShellScriptBin "deploy-all" ''
+            task deploy-all "$@"
+          '';
+
+          echo-request = pkgs.writeShellScriptBin "echo-request" ''
+            task echo-request "$@"
+          '';
+
+          echo-websocket = pkgs.writeShellScriptBin "echo-websocket" ''
+            task echo-websocket "$@"
+          '';
+
+          echo-load-test = pkgs.writeShellScriptBin "echo-load-test" ''
+            task echo-load-test "$@"
+          '';
+
           skipper = pkgs.writeShellScriptBin "skipper" ''
             go run main.go "$@"
+          '';
+
+          tst = pkgs.writeShellScriptBin "tst" ''
+            task test "$@"
           '';
         };
 

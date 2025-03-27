@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run -A
 import { $ } from "npm:zx";
-import { abs, currentDockerPlatform, defaultImageTag, isCI } from "./_utils.ts";
+import { abs, currentDockerPlatform, currentImageTag, isCI } from "./_utils.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 
 $.cwd = abs();
@@ -11,7 +11,7 @@ const flags = parseArgs(Deno.args, {
   negatable: ["kind"],
   default: {
     repo: "skipper",
-    tag: await defaultImageTag(),
+    tag: await currentImageTag(),
     platform: await currentDockerPlatform(),
     kind: isCI,
     "cache-from-to": isCI ? "gha" : "",
