@@ -48,11 +48,15 @@ unless controller_image_registry.empty?
   controller_image += "#{controller_image_registry}/"
 end
 
-controller_image += "#{controller_image_name}:#{controller_image_tag}"
-if controller_image_digest
-  controller_image += "@#{controller_image_digest}"
+controller_image += controller_image_name
+
+unless controller_image_tag.empty?
+  controller_image += ":#{controller_image_tag}"
 end
 
+unless controller_image_digest.empty?
+  controller_image += "@#{controller_image_digest}"
+end
 
 router_name = "#{namespace}-router"
 router_log_level ||= log_level
@@ -82,8 +86,13 @@ unless router_image_registry.empty?
   router_image += "#{router_image_registry}/"
 end
 
-router_image += "#{router_image_name}:#{router_image_tag}"
-if router_image_digest
+router_image += router_image_name
+
+unless router_image_tag.empty?
+  router_image += ":#{router_image_tag}"
+end
+
+unless router_image_digest.empty?
   router_image += "@#{router_image_digest}"
 end
 -%>
