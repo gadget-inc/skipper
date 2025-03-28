@@ -27,7 +27,7 @@ if (!isCI) {
 
 await deployKraneNamespace("skipper-test", {
   image_tag: await currentImageTag(),
-  image_digest: isCI ? await currentImageDigest("skipper") : undefined,
+  image_digest: !isCI ? await currentImageDigest("skipper") : undefined,
   namespace: "skipper-test",
   function_namespaces: ["skipper-test-fixtures"],
   unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),

@@ -17,7 +17,7 @@ if (!isCI) {
 
 await deployKraneNamespace("skipper-test-fixtures", {
   echo_image_tag: await currentImageTag(),
-  echo_image_digest: isCI ? await currentImageDigest("skipper-fixtures-echo") : undefined,
+  echo_image_digest: !isCI ? await currentImageDigest("skipper-fixtures-echo") : undefined,
   extra_env: {
     OTEL_DENO: enableOtel,
     OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
