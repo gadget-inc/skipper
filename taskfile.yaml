@@ -2,29 +2,14 @@
 version: 3
 
 tasks:
-  lint:
-    sources:
-      - cmd/**/*.go
-      - internal/**/*.go
-      - pkg/**/*.go
-      - .golangci.yaml
-      - go.mod
-      - go.sum
-      - main.go
-    cmds:
-      - golangci-lint run
-
+  lint: golangci-lint run
   test: go test -v ./... {{ .CLI_ARGS }}
-
   build: scripts/build.ts {{ .CLI_ARGS }}
+  build-fixtures: scripts/build-fixtures.ts {{ .CLI_ARGS }}
 
   deploy:
     deps: [generate-paseto-keypair, build]
     cmd: scripts/deploy.ts
-
-  build-fixtures:
-    sources: [fixtures/**/*]
-    cmd: scripts/build-fixtures.ts
 
   deploy-fixtures:
     deps: [generate-paseto-keypair, build-fixtures]
@@ -50,7 +35,4 @@ tasks:
   echo-websocket: scripts/echo-websocket.ts
   echo-load-test: scripts/echo-load-test.ts
 
-  generate-paseto-keypair:
-    sources: [scripts/generate-paseto-keypair.ts]
-    generates: [tmp/paseto/public.pem, tmp/paseto/private.pem]
-    cmd: scripts/generate-paseto-keypair.ts
+  generate-paseto-keypair: scripts/generate-paseto-keypair.ts

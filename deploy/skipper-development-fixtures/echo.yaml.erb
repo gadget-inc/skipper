@@ -1,1 +1,85 @@
-<%= partial("fixture", name: "echo", image_tag: echo_image_tag || "latest", image_digest: echo_image_digest || "") %>
+<%-
+env ||= {}
+echo_image_tag ||= "latest"
+echo_image_digest ||= ""
+
+image = "skipper-fixtures-echo:#{echo_image_tag}"
+unless echo_image_digest.empty?
+  image += "@#{echo_image_digest}"
+end
+-%>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo
+  labels:
+    skipper/deployment: echo
+  annotations:
+    shipit.shopify.io/restart: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      skipper/deployment: echo
+    matchExpressions:
+      - key: skipper/tenant
+        operator: DoesNotExist
+  template:
+    metadata:
+      labels:
+        skipper/deployment: echo
+      annotations:
+        skipper/port: "http"
+    spec:
+      volumes:
+        - name: empty-dir
+          emptyDir: {}
+      containers:
+        - name: echo
+          image: <%= image %>
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8888
+          env:
+            - name: SKIPPER_PUBLIC_KEY
+              value: <%= File.read("#{workspace_dir}/tmp/paseto/public.pem").to_json %>
+            <%- env.each do |key, value| -%>
+            - name: "<%= key %>"
+              value: "<%= value %>"
+            <%- end -%>
+          volumeMounts:
+            - name: empty-dir
+              mountPath: /tmp
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 3
+            initialDelaySeconds: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 1
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1

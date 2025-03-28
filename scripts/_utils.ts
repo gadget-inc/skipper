@@ -21,7 +21,11 @@ export async function currentImageTag() {
 
 export async function currentImageDigest(name: string) {
   const tag = await currentImageTag();
-  return await $`docker images --no-trunc --quiet ${name}:${tag}`.then((res) => res.stdout.trim());
+  const digest = await $`docker images --no-trunc --quiet ${name}:${tag}`.then((res) => res.stdout.trim());
+  if (digest === "") {
+    throw new Error(`Image digest for ${name}:${tag} not found`);
+  }
+  return digest;
 }
 
 export async function currentDockerPlatform() {
