@@ -20,10 +20,11 @@ const flags = parseArgs(Deno.args, {
 for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) {
   $.cwd = fixture;
   const name = path.basename(fixture);
-  const buildFlags = [`--platform=${flags.platform}`, `--tag=skipper-fixtures-${name}:${flags.tag}`];
+  const imageName = `skipper-fixtures-${name}`;
+  const buildFlags = [`--platform=${flags.platform}`, `--tag=${imageName}:${flags.tag}`];
 
   if (flags.latest) {
-    buildFlags.push(`--tag=skipper-fixtures-${name}:latest`);
+    buildFlags.push(`--tag=${imageName}:latest`);
   }
 
   if (flags.load) {
@@ -42,9 +43,9 @@ for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) 
   await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
   if (flags.kind) {
-    await $`kind load docker-image skipper-fixtures-${name}:${flags.tag}`;
+    await $`kind load docker-image ${imageName}:${flags.tag}`;
     if (flags.latest) {
-      await $`kind load docker-image skipper-fixtures-${name}:latest`;
+      await $`kind load docker-image ${imageName}:latest`;
     }
   }
 }
