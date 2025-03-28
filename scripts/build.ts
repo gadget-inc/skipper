@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run -A
 import { $ } from "npm:zx";
-import { abs, currentDockerPlatform, currentImageDigest, currentImageTag, isCI } from "./_utils.ts";
+import { abs, currentDockerPlatform, currentImageTag, isCI } from "./_utils.ts";
 import { parseArgs } from "jsr:@std/cli/parse-args";
 
 $.cwd = abs();
@@ -56,11 +56,8 @@ if (!flags.provenance) {
 await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
 if (flags.kind) {
-  const digest = await currentImageDigest(imageName);
   await $`kind load docker-image ${imageName}:${flags.tag}`;
-  await $`kind load docker-image ${imageName}:${flags.tag}@${digest}`;
   if (flags.latest) {
     await $`kind load docker-image ${imageName}:latest`;
-    await $`kind load docker-image ${imageName}:latest@${digest}`;
   }
 }
