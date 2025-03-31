@@ -31,6 +31,10 @@
             task build-fixtures "$@"
           '';
 
+          clean = pkgs.writeShellScriptBin "clean" ''
+            task clean "$@"
+          '';
+
           deploy = pkgs.writeShellScriptBin "deploy" ''
             task deploy "$@"
           '';
