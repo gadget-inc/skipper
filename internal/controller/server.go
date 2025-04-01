@@ -16,6 +16,7 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -69,6 +70,8 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
 
 	for len(instances) == 0 {
 		if instances, err = ctrl.scale(ctx, fn, 1); err != nil {
