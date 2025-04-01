@@ -161,16 +161,18 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	controllersThatHaveReceivedHeartbeats := slices.Clone(req.Header[key.ForwardedFor.Header])
 	controllersThatHaveReceivedHeartbeats = append(controllersThatHaveReceivedHeartbeats, FlagPodIP.Value())
 
-	var controllersThatWillReceivedHeartbeats []string
+	var controllersThatWillReceiveHeartbeats []string
 	for _, controllerIP := range ctrl.ring.List() {
 		if !slices.Contains(controllersThatHaveReceivedHeartbeats, controllerIP) {
-			controllersThatWillReceivedHeartbeats = append(controllersThatWillReceivedHeartbeats, controllerIP)
+			controllersThatWillReceiveHeartbeats = append(controllersThatWillReceiveHeartbeats, controllerIP)
 		}
 	}
 
-	forwardedFor := append(controllersThatHaveReceivedHeartbeats, controllersThatWillReceivedHeartbeats...)
+	// make forwardedFor contain all controllers that have received heartbeats and all controllers that will receive heartbeats
+	// this ensures that the heartbeats are forwarded to all the controllers once, and only once
+	forwardedFor := append(controllersThatHaveReceivedHeartbeats, controllersThatWillReceiveHeartbeats...)
 
-	for _, controllerIP := range controllersThatWillReceivedHeartbeats {
+	for _, controllerIP := range controllersThatWillReceiveHeartbeats {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 5*time.Second)
 			defer cancel()
