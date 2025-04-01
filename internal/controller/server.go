@@ -4,7 +4,6 @@ import (
 	"context"
 	"math/rand"
 	"net/http"
-	"net/http/pprof"
 	"slices"
 	"strconv"
 	"time"
@@ -29,20 +28,10 @@ var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 func (ctrl *Controller) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	// controller endpoints
 	mux.HandleFunc("GET /healthz", ctrl.handleHealthz)
 	mux.HandleFunc("GET /instance", ctrl.handleInstance)
 	mux.HandleFunc("POST /scale", ctrl.handleScale)
 	mux.HandleFunc("POST /heartbeat", ctrl.handleHeartbeat)
-
-	// pprof endpoints
-	mux.HandleFunc("GET /debug/pprof/", pprof.Index)
-	mux.HandleFunc("GET /debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("GET /debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("GET /debug/pprof/trace", pprof.Trace)
-
-	// not found handler
 	mux.Handle("/", http.NotFoundHandler())
 
 	return mux

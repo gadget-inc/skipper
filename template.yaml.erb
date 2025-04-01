@@ -186,6 +186,8 @@ spec:
           args:
             - controller
           ports:
+            - name: pprof
+              containerPort: 6060
             - name: http
               containerPort: 8080
             - name: metrics
@@ -395,6 +397,8 @@ spec:
           args:
             - router
           ports:
+            - name: pprof
+              containerPort: 6060
             - name: http
               containerPort: 8080
             - name: metrics
