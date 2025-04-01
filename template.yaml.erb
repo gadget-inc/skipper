@@ -31,6 +31,8 @@ controller_image_tag ||= image_tag
 controller_image_digest ||= image_digest
 controller_image_pull_policy ||= image_pull_policy
 controller_replicas ||= replicas
+controller_min_replicas ||= replicas
+controller_max_replicas ||= replicas
 controller_max_surge ||= max_surge
 controller_max_unavailable ||= max_unavailable
 controller_request_cpu ||= request_cpu
@@ -142,7 +144,9 @@ metadata:
     <%- end -%>
   <%- end -%>
 spec:
+  <%- if controller_min_replicas == controller_max_replicas -%>
   replicas: <%= controller_replicas %>
+  <%- end -%>
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -286,13 +290,40 @@ spec:
   ports:
     - port: 80
       targetPort: http
+<%- if controller_min_replicas != controller_max_replicas -%>
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: <%= controller_name %>-autoscaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: <%= controller_name %>
+  minReplicas: <%= controller_min_replicas %>
+  maxReplicas: <%= controller_max_replicas %>
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 90
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 90
+<%- end -%>
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: <%= controller_name %>-pdb
 spec:
-  minAvailable: <%= controller_replicas - 1 %>
+  minAvailable: <%= controller_min_replicas - 1 %>
   selector:
     matchLabels:
       app.kubernetes.io/name: skipper
