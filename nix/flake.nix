@@ -16,6 +16,7 @@
           deno = pkgs.deno;
           git = pkgs.git;
           go = pkgs.go_1_24;
+          gofumpt = pkgs.gofumpt;
           golangci-lint = pkgs.golangci-lint;
           graphviz = pkgs.graphviz;
           krane = pkgs.krane;

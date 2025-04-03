@@ -1,9 +1,16 @@
-run:
-  timeout: "5m"
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - github.com/gadget-inc/skipper/internal/timer.Loop
-      - (net/http.ResponseWriter).Write
-      - (k8s.io/client-go/testing.ObjectTracker).Add
-      - (k8s.io/client-go/testing.ObjectTracker).Create
+version: "2"
+linters:
+  settings:
+    errcheck:
+      exclude-functions:
+        - github.com/gadget-inc/skipper/internal/timer.Loop
+        - (net/http.ResponseWriter).Write
+        - (k8s.io/client-go/testing.ObjectTracker).Add
+        - (k8s.io/client-go/testing.ObjectTracker).Create
+  exclusions:
+    warn-unused: true
+    presets:
+      - std-error-handling
+formatters:
+  enable:
+    - gofumpt

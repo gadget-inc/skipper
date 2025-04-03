@@ -37,8 +37,8 @@ func init() {
 }
 
 func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, pod v1.Pod) {
-	must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
-	must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
+	must.Eq(t, instance.Deployment, pod.Labels[key.Deployment.Label])
+	must.Eq(t, instance.Tenant, pod.Labels[key.Tenant.Label])
 
 	fnJSON, err := json.Marshal(instance.Function)
 	must.NoError(t, err)
@@ -812,9 +812,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			for _, pm := range tc.podMetrics {
 				switch tc.metricName {
 				case MetricCPU:
-					pm.Function.Scale.TargetCPUUsageMilli = tc.targetUsage
+					pm.Scale.TargetCPUUsageMilli = tc.targetUsage
 				case MetricMemory:
-					pm.Function.Scale.TargetMemoryUsageMiB = tc.targetUsage
+					pm.Scale.TargetMemoryUsageMiB = tc.targetUsage
 				}
 			}
 
