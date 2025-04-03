@@ -11,3 +11,6 @@ linters:
     warn-unused: true
     presets:
       - std-error-handling
+formatters:
+  enable:
+    - gofumpt

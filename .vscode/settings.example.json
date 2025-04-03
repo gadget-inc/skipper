@@ -1,0 +1,7 @@
+{
+  "deno.enable": true,
+  "go.useLanguageServer": true,
+  "gopls": {
+    "formatting.gofumpt": true
+  }
+}
