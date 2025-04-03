@@ -18,7 +18,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/go-json-experiment/json"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -43,26 +43,26 @@ type Controller struct {
 	startedAt            time.Time
 	ring                 *hashring.HashRing
 	newClientFunc        NewClientFunc
-	controllerClients    *xsync.MapOf[string, Client]
+	controllerClients    *xsync.Map[string, Client]
 	kubernetes           kubernetes.Interface
 	kubernetesMetrics    kubernetesmetrics.Interface
 	namespaceListers     map[string]namespaceLister
-	scaleMu              *xsync.MapOf[function.Function, *sync.Mutex]
-	routerHeartbeats     *xsync.MapOf[function.Function, RouterHeartbeats]
-	stabilizationWindows *xsync.MapOf[function.Function, *StabilizationWindow]
+	scaleMu              *xsync.Map[function.Function, *sync.Mutex]
+	routerHeartbeats     *xsync.Map[function.Function, RouterHeartbeats]
+	stabilizationWindows *xsync.Map[function.Function, *StabilizationWindow]
 }
 
 func New(newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
 	return &Controller{
 		ring:                 hashring.New(),
 		newClientFunc:        newClientFunc,
-		controllerClients:    xsync.NewMapOf[string, Client](),
+		controllerClients:    xsync.NewMap[string, Client](),
 		kubernetes:           kubernetes,
 		kubernetesMetrics:    kubernetesMetrics,
 		namespaceListers:     make(map[string]namespaceLister, len(function.FlagNamespaces.Value())),
-		scaleMu:              xsync.NewMapOf[function.Function, *sync.Mutex](),
-		routerHeartbeats:     xsync.NewMapOf[function.Function, RouterHeartbeats](),
-		stabilizationWindows: xsync.NewMapOf[function.Function, *StabilizationWindow](),
+		scaleMu:              xsync.NewMap[function.Function, *sync.Mutex](),
+		routerHeartbeats:     xsync.NewMap[function.Function, RouterHeartbeats](),
+		stabilizationWindows: xsync.NewMap[function.Function, *StabilizationWindow](),
 	}
 }
 
@@ -88,7 +88,7 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 }
 
 func (ctrl *Controller) getControllerClient(ip string) Client {
-	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() Client { return ctrl.newClientFunc(ip, FlagPort.Value()) })
+	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, FlagPort.Value()), false })
 	return controllerClient
 }
 

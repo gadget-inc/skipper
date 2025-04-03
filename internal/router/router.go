@@ -20,7 +20,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -49,7 +49,7 @@ var (
 
 type Router struct {
 	ctrl         controller.Client
-	heartbeats   *xsync.MapOf[function.Function, function.Heartbeat]
+	heartbeats   *xsync.Map[function.Function, function.Heartbeat]
 	reverseProxy *httputil.ReverseProxy
 	roundTripper http.RoundTripper
 }
@@ -57,7 +57,7 @@ type Router struct {
 func New(ctrl controller.Client) *Router {
 	r := &Router{
 		ctrl:       ctrl,
-		heartbeats: xsync.NewMapOf[function.Function, function.Heartbeat](),
+		heartbeats: xsync.NewMap[function.Function, function.Heartbeat](),
 		roundTripper: otelhttp.NewTransport(&http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -122,30 +122,30 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
-		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
+		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
 			heartbeat.Function = fn
 			heartbeat.Timestamp = time.Now()
-			return heartbeat, false
+			return heartbeat, xsync.UpdateOp
 		})
 		return nil
 	})
 
 	// increment the in-flight requests for this function
-	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
+	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests++
 		requestsInFlight.WithLabelValues(fn.Deployment).Inc()
-		return heartbeat, false
+		return heartbeat, xsync.UpdateOp
 	})
 
 	// decrement the in-flight requests for this function when the request is complete
-	defer r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, bool) {
+	defer r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests--
 		requestsInFlight.WithLabelValues(fn.Deployment).Dec()
-		return heartbeat, false
+		return heartbeat, xsync.UpdateOp
 	})
 
 	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(ctx, fn)))

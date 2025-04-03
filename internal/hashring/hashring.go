@@ -5,7 +5,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 )
 
 // HashRing represents a thread-safe consistent hash ring of IPs.

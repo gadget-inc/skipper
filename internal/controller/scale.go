@@ -22,6 +22,7 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
@@ -178,7 +179,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			terminatedStaleInstances[activeReplicaSet.Name]++
 		}
 
-		scaleMu, _ := ctrl.scaleMu.LoadOrCompute(instance.Function, func() *sync.Mutex { return new(sync.Mutex) })
+		scaleMu := ctrl.getScaleMu(instance.Function)
 		scaleMu.Lock()
 		log.Info(ctx, "terminating stale instance")
 		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
@@ -199,14 +200,13 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			defer wg.Done()
 
 			var heartbeat function.Heartbeat
-			ctrl.routerHeartbeats.Compute(fn, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
+			ctrl.routerHeartbeats.Compute(fn, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, xsync.ComputeOp) {
 				if loaded {
 					heartbeat = routerHeartbeats.Combined() // use the combined heartbeat from all the routers
-					return routerHeartbeats, false
 				} else {
-					heartbeat.Function = fn       // use the empty heartbeat and associate it with the function
-					return routerHeartbeats, true // don't add this function to the map
+					heartbeat.Function = fn // use the empty heartbeat and associate it with the function
 				}
+				return routerHeartbeats, xsync.CancelOp // don't add this function to the map if it didn't exist
 			})
 
 			for _, instance := range instances {
@@ -220,7 +220,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances)
 
-			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() *StabilizationWindow { return new(StabilizationWindow) })
+			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() (*StabilizationWindow, bool) { return new(StabilizationWindow), false })
 			stabilizationWindow.RecordRecommendation(desiredInstances)
 
 			currentInstances := len(instances)
@@ -262,7 +262,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	ctx, span := telemetry.Trace(ctx, "controller.scale")
 	defer span.End()
 
-	scaleMu, _ := ctrl.scaleMu.LoadOrCompute(fn, func() *sync.Mutex { return new(sync.Mutex) })
+	scaleMu := ctrl.getScaleMu(fn)
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
 
@@ -465,6 +465,11 @@ func (ctrl *Controller) getUnassignedPods(fn function.Function) ([]*v1.Pod, erro
 	}
 
 	return unassignedPods, nil
+}
+
+func (ctrl *Controller) getScaleMu(fn function.Function) *sync.Mutex {
+	scaleMu, _ := ctrl.scaleMu.LoadOrCompute(fn, func() (*sync.Mutex, bool) { return new(sync.Mutex), false })
+	return scaleMu
 }
 
 type Metric string

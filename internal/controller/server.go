@@ -15,6 +15,7 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -130,7 +131,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	for _, heartbeat := range heartbeats {
 		heartbeatsCounter.WithLabelValues(heartbeat.Function.Deployment).Inc()
 
-		ctrl.routerHeartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, bool) {
+		ctrl.routerHeartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, xsync.ComputeOp) {
 			if !loaded {
 				routerHeartbeats = make(RouterHeartbeats)
 			}
@@ -143,7 +144,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 					delete(routerHeartbeats, routerIP)
 				}
 			}
-			return routerHeartbeats, false
+			return routerHeartbeats, xsync.UpdateOp
 		})
 	}
 
