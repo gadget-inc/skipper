@@ -81,8 +81,8 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 	// TODO: paginate
 	metrics, err := ctrl.kubernetesMetrics.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{LabelSelector: key.Tenant.Label})
 	if err != nil {
-		// TODO: make this recoverable
-		return fmt.Errorf("failed to get metrics: %w", err)
+		log.Error(ctx, "failed to get pod metrics", key.Error.Field(err))
+		err = nil
 	}
 
 	podNameToMetric := make(map[string]metricsv1beta1.PodMetrics, len(metrics.Items))
