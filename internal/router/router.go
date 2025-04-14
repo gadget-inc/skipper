@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strconv"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/controller"
@@ -75,7 +76,7 @@ func New(ctrl controller.Client) *Router {
 
 	r.reverseProxy = &httputil.ReverseProxy{
 		Transport:  r,
-		Rewrite:    rewriteHeaders,
+		Rewrite:    rewriteRequestHeaders,
 		ErrorLog:   log.StdLogger(slog.LevelError),
 		BufferPool: bufferPool,
 	}
@@ -181,11 +182,13 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		ctx := log.With(req.Context(), key.Attempt.Field(attempt))
 		ctx = telemetry.WithPropagatedAttributes(ctx, key.Attempt.Attribute(attempt))
 
+		instanceStart := time.Now()
 		instance, err := r.ctrl.Instance(ctx, fn)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
 			continue
 		}
+		instanceDuration := time.Since(instanceStart)
 
 		ctx = log.With(ctx, key.Instance.Field(instance))
 		ctx = telemetry.WithPropagatedAttributes(ctx, key.Instance.Attributes(instance)...)
@@ -198,6 +201,10 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		start := time.Now()
 		res, err := r.roundTripper.RoundTrip(req)
 		duration := time.Since(start)
+
+		if res != nil {
+			res.Header.Set("x-skipper-instance-lookup-ms", strconv.FormatInt(instanceDuration.Milliseconds(), 10))
+		}
 
 		ctx = log.With(ctx, key.Response.Field(res), key.Duration.Field(duration))
 		ctx = telemetry.WithPropagatedAttributes(ctx, append(key.Response.Attributes(res), key.Duration.Attribute(duration))...)
@@ -220,7 +227,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 }
 
-func rewriteHeaders(pr *httputil.ProxyRequest) {
+func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
 	function.RemoveHeader(pr.Out)
 
 	pr.Out.Host = pr.In.Host

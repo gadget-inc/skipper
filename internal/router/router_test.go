@@ -59,6 +59,7 @@ func TestSimple(t *testing.T) {
 
 	must.Eq(t, http.StatusOK, rw.Code)
 	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+	must.SliceLen(t, 1, rw.Header().Values("x-skipper-instance-lookup-ms"))
 }
 
 func TestMethods(t *testing.T) {
