@@ -187,12 +187,24 @@ func (k podKey) Field(value *v1.Pod) slog.Attr {
 	if value == nil {
 		return slog.Attr{}
 	}
+	var deletionTimestamp slog.Attr
+	if value.DeletionTimestamp != nil {
+		deletionTimestamp = slog.Time("deletion_timestamp", value.DeletionTimestamp.Time)
+	}
 	return slog.Attr{
 		Key: k.Underscored,
 		Value: slog.GroupValue(
 			Name.Field(value.Name),
 			Namespace.Field(value.Namespace),
 			Labels.Field(value.Labels),
+			slog.Attr{
+				Key: "status",
+				Value: slog.GroupValue(
+					slog.String("phase", string(value.Status.Phase)),
+					slog.String("ip", value.Status.PodIP),
+					deletionTimestamp,
+				),
+			},
 		),
 	}
 }

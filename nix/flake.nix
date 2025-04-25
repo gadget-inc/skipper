@@ -60,6 +60,10 @@
             task echo-load-test "$@"
           '';
 
+          lint = pkgs.writeShellScriptBin "lint" ''
+            task lint "$@"
+          '';
+
           skipper = pkgs.writeShellScriptBin "skipper" ''
             go run main.go "$@"
           '';
