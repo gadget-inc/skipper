@@ -108,6 +108,12 @@ func NewControllerPod() *v1.Pod {
 		Status: v1.PodStatus{
 			Phase: v1.PodRunning,
 			PodIP: ControllerIP,
+			Conditions: []v1.PodCondition{
+				{
+					Type:   v1.PodReady,
+					Status: v1.ConditionTrue,
+				},
+			},
 		},
 	}
 }

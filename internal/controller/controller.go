@@ -105,29 +105,32 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		}),
 	)
 
+	// keep track of the controller pod name to IP address so we can remove the controller from the ring if/when its IP disappears
+	ctrlPodNameToIP := make(map[string]string)
+
+	removeFromRing := func(pod *v1.Pod) {
+		ctrlIP := ctrlPodNameToIP[pod.Name]
+		if ctrlIP != "" {
+			delete(ctrlPodNameToIP, pod.Name)
+			ctrl.ring.Remove(ctrlIP)
+			log.Debug(ctx, "removed controller from ring", key.Pod.Field(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+		}
+	}
+
+	updateRing := func(pod *v1.Pod) {
+		if isPodReady(pod) {
+			ctrlPodNameToIP[pod.Name] = pod.Status.PodIP
+			ctrl.ring.Add(pod.Status.PodIP)
+			log.Debug(ctx, "added controller to ring", key.Pod.Field(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+		} else {
+			removeFromRing(pod)
+		}
+	}
+
 	controllerPodHandler, err := controllerPodInformerFactory.Core().V1().Pods().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			pod := obj.(*v1.Pod)
-			if pod.Status.Phase == v1.PodRunning && pod.Status.PodIP != "" {
-				ctrl.ring.Add(pod.Status.PodIP)
-				log.Debug(ctx, "added controller", key.Pod.Field(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
-			}
-		},
-		UpdateFunc: func(_, newObj any) {
-			pod := newObj.(*v1.Pod)
-			if pod.Status.Phase == v1.PodRunning && pod.DeletionTimestamp == nil && pod.Status.PodIP != "" {
-				ctrl.ring.Add(pod.Status.PodIP)
-				log.Debug(ctx, "updated controller", key.Pod.Field(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
-			} else {
-				ctrl.ring.Remove(pod.Status.PodIP)
-				log.Debug(ctx, "removed updated controller", key.Pod.Field(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
-			}
-		},
-		DeleteFunc: func(obj any) {
-			pod := obj.(*v1.Pod)
-			ctrl.ring.Remove(pod.Status.PodIP)
-			log.Debug(ctx, "removed deleted controller", key.Pod.Field(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
-		},
+		AddFunc:    func(obj any) { updateRing(obj.(*v1.Pod)) },
+		UpdateFunc: func(_, newObj any) { updateRing(newObj.(*v1.Pod)) },
+		DeleteFunc: func(obj any) { removeFromRing(obj.(*v1.Pod)) },
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add controller pod event handler: %w", err)
@@ -225,7 +228,7 @@ func (ctrl *Controller) listPods(namespace string, selector labels.Selector) ([]
 
 	pods := make([]*v1.Pod, 0, len(listedPods))
 	for _, pod := range listedPods {
-		if pod.Status.Phase != v1.PodRunning || pod.DeletionTimestamp != nil || pod.Status.PodIP == "" {
+		if !isPodRunning(pod) {
 			continue
 		}
 		pods = append(pods, pod)

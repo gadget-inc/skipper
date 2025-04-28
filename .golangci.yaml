@@ -7,6 +7,8 @@ linters:
         - (net/http.ResponseWriter).Write
         - (k8s.io/client-go/testing.ObjectTracker).Add
         - (k8s.io/client-go/testing.ObjectTracker).Create
+        - (k8s.io/client-go/testing.ObjectTracker).Update
+        - (k8s.io/client-go/testing.ObjectTracker).Delete
   exclusions:
     warn-unused: true
     presets:
