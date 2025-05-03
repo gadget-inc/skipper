@@ -9,7 +9,7 @@ import (
 )
 
 type Instance struct {
-	Function
+	Function       *Function
 	Name           string    // pod name
 	Addr           string    // pod ip : pod port
 	ReplicaSet     string    // replica set name

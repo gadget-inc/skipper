@@ -28,7 +28,7 @@ var (
 	tenantCounter     = new(atomic.Int64)
 )
 
-func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *v1.Pod {
+func NewAvailablePod(t *testing.T, fn *function.Function, handler http.Handler) *v1.Pod {
 	if handler == nil {
 		handler = defaultAvailablePodHandler(t, fn)
 	}
@@ -87,7 +87,7 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 	}
 }
 
-func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.HandlerFunc {
+func defaultAvailablePodHandler(t *testing.T, fn *function.Function) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		must.Eq(t, http.MethodPost, req.Method)
 		must.Eq(t, function.FlagAssignPath.Value(), req.URL.Path)
@@ -105,7 +105,7 @@ func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.Handler
 	}
 }
 
-func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v1.Pod {
+func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *v1.Pod {
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
@@ -161,11 +161,11 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 	}
 }
 
-func CurrentReplicaSetName(fn function.Function) string {
+func CurrentReplicaSetName(fn *function.Function) string {
 	return fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load()))
 }
 
-func CurrentReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
+func CurrentReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
 	return &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      CurrentReplicaSetName(fn),
@@ -181,7 +181,7 @@ func CurrentReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
 	}
 }
 
-func NewReplicaSet(t *testing.T, fn function.Function) *appsv1.ReplicaSet {
+func NewReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
 	replicaSetCounter.Add(1)
 	return CurrentReplicaSet(t, fn)
 }

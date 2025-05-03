@@ -22,12 +22,12 @@ func TestGetReadyInstances(t *testing.T) {
 	testCases := []struct {
 		name  string
 		err   error
-		setup func(*testing.T, *fake.Clientset, function.Function)
+		setup func(*testing.T, *fake.Clientset, *function.Function)
 		check func(*testing.T, *fake.Clientset, []*function.Instance)
 	}{
 		{
 			name: "one",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 			},
@@ -37,7 +37,7 @@ func TestGetReadyInstances(t *testing.T) {
 		},
 		{
 			name: "many",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 
@@ -50,7 +50,7 @@ func TestGetReadyInstances(t *testing.T) {
 		},
 		{
 			name: "deleted",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				err := fakeKubernetes.Tracker().Add(pod)
@@ -62,7 +62,7 @@ func TestGetReadyInstances(t *testing.T) {
 		},
 		{
 			name: "failed",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Phase = v1.PodFailed
 				err := fakeKubernetes.Tracker().Add(pod)
@@ -74,7 +74,7 @@ func TestGetReadyInstances(t *testing.T) {
 		},
 		{
 			name: "no pod IP",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.PodIP = ""
 				err := fakeKubernetes.Tracker().Add(pod)
@@ -86,7 +86,7 @@ func TestGetReadyInstances(t *testing.T) {
 		},
 		{
 			name: "unready",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				err := fakeKubernetes.Tracker().Add(pod)
@@ -98,9 +98,10 @@ func TestGetReadyInstances(t *testing.T) {
 		},
 		{
 			name: "different metadata",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				fn.Metadata = "different"
-				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
+				fnCopy := fn.Clone()
+				fnCopy.Metadata = "different"
+				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fnCopy, nil))
 				must.NoError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {

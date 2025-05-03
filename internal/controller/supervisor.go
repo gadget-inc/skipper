@@ -17,21 +17,21 @@ import (
 
 type Supervisor struct {
 	mu                  sync.Mutex
-	fn                  function.Function
+	fn                  *function.Function
 	ctrl                *Controller
-	routerHeartbeats    map[string]function.Heartbeat
+	routerHeartbeats    map[string]*function.Heartbeat
 	stabilizationWindow []Recommendation
 }
 
-func (s *Supervisor) heartbeat(routerIP string, heartbeat function.Heartbeat) {
+func (s *Supervisor) heartbeat(routerIP string, heartbeat *function.Heartbeat) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.routerHeartbeats == nil {
-		s.routerHeartbeats = make(map[string]function.Heartbeat)
+		s.routerHeartbeats = make(map[string]*function.Heartbeat)
 	}
 
-	if heartbeat.Timestamp.After(s.routerHeartbeats[routerIP].Timestamp) {
+	if s.routerHeartbeats[routerIP] == nil || heartbeat.Timestamp.After(s.routerHeartbeats[routerIP].Timestamp) {
 		s.routerHeartbeats[routerIP] = heartbeat
 	}
 
@@ -47,7 +47,7 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.converge")
 	defer span.End()
 
-	var heartbeat function.Heartbeat
+	heartbeat := new(function.Heartbeat)
 	heartbeat.Function = s.fn
 
 	for _, instance := range instances {
@@ -86,7 +86,7 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 
 		if scalingDecision.DesiredInstances == 0 {
 			// we're scaling to 0, so remove ourself from the supervisors map when we're done
-			defer s.ctrl.supervisors.Delete(s.fn)
+			defer s.ctrl.supervisors.Delete(s.fn.Hash())
 		} else {
 			// we're scaling down, but not to 0, so scale down to the max recommended instances within the stabilization window
 			// if we're already lower than the max recommended instances, then use the current number of instances (i.e. don't scale up)
@@ -176,7 +176,7 @@ func (s *Supervisor) _scaleWithoutLock(ctx context.Context, decision ScalingDeci
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
-			err := s.ctrl.kubernetes.CoreV1().Pods(unreadyInstance.Namespace).Delete(ctx, unreadyInstance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.kubernetes.CoreV1().Pods(unreadyInstance.Function.Namespace).Delete(ctx, unreadyInstance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
@@ -188,7 +188,7 @@ func (s *Supervisor) _scaleWithoutLock(ctx context.Context, decision ScalingDeci
 		// iterate over ready instances in reverse order, deleting the oldest ones first
 		for i := len(readyInstances) - 1; i >= decision.DesiredInstances; i-- {
 			instance := readyInstances[i]
-			err := s.ctrl.kubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.kubernetes.CoreV1().Pods(instance.Function.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}

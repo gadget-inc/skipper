@@ -41,7 +41,7 @@ type namespaceLister struct {
 type Controller struct {
 	startedAt         time.Time
 	ring              *hashring.HashRing
-	supervisors       *xsync.Map[function.Function, *Supervisor]
+	supervisors       *xsync.Map[function.Hash, *Supervisor]
 	newClientFunc     NewClientFunc
 	controllerClients *xsync.Map[string, Client]
 	kubernetes        kubernetes.Interface
@@ -52,7 +52,7 @@ type Controller struct {
 func New(newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
 	return &Controller{
 		ring:              hashring.New(hashring.WithWaitTime(FlagHashRingWaitTime.Value())),
-		supervisors:       xsync.NewMap[function.Function, *Supervisor](),
+		supervisors:       xsync.NewMap[function.Hash, *Supervisor](),
 		newClientFunc:     newClientFunc,
 		controllerClients: xsync.NewMap[string, Client](),
 		kubernetes:        kubernetes,
@@ -184,7 +184,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	return nil
 }
 
-func (ctrl *Controller) getReadyInstances(fn function.Function) ([]*function.Instance, error) {
+func (ctrl *Controller) getReadyInstances(fn *function.Function) ([]*function.Instance, error) {
 	instances, err := ctrl.getInstances(fn)
 	if err != nil {
 		return nil, err
@@ -194,7 +194,7 @@ func (ctrl *Controller) getReadyInstances(fn function.Function) ([]*function.Ins
 	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
 }
 
-func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance, error) {
+func (ctrl *Controller) getInstances(fn *function.Function) ([]*function.Instance, error) {
 	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
@@ -210,7 +210,7 @@ func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance
 			return nil, fmt.Errorf("failed to get instance from pod: %w", err)
 		}
 
-		if instance.Function != fn {
+		if instance.Function.Hash() != fn.Hash() {
 			// pod is assigned to a different function
 			continue
 		}
@@ -321,8 +321,8 @@ func portFromPod(pod *v1.Pod) (string, error) {
 	return port, nil
 }
 
-func (ctrl *Controller) supervisor(fn function.Function) *Supervisor {
-	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn, func() (*Supervisor, bool) {
+func (ctrl *Controller) supervisor(fn *function.Function) *Supervisor {
+	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
 		return &Supervisor{fn: fn, ctrl: ctrl}, false
 	})
 	return supervisor

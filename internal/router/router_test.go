@@ -45,7 +45,7 @@ func TestGetInstanceDuration(t *testing.T) {
 	sentError := false
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	mockControllerClient.HandleInstance(func(ctx context.Context, fn *function.Function) (*function.Instance, error) {
 		if !sentError {
 			time.Sleep(10 * time.Millisecond)
 			sentError = true
@@ -96,7 +96,7 @@ func TestMethods(t *testing.T) {
 			fn := fixture.NewFunction()
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					must.Eq(t, req.Method, tc.method)
 				}), nil
@@ -131,15 +131,15 @@ func TestMethods(t *testing.T) {
 func TestHeaders(t *testing.T) {
 	testCases := []struct {
 		name         string
-		setHeaders   func(fn function.Function, req *http.Request)
-		checkHeaders func(t *testing.T, fn function.Function, headers http.Header)
+		setHeaders   func(fn *function.Function, req *http.Request)
+		checkHeaders func(t *testing.T, fn *function.Function, headers http.Header)
 	}{
 		{
 			name: "smoke",
-			setHeaders: func(fn function.Function, req *http.Request) {
+			setHeaders: func(fn *function.Function, req *http.Request) {
 				req.Host = fn.Tenant + ".example.com"
 			},
-			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
+			checkHeaders: func(t *testing.T, fn *function.Function, headers http.Header) {
 				expectedHost := fn.Tenant + ".example.com"
 				expectedProto := "http"
 
@@ -153,12 +153,12 @@ func TestHeaders(t *testing.T) {
 		},
 		{
 			name: "custom",
-			setHeaders: func(fn function.Function, req *http.Request) {
+			setHeaders: func(fn *function.Function, req *http.Request) {
 				req.Header.Set("X-Custom-Header", "custom-value")
 				req.Header.Add("X-Custom-Multi-Header", "multi-value-1")
 				req.Header.Add("X-Custom-Multi-Header", "multi-value-2")
 			},
-			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
+			checkHeaders: func(t *testing.T, fn *function.Function, headers http.Header) {
 				must.Eq(t, []string{"custom-value"}, headers.Values("X-Custom-Header"))
 				must.Eq(t, []string{"multi-value-1", "multi-value-2"}, headers.Values("X-Custom-Multi-Header"))
 				must.MapLen(t, 7, headers)
@@ -172,7 +172,7 @@ func TestHeaders(t *testing.T) {
 			fn := fixture.NewFunction()
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
 					tc.checkHeaders(t, fn, req.Header)
@@ -254,7 +254,7 @@ func TestBody(t *testing.T) {
 		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
 					must.NoError(t, err)
@@ -306,14 +306,14 @@ func TestHeartbeats(t *testing.T) {
 	defer close(done)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *function.Function) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
 			<-done
 		}), nil
 	})
-	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
 		if len(heartbeats) == 0 {
 			// ignore the initial heartbeats
 			return nil
@@ -344,7 +344,7 @@ func TestHeartbeats(t *testing.T) {
 	must.Eq(t, http.StatusOK, rw.Code)
 	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 
-	heartbeat, ok := router.heartbeats.Load(fn)
+	heartbeat, ok := router.heartbeats.Load(fn.Hash())
 	must.True(t, ok)
 	must.Eq(t, fn, heartbeat.Function)
 	must.True(t, heartbeat.Timestamp.After(testStartTime))
@@ -357,12 +357,12 @@ func TestRetries(t *testing.T) {
 		maxAttempts   int
 		instanceErrs  []error
 		roundTripErrs []error
-		check         func(*testing.T, function.Function, *httptest.ResponseRecorder)
+		check         func(*testing.T, *function.Function, *httptest.ResponseRecorder)
 	}{
 		{
 			name:        "no errors",
 			maxAttempts: 1,
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 			},
@@ -371,7 +371,7 @@ func TestRetries(t *testing.T) {
 			name:         "controller.get arbitrary error",
 			maxAttempts:  2,
 			instanceErrs: []error{errors.New("arbitrary error")},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 			},
@@ -380,7 +380,7 @@ func TestRetries(t *testing.T) {
 			name:          "round trip dial error",
 			maxAttempts:   2,
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 			},
@@ -392,7 +392,7 @@ func TestRetries(t *testing.T) {
 			roundTripErrs: []error{
 				&net.OpError{Op: "dial", Err: errors.New("arbitrary error")},
 			},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
 			},
@@ -402,7 +402,7 @@ func TestRetries(t *testing.T) {
 			maxAttempts:   2,
 			instanceErrs:  []error{errors.New("arbitrary error")},
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusBadGateway, rw.Code)
 				must.Length(t, 0, rw.Body)
 			},
@@ -417,7 +417,7 @@ func TestRetries(t *testing.T) {
 
 			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function) (*function.Instance, error) {
 				if len(tc.instanceErrs) > 0 && instanceErrsIndex < len(tc.instanceErrs) {
 					instanceErrsIndex++
 					return nil, tc.instanceErrs[instanceErrsIndex-1]

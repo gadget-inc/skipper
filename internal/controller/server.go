@@ -138,7 +138,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	var heartbeats []function.Heartbeat
+	var heartbeats []*function.Heartbeat
 	if err := json.UnmarshalRead(req.Body, &heartbeats); err != nil {
 		log.Error(req.Context(), "failed to decode heartbeats", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)

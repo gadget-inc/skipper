@@ -9,12 +9,12 @@ import (
 )
 
 type Heartbeat struct {
-	Function         Function  `json:"function"`
+	Function         *Function `json:"function"`
 	Timestamp        time.Time `json:"timestamp"`
 	InFlightRequests int       `json:"in_flight_requests"`
 }
 
-func (h Heartbeat) Fields() []slog.Attr {
+func (h *Heartbeat) Fields() []slog.Attr {
 	return []slog.Attr{
 		key.Function.Field(h.Function),
 		key.Timestamp.Field(h.Timestamp),
@@ -22,7 +22,7 @@ func (h Heartbeat) Fields() []slog.Attr {
 	}
 }
 
-func (h Heartbeat) Attributes() []attribute.KeyValue {
+func (h *Heartbeat) Attributes() []attribute.KeyValue {
 	return append(
 		key.Function.Attributes(h.Function),
 		key.Timestamp.Attribute(h.Timestamp),
@@ -30,6 +30,6 @@ func (h Heartbeat) Attributes() []attribute.KeyValue {
 	)
 }
 
-func (h Heartbeat) AttributesToNotPrefix() []string {
+func (h *Heartbeat) AttributesToNotPrefix() []string {
 	return []string{"function"}
 }

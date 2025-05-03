@@ -36,8 +36,8 @@ func init() {
 }
 
 func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, pod v1.Pod) {
-	must.Eq(t, instance.Deployment, pod.Labels[key.Deployment.Label])
-	must.Eq(t, instance.Tenant, pod.Labels[key.Tenant.Label])
+	must.Eq(t, instance.Function.Deployment, pod.Labels[key.Deployment.Label])
+	must.Eq(t, instance.Function.Tenant, pod.Labels[key.Tenant.Label])
 
 	fnJSON, err := json.Marshal(instance.Function)
 	must.NoError(t, err)
@@ -53,7 +53,7 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, po
 	must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
 }
 
-func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn function.Function) {
+func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn *function.Function) {
 	fnJSON, err := json.Marshal(fn)
 	must.NoError(t, err)
 
@@ -77,14 +77,14 @@ func TestScaleNamespace(t *testing.T) {
 	testCases := []struct {
 		name  string
 		err   error
-		setup func(*testing.T, *Controller, *fake.Clientset, *fakekubernetesmetrics.Clientset) function.Function
-		check func(*testing.T, *Controller, *fake.Clientset, *fakekubernetesmetrics.Clientset, function.Function)
+		setup func(*testing.T, *Controller, *fake.Clientset, *fakekubernetesmetrics.Clientset) *function.Function
+		check func(*testing.T, *Controller, *fake.Clientset, *fakekubernetesmetrics.Clientset, *function.Function)
 	}{
 		{
 			name: "scale up cpu",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
 				}})
 
@@ -101,7 +101,7 @@ func TestScaleNamespace(t *testing.T) {
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 2, pods.Items)
@@ -111,9 +111,9 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "scale up memory",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
 				}})
 
@@ -130,7 +130,7 @@ func TestScaleNamespace(t *testing.T) {
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 2, pods.Items)
@@ -140,9 +140,9 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "scale up in-flight requests",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP:  {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests}, // 2x target across 2 routers
 					fixture.RouterIP2: {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests},
 				}})
@@ -160,7 +160,7 @@ func TestScaleNamespace(t *testing.T) {
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 2, pods.Items)
@@ -170,9 +170,9 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "scale down",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
 				}})
 
@@ -194,7 +194,7 @@ func TestScaleNamespace(t *testing.T) {
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod2, cpuUsage, memoryUsage))
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
@@ -203,10 +203,10 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "no scale",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
 				fn.Scale.TargetMemoryUsageMiB = 0 // don't scale on memory
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP:  {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests / 2}, // 1x target across 2 routers
 					fixture.RouterIP2: {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests / 2},
 				}})
@@ -224,7 +224,7 @@ func TestScaleNamespace(t *testing.T) {
 				fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, cpuUsage, memoryUsage))
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 2, pods.Items)
@@ -246,7 +246,7 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "no heartbeat",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
@@ -258,20 +258,20 @@ func TestScaleNamespace(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
 
-				_, ok := c.supervisors.Load(fn)
+				_, ok := c.supervisors.Load(fn.Hash())
 				must.False(t, ok)
 			},
 		},
 		{
 			name: "heartbeat timeout",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())},
 				}})
 
@@ -284,18 +284,18 @@ func TestScaleNamespace(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
 
-				_, ok := c.supervisors.Load(fn)
+				_, ok := c.supervisors.Load(fn.Hash())
 				must.False(t, ok)
 			},
 		},
 		{
 			name: "heartbeat timeout but just started",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				c.startedAt = time.Now()
 
 				fn := fixture.NewFunction()
@@ -308,7 +308,7 @@ func TestScaleNamespace(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
@@ -317,9 +317,9 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "stale instance",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
 				}})
 
@@ -333,7 +333,7 @@ func TestScaleNamespace(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
@@ -341,9 +341,9 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "stale instance without enough available pods",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
 				}})
 
@@ -361,7 +361,7 @@ func TestScaleNamespace(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
@@ -370,9 +370,9 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "different controller pod",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}, // heartbeat timeout
 				}})
 
@@ -387,7 +387,7 @@ func TestScaleNamespace(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
@@ -396,9 +396,9 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "extra ready instance",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
 				}})
 
@@ -411,7 +411,7 @@ func TestScaleNamespace(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				// ensure the extra ready instance was deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
@@ -423,9 +423,9 @@ func TestScaleNamespace(t *testing.T) {
 		},
 		{
 			name: "extra unready instance",
-			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+				c.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]*function.Heartbeat{
 					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
 				}})
 
@@ -443,7 +443,7 @@ func TestScaleNamespace(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn *function.Function) {
 				// ensure the extra unready instance was not deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
@@ -490,17 +490,17 @@ func TestAssignPod(t *testing.T) {
 	testCases := []struct {
 		name  string
 		err   error
-		setup func(*testing.T, *fake.Clientset, function.Function)
-		check func(*testing.T, *fake.Clientset, function.Function, *function.Instance)
+		setup func(*testing.T, *fake.Clientset, *function.Function)
+		check func(*testing.T, *fake.Clientset, *function.Function, *function.Instance)
 	}{
 		{
 			name: "smoke",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function, instance *function.Instance) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
@@ -509,24 +509,24 @@ func TestAssignPod(t *testing.T) {
 		{
 			name: "no available pods",
 			err:  context.DeadlineExceeded,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// no pods
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function, instance *function.Instance) {
 				must.Nil(t, instance)
 			},
 		},
 		{
 			name: "eventually available pod",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				go func() {
 					time.Sleep(100 * time.Millisecond)
 					err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 					must.NoError(t, err)
 				}()
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function, instance *function.Instance) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
@@ -535,7 +535,7 @@ func TestAssignPod(t *testing.T) {
 		{
 			name: "assign timeout",
 			err:  context.DeadlineExceeded,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				fixture.SetFlag(t, &function.FlagAssignTimeout, time.Millisecond)
 				err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					time.Sleep(10 * time.Millisecond)
@@ -543,13 +543,13 @@ func TestAssignPod(t *testing.T) {
 				})))
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function, instance *function.Instance) {
 				must.Nil(t, instance)
 			},
 		},
 		{
 			name: "multiple ports",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// ensure the pod has a port annotation
 				pod := fixture.NewAvailablePod(t, fn, nil)
 				must.Eq(t, "http", pod.Annotations[key.Port.Label])
@@ -564,8 +564,8 @@ func TestAssignPod(t *testing.T) {
 				err := fakeKubernetes.Tracker().Add(pod)
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function, instance *function.Instance) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
@@ -573,14 +573,14 @@ func TestAssignPod(t *testing.T) {
 		},
 		{
 			name: "no port annotation",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				pod := fixture.NewAvailablePod(t, fn, nil)
 				pod.Annotations[key.Port.Label] = ""
 				err := fakeKubernetes.Tracker().Add(pod)
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function, instance *function.Instance) {
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
@@ -589,7 +589,7 @@ func TestAssignPod(t *testing.T) {
 		{
 			name: "has tenant",
 			err:  context.DeadlineExceeded, // the patch should fail because the pod is already assigned, but we should retry until the test times out
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// make getAvailablePods return assigned pods
 				originalDoesNotHaveTenantSelector := doesNotHaveTenantSelector
 				t.Cleanup(func() {
@@ -603,7 +603,7 @@ func TestAssignPod(t *testing.T) {
 				err := fakeKubernetes.Tracker().Add(pod)
 				must.NoError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function, instance *function.Instance) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
@@ -647,14 +647,14 @@ func TestScale(t *testing.T) {
 		name             string
 		desiredInstances int
 		err              error
-		setup            func(*testing.T, *fake.Clientset, function.Function)
+		setup            func(*testing.T, *fake.Clientset, *function.Function)
 		check            func(*testing.T, *fake.Clientset, []*function.Instance)
 	}{
 		{
 			name:             "smoke",
 			desiredInstances: 1,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 				must.NoError(t, err)
 			},
@@ -666,7 +666,7 @@ func TestScale(t *testing.T) {
 			name:             "extra available pods",
 			desiredInstances: 1,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				for range 5 {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 					must.NoError(t, err)
@@ -674,8 +674,8 @@ func TestScale(t *testing.T) {
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 1, instances)
-				instance := instances[0]
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{
+				fn := instances[0].Function
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{
 					LabelSelector: doesNotHaveTenantSelector.String(),
 				})
 				must.NoError(t, err)
@@ -686,7 +686,7 @@ func TestScale(t *testing.T) {
 			name:             "no available pods",
 			desiredInstances: 1,
 			err:              context.DeadlineExceeded,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// no pods
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
@@ -697,9 +697,10 @@ func TestScale(t *testing.T) {
 			name:             "different metadata",
 			desiredInstances: 1,
 			err:              context.DeadlineExceeded,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				fn.Metadata = "different"
-				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
+				fnCopy := fn.Clone()
+				fnCopy.Metadata = "different"
+				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fnCopy, nil))
 				must.NoError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
@@ -710,7 +711,7 @@ func TestScale(t *testing.T) {
 			name:             "already has desired instances",
 			desiredInstances: 1,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 			},
@@ -722,7 +723,7 @@ func TestScale(t *testing.T) {
 			name:             "scale down",
 			desiredInstances: 1,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				for range fn.Scale.MaxInstances - 1 {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 					must.NoError(t, err)
@@ -746,7 +747,7 @@ func TestScale(t *testing.T) {
 			name:             "scale to max with ready instances = max-1, unready instances = 1",
 			desiredInstances: 5,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// ensure desired instances is equal to max instances
 				must.Eq(t, 5, fn.Scale.MaxInstances)
 
@@ -800,7 +801,7 @@ func TestScale(t *testing.T) {
 			name:             "scale to max with ready instances = 0, unready instances = max+1",
 			desiredInstances: 5,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// ensure desired instances is equal to max instances
 				must.Eq(t, 5, fn.Scale.MaxInstances)
 
@@ -825,7 +826,7 @@ func TestScale(t *testing.T) {
 			name:             "scale to max with ready instances = 2, unready instances = max+1",
 			desiredInstances: 5,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// ensure desired instances is equal to max instances
 				must.Eq(t, 5, fn.Scale.MaxInstances)
 
@@ -877,7 +878,7 @@ func TestScale(t *testing.T) {
 			name:             "scale to 0 with ready instances = 0, unready instances = max+1",
 			desiredInstances: 0,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// add max + 1 unready instances
 				for range fn.Scale.MaxInstances + 1 {
 					pod := fixture.NewAssignedPod(t, fn, nil)
@@ -899,7 +900,7 @@ func TestScale(t *testing.T) {
 			name:             "scale to 1 with ready instances = 1, unready instances = max",
 			desiredInstances: 1,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// add 1 ready instance
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
@@ -926,7 +927,7 @@ func TestScale(t *testing.T) {
 			name:             "scale to 2 with ready instances = 1, unready instances = max",
 			desiredInstances: 2,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// add 1 ready instance
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
@@ -973,7 +974,7 @@ func TestScale(t *testing.T) {
 			name:             "scale to 2 with ready instances = max, unready instances = 1",
 			desiredInstances: 2,
 			err:              nil,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				// add max ready instances
 				for range fn.Scale.MaxInstances {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
@@ -1059,7 +1060,7 @@ func TestScaleForwarding(t *testing.T) {
 	fn := fixture.NewFunction()
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
+	mcc.HandleScale(func(ctx context.Context, fn *function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
 		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
@@ -1158,11 +1159,13 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, pm := range tc.podMetrics {
+				pm.Function = new(function.Function)
+				pm.Function.Scale = new(function.Scale)
 				switch tc.metricName {
 				case MetricCPU:
-					pm.Scale.TargetCPUUsageMilli = tc.targetUsage
+					pm.Function.Scale.TargetCPUUsageMilli = tc.targetUsage
 				case MetricMemory:
-					pm.Scale.TargetMemoryUsageMiB = tc.targetUsage
+					pm.Function.Scale.TargetMemoryUsageMiB = tc.targetUsage
 				}
 			}
 

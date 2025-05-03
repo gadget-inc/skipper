@@ -30,17 +30,17 @@ func TestHealthz(t *testing.T) {
 func TestHandleInstance(t *testing.T) {
 	testCases := []struct {
 		name  string
-		setup func(*testing.T, *Controller, *fake.Clientset) function.Function
-		check func(*testing.T, *Controller, *fake.Clientset, function.Function, *httptest.ResponseRecorder)
+		setup func(*testing.T, *Controller, *fake.Clientset) *function.Function
+		check func(*testing.T, *Controller, *fake.Clientset, *function.Function, *httptest.ResponseRecorder)
 	}{
 		{
 			name: "smoke",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) *function.Function {
 				fn := fixture.NewFunction()
 				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				return fn
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 
 				var instance *function.Instance
@@ -51,12 +51,12 @@ func TestHandleInstance(t *testing.T) {
 		},
 		{
 			name: "unassigned with unassigned pod",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) *function.Function {
 				fn := fixture.NewFunction()
 				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 				return fn
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 
 				var instance *function.Instance
@@ -67,7 +67,7 @@ func TestHandleInstance(t *testing.T) {
 		},
 		{
 			name: "unassigned with eventual unassigned pod",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) *function.Function {
 				fn := fixture.NewFunction()
 				go func() {
 					time.Sleep(500 * time.Millisecond)
@@ -75,7 +75,7 @@ func TestHandleInstance(t *testing.T) {
 				}()
 				return fn
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 
 				var instance *function.Instance
@@ -86,7 +86,7 @@ func TestHandleInstance(t *testing.T) {
 		},
 		{
 			name: "instances > max",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) *function.Function {
 				fn := fixture.NewFunction()
 				fn.Scale.MaxInstances = 1 // ensure we can only have one instance
 
@@ -103,7 +103,7 @@ func TestHandleInstance(t *testing.T) {
 
 				return fn
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
 
 				var instance *function.Instance
@@ -142,35 +142,35 @@ func TestHandleInstance(t *testing.T) {
 func TestHandleHeartbeat(t *testing.T) {
 	testCases := []struct {
 		name  string
-		setup func(*testing.T, *fixture.MockControllerClient, *Controller) []function.Heartbeat
-		check func(*testing.T, *fixture.MockControllerClient, *Controller, []function.Heartbeat)
+		setup func(*testing.T, *fixture.MockControllerClient, *Controller) []*function.Heartbeat
+		check func(*testing.T, *fixture.MockControllerClient, *Controller, []*function.Heartbeat)
 	}{
 		{
 			name: "one",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
-				return []function.Heartbeat{
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
+				return []*function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				must.Eq(t, 1, ctrl.supervisors.Size())
-				supervisor, ok := ctrl.supervisors.Load(heartbeats[0].Function)
+				supervisor, ok := ctrl.supervisors.Load(heartbeats[0].Function.Hash())
 				must.True(t, ok)
 				must.Eq(t, heartbeats[0].Timestamp, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp)
 			},
 		},
 		{
 			name: "multiple",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
-				return []function.Heartbeat{
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
+				return []*function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				must.Eq(t, 2, ctrl.supervisors.Size())
 				for _, hb := range heartbeats {
-					supervisor, ok := ctrl.supervisors.Load(hb.Function)
+					supervisor, ok := ctrl.supervisors.Load(hb.Function.Hash())
 					must.True(t, ok)
 					must.Eq(t, hb.Timestamp, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp)
 				}
@@ -178,22 +178,22 @@ func TestHandleHeartbeat(t *testing.T) {
 		},
 		{
 			name: "keeps most recent",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
 				// seed the controller with a recent heartbeat
 				fn := fixture.NewFunction()
 				heartbeatTimestamp := time.Now()
-				ctrl.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]function.Heartbeat{fixture.RouterIP: {Timestamp: heartbeatTimestamp}}})
+				ctrl.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]*function.Heartbeat{fixture.RouterIP: {Timestamp: heartbeatTimestamp}}})
 
 				// send an old heartbeat
-				return []function.Heartbeat{
+				return []*function.Heartbeat{
 					{Function: fn, Timestamp: heartbeatTimestamp.Add(-time.Hour)},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				must.Eq(t, 1, ctrl.supervisors.Size())
 
 				sentHeartbeat := heartbeats[0]
-				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.Function)
+				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.Function.Hash())
 				must.True(t, ok)
 				must.NotEq(t, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp)
 				must.Eq(t, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp.Add(time.Hour))
@@ -201,12 +201,12 @@ func TestHandleHeartbeat(t *testing.T) {
 		},
 		{
 			name: "forwards heartbeats",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
 				ctrl.ring.Add(fixture.ControllerIP)
 				ctrl.ring.Add(fixture.ControllerIP2)
-				hbs := []function.Heartbeat{{Function: fixture.NewFunction(), Timestamp: time.Now()}}
+				hbs := []*function.Heartbeat{{Function: fixture.NewFunction(), Timestamp: time.Now()}}
 
-				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
 					must.Eq(t, hbs, heartbeats)
 					must.Eq(t, []string{fixture.ControllerIP, fixture.ControllerIP2}, forwardedFor)
 					return nil
@@ -214,25 +214,25 @@ func TestHandleHeartbeat(t *testing.T) {
 
 				return hbs
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				// give the goroutine that forwards the heartbeats a chance to run
 				time.Sleep(10 * time.Millisecond)
 			},
 		},
 		{
 			name: "garbage collects old heartbeats",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
 				// seed the controller with a old heartbeat from a different router
 				fn := fixture.NewFunction()
-				ctrl.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]function.Heartbeat{fixture.RouterIP2: {Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))}}})
+				ctrl.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]*function.Heartbeat{fixture.RouterIP2: {Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))}}})
 
-				return []function.Heartbeat{
+				return []*function.Heartbeat{
 					{Function: fn, Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				sentHeartbeat := heartbeats[0]
-				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.Function)
+				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.Function.Hash())
 				must.True(t, ok)
 				must.Eq(t, 1, len(supervisor.routerHeartbeats))
 				must.MapNotContainsKey(t, supervisor.routerHeartbeats, fixture.RouterIP2)

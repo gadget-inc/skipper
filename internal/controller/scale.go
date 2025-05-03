@@ -90,7 +90,12 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 		podNameToMetric[metric.Name] = metric
 	}
 
-	fnInstances := make(map[function.Function][]*function.Instance)
+	type fnInstances struct {
+		fn        *function.Function
+		instances []*function.Instance
+	}
+
+	hashInstances := make(map[function.Hash]fnInstances)
 	terminatedStaleInstances := make(map[string]int32)
 
 	for _, pod := range pods {
@@ -106,14 +111,16 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 		ctx := log.With(ctx, key.Instance.Field(instance))
 
-		responsibleIP := ctrl.ring.Get(instance)
+		responsibleIP := ctrl.ring.Get(instance.Function)
 		if responsibleIP != FlagPodIP.Value() {
 			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.ResponsibleIP.Field(responsibleIP))
 			continue
 		}
 
-		if _, ok := fnInstances[instance.Function]; !ok {
-			fnInstances[instance.Function] = nil // ensure the function is in the map so that we loop over all the functions in the next step
+		fnHash := instance.Function.Hash()
+		if _, ok := hashInstances[fnHash]; !ok {
+			// ensure the hash is in the map so that we loop over all the functions in the next step
+			hashInstances[fnHash] = fnInstances{fn: instance.Function}
 		}
 
 		// FIXME: this is true if the instance was assigned 3 minutes ago and it fails its readiness probe
@@ -145,12 +152,14 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 		if replicaSet.Status.Replicas > 0 {
 			// instance is running on a replica set that has replicas, so it isn't stale
-			fnInstances[instance.Function] = append(fnInstances[instance.Function], instance)
+			fnInstances := hashInstances[fnHash]
+			fnInstances.instances = append(fnInstances.instances, instance)
+			hashInstances[fnHash] = fnInstances
 			continue
 		}
 
 		// this is a stale instance, find a replica set that has replicas
-		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Deployment}))
+		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Function.Deployment}))
 		if err != nil {
 			log.Error(ctx, "failed to list replica sets", key.Error.Field(err))
 			continue
@@ -189,7 +198,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 	var wg sync.WaitGroup
 
-	for fn, instances := range fnInstances {
+	for _, fnInstances := range hashInstances {
 		wg.Add(1)
 
 		go func() {
@@ -197,7 +206,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			defer span.End()
 			defer wg.Done()
 
-			_, err = ctrl.supervisor(fn).converge(ctx, instances)
+			_, err = ctrl.supervisor(fnInstances.fn).converge(ctx, fnInstances.instances)
 			if err != nil {
 				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err))
 			}
@@ -209,7 +218,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 	return nil
 }
 
-func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
+func (ctrl *Controller) assignPod(ctx context.Context, fn *function.Function) (instance *function.Instance, err error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
@@ -318,7 +327,7 @@ GET_UNASSIGNED_POD:
 	return
 }
 
-func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *function.Function) (*v1.Pod, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
@@ -338,7 +347,7 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 	})
 }
 
-func (ctrl *Controller) getUnassignedPods(fn function.Function) ([]*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPods(fn *function.Function) ([]*v1.Pod, error) {
 	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
 	if err != nil {
 		return nil, err
@@ -406,10 +415,10 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
 		case MetricCPU:
-			targetUsage = instance.Scale.TargetCPUUsageMilli
+			targetUsage = instance.Function.Scale.TargetCPUUsageMilli
 			totalUsage += instance.CPUUsageMilli
 		case MetricMemory:
-			targetUsage = instance.Scale.TargetMemoryUsageMiB
+			targetUsage = instance.Function.Scale.TargetMemoryUsageMiB
 			totalUsage += instance.MemoryUsageMiB
 		}
 	}
@@ -459,7 +468,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance) ScalingDecision {
+func calculateDesiredInstances(ctx context.Context, heartbeat *function.Heartbeat, instances []*function.Instance) ScalingDecision {
 	if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
 		return ScalingDecision{
 			DesiredInstances:          0,
