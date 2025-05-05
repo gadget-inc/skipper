@@ -153,10 +153,10 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 1, ctrl.routerHeartbeats.Size())
-				heartbeat, ok := ctrl.routerHeartbeats.Load(heartbeats[0].Function)
+				must.Eq(t, 1, ctrl.supervisors.Size())
+				supervisor, ok := ctrl.supervisors.Load(heartbeats[0].Function)
 				must.True(t, ok)
-				must.Eq(t, heartbeats[0].Timestamp, heartbeat[fixture.RouterIP].Timestamp)
+				must.Eq(t, heartbeats[0].Timestamp, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp)
 			},
 		},
 		{
@@ -168,11 +168,11 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 2, ctrl.routerHeartbeats.Size())
+				must.Eq(t, 2, ctrl.supervisors.Size())
 				for _, hb := range heartbeats {
-					heartbeat, ok := ctrl.routerHeartbeats.Load(hb.Function)
+					supervisor, ok := ctrl.supervisors.Load(hb.Function)
 					must.True(t, ok)
-					must.Eq(t, hb.Timestamp, heartbeat[fixture.RouterIP].Timestamp)
+					must.Eq(t, hb.Timestamp, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp)
 				}
 			},
 		},
@@ -182,7 +182,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				// seed the controller with a recent heartbeat
 				fn := fixture.NewFunction()
 				heartbeatTimestamp := time.Now()
-				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: heartbeatTimestamp}})
+				ctrl.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]function.Heartbeat{fixture.RouterIP: {Timestamp: heartbeatTimestamp}}})
 
 				// send an old heartbeat
 				return []function.Heartbeat{
@@ -190,14 +190,13 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 1, ctrl.routerHeartbeats.Size())
+				must.Eq(t, 1, ctrl.supervisors.Size())
 
 				sentHeartbeat := heartbeats[0]
-				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
-
+				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.Function)
 				must.True(t, ok)
-				must.NotEq(t, keptHeartbeat[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp)
-				must.Eq(t, keptHeartbeat[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp.Add(time.Hour))
+				must.NotEq(t, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp)
+				must.Eq(t, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp.Add(time.Hour))
 			},
 		},
 		{
@@ -225,7 +224,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				// seed the controller with a old heartbeat from a different router
 				fn := fixture.NewFunction()
-				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP2: {Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))}})
+				ctrl.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]function.Heartbeat{fixture.RouterIP2: {Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))}}})
 
 				return []function.Heartbeat{
 					{Function: fn, Timestamp: time.Now()},
@@ -233,11 +232,11 @@ func TestHandleHeartbeat(t *testing.T) {
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
 				sentHeartbeat := heartbeats[0]
-				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
+				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.Function)
 				must.True(t, ok)
-				must.Eq(t, 1, len(keptHeartbeat))
-				must.MapNotContainsKey(t, keptHeartbeat, fixture.RouterIP2)
-				must.Eq(t, sentHeartbeat.Timestamp, keptHeartbeat[fixture.RouterIP].Timestamp)
+				must.Eq(t, 1, len(supervisor.routerHeartbeats))
+				must.MapNotContainsKey(t, supervisor.routerHeartbeats, fixture.RouterIP2)
+				must.Eq(t, sentHeartbeat.Timestamp, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp)
 			},
 		},
 	}

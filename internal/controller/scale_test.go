@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"strconv"
-	"sync"
 	"testing"
 	"time"
 
@@ -85,7 +84,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "scale up cpu",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
@@ -112,7 +113,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "scale up memory",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
@@ -139,10 +142,10 @@ func TestScaleNamespace(t *testing.T) {
 			name: "scale up in-flight requests",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
 					fixture.RouterIP:  {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests}, // 2x target across 2 routers
 					fixture.RouterIP2: {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests},
-				})
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
@@ -169,7 +172,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "scale down",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
@@ -201,10 +206,10 @@ func TestScaleNamespace(t *testing.T) {
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
 				fn.Scale.TargetMemoryUsageMiB = 0 // don't scale on memory
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
 					fixture.RouterIP:  {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests / 2}, // 1x target across 2 routers
 					fixture.RouterIP2: {Function: fn, Timestamp: time.Now(), InFlightRequests: fn.Scale.TargetInFlightRequests / 2},
-				})
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
@@ -258,13 +263,7 @@ func TestScaleNamespace(t *testing.T) {
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
 
-				_, ok := c.routerHeartbeats.Load(fn)
-				must.False(t, ok)
-
-				_, ok = c.scaleMu.Load(fn)
-				must.False(t, ok)
-
-				_, ok = c.stabilizationWindows.Load(fn)
+				_, ok := c.supervisors.Load(fn)
 				must.False(t, ok)
 			},
 		},
@@ -272,9 +271,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "heartbeat timeout",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}})
-				c.scaleMu.Store(fn, new(sync.Mutex))
-				c.stabilizationWindows.Store(fn, new(StabilizationWindow))
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())},
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
@@ -290,13 +289,7 @@ func TestScaleNamespace(t *testing.T) {
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
 
-				_, ok := c.routerHeartbeats.Load(fn)
-				must.False(t, ok)
-
-				_, ok = c.scaleMu.Load(fn)
-				must.False(t, ok)
-
-				_, ok = c.stabilizationWindows.Load(fn)
+				_, ok := c.supervisors.Load(fn)
 				must.False(t, ok)
 			},
 		},
@@ -326,7 +319,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "stale instance",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
+				}})
 
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
 				fakeKubernetes.Tracker().Add(assignedPod)
@@ -348,7 +343,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "stale instance without enough available pods",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
+				}})
 
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
 				fakeKubernetes.Tracker().Add(assignedPod)
@@ -375,7 +372,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "different controller pod",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}}) // heartbeat timeout
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now().Add(-FlagHeartbeatTimeout.Value())}, // heartbeat timeout
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil)) // add an assigned pod that needs to be terminated
 
@@ -399,7 +398,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "extra ready instance",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
@@ -424,7 +425,9 @@ func TestScaleNamespace(t *testing.T) {
 			name: "extra unready instance",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
-				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+				c.supervisors.Store(fn, &Supervisor{fn: fn, ctrl: c, routerHeartbeats: map[string]function.Heartbeat{
+					fixture.RouterIP: {Function: fn, Timestamp: time.Now()},
+				}})
 
 				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
@@ -1030,7 +1033,7 @@ func TestScale(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
 
-			instances, err := ctrl.scale(ctx, fn, ScalingDecision{
+			instances, err := ctrl.supervisor(fn).scale(ctx, ScalingDecision{
 				DesiredInstances: tc.desiredInstances,
 				Reason:           "test",
 			})
@@ -1065,7 +1068,7 @@ func TestScaleForwarding(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	must.NoError(t, err)
 
-	instances, err := ctrl.scale(ctx, fn, ScalingDecision{
+	instances, err := ctrl.supervisor(fn).scale(ctx, ScalingDecision{
 		DesiredInstances: 1,
 		Reason:           "test",
 	})

@@ -22,7 +22,6 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -181,14 +180,11 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			terminatedStaleInstances[activeReplicaSet.Name]++
 		}
 
-		scaleMu := ctrl.getScaleMu(instance.Function)
-		scaleMu.Lock()
 		log.Info(ctx, "terminating stale instance")
 		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 		if err != nil {
 			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err))
 		}
-		scaleMu.Unlock()
 	}
 
 	var wg sync.WaitGroup
@@ -201,54 +197,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			defer span.End()
 			defer wg.Done()
 
-			var heartbeat function.Heartbeat
-			ctrl.routerHeartbeats.Compute(fn, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, xsync.ComputeOp) {
-				if loaded {
-					heartbeat = routerHeartbeats.Combined() // use the combined heartbeat from all the routers
-				} else {
-					heartbeat.Function = fn // use the empty heartbeat and associate it with the function
-				}
-				return routerHeartbeats, xsync.CancelOp // don't add this function to the map if it didn't exist
-			})
-
-			for _, instance := range instances {
-				if instance.AssignedAt.After(heartbeat.Timestamp) {
-					heartbeat.Timestamp = instance.AssignedAt
-				}
-			}
-
-			ctx = log.With(ctx, key.Heartbeat.Field(heartbeat))
-			ctx = telemetry.WithPropagatedAttributes(ctx, key.Heartbeat.Attributes(heartbeat)...)
-
-			scalingDecision := calculateDesiredInstances(ctx, heartbeat, instances)
-
-			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() (*StabilizationWindow, bool) { return new(StabilizationWindow), false })
-			stabilizationWindow.RecordRecommendation(scalingDecision.DesiredInstances)
-
-			currentInstances := len(instances)
-			if scalingDecision.DesiredInstances < currentInstances {
-				// we're scaling down
-				if time.Since(ctrl.startedAt) < FlagHPADownscaleStabilization.Value() {
-					// the controller hasn't been running long enough to
-					// record recommendations or receive heartbeats,
-					// so don't scale anything down yet
-					log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", ctrl.startedAt))
-					return
-				}
-
-				if scalingDecision.DesiredInstances == 0 {
-					// we're scaling to 0, so forget about this function after we're done
-					defer ctrl.scaleMu.Delete(fn)
-					defer ctrl.routerHeartbeats.Delete(fn)
-					defer ctrl.stabilizationWindows.Delete(fn)
-				} else {
-					// we're scaling down, but not to 0, so scale down to the max recommended instances within the stabilization window
-					// if we're already lower than the max recommended instances, then use the current number of instances (i.e. don't scale up)
-					scalingDecision.DesiredInstances = min(stabilizationWindow.GetMaxRecommendation(), currentInstances)
-				}
-			}
-
-			_, err = ctrl.scale(ctx, fn, scalingDecision)
+			_, err = ctrl.supervisor(fn).converge(ctx, instances)
 			if err != nil {
 				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err))
 			}
@@ -258,102 +207,6 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 	wg.Wait()
 
 	return nil
-}
-
-func (ctrl *Controller) scale(ctx context.Context, fn function.Function, decision ScalingDecision) ([]*function.Instance, error) {
-	ctx, span := telemetry.Trace(ctx, "controller.scale")
-	defer span.End()
-
-	scaleMu := ctrl.getScaleMu(fn)
-	scaleMu.Lock()
-	defer scaleMu.Unlock()
-
-	instances, err := ctrl.getInstances(fn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get instances: %w", err)
-	}
-
-	// split instances into ready and unready
-	var unreadyInstances []*function.Instance
-	readyInstances := slices.DeleteFunc(instances, func(instance *function.Instance) bool {
-		if instance.ReadyAt.IsZero() {
-			unreadyInstances = append(unreadyInstances, instance)
-			return true
-		}
-		return false
-	})
-
-	ctx = log.With(ctx,
-		key.ScalingDecision.Field(decision),
-		key.ReadyInstances.Field(len(readyInstances)),
-		key.UnreadyInstances.Field(len(unreadyInstances)),
-	)
-
-	if fn.Scale.MaxInstances > 1 && decision.UnclampedDesiredInstances > decision.DesiredInstances {
-		// this function is allowed to scale beyond a single instance
-		// and it wanted to scale up higher than its max instances, so
-		// let's log that for observability
-		log.Info(ctx, "scaling decision was clamped")
-	}
-
-	if decision.DesiredInstances == len(readyInstances) && decision.DesiredInstances > len(unreadyInstances) {
-		// we already have the desired number of ready instances and we
-		// don't have extra unready instances, so there's nothing to do
-		return readyInstances, nil
-	}
-
-	responsibleIP := ctrl.ring.Get(fn)
-	if responsibleIP != FlagPodIP.Value() {
-		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Field(responsibleIP))
-		return ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, decision.DesiredInstances, decision.Reason)
-	}
-
-	if decision.DesiredInstances > len(readyInstances) {
-		// we need to scale up
-		if len(readyInstances)+len(unreadyInstances) >= fn.Scale.MaxInstances+1 {
-			// we have too many instances in total, so we can't scale up
-			log.Info(ctx, "skipping scale up because function has too many instances")
-			return readyInstances, nil
-		}
-
-		log.Info(ctx, "scaling function up")
-		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(decision.DesiredInstances - len(readyInstances)))
-
-		for range decision.DesiredInstances - len(readyInstances) {
-			instance, err := ctrl.assignPod(ctx, fn)
-			if err != nil {
-				return nil, fmt.Errorf("failed to assign pod: %w", err)
-			}
-			readyInstances = append(readyInstances, instance)
-		}
-	} else {
-		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
-		log.Info(ctx, "scaling function down")
-		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(len(readyInstances) + len(unreadyInstances) - decision.DesiredInstances))
-
-		// delete all unready instances
-		for _, unreadyInstance := range unreadyInstances {
-			err := ctrl.kubernetes.CoreV1().Pods(unreadyInstance.Namespace).Delete(ctx, unreadyInstance.Name, metav1.DeleteOptions{})
-			if err != nil {
-				return nil, fmt.Errorf("failed to delete pod: %w", err)
-			}
-		}
-
-		// sort ready instances by assigned at in descending order (newest first)
-		slices.SortFunc(readyInstances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
-
-		// iterate over ready instances in reverse order, deleting the oldest ones first
-		for i := len(readyInstances) - 1; i >= decision.DesiredInstances; i-- {
-			instance := readyInstances[i]
-			err := ctrl.kubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
-			if err != nil {
-				return nil, fmt.Errorf("failed to delete pod: %w", err)
-			}
-			readyInstances = readyInstances[:i]
-		}
-	}
-
-	return readyInstances, nil
 }
 
 func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
@@ -500,11 +353,6 @@ func (ctrl *Controller) getUnassignedPods(fn function.Function) ([]*v1.Pod, erro
 	return slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) }), nil
 }
 
-func (ctrl *Controller) getScaleMu(fn function.Function) *sync.Mutex {
-	scaleMu, _ := ctrl.scaleMu.LoadOrCompute(fn, func() (*sync.Mutex, bool) { return new(sync.Mutex), false })
-	return scaleMu
-}
-
 type Metric string
 
 const (
@@ -516,41 +364,6 @@ const (
 type Recommendation struct {
 	DesiredInstances int
 	Timestamp        time.Time
-}
-
-// StabilizationWindow represents a window of scaling recommendations
-type StabilizationWindow struct {
-	Recommendations []Recommendation
-}
-
-// RecordRecommendation adds a new recommendation and prunes old ones
-func (sw *StabilizationWindow) RecordRecommendation(desiredInstances int) {
-	now := time.Now()
-	sw.Recommendations = append(sw.Recommendations, Recommendation{
-		DesiredInstances: desiredInstances,
-		Timestamp:        now,
-	})
-
-	// remove old recommendations
-	cutoff := now.Add(-FlagHPADownscaleStabilization.Value())
-	var newRecommendations []Recommendation
-	for _, rec := range sw.Recommendations {
-		if rec.Timestamp.After(cutoff) {
-			newRecommendations = append(newRecommendations, rec)
-		}
-	}
-	sw.Recommendations = newRecommendations
-}
-
-// GetMaxRecommendation returns the maximum recommended instances in the window
-func (sw *StabilizationWindow) GetMaxRecommendation() int {
-	var maxDesiredInstances int
-	for _, rec := range sw.Recommendations {
-		if rec.DesiredInstances > maxDesiredInstances {
-			maxDesiredInstances = rec.DesiredInstances
-		}
-	}
-	return maxDesiredInstances
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric

@@ -9,7 +9,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/function"
@@ -39,31 +38,26 @@ type namespaceLister struct {
 	replicaSetLister  listerappsv1.ReplicaSetLister
 }
 
-// TODO: combine these map[function.Function] data structures into a single struct that handles a single function
 type Controller struct {
-	startedAt            time.Time
-	ring                 *hashring.HashRing
-	newClientFunc        NewClientFunc
-	controllerClients    *xsync.Map[string, Client]
-	kubernetes           kubernetes.Interface
-	kubernetesMetrics    kubernetesmetrics.Interface
-	namespaceListers     map[string]namespaceLister
-	scaleMu              *xsync.Map[function.Function, *sync.Mutex]
-	routerHeartbeats     *xsync.Map[function.Function, RouterHeartbeats]
-	stabilizationWindows *xsync.Map[function.Function, *StabilizationWindow]
+	startedAt         time.Time
+	ring              *hashring.HashRing
+	supervisors       *xsync.Map[function.Function, *Supervisor]
+	newClientFunc     NewClientFunc
+	controllerClients *xsync.Map[string, Client]
+	kubernetes        kubernetes.Interface
+	kubernetesMetrics kubernetesmetrics.Interface
+	namespaceListers  map[string]namespaceLister
 }
 
 func New(newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
 	return &Controller{
-		ring:                 hashring.New(hashring.WithWaitTime(FlagHashRingWaitTime.Value())),
-		newClientFunc:        newClientFunc,
-		controllerClients:    xsync.NewMap[string, Client](),
-		kubernetes:           kubernetes,
-		kubernetesMetrics:    kubernetesMetrics,
-		namespaceListers:     make(map[string]namespaceLister, len(function.FlagNamespaces.Value())),
-		scaleMu:              xsync.NewMap[function.Function, *sync.Mutex](),
-		routerHeartbeats:     xsync.NewMap[function.Function, RouterHeartbeats](),
-		stabilizationWindows: xsync.NewMap[function.Function, *StabilizationWindow](),
+		ring:              hashring.New(hashring.WithWaitTime(FlagHashRingWaitTime.Value())),
+		supervisors:       xsync.NewMap[function.Function, *Supervisor](),
+		newClientFunc:     newClientFunc,
+		controllerClients: xsync.NewMap[string, Client](),
+		kubernetes:        kubernetes,
+		kubernetesMetrics: kubernetesMetrics,
+		namespaceListers:  make(map[string]namespaceLister, len(function.FlagNamespaces.Value())),
 	}
 }
 
@@ -325,4 +319,11 @@ func portFromPod(pod *v1.Pod) (string, error) {
 		return "", fmt.Errorf("failed to get port for pod %s", pod.Name)
 	}
 	return port, nil
+}
+
+func (ctrl *Controller) supervisor(fn function.Function) *Supervisor {
+	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn, func() (*Supervisor, bool) {
+		return &Supervisor{fn: fn, ctrl: ctrl}, false
+	})
+	return supervisor
 }
