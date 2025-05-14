@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
 )
@@ -16,10 +17,19 @@ type HashRing struct {
 	hashes       []uint32          // Sorted list of hashes
 	mu           xsync.RBMutex     // Read-Write mutex to protect concurrent access
 	virtualNodes int               // Number of virtual nodes per IP
+	waitTime     time.Duration     // Time to wait for the hash ring to be populated
 }
 
 type RingKey interface {
 	RingKey() string
+}
+
+type RingOption func(*HashRing)
+
+func WithWaitTime(waitTime time.Duration) RingOption {
+	return func(h *HashRing) {
+		h.waitTime = waitTime
+	}
 }
 
 // New creates a new HashRing.
@@ -27,12 +37,16 @@ type RingKey interface {
 // Example:
 //
 //	ring := New()
-func New() *HashRing {
-	return &HashRing{
+func New(opts ...RingOption) *HashRing {
+	h := &HashRing{
 		ips:          make(map[uint32]string),
 		hashes:       []uint32{},
 		virtualNodes: 4096, // Number of virtual nodes per IP, increase for better distribution
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // getNodeHash generates different hash values for the same node
@@ -121,11 +135,26 @@ func (h *HashRing) Remove(ip string) {
 //
 //	ip := ring.Get("my-cache-key")
 func (h *HashRing) Get(value RingKey) string {
+	rt := h.mu.RLock()
+
 	if len(h.hashes) == 0 {
-		panic("hash ring is empty")
+		h.mu.RUnlock(rt)
+
+		// Wait for the hash ring to be populated
+		waitAttempts := 4
+		for range waitAttempts {
+			time.Sleep(h.waitTime / time.Duration(waitAttempts))
+			rt = h.mu.RLock()
+			if len(h.hashes) > 0 {
+				break
+			}
+			h.mu.RUnlock(rt)
+		}
+		if len(h.hashes) == 0 {
+			panic("hash ring is empty")
+		}
 	}
 
-	rt := h.mu.RLock()
 	defer h.mu.RUnlock(rt)
 
 	// Compute the hash of the key

@@ -54,7 +54,7 @@ type Controller struct {
 
 func New(newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
 	return &Controller{
-		ring:                 hashring.New(),
+		ring:                 hashring.New(hashring.WithWaitTime(FlagHashRingWaitTime.Value())),
 		newClientFunc:        newClientFunc,
 		controllerClients:    xsync.NewMap[string, Client](),
 		kubernetes:           kubernetes,
@@ -74,6 +74,12 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 
 	for _, namespace := range function.FlagNamespaces.Value() {
 		go timer.Loop(ctx, FlagScaleInterval.Value(), func(ctx context.Context) error {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Error(ctx, "panic in scaleNamespace", key.Error.Field(fmt.Errorf("%v", r)))
+				}
+			}()
+
 			err := ctrl.scaleNamespace(ctx, namespace)
 			if err != nil {
 				log.Error(ctx, "failed to scale namespace", key.Error.Field(err), key.Namespace.Field(namespace))

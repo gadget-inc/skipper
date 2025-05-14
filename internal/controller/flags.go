@@ -131,4 +131,10 @@ var (
 			return nil
 		},
 	}
+
+	FlagHashRingWaitTime = flag.Flag[time.Duration]{
+		Name:        "controller-hash-ring-wait-time",
+		Description: "How long to wait for the controller to populate its hash ring.",
+		Default:     10 * time.Second,
+	}
 )
