@@ -10,7 +10,7 @@ jobs:
     uses: ./.github/workflows/ci.yaml
   cd:
     needs: ci
-    runs-on: ubuntu-latest-l
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     permissions:
       contents: "read"
       id-token: "write"
@@ -20,6 +20,8 @@ jobs:
 
       - name: Set up environment
         uses: ./.github/actions/setup-environment
+        with:
+          cachix_auth_token: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Set up Docker
         uses: ./.github/actions/setup-docker

@@ -6,27 +6,31 @@ on:
 
 jobs:
   go-lint:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up environment
         uses: ./.github/actions/setup-environment
+        with:
+          cachix_auth_token: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: useblacksmith/golangci-lint-action@v6
         with:
           install-mode: "none"
 
   go-test:
-    runs-on: ubuntu-latest-l
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up environment
         uses: ./.github/actions/setup-environment
+        with:
+          cachix_auth_token: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Set up Docker
         uses: ./.github/actions/setup-docker
@@ -49,7 +53,7 @@ jobs:
       - name: Deploy
         env:
           SKIPPER_KUBECTL_CONTEXT: kind-kind
-        run: deploy
+        run: deploy --only=skipper,fixtures
 
       - name: Watch and persist logs
         env:
@@ -67,16 +71,15 @@ jobs:
           path: tmp/logs/
 
   deno-lint:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up environment
         uses: ./.github/actions/setup-environment
+        with:
+          cachix_auth_token: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Run lint
-        run: deno lint
-
-      - name: Run fmt
-        run: deno fmt --check
+        run: lint --only=deno

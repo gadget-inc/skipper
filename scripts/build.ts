@@ -7,11 +7,10 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 $.cwd = abs();
 
 const flags = parseArgs(Deno.args, {
-  string: ["registry", "name", "tag", "platform", "cache-from-to"],
+  string: ["registry", "name", "tag", "platform"],
   boolean: ["help", "latest", "load", "push", "kind", "provenance", "fixtures"],
   negatable: ["kind", "fixtures"],
   default: {
-    "cache-from-to": isCI ? "gha" : "",
     fixtures: true,
     help: false,
     kind: isCI,
@@ -35,7 +34,6 @@ if (flags.help) {
       build [flags]
 
     Flags:
-          --cache-from-to <string>  Build cache to use (${flags["cache-from-to"]})
           --fixtures                Build fixtures (${flags.fixtures})
           --latest                  Build latest tag (${flags.latest})
           --load                    Load the image (${flags.load})
@@ -97,11 +95,6 @@ if (flags.fixtures) {
 
     if (!flags.provenance) {
       buildFlags.push("--provenance=false");
-    }
-
-    if (isCI) {
-      buildFlags.push("--cache-from=type=gha");
-      buildFlags.push("--cache-to=type=gha,mode=max");
     }
 
     await $({ verbose: true })`docker buildx build . ${buildFlags}`;

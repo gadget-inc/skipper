@@ -1,17 +1,23 @@
-name: "Set up environment"
-description: "Set up the environment for the runner"
-inputs: {}
+name: "Set up Nix environment"
+description: "Set up the Nix environment for the runner"
+inputs:
+  cachix_auth_token:
+    description: "The Cachix auth token"
+    required: true
 outputs: {}
 runs:
   using: "composite"
   steps:
-    - name: Install nix
-      uses: DeterminateSystems/nix-installer-action@main
+    - name: Install Nix
+      uses: nixbuild/nix-quick-install-action@v30
 
-    - name: Cache nix
-      uses: DeterminateSystems/magic-nix-cache-action@main
+    - name: Cache Nix
+      uses: cachix/cachix-action@v16
+      with:
+        name: skipper
+        authToken: "${{ inputs.cachix_auth_token }}"
 
-    - name: Set up nix environment
+    - name: Set up Nix environment
       run: |
         cd nix
         source <(nix print-dev-env --show-trace)
@@ -19,8 +25,8 @@ runs:
         echo "WORKSPACE_DIR=${{ github.workspace }}" >> "$GITHUB_ENV"
       shell: bash
 
-    - name: Restore and cache go dependencies
-      uses: actions/cache@v4
+    - name: Restore and cache Go dependencies
+      uses: useblacksmith/cache@v5
       with:
         key: setup-go-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
         restore-keys: setup-go-${{ runner.os }}-
@@ -28,12 +34,12 @@ runs:
           ~/.cache/go-build
           ~/go/pkg/mod
 
-    - name: Install go dependencies
+    - name: Install Go dependencies
       run: go mod download && go mod verify
       shell: bash
 
-    - name: Restore and cache deno dependencies
-      uses: actions/cache@v4
+    - name: Restore and cache Deno dependencies
+      uses: useblacksmith/cache@v5
       with:
         key: setup-deno-${{ runner.os }}-${{ hashFiles('deno.lock') }}-${{ github.sha }}
         restore-keys: setup-deno-${{ runner.os }}-
@@ -41,6 +47,6 @@ runs:
           ~/.deno
           ~/.cache/deno
 
-    - name: Install deno dependencies
+    - name: Install Deno dependencies
       run: deno install
       shell: bash

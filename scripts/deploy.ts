@@ -64,7 +64,7 @@ if (flags.only.includes("metrics-server")) {
   await $`krane deploy kube-system "$SKIPPER_KUBECTL_CONTEXT" -f ${kubeSystemRenderDir}/* --selector=app.kubernetes.io/managed-by=krane --protected-namespaces=default kube-public`;
 }
 
-if (flags.only.includes("otel-lgtm")) {
+if (flags.only.includes("otel-lgtm") && flags.otel) {
   await deployKraneNamespace("otel-lgtm");
 }
 
