@@ -6,7 +6,7 @@ on:
 
 jobs:
   go-lint:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -15,12 +15,12 @@ jobs:
         uses: ./.github/actions/setup-environment
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: useblacksmith/golangci-lint-action@v6
         with:
           install-mode: "none"
 
   go-test:
-    runs-on: ubuntu-latest-l
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
           path: tmp/logs/
 
   deno-lint:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
