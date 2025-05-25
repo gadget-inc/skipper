@@ -1,5 +1,5 @@
-name: "Set up Nix environment"
-description: "Set up the Nix environment for the runner"
+name: "Set up environment"
+description: "Set up the environment for the runner"
 inputs:
   cachix_auth_token:
     description: "The Cachix auth token"
@@ -17,12 +17,11 @@ runs:
         name: skipper
         authToken: "${{ inputs.cachix_auth_token }}"
 
-    - name: Set up Nix environment
+    - name: Set up direnv
       run: |
-        cd nix
-        source <(nix print-dev-env --show-trace)
-        echo "$PATH" >> "$GITHUB_PATH"
-        echo "WORKSPACE_DIR=${{ github.workspace }}" >> "$GITHUB_ENV"
+        curl -sfL https://direnv.net/install.sh | bash
+        direnv allow
+        direnv export gha >> "$GITHUB_ENV"
       shell: bash
 
     - name: Restore and cache Go dependencies

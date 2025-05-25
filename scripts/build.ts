@@ -7,16 +7,16 @@ import { parseArgs } from "jsr:@std/cli/parse-args";
 $.cwd = abs();
 
 const flags = parseArgs(Deno.args, {
-  string: ["registry", "name", "tag", "platform"],
-  boolean: ["help", "latest", "load", "push", "kind", "provenance", "fixtures"],
-  negatable: ["kind", "fixtures"],
+  string: ["registry", "name", "tag", "platform", "only"],
+  boolean: ["help", "latest", "load", "push", "kind", "provenance"],
+  negatable: ["kind"],
   default: {
-    fixtures: true,
     help: false,
     kind: isCI,
     latest: true,
     load: true,
     name: "skipper",
+    only: "skipper,fixtures",
     platform: await currentDockerPlatform(),
     provenance: false,
     push: false,
@@ -34,10 +34,10 @@ if (flags.help) {
       build [flags]
 
     Flags:
-          --fixtures                Build fixtures (${flags.fixtures})
           --latest                  Build latest tag (${flags.latest})
           --load                    Load the image (${flags.load})
           --name <string>           Name of the image (${flags.name})
+          --only <string>           Only build the given images (${flags.only})
           --platform <string>       Platform to build for (${flags.platform})
           --provenance              Enable provenance (${flags.provenance})
           --push                    Push the image (${flags.push})
@@ -78,12 +78,12 @@ if (flags.only.includes("skipper")) {
   }
 }
 
-if (flags.fixtures) {
+if (flags.only.includes("fixtures")) {
   for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) {
     $.cwd = fixture;
     const name = path.basename(fixture);
     const imageName = `skipper-fixtures-${name}`;
-    const buildFlags = [`--platform=${flags.platform}`, `--tag=${imageName}:${flags.tag}`];
+    const buildFlags = [`--platform=${flags.platform}`, `--tag=${imageName}:${flags.tag}`, `--build-arg=DENO_VERSION=${Deno.version.deno}`];
 
     if (flags.latest) {
       buildFlags.push(`--tag=${imageName}:latest`);

@@ -1,4 +1,5 @@
-FROM denoland/deno:2.2.12
+ARG DENO_VERSION=latest
+FROM denoland/deno:${DENO_VERSION}
 WORKDIR /app
 USER deno
 COPY main.ts .

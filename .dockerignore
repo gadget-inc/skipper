@@ -3,7 +3,9 @@
 
 !cmd/
 !internal/
+!nix/
 !pkg/
+!.envrc
 !go.mod
 !go.sum
 !main.go
