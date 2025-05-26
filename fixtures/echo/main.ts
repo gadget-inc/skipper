@@ -51,7 +51,7 @@ const server = Deno.serve({ port: 8888 }, async (request) => {
         headers: {
           "content-type": "application/json",
         },
-      }
+      },
     );
   }
 

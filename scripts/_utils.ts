@@ -1,9 +1,9 @@
-import { $, fs, path } from "npm:zx";
-import { dedent as tsDedent } from "npm:ts-dedent";
-
-export const dedent = tsDedent;
+import { $, path } from "npm:zx";
+import { copy, emptyDir, exists } from "jsr:@std/fs";
 
 export const isCI = Deno.env.get("CI") === "1" || Deno.env.get("CI") === "true";
+
+$.verbose = isCI;
 
 export const workspaceDir = new URL("..", import.meta.url).pathname;
 
@@ -35,16 +35,16 @@ export async function currentDockerPlatform() {
 export async function renderKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
   const deployDir = abs(`deploy/${namespace}`);
   const renderDir = abs(`tmp/krane/${namespace}`);
-  await fs.emptyDir(renderDir);
+  await emptyDir(renderDir);
 
-  if (await fs.pathExists(`${deployDir}/secrets.ejson`)) {
-    await fs.copy(`${deployDir}/secrets.ejson`, `${renderDir}/secrets.ejson`);
+  if (await exists(`${deployDir}/secrets.ejson`)) {
+    await copy(`${deployDir}/secrets.ejson`, `${renderDir}/secrets.ejson`);
   }
 
   bindings = {
-    deploy_dir: deployDir,
-    render_dir: renderDir,
-    workspace_dir: workspaceDir,
+    deploy_dir: deployDir.replace(/\/$/, ""), // remove trailing slash
+    render_dir: renderDir.replace(/\/$/, ""),
+    workspace_dir: workspaceDir.replace(/\/$/, ""),
     ...bindings,
   };
 
@@ -54,8 +54,12 @@ export async function renderKraneNamespace(namespace: string, bindings: Record<s
 }
 
 export async function deployKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
-  $.env.KUBECTL_CONTEXT ??= "orbstack";
+  $.env.SKIPPER_KUBECTL_CONTEXT ??= "orbstack";
   const renderDir = await renderKraneNamespace(namespace, bindings);
-  await $`kubectl --context="$KUBECTL_CONTEXT" create namespace ${namespace}`.nothrow().quiet();
-  await $`krane deploy ${namespace} "$KUBECTL_CONTEXT" -f ${renderDir}/*`;
+  await $`kubectl --context="$SKIPPER_KUBECTL_CONTEXT" create namespace ${namespace}`.nothrow().quiet();
+  await $`krane deploy ${namespace} "$SKIPPER_KUBECTL_CONTEXT" -f ${renderDir}/*`;
+}
+
+export function isAbortError(error: unknown): error is DOMException {
+  return error instanceof DOMException && error.name === "AbortError";
 }

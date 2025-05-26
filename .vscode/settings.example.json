@@ -3,5 +3,11 @@
   "go.useLanguageServer": true,
   "gopls": {
     "formatting.gofumpt": true
+  },
+  "[javascript,javascriptreact,typescript,typescriptreact]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
   }
 }

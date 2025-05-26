@@ -41,9 +41,9 @@ jobs:
 
       - name: Build and push to Google Artifact Registry
         run: |
-          task build -- \
+          build \
+            --only=skipper \
             --registry=us-central1-docker.pkg.dev/gadget-core-production/core-production \
             --platform=linux/amd64,linux/arm64 \
-            --cache-from-to=registry \
             --push \
             --no-kind

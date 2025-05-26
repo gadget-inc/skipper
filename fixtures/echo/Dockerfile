@@ -1,4 +1,4 @@
-FROM denoland/deno:2.2.1
+FROM denoland/deno:2.2.12
 WORKDIR /app
 USER deno
 COPY main.ts .

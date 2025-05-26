@@ -25,7 +25,8 @@ Deno.addSignalListener("SIGTERM", async () => {
 await server.finished;
 ```
 
-Create a Kubernetes deployment with the `skipper/deployment` label, `skipper/tenant` DoesNotExist match expression, and `skipper/port` annotation.
+Create a Kubernetes deployment with the `skipper/deployment` label, `skipper/tenant` DoesNotExist match expression, and `skipper/port`
+annotation.
 
 ```yaml
 apiVersion: apps/v1
@@ -57,9 +58,13 @@ spec:
 ```
 
 > [!NOTE]
-> The `skipper/port` annotation isn't required, but your deployment must have at least one annotation defined, otherwise Skipper won't be able to atomically add annotations to your pods because the JSON Patch will fail. See [this Stack Overflow answer](https://stackoverflow.com/a/57480206) and [this section of the JSON Patch RFC](https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12) for more details.
+> The `skipper/port` annotation isn't required, but your deployment must have at least one annotation defined, otherwise Skipper won't be
+> able to atomically add annotations to your pods because the JSON Patch will fail. See
+> [this Stack Overflow answer](https://stackoverflow.com/a/57480206) and
+> [this section of the JSON Patch RFC](https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12) for more details.
 
-This deployment can now be used as a pool of echo servers that are ready to be assigned to tenants. You can assign one of these echo servers to a tenant by sending a request to Skipper's router with the `x-skipper-function` header:
+This deployment can now be used as a pool of echo servers that are ready to be assigned to tenants. You can assign one of these echo servers
+to a tenant by sending a request to Skipper's router with the `x-skipper-function` header:
 
 ```js
 const routerUrl = "http://skipper-production-router.skipper-production.svc.cluster.local";
@@ -86,4 +91,6 @@ console.log(body);
 // }
 ```
 
-Skipper will assign one of the echo servers to the tenant and return the response from the assigned echo server. All subsequent requests to the same function will be sent to the same echo server. If the function doesn't receive a request within the `SKIPPER_CONTROLLER_HEARTBEAT_TIMEOUT` (default: 90s), the pod will be terminated.
+Skipper will assign one of the echo servers to the tenant and return the response from the assigned echo server. All subsequent requests to
+the same function will be sent to the same echo server. If the function doesn't receive a request within the
+`SKIPPER_CONTROLLER_HEARTBEAT_TIMEOUT` (default: 90s), the pod will be terminated.

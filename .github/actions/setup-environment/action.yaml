@@ -16,6 +16,7 @@ runs:
         cd nix
         source <(nix print-dev-env --show-trace)
         echo "$PATH" >> "$GITHUB_PATH"
+        echo "WORKSPACE_DIR=${{ github.workspace }}" >> "$GITHUB_ENV"
       shell: bash
 
     - name: Restore and cache go dependencies

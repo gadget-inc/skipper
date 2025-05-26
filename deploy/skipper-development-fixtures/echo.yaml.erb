@@ -42,6 +42,22 @@ spec:
             - name: http
               containerPort: 8888
           env:
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: K8S_NAMESPACE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(K8S_POD_NAME),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME)
+            - name: OTEL_SERVICE_NAME
+              value: echo
             - name: SKIPPER_PUBLIC_KEY
               value: <%= File.read("#{workspace_dir}/tmp/paseto/public.pem").to_json %>
             <%- env.each do |key, value| -%>
@@ -53,9 +69,6 @@ spec:
               mountPath: /tmp
           resources:
             requests:
-              memory: "256Mi"
-              cpu: "250m"
-            limits:
               memory: "256Mi"
               cpu: "250m"
           startupProbe:
