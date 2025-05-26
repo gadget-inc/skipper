@@ -2,6 +2,8 @@
 
 Skipper is a Kubernetes controller that turns Kubernetes deployments into a pool of functions that can be assigned to tenants.
 
+If you're looking to contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Overview
 
 Assume you have the following echo server:
