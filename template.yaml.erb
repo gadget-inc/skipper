@@ -206,6 +206,8 @@ spec:
           args:
             - controller
           ports:
+            - name: grpc
+              containerPort: 5051
             - name: pprof
               containerPort: 6060
             - name: http
@@ -257,26 +259,23 @@ spec:
               cpu: "<%= controller_limit_cpu %>"
               <%- end -%>
           startupProbe:
-            httpGet:
-              path: /healthz
-              port: http
+            grpc:
+              port: 5051
             failureThreshold: 3
             initialDelaySeconds: 3
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: http
+            grpc:
+              port: 5051
             failureThreshold: 2
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
           readinessProbe:
-            httpGet:
-              path: /healthz
-              port: http
+            grpc:
+              port: 5051
             failureThreshold: 1
             periodSeconds: 1
             successThreshold: 1
@@ -335,7 +334,8 @@ spec:
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: <%= namespace %>
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: http
   <%- if service_spec.any? -%>
   <%= to_yaml(service_spec, indentation: 2) %>
@@ -343,6 +343,9 @@ spec:
   <%- if controller_service_spec.any? -%>
   <%= to_yaml(controller_service_spec, indentation: 2) %>
   <%- end -%>
+    - name: grpc
+      port: 5051
+      targetPort: grpc
 <%- if controller_min_replicas != controller_max_replicas -%>
 ---
 apiVersion: autoscaling/v2

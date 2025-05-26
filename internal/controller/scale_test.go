@@ -26,6 +26,7 @@ func init() {
 	function.FlagAssignTimeout.Init()
 
 	FlagAvailableReplicaDivisor.Init()
+	FlagGRPCPort.Init()
 	FlagHPADownscaleStabilization.Init()
 	FlagHPAInitialReadinessDelay.Init()
 	FlagHPATolerance.Init()

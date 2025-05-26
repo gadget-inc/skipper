@@ -16,6 +16,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -74,17 +76,30 @@ func NewController() *cobra.Command {
 				),
 			}
 
-			httpServerError := make(chan error, 1)
+			grpcServer := ctrl.GRPCServer()
+			grpcListener, err := net.Listen("tcp", net.JoinHostPort(controller.FlagHost.Value(), strconv.Itoa(controller.FlagGRPCPort.Value())))
+			if err != nil {
+				return fmt.Errorf("failed to create grpc listener: %w", err)
+			}
+
+			serverError := make(chan error, 1)
 
 			go func() {
-				log.Info(ctx, "serving controller", key.Addr.Field(httpServer.Addr))
+				log.Info(ctx, "serving grpc server", key.Addr.Field(net.JoinHostPort(controller.FlagHost.Value(), strconv.Itoa(controller.FlagGRPCPort.Value()))))
+				if err := grpcServer.Serve(grpcListener); err != nil && err != grpc.ErrServerStopped {
+					serverError <- err
+				}
+			}()
+
+			go func() {
+				log.Info(ctx, "serving http server", key.Addr.Field(httpServer.Addr))
 				if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					httpServerError <- err
+					serverError <- err
 				}
 			}()
 
 			select {
-			case err := <-httpServerError:
+			case err := <-serverError:
 				return fmt.Errorf("failed to serve controller: %w", err)
 			case <-ctx.Done():
 				log.Info(ctx, "shutting down controller")
@@ -93,7 +108,20 @@ func NewController() *cobra.Command {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), controller.FlagShutdownTimeout.Value())
 			defer cancel()
 
-			if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			shutdownGroup, shutdownCtx := errgroup.WithContext(shutdownCtx)
+			shutdownGroup.Go(func() error {
+				grpcServer.GracefulStop()
+				return nil
+			})
+
+			shutdownGroup.Go(func() error {
+				if err := httpServer.Shutdown(shutdownCtx); err != nil {
+					return fmt.Errorf("failed to shutdown http server: %w", err)
+				}
+				return nil
+			})
+
+			if err := shutdownGroup.Wait(); err != nil {
 				return fmt.Errorf("failed to shutdown controller: %w", err)
 			}
 
@@ -103,6 +131,7 @@ func NewController() *cobra.Command {
 	}
 
 	controller.FlagAvailableReplicaDivisor.Bind(cmd)
+	controller.FlagGRPCPort.Bind(cmd)
 	controller.FlagHPADownscaleStabilization.Bind(cmd)
 	controller.FlagHPAInitialReadinessDelay.Bind(cmd)
 	controller.FlagHPATolerance.Bind(cmd)

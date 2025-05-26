@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+option go_package = "github.com/gadget-inc/skipper/internal/controller";
+
+package controller;
+
+import "function.proto";
+import "instance.proto";
+import "heartbeat.proto";
+
+service Controller {
+  rpc GetOrCreateInstance(GetOrCreateInstanceRequest) returns (GetOrCreateInstanceResponse) {}
+  rpc SendHeartbeats(SendHeartbeatsRequest) returns (SendHeartbeatsResponse) {}
+  rpc Scale(ScaleRequest) returns (ScaleResponse) {}
+}
+
+message GetOrCreateInstanceRequest {
+  function.Function function = 1;
+}
+
+message GetOrCreateInstanceResponse {
+  function.Instance instance = 1;
+}
+
+message SendHeartbeatsRequest {
+  string router_ip = 1;
+  repeated function.Heartbeat heartbeats = 2;
+  repeated string forwarded_for = 3;
+}
+
+message SendHeartbeatsResponse {
+}
+
+message ScaleRequest {
+  function.Function function = 1;
+  uint32 desired_instances = 2;
+  string reason = 3;
+}
+
+message ScaleResponse {
+  repeated function.Instance instances = 1;
+}

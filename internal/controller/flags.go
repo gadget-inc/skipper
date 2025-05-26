@@ -24,7 +24,7 @@ var (
 
 	FlagPort = flag.Flag[int]{
 		Name:        "controller-port",
-		Description: "The port the controller listens on.",
+		Description: "The HTTP port the controller listens on.",
 		Default:     8080,
 		Parse: func(s string) (int, error) {
 			if strings.HasPrefix(s, "tcp://") && s == os.Getenv("SKIPPER_CONTROLLER_PORT") {
@@ -33,6 +33,12 @@ var (
 			}
 			return strconv.Atoi(s)
 		},
+	}
+
+	FlagGRPCPort = flag.Flag[int]{
+		Name:        "controller-grpc-port",
+		Description: "The gRPC port the controller listens on.",
+		Default:     5051,
 	}
 
 	FlagShutdownTimeout = flag.Flag[time.Duration]{

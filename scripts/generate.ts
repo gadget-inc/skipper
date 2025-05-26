@@ -14,3 +14,15 @@ protoc scale.proto function.proto instance.proto heartbeat.proto \\
     --go_opt=paths=source_relative \\
     --go_opt=default_api_level=API_OPAQUE
 `;
+
+await $nothrow`
+cd internal/controller
+protoc controller.proto \\
+    --proto_path=./ \\
+    --proto_path=../function \\
+    --go_out=. \\
+    --go_opt=paths=source_relative \\
+    --go_opt=default_api_level=API_OPAQUE \\
+    --go-grpc_out=. \\
+    --go-grpc_opt=paths=source_relative
+`;

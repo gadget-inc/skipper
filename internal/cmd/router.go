@@ -66,6 +66,7 @@ func NewRouter() *cobra.Command {
 		},
 	}
 
+	router.FlagControllerServiceGRPCPort.Bind(cmd)
 	router.FlagControllerServiceHost.Bind(cmd)
 	router.FlagControllerServicePort.Bind(cmd)
 	router.FlagHeartbeatInterval.Bind(cmd)

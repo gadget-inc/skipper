@@ -76,4 +76,10 @@ var (
 		Description: "The port the controller service listens on.",
 		Default:     80,
 	}
+
+	FlagControllerServiceGRPCPort = flag.Flag[int]{
+		Name:        "controller-service-grpc-port",
+		Description: "The port the controller service listens on for gRPC.",
+		Default:     5051,
+	}
 )
