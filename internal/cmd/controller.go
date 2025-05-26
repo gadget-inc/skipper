@@ -63,7 +63,7 @@ func NewController() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			ctrl := controller.New(controller.NewHTTPClient, kubernetes, kubernetesMetrics)
+			ctrl := controller.New(controller.NewGRPCClient, kubernetes, kubernetesMetrics)
 			if err := ctrl.Start(ctx); err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)
 			}

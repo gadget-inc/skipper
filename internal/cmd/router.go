@@ -27,7 +27,7 @@ func NewRouter() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			r := router.New(controller.NewHTTPClient(router.FlagControllerServiceHost.Value(), router.FlagControllerServicePort.Value()))
+			r := router.New(controller.NewGRPCClient(router.FlagControllerServiceHost.Value(), router.FlagControllerServiceGRPCPort.Value()))
 			r.Start(ctx)
 
 			httpServer := &http.Server{

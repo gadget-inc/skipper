@@ -90,7 +90,7 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 }
 
 func (ctrl *Controller) getControllerClient(ip string) Client {
-	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, FlagPort.Value()), false })
+	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, FlagGRPCPort.Value()), false })
 	return controllerClient
 }
 
