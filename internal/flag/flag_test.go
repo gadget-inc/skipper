@@ -3,7 +3,7 @@ package flag
 import (
 	"testing"
 
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 )
 
 func TestFlag(t *testing.T) {
@@ -11,9 +11,9 @@ func TestFlag(t *testing.T) {
 		flag := Flag[string]{}
 
 		err := flag.Set("foo")
-		must.NoError(t, err)
-		must.Eq(t, "foo", flag.Value())
-		must.Eq(t, "foo", flag.String())
+		assert.NilError(t, err)
+		assert.Assert(t, flag.Value() == "foo")
+		assert.Assert(t, flag.String() == "foo")
 	})
 
 	t.Run("strings", func(t *testing.T) {
@@ -59,9 +59,9 @@ func TestFlag(t *testing.T) {
 				flag := Flag[[]string]{Separator: tc.separator}
 
 				err := flag.Set(tc.input)
-				must.NoError(t, err)
-				must.Eq(t, tc.expected, flag.Value())
-				must.Eq(t, tc.expectedString, flag.String())
+				assert.NilError(t, err)
+				assert.DeepEqual(t, flag.Value(), tc.expected)
+				assert.Assert(t, flag.String() == tc.expectedString)
 			})
 		}
 	})

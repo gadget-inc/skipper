@@ -18,6 +18,7 @@
           go = pkgs.go_1_24;
           gofumpt = pkgs.gofumpt;
           golangci-lint = pkgs.golangci-lint;
+          gotestsum = pkgs.gotestsum;
           graphviz = pkgs.graphviz;
           krane = pkgs.krane;
           kubectl = pkgs.kubectl;

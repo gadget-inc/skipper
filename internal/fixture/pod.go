@@ -13,7 +13,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -37,10 +37,10 @@ func NewAvailablePod(t *testing.T, fn *function.Function, handler http.Handler) 
 	t.Cleanup(testServer.Close)
 
 	ip, portStr, err := net.SplitHostPort(testServer.Listener.Addr().String())
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
 	port, err := strconv.Atoi(portStr)
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
 	podCounter.Add(1)
 
@@ -89,17 +89,17 @@ func NewAvailablePod(t *testing.T, fn *function.Function, handler http.Handler) 
 
 func defaultAvailablePodHandler(t *testing.T, fn *function.Function) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
-		must.Eq(t, http.MethodPost, req.Method)
-		must.Eq(t, function.FlagAssignPath.Value(), req.URL.Path)
+		assert.Assert(t, req.Method == http.MethodPost)
+		assert.Assert(t, req.URL.Path == function.FlagAssignPath.Value())
 
 		assignedFn, err := function.FromHeader(req)
-		must.NoError(t, err)
-		must.Eq(t, fn, assignedFn)
+		assert.NilError(t, err)
+		assert.DeepEqual(t, assignedFn, fn)
 
 		parser := paseto.NewParserForValidNow()
 		parser.AddRule(paseto.Subject(fn.GetTenant()))
 		_, err = parser.ParseV2Public(ControllerPasetoPublicKey, req.Header.Get(key.Token.Header))
-		must.NoError(t, err)
+		assert.NilError(t, err)
 
 		rw.WriteHeader(http.StatusOK)
 	}
@@ -110,13 +110,13 @@ func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *
 	t.Cleanup(testServer.Close)
 
 	ip, portStr, err := net.SplitHostPort(testServer.Listener.Addr().String())
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
 	port, err := strconv.Atoi(portStr)
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
 	fnJSON, err := json.Marshal(fn)
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
 	podCounter.Add(1)
 

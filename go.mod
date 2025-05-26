@@ -7,7 +7,6 @@ require (
 	github.com/go-json-experiment/json v0.0.0-20250223041408-d3c622f1b874
 	github.com/prometheus/client_golang v1.21.1
 	github.com/puzpuzpuz/xsync/v4 v4.0.0
-	github.com/shoenig/test v1.12.1
 	github.com/spf13/pflag v1.0.6
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0
@@ -18,6 +17,7 @@ require (
 	golang.org/x/sync v0.12.0
 	google.golang.org/grpc v1.71.1
 	gopkg.in/evanphx/json-patch.v4 v4.12.0
+	gotest.tools/v3 v3.5.2
 	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
 	k8s.io/client-go v0.32.3
@@ -57,7 +57,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/go-cmp v0.7.0
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.6.0
 	github.com/josharian/intern v1.0.0 // indirect

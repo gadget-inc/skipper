@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/go-json-experiment/json"
-	"github.com/shoenig/test/must"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+	"gotest.tools/v3/assert"
 )
 
 func TestInstanceJSON(t *testing.T) {
@@ -57,32 +57,32 @@ func TestInstanceJSON(t *testing.T) {
 	}.Build()
 
 	newJSON, err := json.Marshal(newInstance)
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
 	oldJSON, err := json.Marshal(oldInstance)
-	must.NoError(t, err)
-	must.EqOp(t, string(oldJSON), string(newJSON))
+	assert.NilError(t, err)
+	assert.Assert(t, string(oldJSON) == string(newJSON))
 
 	oldInstance = new(OldInstance)
-	must.NoError(t, json.Unmarshal(newJSON, oldInstance))
+	assert.NilError(t, json.Unmarshal(newJSON, oldInstance))
 
 	newInstance = new(Instance)
-	must.NoError(t, json.Unmarshal(oldJSON, newInstance))
+	assert.NilError(t, json.Unmarshal(oldJSON, newInstance))
 
-	must.Eq(t, oldInstance.Namespace, newInstance.GetFunction().GetNamespace())
-	must.Eq(t, oldInstance.Deployment, newInstance.GetFunction().GetDeployment())
-	must.Eq(t, oldInstance.Tenant, newInstance.GetFunction().GetTenant())
-	must.Eq(t, oldInstance.Metadata, newInstance.GetFunction().GetMetadata())
-	must.Eq(t, oldInstance.Scale.MinInstances, int(newInstance.GetFunction().GetScale().GetMinInstances()))
-	must.Eq(t, oldInstance.Scale.MaxInstances, int(newInstance.GetFunction().GetScale().GetMaxInstances()))
-	must.Eq(t, oldInstance.Scale.TargetCPUUsageMilli, int(newInstance.GetFunction().GetScale().GetTargetCpuUsageMilli()))
-	must.Eq(t, oldInstance.Scale.TargetMemoryUsageMiB, int(newInstance.GetFunction().GetScale().GetTargetMemoryUsageMib()))
-	must.Eq(t, oldInstance.Scale.TargetInFlightRequests, int(newInstance.GetFunction().GetScale().GetTargetInFlightRequests()))
-	must.Eq(t, oldInstance.Name, newInstance.GetName())
-	must.Eq(t, oldInstance.Addr, newInstance.GetAddr())
-	must.Eq(t, oldInstance.ReplicaSet, newInstance.GetReplicaSet())
-	must.Eq(t, oldInstance.AssignedAt, newInstance.GetAssignedAt().AsTime())
-	must.Eq(t, oldInstance.ReadyAt, newInstance.GetReadyAt().AsTime())
-	must.Eq(t, oldInstance.CPUUsageMilli, int(newInstance.GetCpuUsageMilli()))
-	must.Eq(t, oldInstance.MemoryUsageMiB, int(newInstance.GetMemoryUsageMib()))
+	assert.Assert(t, newInstance.GetFunction().GetNamespace() == oldInstance.Namespace)
+	assert.Assert(t, newInstance.GetFunction().GetDeployment() == oldInstance.Deployment)
+	assert.Assert(t, newInstance.GetFunction().GetTenant() == oldInstance.Tenant)
+	assert.Assert(t, newInstance.GetFunction().GetMetadata() == oldInstance.Metadata)
+	assert.Assert(t, int(newInstance.GetFunction().GetScale().GetMinInstances()) == oldInstance.Scale.MinInstances)
+	assert.Assert(t, int(newInstance.GetFunction().GetScale().GetMaxInstances()) == oldInstance.Scale.MaxInstances)
+	assert.Assert(t, int(newInstance.GetFunction().GetScale().GetTargetCpuUsageMilli()) == oldInstance.Scale.TargetCPUUsageMilli)
+	assert.Assert(t, int(newInstance.GetFunction().GetScale().GetTargetMemoryUsageMib()) == oldInstance.Scale.TargetMemoryUsageMiB)
+	assert.Assert(t, int(newInstance.GetFunction().GetScale().GetTargetInFlightRequests()) == oldInstance.Scale.TargetInFlightRequests)
+	assert.Assert(t, newInstance.GetName() == oldInstance.Name)
+	assert.Assert(t, newInstance.GetAddr() == oldInstance.Addr)
+	assert.Assert(t, newInstance.GetReplicaSet() == oldInstance.ReplicaSet)
+	assert.Assert(t, newInstance.GetAssignedAt().AsTime().Equal(oldInstance.AssignedAt))
+	assert.Assert(t, newInstance.GetReadyAt().AsTime().Equal(oldInstance.ReadyAt))
+	assert.Assert(t, int(newInstance.GetCpuUsageMilli()) == oldInstance.CPUUsageMilli)
+	assert.Assert(t, int(newInstance.GetMemoryUsageMib()) == oldInstance.MemoryUsageMiB)
 }

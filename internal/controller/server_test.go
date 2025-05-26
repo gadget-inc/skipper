@@ -12,8 +12,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
-	"github.com/shoenig/test/must"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"gotest.tools/v3/assert"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -24,8 +24,8 @@ func TestHealthz(t *testing.T) {
 	ctrl := New(nil, fake.NewClientset(), nil)
 	ctrl.Handler().ServeHTTP(rw, req)
 
-	must.Eq(t, http.StatusOK, rw.Code)
-	must.Length(t, 0, rw.Body)
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, rw.Body.Len() == 0)
 }
 
 func TestHandleInstance(t *testing.T) {
@@ -42,12 +42,12 @@ func TestHandleInstance(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn *function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, fn, instance.GetFunction())
-				must.False(t, instance.GetReadyAt().AsTime().IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.GetFunction().Equal(fn))
+				assert.Assert(t, !instance.GetReadyAt().AsTime().IsZero())
 			},
 		},
 		{
@@ -58,12 +58,12 @@ func TestHandleInstance(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn *function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, fn, instance.GetFunction())
-				must.False(t, instance.GetReadyAt().AsTime().IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.GetFunction().Equal(fn))
+				assert.Assert(t, !instance.GetReadyAt().AsTime().IsZero())
 			},
 		},
 		{
@@ -77,12 +77,12 @@ func TestHandleInstance(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn *function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, fn, instance.GetFunction())
-				must.False(t, instance.GetReadyAt().AsTime().IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.GetFunction().Equal(fn))
+				assert.Assert(t, !instance.GetReadyAt().AsTime().IsZero())
 			},
 		},
 		{
@@ -105,15 +105,15 @@ func TestHandleInstance(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn *function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, fn, instance.GetFunction())
-				must.False(t, instance.GetReadyAt().AsTime().IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.GetFunction().Equal(fn))
+				assert.Assert(t, !instance.GetReadyAt().AsTime().IsZero())
 
 				// ensure we didn't receive the earliest assigned at instance
-				must.NotEq(t, "earliest-assigned-at", instance.GetName())
+				assert.Assert(t, instance.GetName() != "earliest-assigned-at")
 			},
 		},
 	}
@@ -128,7 +128,7 @@ func TestHandleInstance(t *testing.T) {
 			fn := tc.setup(t, ctrl, fakeKubernetes)
 
 			err := ctrl.startInformers(ctx)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/instance", nil)
 			fn.SetHeader(req)
@@ -154,10 +154,10 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
-				must.Eq(t, 1, ctrl.supervisors.Size())
+				assert.Assert(t, ctrl.supervisors.Size() == 1)
 				supervisor, ok := ctrl.supervisors.Load(heartbeats[0].GetFunction().Hash())
-				must.True(t, ok)
-				must.Eq(t, heartbeats[0].GetTimestamp(), supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp())
+				assert.Assert(t, ok)
+				assert.Assert(t, supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp().AsTime().Equal(heartbeats[0].GetTimestamp().AsTime()))
 			},
 		},
 		{
@@ -169,11 +169,11 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
-				must.Eq(t, 2, ctrl.supervisors.Size())
+				assert.Assert(t, ctrl.supervisors.Size() == 2)
 				for _, hb := range heartbeats {
 					supervisor, ok := ctrl.supervisors.Load(hb.GetFunction().Hash())
-					must.True(t, ok)
-					must.Eq(t, hb.GetTimestamp(), supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp())
+					assert.Assert(t, ok)
+					assert.Assert(t, supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp().AsTime().Equal(hb.GetTimestamp().AsTime()))
 				}
 			},
 		},
@@ -193,13 +193,13 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
-				must.Eq(t, 1, ctrl.supervisors.Size())
+				assert.Assert(t, ctrl.supervisors.Size() == 1)
 
 				sentHeartbeat := heartbeats[0]
 				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.GetFunction().Hash())
-				must.True(t, ok)
-				must.NotEq(t, supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp(), sentHeartbeat.GetTimestamp())
-				must.Eq(t, supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp().AsTime(), sentHeartbeat.GetTimestamp().AsTime().Add(time.Hour))
+				assert.Assert(t, ok)
+				assert.Assert(t, !supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp().AsTime().Equal(sentHeartbeat.GetTimestamp().AsTime()))
+				assert.Assert(t, sentHeartbeat.GetTimestamp().AsTime().Add(time.Hour).Equal(supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp().AsTime()))
 			},
 		},
 		{
@@ -212,8 +212,8 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 
 				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
-					must.Eq(t, hbs, heartbeats)
-					must.Eq(t, []string{fixture.ControllerIP, fixture.ControllerIP2}, forwardedFor)
+					assert.DeepEqual(t, heartbeats, hbs)
+					assert.DeepEqual(t, forwardedFor, []string{fixture.ControllerIP, fixture.ControllerIP2})
 					return nil
 				})
 
@@ -240,10 +240,10 @@ func TestHandleHeartbeat(t *testing.T) {
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				sentHeartbeat := heartbeats[0]
 				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.GetFunction().Hash())
-				must.True(t, ok)
-				must.Eq(t, 1, len(supervisor.routerHeartbeats))
-				must.MapNotContainsKey(t, supervisor.routerHeartbeats, fixture.RouterIP2)
-				must.Eq(t, sentHeartbeat.GetTimestamp(), supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp())
+				assert.Assert(t, ok)
+				assert.Assert(t, len(supervisor.routerHeartbeats) == 1)
+				assert.Assert(t, supervisor.routerHeartbeats[fixture.RouterIP2] == nil)
+				assert.Assert(t, supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp().AsTime().Equal(sentHeartbeat.GetTimestamp().AsTime()))
 			},
 		},
 	}
@@ -255,15 +255,15 @@ func TestHandleHeartbeat(t *testing.T) {
 
 			heartbeats := tc.setup(t, mcc, ctrl)
 			heartbeatBytes, err := json.Marshal(heartbeats)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			req := httptest.NewRequest(http.MethodPost, "/heartbeat", bytes.NewReader(heartbeatBytes))
 			req.Header.Set(key.RouterIP.Header, fixture.RouterIP)
 			rw := httptest.NewRecorder()
 			ctrl.Handler().ServeHTTP(rw, req)
 
-			must.Eq(t, http.StatusOK, rw.Code)
-			must.Length(t, 0, rw.Body)
+			assert.Assert(t, rw.Code == http.StatusOK)
+			assert.Assert(t, rw.Body.Len() == 0)
 			tc.check(t, mcc, ctrl, heartbeats)
 		})
 	}
