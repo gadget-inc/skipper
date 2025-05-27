@@ -2,31 +2,54 @@ package function
 
 import (
 	"log/slog"
-	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/go-json-experiment/json"
 	"go.opentelemetry.io/otel/attribute"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type Heartbeat struct {
-	Function         *Function `json:"function"`
-	Timestamp        time.Time `json:"timestamp"`
-	InFlightRequests int       `json:"in_flight_requests"`
+func (h *Heartbeat) Equal(other *Heartbeat) bool {
+	return h.GetFunction().Equal(other.GetFunction()) &&
+		h.GetTimestamp().AsTime().Equal(other.GetTimestamp().AsTime()) &&
+		h.GetInFlightRequests() == other.GetInFlightRequests()
+}
+
+func (h *Heartbeat) MarshalJSON() ([]byte, error) {
+	return json.Marshal(OldHeartbeat{
+		Function:         *h.GetFunction(),
+		Timestamp:        h.GetTimestamp().AsTime(),
+		InFlightRequests: int(h.GetInFlightRequests()),
+	})
+}
+
+func (h *Heartbeat) UnmarshalJSON(data []byte) error {
+	var oldHeartbeat OldHeartbeat
+	if err := json.Unmarshal(data, &oldHeartbeat); err != nil {
+		return err
+	}
+
+	h.Reset()
+	h.SetFunction(&oldHeartbeat.Function)
+	h.SetTimestamp(timestamppb.New(oldHeartbeat.Timestamp))
+	h.SetInFlightRequests(uint32(oldHeartbeat.InFlightRequests))
+
+	return nil
 }
 
 func (h *Heartbeat) Fields() []slog.Attr {
 	return []slog.Attr{
-		key.Function.Field(h.Function),
-		key.Timestamp.Field(h.Timestamp),
-		key.InFlightRequests.Field(h.InFlightRequests),
+		key.Function.Field(h.GetFunction()),
+		key.Timestamp.Field(h.GetTimestamp().AsTime()),
+		key.InFlightRequests.Field(int(h.GetInFlightRequests())),
 	}
 }
 
 func (h *Heartbeat) Attributes() []attribute.KeyValue {
 	return append(
-		key.Function.Attributes(h.Function),
-		key.Timestamp.Attribute(h.Timestamp),
-		key.InFlightRequests.Attribute(h.InFlightRequests),
+		key.Function.Attributes(h.GetFunction()),
+		key.Timestamp.Attribute(h.GetTimestamp().AsTime()),
+		key.InFlightRequests.Attribute(int(h.GetInFlightRequests())),
 	)
 }
 

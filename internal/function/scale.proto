@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+option go_package = "github.com/gadget-inc/skipper/internal/function";
+
+package function;
+
+message Scale {
+  uint32 min_instances = 1;
+  uint32 max_instances = 2;
+  uint32 target_cpu_usage_milli = 3;
+  uint32 target_memory_usage_mib = 4;
+  uint32 target_in_flight_requests = 5;
+}

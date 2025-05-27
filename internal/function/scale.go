@@ -7,30 +7,22 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-type Scale struct {
-	MinInstances           int `json:"min_instances"`
-	MaxInstances           int `json:"max_instances"`
-	TargetCPUUsageMilli    int `json:"target_cpu_usage_milli"`
-	TargetMemoryUsageMiB   int `json:"target_memory_usage_mib"`
-	TargetInFlightRequests int `json:"target_in_flight_requests"`
-}
-
-func (s Scale) Fields() []slog.Attr {
+func (s *Scale) Fields() []slog.Attr {
 	return []slog.Attr{
-		key.MinInstances.Field(s.MinInstances),
-		key.MaxInstances.Field(s.MaxInstances),
-		key.TargetCPUUsageMilli.Field(s.TargetCPUUsageMilli),
-		key.TargetMemoryUsageMiB.Field(s.TargetMemoryUsageMiB),
-		key.TargetInFlightRequests.Field(s.TargetInFlightRequests),
+		key.MinInstances.Field(int(s.GetMinInstances())),
+		key.MaxInstances.Field(int(s.GetMaxInstances())),
+		key.TargetCPUUsageMilli.Field(int(s.GetTargetCpuUsageMilli())),
+		key.TargetMemoryUsageMiB.Field(int(s.GetTargetMemoryUsageMib())),
+		key.TargetInFlightRequests.Field(int(s.GetTargetInFlightRequests())),
 	}
 }
 
-func (s Scale) Attributes() []attribute.KeyValue {
+func (s *Scale) Attributes() []attribute.KeyValue {
 	return []attribute.KeyValue{
-		key.MinInstances.Attribute(s.MinInstances),
-		key.MaxInstances.Attribute(s.MaxInstances),
-		key.TargetCPUUsageMilli.Attribute(s.TargetCPUUsageMilli),
-		key.TargetMemoryUsageMiB.Attribute(s.TargetMemoryUsageMiB),
-		key.TargetInFlightRequests.Attribute(s.TargetInFlightRequests),
+		key.MinInstances.Attribute(int(s.GetMinInstances())),
+		key.MaxInstances.Attribute(int(s.GetMaxInstances())),
+		key.TargetCPUUsageMilli.Attribute(int(s.GetTargetCpuUsageMilli())),
+		key.TargetMemoryUsageMiB.Attribute(int(s.GetTargetMemoryUsageMib())),
+		key.TargetInFlightRequests.Attribute(int(s.GetTargetInFlightRequests())),
 	}
 }

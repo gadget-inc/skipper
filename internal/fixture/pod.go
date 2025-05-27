@@ -46,10 +46,10 @@ func NewAvailablePod(t *testing.T, fn *function.Function, handler http.Handler) 
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + strconv.Itoa(int(podCounter.Load())),
-			Namespace: fn.Namespace,
+			Name:      fn.GetDeployment() + "-" + strconv.Itoa(int(podCounter.Load())),
+			Namespace: fn.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.Deployment,
+				key.Deployment.Label: fn.GetDeployment(),
 			},
 			Annotations: map[string]string{
 				key.Port.Label: "http",
@@ -97,7 +97,7 @@ func defaultAvailablePodHandler(t *testing.T, fn *function.Function) http.Handle
 		must.Eq(t, fn, assignedFn)
 
 		parser := paseto.NewParserForValidNow()
-		parser.AddRule(paseto.Subject(fn.Tenant))
+		parser.AddRule(paseto.Subject(fn.GetTenant()))
 		_, err = parser.ParseV2Public(ControllerPasetoPublicKey, req.Header.Get(key.Token.Header))
 		must.NoError(t, err)
 
@@ -122,11 +122,11 @@ func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + strconv.Itoa(int(podCounter.Load())),
-			Namespace: fn.Namespace,
+			Name:      fn.GetDeployment() + "-" + strconv.Itoa(int(podCounter.Load())),
+			Namespace: fn.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.Deployment,
-				key.Tenant.Label:     fn.Tenant,
+				key.Deployment.Label: fn.GetDeployment(),
+				key.Tenant.Label:     fn.GetTenant(),
 			},
 			Annotations: map[string]string{
 				key.Function.Label:   string(fnJSON),
@@ -151,8 +151,8 @@ func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *
 					Ports:   []v1.ContainerPort{{ContainerPort: int32(port)}},
 					Resources: v1.ResourceRequirements{
 						Requests: v1.ResourceList{
-							v1.ResourceCPU:    resource.MustParse(strconv.Itoa(fn.Scale.TargetCPUUsageMilli) + "m"),
-							v1.ResourceMemory: resource.MustParse(strconv.Itoa(fn.Scale.TargetMemoryUsageMiB) + "Mi"),
+							v1.ResourceCPU:    resource.MustParse(strconv.Itoa(int(fn.GetScale().GetTargetCpuUsageMilli())) + "m"),
+							v1.ResourceMemory: resource.MustParse(strconv.Itoa(int(fn.GetScale().GetTargetMemoryUsageMib())) + "Mi"),
 						},
 					},
 				},
@@ -162,16 +162,16 @@ func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *
 }
 
 func CurrentReplicaSetName(fn *function.Function) string {
-	return fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load()))
+	return fn.GetDeployment() + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load()))
 }
 
 func CurrentReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
 	return &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      CurrentReplicaSetName(fn),
-			Namespace: fn.Namespace,
+			Namespace: fn.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.Deployment,
+				key.Deployment.Label: fn.GetDeployment(),
 			},
 		},
 		Status: appsv1.ReplicaSetStatus{

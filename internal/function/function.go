@@ -7,15 +7,9 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"go.opentelemetry.io/otel/attribute"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
-
-type Function struct {
-	Namespace  string `json:"namespace"`
-	Deployment string `json:"deployment"`
-	Tenant     string `json:"tenant"`
-	Metadata   string `json:"metadata"`
-	Scale      *Scale `json:"scale"`
-}
 
 type Hash = uint64
 
@@ -27,48 +21,58 @@ func (f *Function) Hash() Hash {
 	}
 	var h maphash.Hash
 	h.SetSeed(maphashSeed)
-	h.WriteString(f.Namespace)
-	h.WriteString(f.Deployment)
-	h.WriteString(f.Tenant)
-	h.WriteString(f.Metadata)
-	_ = binary.Write(&h, binary.BigEndian, uint32(f.Scale.MinInstances))
-	_ = binary.Write(&h, binary.BigEndian, uint32(f.Scale.MaxInstances))
-	_ = binary.Write(&h, binary.BigEndian, uint32(f.Scale.TargetCPUUsageMilli))
-	_ = binary.Write(&h, binary.BigEndian, uint32(f.Scale.TargetMemoryUsageMiB))
-	_ = binary.Write(&h, binary.BigEndian, uint32(f.Scale.TargetInFlightRequests))
+	h.WriteString(f.GetNamespace())
+	h.WriteString(f.GetDeployment())
+	h.WriteString(f.GetTenant())
+	h.WriteString(f.GetMetadata())
+	_ = binary.Write(&h, binary.BigEndian, f.GetScale().GetMinInstances())
+	_ = binary.Write(&h, binary.BigEndian, f.GetScale().GetMaxInstances())
+	_ = binary.Write(&h, binary.BigEndian, f.GetScale().GetTargetCpuUsageMilli())
+	_ = binary.Write(&h, binary.BigEndian, f.GetScale().GetTargetMemoryUsageMib())
+	_ = binary.Write(&h, binary.BigEndian, f.GetScale().GetTargetInFlightRequests())
 	return h.Sum64()
 }
 
+func (f *Function) Equal(other *Function) bool {
+	return f.Hash() == other.Hash()
+}
+
 func (f *Function) RingKey() string {
-	return f.Namespace + f.Deployment + f.Tenant
+	return f.GetNamespace() + f.GetDeployment() + f.GetTenant()
 }
 
 func (f *Function) Clone() *Function {
-	return &Function{
-		Namespace:  f.Namespace,
-		Deployment: f.Deployment,
-		Tenant:     f.Tenant,
-		Metadata:   f.Metadata,
-		Scale:      f.Scale,
-	}
+	return proto.Clone(f).(*Function)
 }
 
 func (f *Function) Fields() []slog.Attr {
 	return []slog.Attr{
-		key.Namespace.Field(f.Namespace),
-		key.Deployment.Field(f.Deployment),
-		key.Tenant.Field(f.Tenant),
-		key.Metadata.Field(f.Metadata),
-		key.Scale.Field(f.Scale),
+		key.Namespace.Field(f.GetNamespace()),
+		key.Deployment.Field(f.GetDeployment()),
+		key.Tenant.Field(f.GetTenant()),
+		key.Metadata.Field(f.GetMetadata()),
+		key.Scale.Field(f.GetScale()),
 	}
 }
 
 func (f *Function) Attributes() []attribute.KeyValue {
 	return append(
-		key.Scale.Attributes(f.Scale),
-		key.Namespace.Attribute(f.Namespace),
-		key.Deployment.Attribute(f.Deployment),
-		key.Tenant.Attribute(f.Tenant),
-		key.Metadata.Attribute(f.Metadata),
+		key.Scale.Attributes(f.GetScale()),
+		key.Namespace.Attribute(f.GetNamespace()),
+		key.Deployment.Attribute(f.GetDeployment()),
+		key.Tenant.Attribute(f.GetTenant()),
+		key.Metadata.Attribute(f.GetMetadata()),
 	)
+}
+
+func (f *Function) MarshalJSON() ([]byte, error) {
+	return protojson.MarshalOptions{
+		UseProtoNames:   true,
+		UseEnumNumbers:  true,
+		EmitUnpopulated: false,
+	}.Marshal(f)
+}
+
+func (f *Function) UnmarshalJSON(data []byte) error {
+	return protojson.Unmarshal(data, f)
 }

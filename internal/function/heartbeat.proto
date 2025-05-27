@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+option go_package = "github.com/gadget-inc/skipper/internal/function";
+
+package function;
+
+import "function.proto";
+import "google/protobuf/timestamp.proto";
+
+message Heartbeat {
+  Function function = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  uint32 in_flight_requests = 3;
+}

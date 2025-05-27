@@ -31,13 +31,13 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *function.Heartbeat) {
 		s.routerHeartbeats = make(map[string]*function.Heartbeat)
 	}
 
-	if s.routerHeartbeats[routerIP] == nil || heartbeat.Timestamp.After(s.routerHeartbeats[routerIP].Timestamp) {
+	if heartbeat.GetTimestamp().AsTime().After(s.routerHeartbeats[routerIP].GetTimestamp().AsTime()) {
 		s.routerHeartbeats[routerIP] = heartbeat
 	}
 
 	// garbage collect expired router heartbeats
 	for routerIP, heartbeat := range s.routerHeartbeats {
-		if time.Since(heartbeat.Timestamp) > FlagHeartbeatTimeout.Value() {
+		if time.Since(heartbeat.GetTimestamp().AsTime()) > FlagHeartbeatTimeout.Value() {
 			delete(s.routerHeartbeats, routerIP)
 		}
 	}
@@ -48,18 +48,18 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 	defer span.End()
 
 	heartbeat := new(function.Heartbeat)
-	heartbeat.Function = s.fn
+	heartbeat.SetFunction(s.fn)
 
 	for _, instance := range instances {
-		if heartbeat.Timestamp.Before(instance.AssignedAt) {
-			heartbeat.Timestamp = instance.AssignedAt
+		if heartbeat.GetTimestamp().AsTime().Before(instance.GetAssignedAt().AsTime()) {
+			heartbeat.SetTimestamp(instance.GetAssignedAt())
 		}
 	}
 
 	for _, routerHeartbeat := range s.routerHeartbeats {
-		heartbeat.InFlightRequests += routerHeartbeat.InFlightRequests
-		if heartbeat.Timestamp.Before(routerHeartbeat.Timestamp) {
-			heartbeat.Timestamp = routerHeartbeat.Timestamp
+		heartbeat.SetInFlightRequests(heartbeat.GetInFlightRequests() + routerHeartbeat.GetInFlightRequests())
+		if heartbeat.GetTimestamp().AsTime().Before(routerHeartbeat.GetTimestamp().AsTime()) {
+			heartbeat.SetTimestamp(routerHeartbeat.GetTimestamp())
 		}
 	}
 
@@ -119,7 +119,7 @@ func (s *Supervisor) _scaleWithoutLock(ctx context.Context, decision ScalingDeci
 	// split instances into ready and unready
 	var unreadyInstances []*function.Instance
 	readyInstances := slices.DeleteFunc(instances, func(instance *function.Instance) bool {
-		if instance.ReadyAt.IsZero() {
+		if instance.GetReadyAt().AsTime().IsZero() {
 			unreadyInstances = append(unreadyInstances, instance)
 			return true
 		}
@@ -132,7 +132,7 @@ func (s *Supervisor) _scaleWithoutLock(ctx context.Context, decision ScalingDeci
 		key.UnreadyInstances.Field(len(unreadyInstances)),
 	)
 
-	if s.fn.Scale.MaxInstances > 1 && decision.UnclampedDesiredInstances > decision.DesiredInstances {
+	if s.fn.GetScale().GetMaxInstances() > 1 && decision.UnclampedDesiredInstances > decision.DesiredInstances {
 		// this function is allowed to scale beyond a single instance
 		// and it wanted to scale up higher than its max instances, so
 		// let's log that for observability
@@ -153,14 +153,14 @@ func (s *Supervisor) _scaleWithoutLock(ctx context.Context, decision ScalingDeci
 
 	if decision.DesiredInstances > len(readyInstances) {
 		// we need to scale up
-		if len(readyInstances)+len(unreadyInstances) >= s.fn.Scale.MaxInstances+1 {
+		if len(readyInstances)+len(unreadyInstances) >= int(s.fn.GetScale().GetMaxInstances())+1 {
 			// we have too many instances in total, so we can't scale up
 			log.Info(ctx, "skipping scale up because function has too many instances")
 			return readyInstances, nil
 		}
 
 		log.Info(ctx, "scaling function up")
-		scaleUpsTotal.WithLabelValues(s.fn.Deployment).Add(float64(decision.DesiredInstances - len(readyInstances)))
+		scaleUpsTotal.WithLabelValues(s.fn.GetDeployment()).Add(float64(decision.DesiredInstances - len(readyInstances)))
 
 		for range decision.DesiredInstances - len(readyInstances) {
 			instance, err := s.ctrl.assignPod(ctx, s.fn)
@@ -172,23 +172,25 @@ func (s *Supervisor) _scaleWithoutLock(ctx context.Context, decision ScalingDeci
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
-		scaleDownsTotal.WithLabelValues(s.fn.Deployment).Add(float64(len(readyInstances) + len(unreadyInstances) - decision.DesiredInstances))
+		scaleDownsTotal.WithLabelValues(s.fn.GetDeployment()).Add(float64(len(readyInstances) + len(unreadyInstances) - decision.DesiredInstances))
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
-			err := s.ctrl.kubernetes.CoreV1().Pods(unreadyInstance.Function.Namespace).Delete(ctx, unreadyInstance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.kubernetes.CoreV1().Pods(unreadyInstance.GetFunction().GetNamespace()).Delete(ctx, unreadyInstance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
 		}
 
 		// sort ready instances by assigned at in descending order (newest first)
-		slices.SortFunc(readyInstances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+		slices.SortFunc(readyInstances, func(a, b *function.Instance) int {
+			return b.GetAssignedAt().AsTime().Compare(a.GetAssignedAt().AsTime())
+		})
 
 		// iterate over ready instances in reverse order, deleting the oldest ones first
 		for i := len(readyInstances) - 1; i >= decision.DesiredInstances; i-- {
 			instance := readyInstances[i]
-			err := s.ctrl.kubernetes.CoreV1().Pods(instance.Function.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.kubernetes.CoreV1().Pods(instance.GetFunction().GetNamespace()).Delete(ctx, instance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}

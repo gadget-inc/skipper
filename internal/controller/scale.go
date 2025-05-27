@@ -111,20 +111,20 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 		ctx := log.With(ctx, key.Instance.Field(instance))
 
-		responsibleIP := ctrl.ring.Get(instance.Function)
+		responsibleIP := ctrl.ring.Get(instance.GetFunction())
 		if responsibleIP != FlagPodIP.Value() {
 			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.ResponsibleIP.Field(responsibleIP))
 			continue
 		}
 
-		fnHash := instance.Function.Hash()
+		fnHash := instance.GetFunction().Hash()
 		if _, ok := hashInstances[fnHash]; !ok {
 			// ensure the hash is in the map so that we loop over all the functions in the next step
-			hashInstances[fnHash] = fnInstances{fn: instance.Function}
+			hashInstances[fnHash] = fnInstances{fn: instance.GetFunction()}
 		}
 
 		// FIXME: this is true if the instance was assigned 3 minutes ago and it fails its readiness probe
-		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > function.FlagAssignTimeout.Value()*2 {
+		if instance.GetReadyAt().AsTime().IsZero() && time.Since(instance.GetAssignedAt().AsTime()) > function.FlagAssignTimeout.Value()*2 {
 			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
@@ -136,15 +136,15 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 		if podMetric, exists := podNameToMetric[pod.Name]; exists {
 			for _, container := range podMetric.Containers {
 				if container.Usage.Cpu() != nil {
-					instance.CPUUsageMilli += int(container.Usage.Cpu().MilliValue())
+					instance.SetCpuUsageMilli(instance.GetCpuUsageMilli() + uint32(container.Usage.Cpu().MilliValue()))
 				}
 				if container.Usage.Memory() != nil {
-					instance.MemoryUsageMiB += int(container.Usage.Memory().Value() / 1024 / 1024) // convert to MiB
+					instance.SetMemoryUsageMib(instance.GetMemoryUsageMib() + uint32(container.Usage.Memory().Value()/1024/1024)) // convert to MiB
 				}
 			}
 		}
 
-		replicaSet, err := ctrl.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
+		replicaSet, err := ctrl.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.GetReplicaSet())
 		if err != nil {
 			log.Error(ctx, "failed to get replica set for instance", key.Error.Field(err))
 			continue
@@ -152,14 +152,14 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 
 		if replicaSet.Status.Replicas > 0 {
 			// instance is running on a replica set that has replicas, so it isn't stale
-			fnInstances := hashInstances[fnHash]
-			fnInstances.instances = append(fnInstances.instances, instance)
-			hashInstances[fnHash] = fnInstances
+			instances := hashInstances[fnHash]
+			instances.instances = append(instances.instances, instance)
+			hashInstances[fnHash] = instances
 			continue
 		}
 
 		// this is a stale instance, find a replica set that has replicas
-		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Function.Deployment}))
+		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.GetFunction().GetDeployment()}))
 		if err != nil {
 			log.Error(ctx, "failed to list replica sets", key.Error.Field(err))
 			continue
@@ -190,7 +190,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 		}
 
 		log.Info(ctx, "terminating stale instance")
-		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.GetName(), metav1.DeleteOptions{})
 		if err != nil {
 			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err))
 		}
@@ -222,7 +222,7 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn *function.Function) (i
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
-	assignmentsTotal.WithLabelValues(fn.Deployment).Inc()
+	assignmentsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
 GET_UNASSIGNED_POD:
 	var pod *v1.Pod
@@ -254,7 +254,7 @@ GET_UNASSIGNED_POD:
 		{ "op": "test", "path": "` + key.Function.PatchAnnotation + `", "value": null },
 		{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
 		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
-		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.Tenant + `" },
+		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.GetTenant() + `" },
 		{ "op": "add", "path": "` + key.Function.PatchAnnotation + `", "value": ` + string(fnJSON) + ` },
 		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
 	]`)
@@ -287,7 +287,7 @@ GET_UNASSIGNED_POD:
 
 	now := time.Now()
 	token := paseto.NewToken()
-	token.SetSubject(fn.Tenant)
+	token.SetSubject(fn.GetTenant())
 	token.SetIssuedAt(now)
 	token.SetNotBefore(now)
 	token.SetExpiration(now.Add(7 * 24 * time.Hour))
@@ -331,8 +331,8 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *function.Funct
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	waitingForUnassignedPods.WithLabelValues(fn.Deployment).Inc()
-	defer waitingForUnassignedPods.WithLabelValues(fn.Deployment).Dec()
+	waitingForUnassignedPods.WithLabelValues(fn.GetDeployment()).Inc()
+	defer waitingForUnassignedPods.WithLabelValues(fn.GetDeployment()).Dec()
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		unassignedPods, err := ctrl.getUnassignedPods(fn)
@@ -348,12 +348,12 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *function.Funct
 }
 
 func (ctrl *Controller) getUnassignedPods(fn *function.Function) ([]*v1.Pod, error) {
-	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
+	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.GetDeployment()})
 	if err != nil {
 		return nil, err
 	}
 
-	pods, err := ctrl.listPods(fn.Namespace, doesNotHaveTenantSelector.Add(*equalDeploymentName))
+	pods, err := ctrl.listPods(fn.GetNamespace(), doesNotHaveTenantSelector.Add(*equalDeploymentName))
 	if err != nil {
 		return nil, err
 	}
@@ -385,14 +385,14 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 		var usage int
 		switch metric {
 		case MetricCPU:
-			usage = instance.CPUUsageMilli
+			usage = int(instance.GetCpuUsageMilli())
 		case MetricMemory:
-			usage = instance.MemoryUsageMiB
+			usage = int(instance.GetMemoryUsageMib())
 		default:
 			return currentInstances, 0
 		}
 
-		if metric == MetricCPU && (instance.ReadyAt.IsZero() || time.Since(instance.ReadyAt) <= FlagHPAInitialReadinessDelay.Value()) {
+		if metric == MetricCPU && (instance.GetReadyAt().AsTime().IsZero() || time.Since(instance.GetReadyAt().AsTime()) <= FlagHPAInitialReadinessDelay.Value()) {
 			// ignore CPU metrics for pods that have been ready for less than the initial readiness delay
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 			continue
@@ -415,11 +415,11 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
 		case MetricCPU:
-			targetUsage = instance.Function.Scale.TargetCPUUsageMilli
-			totalUsage += instance.CPUUsageMilli
+			targetUsage = int(instance.GetFunction().GetScale().GetTargetCpuUsageMilli())
+			totalUsage += int(instance.GetCpuUsageMilli())
 		case MetricMemory:
-			targetUsage = instance.Function.Scale.TargetMemoryUsageMiB
-			totalUsage += instance.MemoryUsageMiB
+			targetUsage = int(instance.GetFunction().GetScale().GetTargetMemoryUsageMib())
+			totalUsage += int(instance.GetMemoryUsageMib())
 		}
 	}
 
@@ -469,7 +469,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
 func calculateDesiredInstances(ctx context.Context, heartbeat *function.Heartbeat, instances []*function.Instance) ScalingDecision {
-	if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
+	if time.Since(heartbeat.GetTimestamp().AsTime()) >= FlagHeartbeatTimeout.Value() {
 		return ScalingDecision{
 			DesiredInstances:          0,
 			UnclampedDesiredInstances: 0,
@@ -481,9 +481,9 @@ func calculateDesiredInstances(ctx context.Context, heartbeat *function.Heartbea
 	var scalingReason string
 	var scalingMetrics []ScalingMetric
 
-	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
-		desiredInstances := int(math.Ceil(float64(heartbeat.InFlightRequests) / float64(heartbeat.Function.Scale.TargetInFlightRequests)))
-		averageUsage := float64(heartbeat.InFlightRequests) / float64(len(instances))
+	if heartbeat.GetFunction().GetScale().GetTargetInFlightRequests() > 0 {
+		desiredInstances := int(math.Ceil(float64(heartbeat.GetInFlightRequests()) / float64(heartbeat.GetFunction().GetScale().GetTargetInFlightRequests())))
+		averageUsage := float64(heartbeat.GetInFlightRequests()) / float64(len(instances))
 		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "in_flight_requests", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
@@ -491,7 +491,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat *function.Heartbea
 		}
 	}
 
-	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
+	if heartbeat.GetFunction().GetScale().GetTargetCpuUsageMilli() > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, MetricCPU, instances)
 		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "cpu", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
@@ -500,7 +500,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat *function.Heartbea
 		}
 	}
 
-	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
+	if heartbeat.GetFunction().GetScale().GetTargetMemoryUsageMib() > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, MetricMemory, instances)
 		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "memory", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
@@ -510,7 +510,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat *function.Heartbea
 	}
 
 	// Apply min/max clamping
-	clampedValue := min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
+	clampedValue := min(max(maxDesiredInstances, int(heartbeat.GetFunction().GetScale().GetMinInstances())), int(heartbeat.GetFunction().GetScale().GetMaxInstances()))
 
 	return ScalingDecision{
 		DesiredInstances:          clampedValue,
@@ -559,20 +559,4 @@ func (sd ScalingDecision) Attributes() []attribute.KeyValue {
 type ScalingMetric struct {
 	Name  string
 	Value float64
-}
-
-// RouterHeartbeats is a map of router IP to heartbeat
-type RouterHeartbeats map[string]function.Heartbeat
-
-// Combined returns a heartbeat that is the sum of all the heartbeats from all the routers
-func (r RouterHeartbeats) Combined() function.Heartbeat {
-	var combined function.Heartbeat
-	for _, heartbeat := range r {
-		combined.Function = heartbeat.Function
-		combined.InFlightRequests += heartbeat.InFlightRequests
-		if combined.Timestamp.Before(heartbeat.Timestamp) {
-			combined.Timestamp = heartbeat.Timestamp
-		}
-	}
-	return combined
 }

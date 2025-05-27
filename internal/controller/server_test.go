@@ -13,6 +13,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
 	"github.com/shoenig/test/must"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -45,8 +46,8 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				must.Eq(t, fn, instance.GetFunction())
+				must.False(t, instance.GetReadyAt().AsTime().IsZero())
 			},
 		},
 		{
@@ -61,8 +62,8 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				must.Eq(t, fn, instance.GetFunction())
+				must.False(t, instance.GetReadyAt().AsTime().IsZero())
 			},
 		},
 		{
@@ -80,18 +81,18 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				must.Eq(t, fn, instance.GetFunction())
+				must.False(t, instance.GetReadyAt().AsTime().IsZero())
 			},
 		},
 		{
 			name: "instances > max",
 			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) *function.Function {
 				fn := fixture.NewFunction()
-				fn.Scale.MaxInstances = 1 // ensure we can only have one instance
+				fn.GetScale().SetMaxInstances(1) // ensure we can only have one instance
 
 				// add max instances
-				for range fn.Scale.MaxInstances {
+				for range fn.GetScale().GetMaxInstances() {
 					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				}
 
@@ -108,11 +109,11 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				must.Eq(t, fn, instance.GetFunction())
+				must.False(t, instance.GetReadyAt().AsTime().IsZero())
 
 				// ensure we didn't receive the earliest assigned at instance
-				must.NotEq(t, "earliest-assigned-at", instance.Name)
+				must.NotEq(t, "earliest-assigned-at", instance.GetName())
 			},
 		},
 	}
@@ -149,30 +150,30 @@ func TestHandleHeartbeat(t *testing.T) {
 			name: "one",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
 				return []*function.Heartbeat{
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+					function.Heartbeat_builder{Function: fixture.NewFunction(), Timestamp: timestamppb.Now()}.Build(),
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				must.Eq(t, 1, ctrl.supervisors.Size())
-				supervisor, ok := ctrl.supervisors.Load(heartbeats[0].Function.Hash())
+				supervisor, ok := ctrl.supervisors.Load(heartbeats[0].GetFunction().Hash())
 				must.True(t, ok)
-				must.Eq(t, heartbeats[0].Timestamp, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp)
+				must.Eq(t, heartbeats[0].GetTimestamp(), supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp())
 			},
 		},
 		{
 			name: "multiple",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
 				return []*function.Heartbeat{
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+					function.Heartbeat_builder{Function: fixture.NewFunction(), Timestamp: timestamppb.Now()}.Build(),
+					function.Heartbeat_builder{Function: fixture.NewFunction(), Timestamp: timestamppb.Now()}.Build(),
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				must.Eq(t, 2, ctrl.supervisors.Size())
 				for _, hb := range heartbeats {
-					supervisor, ok := ctrl.supervisors.Load(hb.Function.Hash())
+					supervisor, ok := ctrl.supervisors.Load(hb.GetFunction().Hash())
 					must.True(t, ok)
-					must.Eq(t, hb.Timestamp, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp)
+					must.Eq(t, hb.GetTimestamp(), supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp())
 				}
 			},
 		},
@@ -182,21 +183,23 @@ func TestHandleHeartbeat(t *testing.T) {
 				// seed the controller with a recent heartbeat
 				fn := fixture.NewFunction()
 				heartbeatTimestamp := time.Now()
-				ctrl.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]*function.Heartbeat{fixture.RouterIP: {Timestamp: heartbeatTimestamp}}})
+				ctrl.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]*function.Heartbeat{
+					fixture.RouterIP: function.Heartbeat_builder{Function: fn, Timestamp: timestamppb.New(heartbeatTimestamp)}.Build(),
+				}})
 
 				// send an old heartbeat
 				return []*function.Heartbeat{
-					{Function: fn, Timestamp: heartbeatTimestamp.Add(-time.Hour)},
+					function.Heartbeat_builder{Function: fn, Timestamp: timestamppb.New(heartbeatTimestamp.Add(-time.Hour))}.Build(),
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				must.Eq(t, 1, ctrl.supervisors.Size())
 
 				sentHeartbeat := heartbeats[0]
-				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.Function.Hash())
+				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.GetFunction().Hash())
 				must.True(t, ok)
-				must.NotEq(t, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp)
-				must.Eq(t, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp.Add(time.Hour))
+				must.NotEq(t, supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp(), sentHeartbeat.GetTimestamp())
+				must.Eq(t, supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp().AsTime(), sentHeartbeat.GetTimestamp().AsTime().Add(time.Hour))
 			},
 		},
 		{
@@ -204,7 +207,9 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
 				ctrl.ring.Add(fixture.ControllerIP)
 				ctrl.ring.Add(fixture.ControllerIP2)
-				hbs := []*function.Heartbeat{{Function: fixture.NewFunction(), Timestamp: time.Now()}}
+				hbs := []*function.Heartbeat{
+					function.Heartbeat_builder{Function: fixture.NewFunction(), Timestamp: timestamppb.Now()}.Build(),
+				}
 
 				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
 					must.Eq(t, hbs, heartbeats)
@@ -224,19 +229,21 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []*function.Heartbeat {
 				// seed the controller with a old heartbeat from a different router
 				fn := fixture.NewFunction()
-				ctrl.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]*function.Heartbeat{fixture.RouterIP2: {Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))}}})
+				ctrl.supervisors.Store(fn.Hash(), &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: map[string]*function.Heartbeat{
+					fixture.RouterIP2: function.Heartbeat_builder{Function: fn, Timestamp: timestamppb.New(time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second)))}.Build(),
+				}})
 
 				return []*function.Heartbeat{
-					{Function: fn, Timestamp: time.Now()},
+					function.Heartbeat_builder{Function: fn, Timestamp: timestamppb.Now()}.Build(),
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []*function.Heartbeat) {
 				sentHeartbeat := heartbeats[0]
-				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.Function.Hash())
+				supervisor, ok := ctrl.supervisors.Load(sentHeartbeat.GetFunction().Hash())
 				must.True(t, ok)
 				must.Eq(t, 1, len(supervisor.routerHeartbeats))
 				must.MapNotContainsKey(t, supervisor.routerHeartbeats, fixture.RouterIP2)
-				must.Eq(t, sentHeartbeat.Timestamp, supervisor.routerHeartbeats[fixture.RouterIP].Timestamp)
+				must.Eq(t, sentHeartbeat.GetTimestamp(), supervisor.routerHeartbeats[fixture.RouterIP].GetTimestamp())
 			},
 		},
 	}

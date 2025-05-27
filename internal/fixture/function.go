@@ -11,6 +11,7 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -21,19 +22,21 @@ const (
 func NewFunction() *function.Function {
 	tenantCounter.Add(1)
 
-	return &function.Function{
-		Tenant:     "tenant-" + strconv.Itoa(int(tenantCounter.Load())),
-		Metadata:   uuid.NewString(),
-		Namespace:  FunctionNamespace,
-		Deployment: FunctionDeployment,
-		Scale: &function.Scale{
-			MinInstances:           0,
-			MaxInstances:           5,
-			TargetCPUUsageMilli:    100,
-			TargetMemoryUsageMiB:   200,
-			TargetInFlightRequests: 50,
-		},
-	}
+	fn := new(function.Function)
+	fn.SetTenant("tenant-" + strconv.Itoa(int(tenantCounter.Load())))
+	fn.SetMetadata(uuid.NewString())
+	fn.SetNamespace(FunctionNamespace)
+	fn.SetDeployment(FunctionDeployment)
+
+	scale := &function.Scale{}
+	scale.SetMinInstances(0)
+	scale.SetMaxInstances(5)
+	scale.SetTargetCpuUsageMilli(100)
+	scale.SetTargetMemoryUsageMib(200)
+	scale.SetTargetInFlightRequests(50)
+	fn.SetScale(scale)
+
+	return fn
 }
 
 func NewFunctionRequest(t *testing.T, fn *function.Function, method string, path string, body io.Reader) *http.Request {
@@ -48,12 +51,12 @@ func NewInstance(t *testing.T, fn *function.Function, handler http.HandlerFunc) 
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
-	return &function.Instance{
-		Function:   fn,
-		Name:       uuid.NewString(),
-		Addr:       testServer.Listener.Addr().String(),
-		ReplicaSet: fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load())),
-		AssignedAt: time.Now(),
-		ReadyAt:    time.Now(),
-	}
+	instance := new(function.Instance)
+	instance.SetFunction(fn)
+	instance.SetName(uuid.NewString())
+	instance.SetAddr(testServer.Listener.Addr().String())
+	instance.SetReplicaSet(fn.GetDeployment() + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load())))
+	instance.SetAssignedAt(timestamppb.New(time.Now()))
+	instance.SetReadyAt(timestamppb.New(time.Now()))
+	return instance
 }

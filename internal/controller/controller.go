@@ -19,6 +19,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/go-json-experiment/json"
 	"github.com/puzpuzpuz/xsync/v4"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -190,14 +191,13 @@ func (ctrl *Controller) getReadyInstances(fn *function.Function) ([]*function.In
 		return nil, err
 	}
 
-	// filter out instances that are unready
-	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
+	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.GetReadyAt().AsTime().IsZero() }), nil
 }
 
 func (ctrl *Controller) getInstances(fn *function.Function) ([]*function.Instance, error) {
-	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
-		key.Tenant.Label:     fn.Tenant,
-		key.Deployment.Label: fn.Deployment,
+	assignedPods, err := ctrl.listPods(fn.GetNamespace(), labels.SelectorFromSet(labels.Set{
+		key.Tenant.Label:     fn.GetTenant(),
+		key.Deployment.Label: fn.GetDeployment(),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
@@ -210,7 +210,7 @@ func (ctrl *Controller) getInstances(fn *function.Function) ([]*function.Instanc
 			return nil, fmt.Errorf("failed to get instance from pod: %w", err)
 		}
 
-		if instance.Function.Hash() != fn.Hash() {
+		if instance.GetFunction().Hash() != fn.Hash() {
 			// pod is assigned to a different function
 			continue
 		}
@@ -254,12 +254,12 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 		return nil, errors.New("pod is nil")
 	}
 
-	instance := &function.Instance{
-		Name: pod.Name,
-	}
+	instance := new(function.Instance)
+	instance.SetFunction(new(function.Function))
+	instance.SetName(pod.Name)
 
 	if fnJson, ok := pod.Annotations[key.Function.Label]; ok {
-		err := json.Unmarshal([]byte(fnJson), &instance.Function)
+		err := json.Unmarshal([]byte(fnJson), instance.GetFunction())
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
 		}
@@ -267,22 +267,27 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 		return nil, errors.New("missing function annotation")
 	}
 
-	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Label]
-	if instance.ReplicaSet == "" {
+	instance.SetReplicaSet(pod.Annotations[key.ReplicaSet.Label])
+	if instance.GetReplicaSet() == "" {
 		return nil, errors.New("missing replica set annotation")
 	}
 
 	var err error
-	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Label])
+	assignedAt, err := time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Label])
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
 	}
+	instance.SetAssignedAt(timestamppb.New(assignedAt))
 
 	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Label]; ok && isPodReady(pod) {
-		instance.ReadyAt, err = time.Parse(time.RFC3339, readyAtStr)
+		readyAt, err := time.Parse(time.RFC3339, readyAtStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)
 		}
+		instance.SetReadyAt(timestamppb.New(readyAt))
+	} else {
+		// set the ready at time to zero so that instance.GetReadyAt().AsTime().IsZero() is true
+		instance.SetReadyAt(timestamppb.New(time.Time{}))
 	}
 
 	port, err := portFromPod(pod)
@@ -290,7 +295,7 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 		return nil, err
 	}
 
-	instance.Addr = net.JoinHostPort(pod.Status.PodIP, port)
+	instance.SetAddr(net.JoinHostPort(pod.Status.PodIP, port))
 
 	return instance, nil
 }

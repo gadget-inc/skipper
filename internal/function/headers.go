@@ -23,7 +23,7 @@ func (f *Function) SetHeader(r *http.Request) {
 }
 
 func FromHeader(req *http.Request) (*Function, error) {
-	fn := &Function{}
+	fn := new(Function)
 
 	header, ok := req.Header[key.Function.Header]
 	if !ok || len(header) == 0 {
@@ -35,29 +35,14 @@ func FromHeader(req *http.Request) (*Function, error) {
 		return nil, fmt.Errorf("failed to unmarshal %s header: %w", key.Function.Header, err)
 	}
 
-	if fn.Namespace == "" {
+	if fn.GetNamespace() == "" {
 		return nil, errors.New("missing namespace")
 	}
-	if fn.Deployment == "" {
+	if fn.GetDeployment() == "" {
 		return nil, errors.New("missing deployment")
 	}
-	if fn.Tenant == "" {
+	if fn.GetTenant() == "" {
 		return nil, errors.New("missing tenant")
-	}
-	if fn.Scale.MinInstances < 0 {
-		return nil, errors.New("min instances must be greater than or equal to 0")
-	}
-	if fn.Scale.MaxInstances < 0 {
-		return nil, errors.New("max instances must be greater than or equal to 0")
-	}
-	if fn.Scale.TargetCPUUsageMilli < 0 {
-		return nil, errors.New("target cpu usage must be greater than or equal to 0")
-	}
-	if fn.Scale.TargetMemoryUsageMiB < 0 {
-		return nil, errors.New("target memory usage must be greater than or equal to 0")
-	}
-	if fn.Scale.TargetInFlightRequests < 0 {
-		return nil, errors.New("target in flight requests must be greater than or equal to 0")
 	}
 
 	return fn, nil

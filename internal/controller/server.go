@@ -74,11 +74,14 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 		}
 	}
 
-	if len(instances) > fn.Scale.MaxInstances {
+	if len(instances) > int(fn.GetScale().GetMaxInstances()) {
 		// sort instances by assigned at in descending order (newest first)
-		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+		slices.SortFunc(instances, func(a, b *function.Instance) int {
+			return b.GetAssignedAt().AsTime().Compare(a.GetAssignedAt().AsTime())
+		})
+
 		// keep the newest instances
-		instances = instances[:fn.Scale.MaxInstances]
+		instances = instances[:fn.GetScale().GetMaxInstances()]
 	}
 
 	instance := instances[rand.Intn(len(instances))]
@@ -146,8 +149,8 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	for _, heartbeat := range heartbeats {
-		heartbeatsCounter.WithLabelValues(heartbeat.Function.Deployment).Inc()
-		ctrl.supervisor(heartbeat.Function).heartbeat(routerIP, heartbeat)
+		heartbeatsCounter.WithLabelValues(heartbeat.GetFunction().GetDeployment()).Inc()
+		ctrl.supervisor(heartbeat.GetFunction()).heartbeat(routerIP, heartbeat)
 	}
 
 	log.Trace(req.Context(), "received heartbeats", key.Count.Field(len(heartbeats)))

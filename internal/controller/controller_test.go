@@ -100,7 +100,7 @@ func TestGetReadyInstances(t *testing.T) {
 			name: "different metadata",
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn *function.Function) {
 				fnCopy := fn.Clone()
-				fnCopy.Metadata = "different"
+				fnCopy.SetMetadata("different")
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fnCopy, nil))
 				must.NoError(t, err)
 			},

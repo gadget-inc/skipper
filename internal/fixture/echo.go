@@ -10,7 +10,7 @@ import (
 
 func NewEchoFunction() *function.Function {
 	fn := NewFunction()
-	fn.Deployment = "echo"
+	fn.SetDeployment("echo")
 	return fn
 }
 

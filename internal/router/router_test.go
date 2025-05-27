@@ -58,7 +58,7 @@ func TestGetInstanceDuration(t *testing.T) {
 			must.Eq(t, req.URL.Path, "/")
 
 			rw.WriteHeader(http.StatusOK)
-			rw.Write([]byte("Hello, " + fn.Tenant))
+			rw.Write([]byte("Hello, " + fn.GetTenant()))
 		}), nil
 	})
 
@@ -69,7 +69,7 @@ func TestGetInstanceDuration(t *testing.T) {
 	router.ServeHTTP(rw, req)
 
 	must.Eq(t, http.StatusOK, rw.Code)
-	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+	must.Eq(t, "Hello, "+fn.GetTenant(), rw.Body.String())
 	must.SliceLen(t, 1, rw.Header()[key.GetInstanceDurationMs.Header])
 
 	duration, err := strconv.ParseInt(rw.Header()[key.GetInstanceDurationMs.Header][0], 10, 64)
@@ -137,10 +137,10 @@ func TestHeaders(t *testing.T) {
 		{
 			name: "smoke",
 			setHeaders: func(fn *function.Function, req *http.Request) {
-				req.Host = fn.Tenant + ".example.com"
+				req.Host = fn.GetTenant() + ".example.com"
 			},
 			checkHeaders: func(t *testing.T, fn *function.Function, headers http.Header) {
-				expectedHost := fn.Tenant + ".example.com"
+				expectedHost := fn.GetTenant() + ".example.com"
 				expectedProto := "http"
 
 				must.Eq(t, []string{expectedHost}, headers.Values("Host"))
@@ -309,7 +309,7 @@ func TestHeartbeats(t *testing.T) {
 	mcc.HandleInstance(func(ctx context.Context, fn *function.Function) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
-			rw.Write([]byte("Hello, " + fn.Tenant))
+			rw.Write([]byte("Hello, " + fn.GetTenant()))
 			<-done
 		}), nil
 	})
@@ -324,9 +324,9 @@ func TestHeartbeats(t *testing.T) {
 		must.Len(t, 0, forwardedFor)
 
 		heartbeat := heartbeats[0]
-		must.Eq(t, fn, heartbeat.Function)
-		must.True(t, heartbeat.Timestamp.After(testStartTime))
-		if heartbeat.InFlightRequests > 0 {
+		must.Eq(t, fn, heartbeat.GetFunction())
+		must.True(t, heartbeat.GetTimestamp().AsTime().After(testStartTime))
+		if heartbeat.GetInFlightRequests() > 0 {
 			once.Do(func() {
 				done <- struct{}{}
 			})
@@ -342,13 +342,13 @@ func TestHeartbeats(t *testing.T) {
 	router.ServeHTTP(rw, req)
 
 	must.Eq(t, http.StatusOK, rw.Code)
-	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+	must.Eq(t, "Hello, "+fn.GetTenant(), rw.Body.String())
 
 	heartbeat, ok := router.heartbeats.Load(fn.Hash())
 	must.True(t, ok)
-	must.Eq(t, fn, heartbeat.Function)
-	must.True(t, heartbeat.Timestamp.After(testStartTime))
-	must.Eq(t, 0, heartbeat.InFlightRequests) // ensure the number of in-flight requests is 0 now that the request is complete
+	must.Eq(t, fn, heartbeat.GetFunction())
+	must.True(t, heartbeat.GetTimestamp().AsTime().After(testStartTime))
+	must.Eq(t, 0, heartbeat.GetInFlightRequests()) // ensure the number of in-flight requests is 0 now that the request is complete
 }
 
 func TestRetries(t *testing.T) {
@@ -364,7 +364,7 @@ func TestRetries(t *testing.T) {
 			maxAttempts: 1,
 			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
-				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+				must.Eq(t, "Hello, "+fn.GetTenant(), rw.Body.String())
 			},
 		},
 		{
@@ -373,7 +373,7 @@ func TestRetries(t *testing.T) {
 			instanceErrs: []error{errors.New("arbitrary error")},
 			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
-				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+				must.Eq(t, "Hello, "+fn.GetTenant(), rw.Body.String())
 			},
 		},
 		{
@@ -382,7 +382,7 @@ func TestRetries(t *testing.T) {
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
 			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
-				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+				must.Eq(t, "Hello, "+fn.GetTenant(), rw.Body.String())
 			},
 		},
 		{
@@ -394,7 +394,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, fn *function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
-				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+				must.Eq(t, "Hello, "+fn.GetTenant(), rw.Body.String())
 			},
 		},
 		{
@@ -425,7 +425,7 @@ func TestRetries(t *testing.T) {
 
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(http.StatusOK)
-					rw.Write([]byte("Hello, " + fn.Tenant))
+					rw.Write([]byte("Hello, " + fn.GetTenant()))
 				}), nil
 			})
 

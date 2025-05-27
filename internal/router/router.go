@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var (
@@ -88,11 +89,11 @@ func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
 		var heartbeats []*function.Heartbeat
 		r.heartbeats.Range(func(hash function.Hash, heartbeat *function.Heartbeat) bool {
-			if time.Since(heartbeat.Timestamp) > FlagHeartbeatInterval.Value()*3 {
+			if time.Since(heartbeat.GetTimestamp().AsTime()) > FlagHeartbeatInterval.Value()*3 {
 				r.heartbeats.Delete(hash) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
-				heartbeatsTotal.WithLabelValues(heartbeat.Function.Deployment).Inc()
+				heartbeatsTotal.WithLabelValues(heartbeat.GetFunction().GetDeployment()).Inc()
 			}
 			return true
 		})
@@ -119,7 +120,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	ctx := log.With(req.Context(), key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
-	requestsTotal.WithLabelValues(fn.Deployment).Inc()
+	requestsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
@@ -127,8 +128,8 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			if !ok {
 				heartbeat = new(function.Heartbeat)
 			}
-			heartbeat.Function = fn
-			heartbeat.Timestamp = time.Now()
+			heartbeat.SetFunction(fn)
+			heartbeat.SetTimestamp(timestamppb.Now())
 			return heartbeat, xsync.UpdateOp
 		})
 		return nil
@@ -139,10 +140,10 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		if !ok {
 			heartbeat = new(function.Heartbeat)
 		}
-		heartbeat.Function = fn
-		heartbeat.Timestamp = time.Now()
-		heartbeat.InFlightRequests++
-		requestsInFlight.WithLabelValues(fn.Deployment).Inc()
+		heartbeat.SetFunction(fn)
+		heartbeat.SetTimestamp(timestamppb.Now())
+		heartbeat.SetInFlightRequests(heartbeat.GetInFlightRequests() + 1)
+		requestsInFlight.WithLabelValues(fn.GetDeployment()).Inc()
 		return heartbeat, xsync.UpdateOp
 	})
 
@@ -151,10 +152,10 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		if !ok {
 			heartbeat = new(function.Heartbeat)
 		}
-		heartbeat.Function = fn
-		heartbeat.Timestamp = time.Now()
-		heartbeat.InFlightRequests--
-		requestsInFlight.WithLabelValues(fn.Deployment).Dec()
+		heartbeat.SetFunction(fn)
+		heartbeat.SetTimestamp(timestamppb.Now())
+		heartbeat.SetInFlightRequests(heartbeat.GetInFlightRequests() - 1)
+		requestsInFlight.WithLabelValues(fn.GetDeployment()).Dec()
 		return heartbeat, xsync.UpdateOp
 	})
 
@@ -206,7 +207,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		req := req.WithContext(ctx)
 		req.URL.Scheme = "http"
-		req.URL.Host = instance.Addr
+		req.URL.Host = instance.GetAddr()
 
 		log.Info(ctx, "forwarding request")
 		start := time.Now()

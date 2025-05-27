@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+option go_package = "github.com/gadget-inc/skipper/internal/function";
+
+package function;
+
+import "scale.proto";
+
+message Function {
+  string namespace = 1;
+  string deployment = 2;
+  string tenant = 3;
+  string metadata = 4;
+  Scale scale = 5;
+}

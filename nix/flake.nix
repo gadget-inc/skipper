@@ -23,6 +23,9 @@
           kubectl = pkgs.kubectl;
           nodejs = pkgs.nodejs_22;
           pnpm = pkgs.pnpm.override { nodejs = flake.packages.nodejs; };
+          protoc = pkgs.protobuf;
+          protoc-gen-go = pkgs.protoc-gen-go;
+          protoc-gen-go-grpc = pkgs.protoc-gen-go-grpc;
           stern = pkgs.stern;
 
           # scripts
@@ -33,6 +36,7 @@
           echo-request = pkgs.writeShellScriptBin "echo-request" '' "$WORKSPACE_DIR"/scripts/echo-request.ts "$@" '';
           echo-websocket = pkgs.writeShellScriptBin "echo-websocket" '' "$WORKSPACE_DIR"/scripts/echo-websocket.ts "$@" '';
           fmt = pkgs.writeShellScriptBin "fmt" '' "$WORKSPACE_DIR"/scripts/fmt.ts "$@" '';
+          generate = pkgs.writeShellScriptBin "generate" '' "$WORKSPACE_DIR"/scripts/generate.ts "$@" '';
           lint = pkgs.writeShellScriptBin "lint" '' "$WORKSPACE_DIR"/scripts/lint.ts "$@" '';
           logs = pkgs.writeShellScriptBin "logs" '' "$WORKSPACE_DIR"/scripts/logs.ts "$@" '';
           tests = pkgs.writeShellScriptBin "tests" '' "$WORKSPACE_DIR"/scripts/tests.ts "$@" '';
