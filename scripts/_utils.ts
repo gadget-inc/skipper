@@ -1,9 +1,24 @@
-import { $, path } from "npm:zx";
-import { copy, emptyDir, exists } from "jsr:@std/fs";
+import assert from "node:assert";
+import { existsSync } from "node:fs";
+import { copyFile, mkdir, rm } from "node:fs/promises";
+import process from "node:process";
+import { $, path } from "zx";
 
-export const isCI = Deno.env.get("CI") === "1" || Deno.env.get("CI") === "true";
+export const isCI = process.env["CI"] === "1" || process.env["CI"] === "true";
 
 $.verbose = isCI;
+
+export async function $nothrow(template: TemplateStringsArray, ...args: unknown[]) {
+  const result = await $(template, ...args).nothrow();
+  if (result.exitCode) {
+    process.exitCode = result.exitCode;
+  }
+}
+
+export async function $stdout(template: TemplateStringsArray, ...args: unknown[]) {
+  const result = await $(template, ...args);
+  return result.stdout.trim();
+}
 
 export const workspaceDir = new URL("..", import.meta.url).pathname;
 
@@ -12,7 +27,7 @@ export function abs(...segments: string[]) {
 }
 
 export async function gitSha() {
-  return await $`git rev-parse --short HEAD`.then((res) => res.stdout.trim());
+  return await $stdout`git rev-parse --short HEAD`;
 }
 
 export async function currentImageTag() {
@@ -21,7 +36,7 @@ export async function currentImageTag() {
 
 export async function currentImageDigest(name: string) {
   const tag = await currentImageTag();
-  const digest = await $`docker images --no-trunc --quiet ${name}:${tag}`.then((res) => res.stdout.trim());
+  const digest = await $stdout`docker images --no-trunc --quiet ${name}:${tag}`;
   if (digest === "") {
     throw new Error(`Image digest for ${name}:${tag} not found`);
   }
@@ -29,7 +44,7 @@ export async function currentImageDigest(name: string) {
 }
 
 export async function currentDockerPlatform() {
-  return await $`docker version --format '{{.Server.Os}}/{{.Server.Arch}}'`.then((res) => res.stdout.trim());
+  return await $stdout`docker version --format '{{.Server.Os}}/{{.Server.Arch}}'`;
 }
 
 export async function renderKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
@@ -37,8 +52,8 @@ export async function renderKraneNamespace(namespace: string, bindings: Record<s
   const renderDir = abs(`tmp/krane/${namespace}`);
   await emptyDir(renderDir);
 
-  if (await exists(`${deployDir}/secrets.ejson`)) {
-    await copy(`${deployDir}/secrets.ejson`, `${renderDir}/secrets.ejson`);
+  if (existsSync(`${deployDir}/secrets.ejson`)) {
+    await copyFile(`${deployDir}/secrets.ejson`, `${renderDir}/secrets.ejson`);
   }
 
   bindings = {
@@ -54,7 +69,7 @@ export async function renderKraneNamespace(namespace: string, bindings: Record<s
 }
 
 export async function deployKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
-  $.env.SKIPPER_KUBECTL_CONTEXT ??= "orbstack";
+  $.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
   const renderDir = await renderKraneNamespace(namespace, bindings);
   await $`kubectl --context="$SKIPPER_KUBECTL_CONTEXT" create namespace ${namespace}`.nothrow().quiet();
   await $`krane deploy ${namespace} "$SKIPPER_KUBECTL_CONTEXT" -f ${renderDir}/*`;
@@ -62,4 +77,14 @@ export async function deployKraneNamespace(namespace: string, bindings: Record<s
 
 export function isAbortError(error: unknown): error is DOMException {
   return error instanceof DOMException && error.name === "AbortError";
+}
+
+export async function emptyDir(dir: string) {
+  await rm(dir, { recursive: true, force: true });
+  await mkdir(dir, { recursive: true });
+}
+
+export function unwrap<T>(value: T, message?: string): NonNullable<T> {
+  assert(value != null, message);
+  return value;
 }

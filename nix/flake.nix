@@ -14,7 +14,6 @@
       {
         packages = {
           # dependencies
-          deno = pkgs.deno;
           git = pkgs.git;
           go = pkgs.go_1_24;
           gofumpt = pkgs.gofumpt;
@@ -22,6 +21,7 @@
           graphviz = pkgs.graphviz;
           krane = pkgs.krane;
           kubectl = pkgs.kubectl;
+          nodejs = pkgs.nodejs_22;
           stern = pkgs.stern;
 
           # scripts

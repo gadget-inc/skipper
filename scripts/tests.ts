@@ -1,18 +1,19 @@
-#!/usr/bin/env -S deno run -A
-import { $ } from "npm:zx";
-import { abs } from "./_utils.ts";
-import { ensureDir } from "jsr:@std/fs";
+#!/usr/bin/env -S node --no-warnings --experimental-strip-types
+import { mkdir } from "node:fs/promises";
+import process from "node:process";
+import { $ } from "zx";
+import { $nothrow, abs } from "./_utils.ts";
 
 $.cwd = abs();
 $.verbose = true;
 $.stdio = "inherit";
 
-await ensureDir(abs("tmp/logs"));
+await mkdir(abs("tmp/logs"), { recursive: true });
 
-if (!Deno.args.some((arg) => arg.startsWith("./"))) {
+const goTestFlags = process.argv.slice(2);
+if (!goTestFlags.some((arg) => arg.startsWith("./"))) {
   // run all tests if a path wasn't provided
-  Deno.args.unshift("./...");
+  goTestFlags.unshift("./...");
 }
 
-const result = await $`go test ${Deno.args} | tee -a tmp/logs/tests.log`.nothrow();
-Deno.exit(result.exitCode ?? 1);
+await $nothrow`go test ${goTestFlags} | tee tmp/logs/tests.log`;

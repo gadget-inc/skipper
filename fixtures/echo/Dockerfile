@@ -1,7 +1,7 @@
-ARG DENO_VERSION=latest
-FROM denoland/deno:${DENO_VERSION}
+ARG NODE_VERSION
+FROM node:${NODE_VERSION}-alpine
 WORKDIR /app
-USER deno
-COPY main.ts .
-RUN deno cache main.ts
-CMD ["run", "-A", "--unstable-otel", "main.ts"]
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY *.ts .
+CMD ["npm", "run", "start"]

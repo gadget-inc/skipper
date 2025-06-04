@@ -24,28 +24,28 @@ runs:
         direnv export gha >> "$GITHUB_ENV"
       shell: bash
 
-    - name: Restore and cache Go dependencies
-      uses: useblacksmith/cache@v5
-      with:
-        key: setup-go-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-        restore-keys: setup-go-${{ runner.os }}-
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
+    - name: Set up Go
+      uses: useblacksmith/setup-go@v6
 
     - name: Install Go dependencies
       run: go mod download && go mod verify
       shell: bash
 
-    - name: Restore and cache Deno dependencies
-      uses: useblacksmith/cache@v5
+    - name: Set up Node.js
+      uses: useblacksmith/setup-node@v5
       with:
-        key: setup-deno-${{ runner.os }}-${{ hashFiles('deno.lock') }}-${{ github.sha }}
-        restore-keys: setup-deno-${{ runner.os }}-
-        path: |
-          ~/.deno
-          ~/.cache/deno
+        cache: "npm"
 
-    - name: Install Deno dependencies
-      run: deno install
+    - name: Install Node.js dependencies
+      run: npm ci
+      shell: bash
+
+    - name: Set up Node.js (fixtures/echo)
+      uses: useblacksmith/setup-node@v5
+      with:
+        cache: "npm"
+        cache-dependency-path: fixtures/echo/package-lock.json
+
+    - name: Install Node.js dependencies (fixtures/echo)
+      run: cd fixtures/echo && npm ci
       shell: bash

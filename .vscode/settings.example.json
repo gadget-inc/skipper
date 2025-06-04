@@ -1,13 +1,10 @@
 {
-  "deno.enable": true,
   "go.useLanguageServer": true,
   "gopls": {
     "formatting.gofumpt": true
   },
-  "[javascript,javascriptreact,typescript,typescriptreact]": {
-    "editor.defaultFormatter": "denoland.vscode-deno"
-  },
-  "[markdown]": {
-    "editor.defaultFormatter": "denoland.vscode-deno"
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "[javascript,javascriptreact,typescript,typescriptreact,json,jsonc,yaml,markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   }
 }

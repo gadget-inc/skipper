@@ -1,0 +1,4 @@
+.DS_Store
+.direnv/
+node_modules/
+pnpm-lock.yaml

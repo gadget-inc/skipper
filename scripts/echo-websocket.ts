@@ -1,7 +1,7 @@
-#!/usr/bin/env -S deno run -A
-// @deno-types="npm:@types/ws"
-import WebSocket from "npm:ws";
-import { delay } from "jsr:@std/async";
+#!/usr/bin/env -S node --no-warnings --experimental-strip-types
+import ms from "ms";
+import { setTimeout } from "node:timers/promises";
+import WebSocket from "ws";
 import { echoFunction, routerUrl } from "./_echo_utils.ts";
 
 const socket = new WebSocket(routerUrl, undefined, {
@@ -15,12 +15,12 @@ socket.on("open", () => {
   socket.send("ping");
 });
 
-socket.on("message", async (message) => {
-  const data = message.toString();
-
-  console.log("websocket message", { data });
-  if (data === "pong") {
-    await delay(1000);
+socket.on("message", async (data, isBinary) => {
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string
+  const message = data.toString("utf8");
+  console.log("websocket message", { message, isBinary });
+  if (message === "pong") {
+    await setTimeout(ms("1s"));
     socket.send("ping");
   }
 });

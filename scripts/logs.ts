@@ -1,25 +1,24 @@
-#!/usr/bin/env -S deno run -A
-import { $, path } from "npm:zx";
+#!/usr/bin/env -S node --no-warnings --experimental-strip-types
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
+import process from "node:process";
+import { parseArgs } from "node:util";
+import { $ } from "zx";
 import { abs } from "./_utils.ts";
-import { parseArgs } from "jsr:@std/cli/parse-args";
-import { ensureDir } from "jsr:@std/fs";
 
 $.cwd = abs();
 $.verbose = true;
 $.stdio = "inherit";
-$.env.SKIPPER_KUBECTL_CONTEXT ??= "orbstack";
+$.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
 
-const flags = parseArgs(Deno.args, {
-  string: ["namespace", "file"],
-  default: {
-    namespace: "skipper-development,skipper-development-fixtures,skipper-test,skipper-test-fixtures",
-    file: abs("tmp/logs/logs.log"),
-  },
-  alias: {
-    f: "file",
+const flags = parseArgs({
+  args: process.argv.slice(2),
+  options: {
+    namespace: { type: "string", default: "skipper-development,skipper-development-fixtures,skipper-test,skipper-test-fixtures" },
+    file: { type: "string", default: abs("tmp/logs/logs.log"), short: "f" },
   },
 });
 
-await ensureDir(path.dirname(flags.file));
+await mkdir(dirname(flags.values.file), { recursive: true });
 
-await $`stern . --context="$SKIPPER_KUBECTL_CONTEXT" --namespace=${flags.namespace} --template='{{ printf "%s/%s: %s\\n" .Namespace .PodName .Message }}' | tee ${flags.file}`;
+await $`stern . --context="$SKIPPER_KUBECTL_CONTEXT" --namespace=${flags.values.namespace} --template='{{ printf "%s/%s: %s\\n" .Namespace .PodName .Message }}' | tee ${flags.values.file}`;

@@ -1,62 +1,62 @@
-#!/usr/bin/env -S deno run -A
-import { parseArgs } from "jsr:@std/cli/parse-args";
-import { abs, currentImageDigest, currentImageTag, deployKraneNamespace, isCI, renderKraneNamespace } from "./_utils.ts";
-import { $ } from "npm:zx";
-import { emptyDir, existsSync } from "jsr:@std/fs";
-import { dedent } from "npm:ts-dedent";
-import crypto from "node:crypto";
+#!/usr/bin/env -S node --no-warnings --experimental-strip-types
+import { generateKeyPairSync } from "node:crypto";
+import { existsSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
+import process from "node:process";
+import { parseArgs } from "node:util";
+import { dedent } from "ts-dedent";
+import { $ } from "zx";
+import { abs, currentImageDigest, currentImageTag, deployKraneNamespace, emptyDir, isCI, renderKraneNamespace } from "./_utils.ts";
 
 $.cwd = abs();
-$.env.SKIPPER_KUBECTL_CONTEXT ??= "orbstack";
+$.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
 
-const flags = parseArgs(Deno.args, {
-  string: ["only"],
-  boolean: ["help", "otel", "development", "test", "generate-paseto-keypair", "build"],
-  negatable: ["otel", "development", "test", "generate-paseto-keypair", "build"],
-  default: {
-    "generate-paseto-keypair": !existsSync(abs("tmp/paseto/private.pem")) || !existsSync(abs("tmp/paseto/public.pem")),
-    build: true,
-    development: !isCI,
-    help: false,
-    only: "skipper,fixtures,metrics-server,otel-lgtm",
-    otel: !isCI,
-    test: true,
-  },
-  alias: {
-    h: "help",
+const flags = parseArgs({
+  args: process.argv.slice(2),
+  options: {
+    build: { type: "boolean", default: true },
+    "generate-paseto-keypair": {
+      type: "boolean",
+      default: !existsSync(abs("tmp/paseto/private.pem")) || !existsSync(abs("tmp/paseto/public.pem")),
+    },
+    development: { type: "boolean", default: !isCI },
+    help: { type: "boolean", default: false, short: "h" },
+    only: { type: "string", default: "skipper,fixtures,metrics-server,otel-lgtm" },
+    otel: { type: "boolean", default: !isCI },
+    test: { type: "boolean", default: true },
   },
 });
 
-if (flags.help) {
+if (flags.values.help) {
   console.log(dedent`
     Usage:
       deploy [flags]
 
     Flags:
-          --build                    Build images before deploying (${flags.build})
-          --development              Deploy development namespaces (${flags.development})
-          --generate-paseto-keypair  Generate a paseto keypair (${flags["generate-paseto-keypair"]})
-          --only <string>            Only deploy specific components (${flags.only})
-          --otel                     Enable OpenTelemetry (${flags.otel})
-          --test                     Deploy test namespaces (${flags.test})
+          --build                    Build images before deploying (${flags.values.build})
+          --development              Deploy development namespaces (${flags.values.development})
+          --generate-paseto-keypair  Generate a paseto keypair (${flags.values["generate-paseto-keypair"]})
+          --only <string>            Only deploy specific components (${flags.values.only})
+          --otel                     Enable OpenTelemetry (${flags.values.otel})
+          --test                     Deploy test namespaces (${flags.values.test})
       -h, --help                     Show this help message
   `);
-  Deno.exit(0);
+  process.exit(0);
 }
 
-if (flags.build) {
+if (flags.values.build) {
   await import("./build.ts");
 }
 
-if (flags["generate-paseto-keypair"]) {
+if (flags.values["generate-paseto-keypair"]) {
   await emptyDir(abs("tmp/paseto"));
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
-  await Deno.writeTextFile(abs("tmp/paseto/private.pem"), privateKey.export({ format: "pem", type: "pkcs8" }).toString());
-  await Deno.writeTextFile(abs("tmp/paseto/public.pem"), publicKey.export({ format: "pem", type: "spki" }).toString());
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  await writeFile(abs("tmp/paseto/private.pem"), privateKey.export({ format: "pem", type: "pkcs8" }));
+  await writeFile(abs("tmp/paseto/public.pem"), publicKey.export({ format: "pem", type: "spki" }));
   await $`ls -la ${abs("tmp/paseto")}`;
 }
 
-if (flags.only.includes("metrics-server")) {
+if (flags.values.only.includes("metrics-server")) {
   const clusterRenderDir = await renderKraneNamespace("cluster");
   await $`krane global-deploy "$SKIPPER_KUBECTL_CONTEXT" -f ${clusterRenderDir}/* --selector=app.kubernetes.io/managed-by=krane `;
 
@@ -64,29 +64,29 @@ if (flags.only.includes("metrics-server")) {
   await $`krane deploy kube-system "$SKIPPER_KUBECTL_CONTEXT" -f ${kubeSystemRenderDir}/* --selector=app.kubernetes.io/managed-by=krane --protected-namespaces=default kube-public`;
 }
 
-if (flags.only.includes("otel-lgtm") && flags.otel) {
+if (flags.values.only.includes("otel-lgtm") && flags.values.otel) {
   await deployKraneNamespace("otel-lgtm");
 }
 
-if (flags.only.includes("fixtures")) {
-  if (flags.development) {
+if (flags.values.only.includes("fixtures")) {
+  if (flags.values.development) {
     await deployKraneNamespace("skipper-development-fixtures", {
       echo_image_tag: await currentImageTag(),
       echo_image_digest: await currentImageDigest("skipper-fixtures-echo"),
       env: {
-        OTEL_DENO: flags.otel,
+        OTEL_DENO: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
         OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
       },
     });
   }
 
-  if (flags.test) {
+  if (flags.values.test) {
     await deployKraneNamespace("skipper-test-fixtures", {
       echo_image_tag: await currentImageTag(),
       echo_image_digest: !isCI ? await currentImageDigest("skipper-fixtures-echo") : undefined,
       env: {
-        OTEL_DENO: flags.otel,
+        OTEL_DENO: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
         OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
       },
@@ -94,35 +94,35 @@ if (flags.only.includes("fixtures")) {
   }
 }
 
-if (flags.only.includes("skipper")) {
-  if (flags.development) {
+if (flags.values.only.includes("skipper")) {
+  if (flags.values.development) {
     await deployKraneNamespace("skipper-development", {
       image_tag: await currentImageTag(),
       image_digest: await currentImageDigest("skipper"),
       namespace: "skipper-development",
       function_namespaces: ["skipper-development-fixtures"],
-      unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
+      unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
       router_node_port: 31020,
       controller_node_port: 31021,
       env: {
-        SKIPPER_TELEMETRY: flags.otel,
+        SKIPPER_TELEMETRY: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
         OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
       },
     });
   }
 
-  if (flags.test) {
+  if (flags.values.test) {
     await deployKraneNamespace("skipper-test", {
       image_tag: await currentImageTag(),
       image_digest: !isCI ? await currentImageDigest("skipper") : undefined,
       namespace: "skipper-test",
       function_namespaces: ["skipper-test-fixtures"],
-      unsafe_controller_paseto_private_key: await Deno.readTextFile(abs("tmp/paseto/private.pem")),
+      unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
       router_node_port: 31030,
       controller_node_port: 31031,
       env: {
-        SKIPPER_TELEMETRY: flags.otel,
+        SKIPPER_TELEMETRY: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
         OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
       },
