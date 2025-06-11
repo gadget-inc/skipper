@@ -44,17 +44,17 @@ controller_env ||= {}
 controller_annotations ||= {}
 
 controller_image = ""
-unless controller_image_registry.empty?
+if controller_image_registry.present?
   controller_image += "#{controller_image_registry}/"
 end
 
 controller_image += controller_image_name
 
-unless controller_image_tag.empty?
+if controller_image_tag.present?
   controller_image += ":#{controller_image_tag}"
 end
 
-unless controller_image_digest.empty?
+if controller_image_digest.present?
   controller_image += "@#{controller_image_digest}"
 end
 
@@ -82,17 +82,17 @@ router_env ||= {}
 router_annotations ||= {}
 
 router_image = ""
-unless router_image_registry.empty?
+if router_image_registry.present?
   router_image += "#{router_image_registry}/"
 end
 
 router_image += router_image_name
 
-unless router_image_tag.empty?
+if router_image_tag.present?
   router_image += ":#{router_image_tag}"
 end
 
-unless router_image_digest.empty?
+if router_image_digest.present?
   router_image += "@#{router_image_digest}"
 end
 -%>

@@ -1,3 +1,8 @@
+*.local.*
+.DS_Store
+.cursor/
 .direnv/
-.task/
+.vscode/
+!.vscode/settings.json
+node_modules/
 tmp/

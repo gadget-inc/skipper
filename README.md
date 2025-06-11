@@ -7,22 +7,29 @@ Skipper is a Kubernetes controller that turns Kubernetes deployments into a pool
 Assume you have the following echo server:
 
 ```js
-const server = Deno.serve({ port: 3000 }, async (request) => {
-  const method = request.method;
-  const path = new URL(request.url).pathname;
-  const headers = Object.fromEntries(request.headers.entries());
-  const body = await request.text();
+const http = require("http");
 
-  return new Response(JSON.stringify({ method, path, headers, body }), {
-    headers: { "content-type": "application/json" },
+const server = http.createServer((req, res) => {
+  const method = req.method;
+  const path = new URL(req.url, `http://${req.headers.host}`).pathname;
+  const headers = req.headers;
+
+  let body = "";
+  req.on("data", (chunk) => {
+    body += chunk.toString();
+  });
+
+  req.on("end", () => {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ method, path, headers, body }));
   });
 });
 
-Deno.addSignalListener("SIGTERM", async () => {
-  await server.shutdown();
-});
+server.listen(3000);
 
-await server.finished;
+process.on("SIGTERM", () => {
+  server.close();
+});
 ```
 
 Create a Kubernetes deployment with the `skipper/deployment` label, `skipper/tenant` DoesNotExist match expression, and `skipper/port` annotation.

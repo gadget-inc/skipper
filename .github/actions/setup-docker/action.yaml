@@ -5,52 +5,17 @@ outputs: {}
 runs:
   using: "composite"
   steps:
+    - name: Set up Blacksmith
+      uses: useblacksmith/build-push-action@v1
+      with:
+        setup-only: true
+
     - name: Set up Docker
       uses: docker/setup-docker-action@v4
       with:
         daemon-config: |
           {
-            "debug": true,
             "features": {
               "containerd-snapshotter": true
             }
-          }
-
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Cache apt-get mounts
-      uses: actions/cache@v4
-      with:
-        key: apt-get-mounts-${{ runner.os }}-${{ hashFiles('Dockerfile') }}-${{ github.sha }}
-        restore-keys: apt-get-mounts-${{ runner.os }}-
-        path: |
-          var-cache-apt
-          var-lib-apt
-
-    - name: Inject apt-get mounts cache into Docker
-      uses: reproducible-containers/buildkit-cache-dance@v3
-      with:
-        cache-map: |
-          {
-            "var-cache-apt": "/var/cache/apt",
-            "var-lib-apt": "/var/lib/apt"
-          }
-
-    - name: Cache go build mounts
-      uses: actions/cache@v4
-      with:
-        key: go-build-mounts-${{ runner.os }}-${{ hashFiles('Dockerfile') }}-${{ github.sha }}
-        restore-keys: go-build-mounts-${{ runner.os }}-
-        path: |
-          go-pkg-mod
-          go-build
-
-    - name: Inject go build mounts cache into Docker
-      uses: reproducible-containers/buildkit-cache-dance@v3
-      with:
-        cache-map: |
-          {
-            "go-pkg-mod": "/go/pkg/mod",
-            "go-build": "/root/.cache/go-build"
           }

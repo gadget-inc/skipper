@@ -13,7 +13,7 @@
       in
       {
         packages = {
-          deno = pkgs.deno;
+          # dependencies
           git = pkgs.git;
           go = pkgs.go_1_24;
           gofumpt = pkgs.gofumpt;
@@ -21,56 +21,21 @@
           graphviz = pkgs.graphviz;
           krane = pkgs.krane;
           kubectl = pkgs.kubectl;
+          nodejs = pkgs.nodejs_22;
+          pnpm = pkgs.pnpm.override { nodejs = flake.packages.nodejs; };
           stern = pkgs.stern;
-          task = pkgs.go-task;
 
-          build = pkgs.writeShellScriptBin "build" ''
-            task build "$@"
-          '';
-
-          build-fixtures = pkgs.writeShellScriptBin "build-fixtures" ''
-            task build-fixtures "$@"
-          '';
-
-          clean = pkgs.writeShellScriptBin "clean" ''
-            task clean "$@"
-          '';
-
-          deploy = pkgs.writeShellScriptBin "deploy" ''
-            task deploy "$@"
-          '';
-
-          deploy-fixtures = pkgs.writeShellScriptBin "deploy-fixtures" ''
-            task deploy-fixtures "$@"
-          '';
-
-          deploy-all = pkgs.writeShellScriptBin "deploy-all" ''
-            task deploy-all "$@"
-          '';
-
-          echo-request = pkgs.writeShellScriptBin "echo-request" ''
-            task echo-request "$@"
-          '';
-
-          echo-websocket = pkgs.writeShellScriptBin "echo-websocket" ''
-            task echo-websocket "$@"
-          '';
-
-          echo-load-test = pkgs.writeShellScriptBin "echo-load-test" ''
-            task echo-load-test "$@"
-          '';
-
-          lint = pkgs.writeShellScriptBin "lint" ''
-            task lint "$@"
-          '';
-
-          skipper = pkgs.writeShellScriptBin "skipper" ''
-            go run main.go "$@"
-          '';
-
-          tst = pkgs.writeShellScriptBin "tst" ''
-            task test "$@"
-          '';
+          # scripts
+          build = pkgs.writeShellScriptBin "build" '' "$WORKSPACE_DIR"/scripts/build.ts "$@" '';
+          clean = pkgs.writeShellScriptBin "clean" '' "$WORKSPACE_DIR"/scripts/clean.ts "$@" '';
+          deploy = pkgs.writeShellScriptBin "deploy" '' "$WORKSPACE_DIR"/scripts/deploy.ts "$@" '';
+          echo-load-test = pkgs.writeShellScriptBin "echo-load-test" '' "$WORKSPACE_DIR"/scripts/echo-load-test.ts "$@" '';
+          echo-request = pkgs.writeShellScriptBin "echo-request" '' "$WORKSPACE_DIR"/scripts/echo-request.ts "$@" '';
+          echo-websocket = pkgs.writeShellScriptBin "echo-websocket" '' "$WORKSPACE_DIR"/scripts/echo-websocket.ts "$@" '';
+          fmt = pkgs.writeShellScriptBin "fmt" '' "$WORKSPACE_DIR"/scripts/fmt.ts "$@" '';
+          lint = pkgs.writeShellScriptBin "lint" '' "$WORKSPACE_DIR"/scripts/lint.ts "$@" '';
+          logs = pkgs.writeShellScriptBin "logs" '' "$WORKSPACE_DIR"/scripts/logs.ts "$@" '';
+          tests = pkgs.writeShellScriptBin "tests" '' "$WORKSPACE_DIR"/scripts/tests.ts "$@" '';
         };
 
         devShell = pkgs.mkShell {

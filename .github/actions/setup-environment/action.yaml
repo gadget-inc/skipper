@@ -1,45 +1,41 @@
 name: "Set up environment"
 description: "Set up the environment for the runner"
-inputs: {}
+inputs:
+  cachix_auth_token:
+    description: "The Cachix auth token"
+    required: true
 outputs: {}
 runs:
   using: "composite"
   steps:
-    - name: Install nix
-      uses: DeterminateSystems/nix-installer-action@main
+    - name: Install Nix
+      uses: nixbuild/nix-quick-install-action@v30
 
-    - name: Cache nix
-      uses: DeterminateSystems/magic-nix-cache-action@main
+    - name: Cache Nix
+      uses: cachix/cachix-action@v16
+      with:
+        name: skipper
+        authToken: "${{ inputs.cachix_auth_token }}"
 
-    - name: Set up nix environment
+    - name: Set up direnv
       run: |
-        cd nix
-        source <(nix print-dev-env --show-trace)
-        echo "$PATH" >> "$GITHUB_PATH"
+        curl -sfL https://direnv.net/install.sh | bash
+        direnv allow
+        direnv export gha >> "$GITHUB_ENV"
       shell: bash
 
-    - name: Restore and cache go dependencies
-      uses: actions/cache@v4
-      with:
-        key: setup-go-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-        restore-keys: setup-go-${{ runner.os }}-
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
+    - name: Set up Go
+      uses: useblacksmith/setup-go@v6
 
-    - name: Install go dependencies
+    - name: Install Go dependencies
       run: go mod download && go mod verify
       shell: bash
 
-    - name: Restore and cache deno dependencies
-      uses: actions/cache@v4
+    - name: Set up Node.js
+      uses: useblacksmith/setup-node@v5
       with:
-        key: setup-deno-${{ runner.os }}-${{ hashFiles('deno.lock') }}-${{ github.sha }}
-        restore-keys: setup-deno-${{ runner.os }}-
-        path: |
-          ~/.deno
-          ~/.cache/deno
+        cache: "pnpm"
 
-    - name: Install deno dependencies
-      run: deno install
+    - name: Install Node.js dependencies
+      run: pnpm install
       shell: bash
