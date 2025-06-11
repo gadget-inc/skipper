@@ -2,6 +2,7 @@
 *
 
 !cmd/
+!fixtures/
 !internal/
 !nix/
 !pkg/
@@ -9,3 +10,6 @@
 !go.mod
 !go.sum
 !main.go
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml

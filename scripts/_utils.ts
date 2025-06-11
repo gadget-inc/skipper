@@ -1,3 +1,4 @@
+import cleanStack from "clean-stack";
 import assert from "node:assert";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, rm } from "node:fs/promises";
@@ -7,6 +8,9 @@ import { $, path } from "zx";
 export const isCI = process.env["CI"] === "1" || process.env["CI"] === "true";
 
 $.verbose = isCI;
+
+process.on("unhandledRejection", reportErrorAndExit);
+process.on("uncaughtException", reportErrorAndExit);
 
 export async function $nothrow(template: TemplateStringsArray, ...args: unknown[]) {
   const result = await $(template, ...args).nothrow();
@@ -87,4 +91,13 @@ export async function emptyDir(dir: string) {
 export function unwrap<T>(value: T, message?: string): NonNullable<T> {
   assert(value != null, message);
   return value;
+}
+
+export function reportErrorAndExit(error: unknown) {
+  if (error instanceof Error) {
+    console.error(cleanStack(error.stack, { basePath: workspaceDir }));
+  } else {
+    console.error(error);
+  }
+  process.exit(1);
 }

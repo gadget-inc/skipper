@@ -76,10 +76,10 @@ if (flags.values.only.includes("skipper")) {
 
 if (flags.values.only.includes("fixtures")) {
   for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) {
-    $.cwd = fixture;
     const name = path.basename(fixture);
     const imageName = `skipper-fixtures-${name}`;
     const buildFlags = [
+      `--file=${fixture}/Dockerfile`,
       `--platform=${flags.values.platform}`,
       `--tag=${imageName}:${flags.values.tag}`,
       `--build-arg=NODE_VERSION=${process.version.slice(1)}`,

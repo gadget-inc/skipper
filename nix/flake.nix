@@ -22,6 +22,7 @@
           krane = pkgs.krane;
           kubectl = pkgs.kubectl;
           nodejs = pkgs.nodejs_22;
+          pnpm = pkgs.pnpm.override { nodejs = flake.packages.nodejs; };
           stern = pkgs.stern;
 
           # scripts

@@ -25,11 +25,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/skip
 FROM debian:bookworm-slim
 RUN apt-get update -qqy && \
     apt-get install -qqy --no-install-recommends --no-install-suggests \
-    ca-certificates \
-    curl \
-    jq \
-    less \
-    vim && \
+    ca-certificates curl jq less vim && \
     rm -rf /var/lib/apt/lists/* && \
     update-ca-certificates
 RUN useradd -ms /bin/bash skipper

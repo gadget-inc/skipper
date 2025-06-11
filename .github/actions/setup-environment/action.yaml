@@ -34,18 +34,8 @@ runs:
     - name: Set up Node.js
       uses: useblacksmith/setup-node@v5
       with:
-        cache: "npm"
+        cache: "pnpm"
 
     - name: Install Node.js dependencies
-      run: npm ci
-      shell: bash
-
-    - name: Set up Node.js (fixtures/echo)
-      uses: useblacksmith/setup-node@v5
-      with:
-        cache: "npm"
-        cache-dependency-path: fixtures/echo/package-lock.json
-
-    - name: Install Node.js dependencies (fixtures/echo)
-      run: cd fixtures/echo && npm ci
+      run: pnpm install
       shell: bash
