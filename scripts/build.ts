@@ -9,6 +9,7 @@ $.cwd = abs();
 
 const flags = parseArgs({
   args: process.argv.slice(2),
+  allowNegative: true,
   options: {
     registry: { type: "string" },
     name: { type: "string", default: "skipper" },

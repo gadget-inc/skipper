@@ -13,6 +13,7 @@ $.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
 
 const flags = parseArgs({
   args: process.argv.slice(2),
+  allowNegative: true,
   options: {
     build: { type: "boolean", default: true },
     "generate-paseto-keypair": {
