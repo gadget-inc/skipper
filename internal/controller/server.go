@@ -54,7 +54,7 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 	ctx = log.With(ctx, key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
 
-	instances, err := ctrl.getInstances(fn)
+	instances, err := ctrl.getReadyInstances(fn)
 	if err != nil {
 		log.Error(ctx, "failed to get instances", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)

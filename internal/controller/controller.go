@@ -190,8 +190,8 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	return nil
 }
 
-func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance, error) {
-	instances, err := ctrl._getInstances(fn)
+func (ctrl *Controller) getReadyInstances(fn function.Function) ([]*function.Instance, error) {
+	instances, err := ctrl.getInstances(fn)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance
 	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
 }
 
-func (ctrl *Controller) _getInstances(fn function.Function) ([]*function.Instance, error) {
+func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance, error) {
 	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,

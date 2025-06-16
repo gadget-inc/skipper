@@ -266,7 +266,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
 
-	instances, err := ctrl._getInstances(fn)
+	instances, err := ctrl.getInstances(fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}

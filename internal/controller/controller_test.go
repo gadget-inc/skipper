@@ -18,7 +18,7 @@ func init() {
 	_ = function.FlagNamespaces.SetValue([]string{fixture.FunctionNamespace})
 }
 
-func TestGetInstances(t *testing.T) {
+func TestGetReadyInstances(t *testing.T) {
 	testCases := []struct {
 		name  string
 		err   error
@@ -85,6 +85,18 @@ func TestGetInstances(t *testing.T) {
 			},
 		},
 		{
+			name: "not ready",
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+				err := fakeKubernetes.Tracker().Add(pod)
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				must.Len(t, 0, instances)
+			},
+		},
+		{
 			name: "different metadata",
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				fn.Metadata = "different"
@@ -111,7 +123,7 @@ func TestGetInstances(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
 
-			instances, err := ctrl.getInstances(fn)
+			instances, err := ctrl.getReadyInstances(fn)
 			if tc.err != nil {
 				must.ErrorIs(t, err, tc.err)
 			} else {
