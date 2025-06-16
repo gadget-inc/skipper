@@ -1,6 +1,6 @@
 # Contributing
 
-This project is developed primarily in [Go](https://go.dev/) with helper scripts written in [Node.js](https://nodejs.org/). The project provides a declarative development environment via [direnv](https://direnv.net/) and [Nix flakes](https://nixos.org/manual/nix/stable/language/flakes.html), so anyone can get an identical toolchain with a single command.
+This project is developed primarily in [Go](https://go.dev/) with helper scripts written in [Node.js](https://nodejs.org/). The project provides a declarative development environment via [direnv](https://direnv.net/) and [Nix flakes](https://nix.dev/concepts/flakes), so anyone can get an identical toolchain with a single command.
 
 ## Getting Started
 
