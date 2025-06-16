@@ -14,6 +14,7 @@ import (
 )
 
 func init() {
+	FlagHashRingWaitTime.Init()
 	_ = function.FlagNamespaces.SetValue([]string{fixture.FunctionNamespace})
 }
 

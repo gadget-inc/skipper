@@ -106,6 +106,7 @@ func NewController() *cobra.Command {
 	controller.FlagHPADownscaleStabilization.Bind(cmd)
 	controller.FlagHPAInitialReadinessDelay.Bind(cmd)
 	controller.FlagHPATolerance.Bind(cmd)
+	controller.FlagHashRingWaitTime.Bind(cmd)
 	controller.FlagHeartbeatTimeout.Bind(cmd)
 	controller.FlagHost.Bind(cmd)
 	controller.FlagKubeConfigBurst.Bind(cmd)

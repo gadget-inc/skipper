@@ -6,6 +6,7 @@ import (
 	"math"
 	mathrand "math/rand"
 	"testing"
+	"time"
 
 	"github.com/shoenig/test/must"
 )
@@ -32,6 +33,18 @@ func TestHashRing(t *testing.T) {
 			},
 			key:    "test-key",
 			wantIP: "", // Will panic as per implementation
+		},
+		{
+			name: "empty ring with wait time",
+			setup: func(h *HashRing) {
+				h.waitTime = 10 * time.Millisecond
+				go func() {
+					time.Sleep(time.Millisecond)
+					h.Add("127.0.0.1")
+				}()
+			},
+			key:    "test-key",
+			wantIP: "127.0.0.1",
 		},
 		{
 			name: "single IP",
