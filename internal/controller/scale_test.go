@@ -786,8 +786,10 @@ func TestScale(t *testing.T) {
 					}
 				}
 
-				// ensure there are max ready instances and 1 not ready instance
+				// ensure there are still max ready instances
 				must.Eq(t, fn.Scale.MaxInstances, readyInstances)
+
+				// ensure there is still 1 not ready instance because we only delete not ready instances during scale down
 				must.Eq(t, 1, notReadyInstances)
 			},
 		},
@@ -812,7 +814,7 @@ func TestScale(t *testing.T) {
 				must.NoError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				// ensure no instances were returned because this function already has max + 1 not ready instances
+				// ensure no instances were returned because this function already has too many instances in total
 				must.Len(t, 0, instances)
 			},
 		},
@@ -883,7 +885,7 @@ func TestScale(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				// ensure only 1 instance was returned because we already have max not ready instances
+				// ensure only 1 instance was returned because we already have max+1 instances in total
 				must.Len(t, 1, instances)
 
 				fn := instances[0].Function
@@ -905,8 +907,10 @@ func TestScale(t *testing.T) {
 					}
 				}
 
-				// ensure there is 1 ready instance and max not ready instances
+				// ensure there is 1 ready instance (matches what was returned)
 				must.Eq(t, 1, readyInstances)
+
+				// ensure there are still max not ready instances because we only delete not ready instances during scale down
 				must.Eq(t, fn.Scale.MaxInstances, notReadyInstances)
 			},
 		},
@@ -950,8 +954,10 @@ func TestScale(t *testing.T) {
 					}
 				}
 
-				// ensure there are 2 ready instances and 0 not ready instances
+				// ensure there are 2 ready instances (matches what was returned)
 				must.Eq(t, 2, readyInstances)
+
+				// ensure there are 0 not ready instances because we always delete not ready instances during scale down
 				must.Eq(t, 0, notReadyInstances)
 			},
 		},

@@ -282,6 +282,8 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	})
 
 	if desiredInstances == len(instances) && desiredInstances > len(notReadyInstances) {
+		// we already have the desired number of ready instances and we
+		// don't have extra unready instances, so there's nothing to do
 		return instances, nil
 	}
 
@@ -298,7 +300,9 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	)
 
 	if desiredInstances > len(instances) {
+		// we need to scale up
 		if len(instances)+len(notReadyInstances) >= fn.Scale.MaxInstances+1 {
+			// we have too many instances in total, so we can't scale up
 			log.Info(ctx, "skipping scale up because function has too many instances")
 			return instances, nil
 		}
@@ -314,6 +318,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 			instances = append(instances, instance)
 		}
 	} else {
+		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
 		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(len(instances) + len(notReadyInstances) - desiredInstances))
 
