@@ -6,7 +6,6 @@ var (
 	Attempt                = intKey{new("attempt")}
 	CPUUsageMilli          = intKey{new("cpu-usage-milli")}
 	Controller             = stringKey{new("controller")}
-	ResponsibleIP          = stringKey{new("responsible-ip")}
 	Count                  = intKey{new("count")}
 	CurrentInstances       = intKey{new("current-instances")}
 	Deployment             = stringKey{new("deployment")}
@@ -25,12 +24,15 @@ var (
 	MinInstances           = intKey{new("min-instances")}
 	Name                   = stringKey{new("name")}
 	Namespace              = stringKey{new("namespace")}
+	NotReadyInstances      = intKey{new("not-ready-instances")}
 	Pod                    = podKey{new("pod")}
 	Port                   = stringKey{new("port")}
 	ReadyAt                = timeKey{new("ready-at")}
+	ReadyInstances         = intKey{new("ready-instances")}
 	ReplicaSet             = replicaSetKey{new("replica-set")}
 	Request                = requestKey{new("request")}
 	Response               = responseKey{new("response")}
+	ResponsibleIP          = stringKey{new("responsible-ip")}
 	RouterIP               = stringKey{new("router-ip")}
 	Scale                  = groupValueKey{new("scale")}
 	TargetCPUUsageMilli    = intKey{new("target-cpu-usage-milli")}

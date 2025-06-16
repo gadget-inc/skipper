@@ -266,13 +266,22 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	scaleMu.Lock()
 	defer scaleMu.Unlock()
 
-	instances, err := ctrl.getInstances(fn)
+	instances, err := ctrl._getInstances(fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
 
-	currentInstances := len(instances)
-	if currentInstances == desiredInstances {
+	// split instances into ready and not ready
+	var notReadyInstances []*function.Instance
+	instances = slices.DeleteFunc(instances, func(instance *function.Instance) bool {
+		if instance.ReadyAt.IsZero() {
+			notReadyInstances = append(notReadyInstances, instance)
+			return true
+		}
+		return false
+	})
+
+	if desiredInstances == len(instances) && desiredInstances > len(notReadyInstances) {
 		return instances, nil
 	}
 
@@ -282,11 +291,22 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		return ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, desiredInstances)
 	}
 
-	if desiredInstances > currentInstances {
-		log.Info(ctx, "scaling function up", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(desiredInstances - currentInstances))
+	ctx = log.With(ctx,
+		key.DesiredInstances.Field(desiredInstances),
+		key.ReadyInstances.Field(len(instances)),
+		key.NotReadyInstances.Field(len(notReadyInstances)),
+	)
 
-		for range desiredInstances - currentInstances {
+	if desiredInstances > len(instances) {
+		if len(instances)+len(notReadyInstances) >= fn.Scale.MaxInstances+1 {
+			log.Info(ctx, "skipping scale up because function has too many instances")
+			return instances, nil
+		}
+
+		log.Info(ctx, "scaling function up")
+		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(desiredInstances - len(instances)))
+
+		for range desiredInstances - len(instances) {
 			instance, err := ctrl.assignPod(ctx, fn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
@@ -294,13 +314,21 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 			instances = append(instances, instance)
 		}
 	} else {
-		log.Info(ctx, "scaling function down", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(currentInstances - desiredInstances))
+		log.Info(ctx, "scaling function down")
+		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(len(instances) + len(notReadyInstances) - desiredInstances))
 
-		// sort instances by assigned at in ascending order
-		slices.SortFunc(instances, func(a, b *function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
+		// delete all not ready instances
+		for _, notReadyInstance := range notReadyInstances {
+			err := ctrl.kubernetes.CoreV1().Pods(notReadyInstance.Namespace).Delete(ctx, notReadyInstance.Name, metav1.DeleteOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to delete pod: %w", err)
+			}
+		}
 
-		// iterate over instances in reverse order, deleting the oldest ones first
+		// sort ready instances by assigned at in descending order (newest first)
+		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+
+		// iterate over ready instances in reverse order, deleting the oldest ones first
 		for i := len(instances) - 1; i >= desiredInstances; i-- {
 			instance := instances[i]
 			err := ctrl.kubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
@@ -454,17 +482,8 @@ func (ctrl *Controller) getUnassignedPods(fn function.Function) ([]*v1.Pod, erro
 		return nil, err
 	}
 
-	var unassignedPods []*v1.Pod
-	for _, pod := range pods {
-		for _, cond := range pod.Status.Conditions {
-			if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
-				unassignedPods = append(unassignedPods, pod)
-				break
-			}
-		}
-	}
-
-	return unassignedPods, nil
+	// filter out pods that are not ready
+	return slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) }), nil
 }
 
 func (ctrl *Controller) getScaleMu(fn function.Function) *sync.Mutex {

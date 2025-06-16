@@ -71,6 +71,13 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 		}
 	}
 
+	if len(instances) > fn.Scale.MaxInstances {
+		// sort instances by assigned at in descending order (newest first)
+		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+		// keep the newest instances
+		instances = instances[:fn.Scale.MaxInstances]
+	}
+
 	instance := instances[rand.Intn(len(instances))]
 
 	rw.Header().Set("Content-Type", "application/json")
