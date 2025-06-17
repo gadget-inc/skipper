@@ -25,6 +25,7 @@ var (
 	MinInstances           = intKey{new("min-instances")}
 	Name                   = stringKey{new("name")}
 	Namespace              = stringKey{new("namespace")}
+	UnreadyInstances       = intKey{new("unready-instances")}
 	Pod                    = podKey{new("pod")}
 	Port                   = stringKey{new("port")}
 	ReadyAt                = timeKey{new("ready-at")}
