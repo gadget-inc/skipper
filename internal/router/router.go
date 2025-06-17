@@ -158,6 +158,8 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
+	getInstanceDuration := time.Duration(0)
+
 	attempt := 0
 	for {
 		attempt++
@@ -182,13 +184,13 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		ctx := log.With(req.Context(), key.Attempt.Field(attempt))
 		ctx = telemetry.WithPropagatedAttributes(ctx, key.Attempt.Attribute(attempt))
 
-		instanceStart := time.Now()
+		getInstanceStart := time.Now()
 		instance, err := r.ctrl.Instance(ctx, fn)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
 			continue
 		}
-		instanceDuration := time.Since(instanceStart)
+		getInstanceDuration += time.Since(getInstanceStart)
 
 		ctx = log.With(ctx, key.Instance.Field(instance))
 		ctx = telemetry.WithPropagatedAttributes(ctx, key.Instance.Attributes(instance)...)
@@ -201,10 +203,6 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		start := time.Now()
 		res, err := r.roundTripper.RoundTrip(req)
 		duration := time.Since(start)
-
-		if res != nil {
-			res.Header.Set("x-skipper-instance-lookup-ms", strconv.FormatInt(instanceDuration.Milliseconds(), 10))
-		}
 
 		ctx = log.With(ctx, key.Response.Field(res), key.Duration.Field(duration))
 		ctx = telemetry.WithPropagatedAttributes(ctx, append(key.Response.Attributes(res), key.Duration.Attribute(duration))...)
@@ -221,6 +219,11 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			log.Error(ctx, "failed to forward request", key.Error.Field(err))
 		} else {
 			log.Info(ctx, "forwarding response")
+		}
+
+		if res != nil {
+			telemetry.SetAttributes(ctx, key.GetInstanceDurationMs.Attribute(getInstanceDuration))
+			res.Header[key.GetInstanceDurationMs.Header] = []string{strconv.FormatInt(getInstanceDuration.Milliseconds(), 10)}
 		}
 
 		return res, err

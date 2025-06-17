@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/shoenig/test/must"
 )
 
@@ -37,11 +39,20 @@ func TestHealthz(t *testing.T) {
 	must.Length(t, 0, rw.Body)
 }
 
-func TestSimple(t *testing.T) {
+func TestGetInstanceDuration(t *testing.T) {
 	fn := fixture.NewFunction()
+
+	sentError := false
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
 	mockControllerClient.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+		if !sentError {
+			time.Sleep(10 * time.Millisecond)
+			sentError = true
+			return nil, errors.New("arbitrary error")
+		}
+
+		time.Sleep(10 * time.Millisecond)
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			must.Eq(t, req.Method, http.MethodGet)
 			must.Eq(t, req.URL.Path, "/")
@@ -59,7 +70,11 @@ func TestSimple(t *testing.T) {
 
 	must.Eq(t, http.StatusOK, rw.Code)
 	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
-	must.SliceLen(t, 1, rw.Header().Values("x-skipper-instance-lookup-ms"))
+	must.SliceLen(t, 1, rw.Header()[key.GetInstanceDurationMs.Header])
+
+	duration, err := strconv.ParseInt(rw.Header()[key.GetInstanceDurationMs.Header][0], 10, 64)
+	must.NoError(t, err)
+	must.GreaterEq(t, duration, 20)
 }
 
 func TestMethods(t *testing.T) {
