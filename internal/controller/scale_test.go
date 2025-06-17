@@ -819,6 +819,58 @@ func TestScale(t *testing.T) {
 			},
 		},
 		{
+			name:             "scale to max with ready instances = 2, not ready instances = max+1",
+			desiredInstances: 5,
+			err:              nil,
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// ensure desired instances is equal to max instances
+				must.Eq(t, 5, fn.Scale.MaxInstances)
+
+				// add 2 ready instances
+				for range 2 {
+					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					must.NoError(t, err)
+				}
+
+				// add max + 1 not ready instances
+				for range fn.Scale.MaxInstances + 1 {
+					pod := fixture.NewAssignedPod(t, fn, nil)
+					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+					err := fakeKubernetes.Tracker().Add(pod)
+					must.NoError(t, err)
+				}
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				// ensure 2 instances were returned because we already had 2 ready instances but couldn't scale up because we have too many instances in total
+				must.Len(t, 2, instances)
+
+				fn := instances[0].Function
+
+				// ensure there are max + 3 pods
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, fn.Scale.MaxInstances+3, pods.Items)
+
+				readyInstances := 0
+				notReadyInstances := 0
+				for _, pod := range pods.Items {
+					if isPodReady(&pod) {
+						readyInstances++
+						continue
+					}
+					if isPodRunning(&pod) {
+						notReadyInstances++
+					}
+				}
+
+				// ensure there are 2 ready instances (matches what was returned)
+				must.Eq(t, 2, readyInstances)
+
+				// ensure there are still max+1 not ready instances because we only delete not ready instances during scale down
+				must.Eq(t, fn.Scale.MaxInstances+1, notReadyInstances)
+			},
+		},
+		{
 			name:             "scale to 0 with ready instances = 0, not ready instances = max+1",
 			desiredInstances: 0,
 			err:              nil,
