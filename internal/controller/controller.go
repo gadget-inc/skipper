@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -189,6 +190,16 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	return nil
 }
 
+func (ctrl *Controller) getReadyInstances(fn function.Function) ([]*function.Instance, error) {
+	instances, err := ctrl.getInstances(fn)
+	if err != nil {
+		return nil, err
+	}
+
+	// filter out instances that are unready
+	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
+}
+
 func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance, error) {
 	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
@@ -202,12 +213,7 @@ func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance
 	for _, pod := range assignedPods {
 		instance, err := instanceFromPod(pod)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get function from pod: %w", err)
-		}
-
-		if instance.ReadyAt.IsZero() {
-			// pod is still being assigned
-			continue
+			return nil, fmt.Errorf("failed to get instance from pod: %w", err)
 		}
 
 		if instance.Function != fn {
@@ -232,15 +238,8 @@ func (ctrl *Controller) listPods(namespace string, selector labels.Selector) ([]
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
-	pods := make([]*v1.Pod, 0, len(listedPods))
-	for _, pod := range listedPods {
-		if !isPodRunning(pod) {
-			continue
-		}
-		pods = append(pods, pod)
-	}
-
-	return pods, nil
+	// filter out pods that are not running
+	return slices.DeleteFunc(listedPods, func(pod *v1.Pod) bool { return !isPodRunning(pod) }), nil
 }
 
 func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
@@ -285,7 +284,7 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
 	}
 
-	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Label]; ok {
+	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Label]; ok && isPodReady(pod) {
 		instance.ReadyAt, err = time.Parse(time.RFC3339, readyAtStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)

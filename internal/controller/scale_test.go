@@ -395,6 +395,61 @@ func TestScaleNamespace(t *testing.T) {
 				ensurePodIsAssignedToFunction(t, pods.Items[0], fn) // the assigned pod should still be around because we're not responsible for it
 			},
 		},
+		{
+			name: "extra ready instance",
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+
+				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+
+				// add an extra ready instance
+				for range fn.Scale.MaxInstances + 1 {
+					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				}
+
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+				// ensure the extra ready instance was deleted
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, fn.Scale.MaxInstances, pods.Items)
+				for _, pod := range pods.Items {
+					ensurePodIsAssignedToFunction(t, pod, fn)
+				}
+			},
+		},
+		{
+			name: "extra unready instance",
+			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
+
+				fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+
+				// add max ready instances
+				for range fn.Scale.MaxInstances {
+					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				}
+
+				// add an extra unready instance
+				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+				fakeKubernetes.Tracker().Add(pod)
+
+				return fn
+			},
+			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
+				// ensure the extra unready instance was not deleted
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
+				for _, pod := range pods.Items {
+					ensurePodIsAssignedToFunction(t, pod, fn)
+				}
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -665,13 +720,297 @@ func TestScale(t *testing.T) {
 			desiredInstances: 1,
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				for range 5 {
+				for range fn.Scale.MaxInstances - 1 {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					must.NoError(t, err)
+				}
+
+				// make the last instance known and have the most recent assigned at
+				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod.Name = "most-recent-assigned-at"
+				pod.Annotations[key.AssignedAt.Label] = time.Now().Add(time.Second).UTC().Format(time.RFC3339)
+				err := fakeKubernetes.Tracker().Add(pod)
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				must.Len(t, 1, instances)
+
+				// ensure the most recent assigned at instance was kept
+				must.Eq(t, "most-recent-assigned-at", instances[0].Name)
+			},
+		},
+		{
+			name:             "scale to max with ready instances = max-1, unready instances = 1",
+			desiredInstances: 5,
+			err:              nil,
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// ensure desired instances is equal to max instances
+				must.Eq(t, 5, fn.Scale.MaxInstances)
+
+				// add max - 1 ready instances
+				for range fn.Scale.MaxInstances - 1 {
+					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					must.NoError(t, err)
+				}
+
+				// add 1 unready instance
+				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+				err := fakeKubernetes.Tracker().Add(pod)
+				must.NoError(t, err)
+
+				// add 1 unassigned pod
+				err = fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				fn := instances[0].Function
+
+				// ensure max instances were returned
+				must.Len(t, fn.Scale.MaxInstances, instances)
+
+				// ensure there are max + 1 pods
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
+
+				readyInstances := 0
+				unreadyInstances := 0
+				for _, pod := range pods.Items {
+					if isPodReady(&pod) {
+						readyInstances++
+						continue
+					}
+					if isPodRunning(&pod) {
+						unreadyInstances++
+					}
+				}
+
+				// ensure there are still max ready instances
+				must.Eq(t, fn.Scale.MaxInstances, readyInstances)
+
+				// ensure there is still 1 unready instance because we only delete unready instances during scale down
+				must.Eq(t, 1, unreadyInstances)
+			},
+		},
+		{
+			name:             "scale to max with ready instances = 0, unready instances = max+1",
+			desiredInstances: 5,
+			err:              nil,
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// ensure desired instances is equal to max instances
+				must.Eq(t, 5, fn.Scale.MaxInstances)
+
+				// add max + 1 unready instances
+				for range fn.Scale.MaxInstances + 1 {
+					pod := fixture.NewAssignedPod(t, fn, nil)
+					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+					err := fakeKubernetes.Tracker().Add(pod)
+					must.NoError(t, err)
+				}
+
+				// add 1 unassigned pod
+				err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				// ensure no instances were returned because this function already has too many instances in total
+				must.Len(t, 0, instances)
+			},
+		},
+		{
+			name:             "scale to max with ready instances = 2, unready instances = max+1",
+			desiredInstances: 5,
+			err:              nil,
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// ensure desired instances is equal to max instances
+				must.Eq(t, 5, fn.Scale.MaxInstances)
+
+				// add 2 ready instances
+				for range 2 {
+					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					must.NoError(t, err)
+				}
+
+				// add max + 1 unready instances
+				for range fn.Scale.MaxInstances + 1 {
+					pod := fixture.NewAssignedPod(t, fn, nil)
+					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+					err := fakeKubernetes.Tracker().Add(pod)
 					must.NoError(t, err)
 				}
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				// ensure 2 instances were returned because we already had 2 ready instances but couldn't scale up because we have too many instances in total
+				must.Len(t, 2, instances)
+
+				fn := instances[0].Function
+
+				// ensure there are max + 3 pods
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, fn.Scale.MaxInstances+3, pods.Items)
+
+				readyInstances := 0
+				unreadyInstances := 0
+				for _, pod := range pods.Items {
+					if isPodReady(&pod) {
+						readyInstances++
+						continue
+					}
+					if isPodRunning(&pod) {
+						unreadyInstances++
+					}
+				}
+
+				// ensure there are 2 ready instances (matches what was returned)
+				must.Eq(t, 2, readyInstances)
+
+				// ensure there are still max+1 unready instances because we only delete unready instances during scale down
+				must.Eq(t, fn.Scale.MaxInstances+1, unreadyInstances)
+			},
+		},
+		{
+			name:             "scale to 0 with ready instances = 0, unready instances = max+1",
+			desiredInstances: 0,
+			err:              nil,
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// add max + 1 unready instances
+				for range fn.Scale.MaxInstances + 1 {
+					pod := fixture.NewAssignedPod(t, fn, nil)
+					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+					err := fakeKubernetes.Tracker().Add(pod)
+					must.NoError(t, err)
+				}
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				must.Len(t, 0, instances)
+
+				// ensure all unready instances were deleted
+				pods, err := fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 0, pods.Items)
+			},
+		},
+		{
+			name:             "scale to 1 with ready instances = 1, unready instances = max",
+			desiredInstances: 1,
+			err:              nil,
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// add 1 ready instance
+				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				must.NoError(t, err)
+
+				// add max unready instances
+				for range fn.Scale.MaxInstances {
+					pod := fixture.NewAssignedPod(t, fn, nil)
+					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+					err := fakeKubernetes.Tracker().Add(pod)
+					must.NoError(t, err)
+				}
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				// ensure 1 instance was returned
 				must.Len(t, 1, instances)
+
+				// ensure all unready instances were deleted
+				pods, err := fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 1, pods.Items)
+			},
+		},
+		{
+			name:             "scale to 2 with ready instances = 1, unready instances = max",
+			desiredInstances: 2,
+			err:              nil,
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// add 1 ready instance
+				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				must.NoError(t, err)
+
+				// add max unready instances
+				for range fn.Scale.MaxInstances {
+					pod := fixture.NewAssignedPod(t, fn, nil)
+					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+					err := fakeKubernetes.Tracker().Add(pod)
+					must.NoError(t, err)
+				}
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				// ensure only 1 instance was returned because we already have max+1 instances in total
+				must.Len(t, 1, instances)
+
+				fn := instances[0].Function
+
+				// ensure there are max + 1 pods
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
+
+				readyInstances := 0
+				unreadyInstances := 0
+				for _, pod := range pods.Items {
+					if isPodReady(&pod) {
+						readyInstances++
+						continue
+					}
+					if isPodRunning(&pod) {
+						unreadyInstances++
+					}
+				}
+
+				// ensure there is 1 ready instance (matches what was returned)
+				must.Eq(t, 1, readyInstances)
+
+				// ensure there are still max unready instances because we only delete unready instances during scale down
+				must.Eq(t, fn.Scale.MaxInstances, unreadyInstances)
+			},
+		},
+		{
+			name:             "scale to 2 with ready instances = max, unready instances = 1",
+			desiredInstances: 2,
+			err:              nil,
+			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+				// add max ready instances
+				for range fn.Scale.MaxInstances {
+					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					must.NoError(t, err)
+				}
+
+				// add 1 unready instance
+				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+				err := fakeKubernetes.Tracker().Add(pod)
+				must.NoError(t, err)
+			},
+			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+				// ensure 2 instances were returned
+				must.Len(t, 2, instances)
+
+				fn := instances[0].Function
+
+				// ensure there are 2 pods
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 2, pods.Items)
+
+				readyInstances := 0
+				unreadyInstances := 0
+				for _, pod := range pods.Items {
+					if isPodReady(&pod) {
+						readyInstances++
+						continue
+					}
+					if isPodRunning(&pod) {
+						unreadyInstances++
+					}
+				}
+
+				// ensure there are 2 ready instances (matches what was returned)
+				must.Eq(t, 2, readyInstances)
+
+				// ensure there are 0 unready instances because we always delete unready instances during scale down
+				must.Eq(t, 0, unreadyInstances)
 			},
 		},
 	}

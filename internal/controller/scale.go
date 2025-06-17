@@ -271,9 +271,20 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
 
-	currentInstances := len(instances)
-	if currentInstances == desiredInstances {
-		return instances, nil
+	// split instances into ready and unready
+	var unreadyInstances []*function.Instance
+	readyInstances := slices.DeleteFunc(instances, func(instance *function.Instance) bool {
+		if instance.ReadyAt.IsZero() {
+			unreadyInstances = append(unreadyInstances, instance)
+			return true
+		}
+		return false
+	})
+
+	if desiredInstances == len(readyInstances) && desiredInstances > len(unreadyInstances) {
+		// we already have the desired number of ready instances and we
+		// don't have extra unready instances, so there's nothing to do
+		return readyInstances, nil
 	}
 
 	responsibleIP := ctrl.ring.Get(fn)
@@ -282,36 +293,58 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		return ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, desiredInstances)
 	}
 
-	if desiredInstances > currentInstances {
-		log.Info(ctx, "scaling function up", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(desiredInstances - currentInstances))
+	ctx = log.With(ctx,
+		key.DesiredInstances.Field(desiredInstances),
+		key.ReadyInstances.Field(len(readyInstances)),
+		key.UnreadyInstances.Field(len(unreadyInstances)),
+	)
 
-		for range desiredInstances - currentInstances {
+	if desiredInstances > len(readyInstances) {
+		// we need to scale up
+		if len(readyInstances)+len(unreadyInstances) >= fn.Scale.MaxInstances+1 {
+			// we have too many instances in total, so we can't scale up
+			log.Info(ctx, "skipping scale up because function has too many instances")
+			return readyInstances, nil
+		}
+
+		log.Info(ctx, "scaling function up")
+		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(desiredInstances - len(readyInstances)))
+
+		for range desiredInstances - len(readyInstances) {
 			instance, err := ctrl.assignPod(ctx, fn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
-			instances = append(instances, instance)
+			readyInstances = append(readyInstances, instance)
 		}
 	} else {
-		log.Info(ctx, "scaling function down", key.CurrentInstances.Field(currentInstances), key.DesiredInstances.Field(desiredInstances))
-		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(currentInstances - desiredInstances))
+		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
+		log.Info(ctx, "scaling function down")
+		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(len(readyInstances) + len(unreadyInstances) - desiredInstances))
 
-		// sort instances by assigned at in ascending order
-		slices.SortFunc(instances, func(a, b *function.Instance) int { return a.AssignedAt.Compare(b.AssignedAt) })
+		// delete all unready instances
+		for _, unreadyInstance := range unreadyInstances {
+			err := ctrl.kubernetes.CoreV1().Pods(unreadyInstance.Namespace).Delete(ctx, unreadyInstance.Name, metav1.DeleteOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to delete pod: %w", err)
+			}
+		}
 
-		// iterate over instances in reverse order, deleting the oldest ones first
-		for i := len(instances) - 1; i >= desiredInstances; i-- {
-			instance := instances[i]
+		// sort ready instances by assigned at in descending order (newest first)
+		slices.SortFunc(readyInstances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+
+		// iterate over ready instances in reverse order, deleting the oldest ones first
+		for i := len(readyInstances) - 1; i >= desiredInstances; i-- {
+			instance := readyInstances[i]
 			err := ctrl.kubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
-			instances = instances[:i]
+			readyInstances = readyInstances[:i]
 		}
 	}
 
-	return instances, nil
+	return readyInstances, nil
 }
 
 func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
@@ -454,17 +487,8 @@ func (ctrl *Controller) getUnassignedPods(fn function.Function) ([]*v1.Pod, erro
 		return nil, err
 	}
 
-	var unassignedPods []*v1.Pod
-	for _, pod := range pods {
-		for _, cond := range pod.Status.Conditions {
-			if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
-				unassignedPods = append(unassignedPods, pod)
-				break
-			}
-		}
-	}
-
-	return unassignedPods, nil
+	// filter out pods that are unready
+	return slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) }), nil
 }
 
 func (ctrl *Controller) getScaleMu(fn function.Function) *sync.Mutex {
