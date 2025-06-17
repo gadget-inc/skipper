@@ -14,6 +14,7 @@ var (
 	Error                  = errorKey{new("error")}
 	ForwardedFor           = stringSliceKey{new("forwarded-for")}
 	Function               = groupValueKey{new("function")}
+	GetInstanceDurationMs  = durationKey{new("get-instance-duration-ms")}
 	Heartbeat              = groupValueKey{new("heartbeat")}
 	InFlightRequests       = intKey{new("in-flight-requests")}
 	Instance               = groupValueKey{new("instance")}
@@ -24,7 +25,6 @@ var (
 	MinInstances           = intKey{new("min-instances")}
 	Name                   = stringKey{new("name")}
 	Namespace              = stringKey{new("namespace")}
-	UnreadyInstances       = intKey{new("unready-instances")}
 	Pod                    = podKey{new("pod")}
 	Port                   = stringKey{new("port")}
 	ReadyAt                = timeKey{new("ready-at")}
@@ -41,4 +41,5 @@ var (
 	Tenant                 = stringKey{new("tenant")}
 	Timestamp              = timeKey{new("timestamp")}
 	Token                  = stringKey{new("token")}
+	UnreadyInstances       = intKey{new("unready-instances")}
 )
