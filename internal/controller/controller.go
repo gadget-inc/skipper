@@ -196,7 +196,7 @@ func (ctrl *Controller) getReadyInstances(fn function.Function) ([]*function.Ins
 		return nil, err
 	}
 
-	// filter out instances that are not ready
+	// filter out instances that are unready
 	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
 }
 

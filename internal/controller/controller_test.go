@@ -85,7 +85,7 @@ func TestGetReadyInstances(t *testing.T) {
 			},
 		},
 		{
-			name: "not ready",
+			name: "unready",
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
@@ -190,7 +190,7 @@ func TestControllerInformer(t *testing.T) {
 			},
 		},
 		{
-			name: "pod updated with condition not ready",
+			name: "pod updated with condition unready",
 			setup: func(t *testing.T) *v1.Pod {
 				return fixture.NewControllerPod()
 			},

@@ -421,7 +421,7 @@ func TestScaleNamespace(t *testing.T) {
 			},
 		},
 		{
-			name: "extra not ready instance",
+			name: "extra unready instance",
 			setup: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset) function.Function {
 				fn := fixture.NewFunction()
 				c.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Function: fn, Timestamp: time.Now()}})
@@ -433,7 +433,7 @@ func TestScaleNamespace(t *testing.T) {
 					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				}
 
-				// add an extra not ready instance
+				// add an extra unready instance
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				fakeKubernetes.Tracker().Add(pod)
@@ -441,7 +441,7 @@ func TestScaleNamespace(t *testing.T) {
 				return fn
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
-				// ensure the extra not ready instance was not deleted
+				// ensure the extra unready instance was not deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
@@ -740,7 +740,7 @@ func TestScale(t *testing.T) {
 			},
 		},
 		{
-			name:             "scale to max with ready instances = max-1, not ready instances = 1",
+			name:             "scale to max with ready instances = max-1, unready instances = 1",
 			desiredInstances: 5,
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
@@ -753,7 +753,7 @@ func TestScale(t *testing.T) {
 					must.NoError(t, err)
 				}
 
-				// add 1 not ready instance
+				// add 1 unready instance
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				err := fakeKubernetes.Tracker().Add(pod)
@@ -775,33 +775,33 @@ func TestScale(t *testing.T) {
 				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
 
 				readyInstances := 0
-				notReadyInstances := 0
+				unreadyInstances := 0
 				for _, pod := range pods.Items {
 					if isPodReady(&pod) {
 						readyInstances++
 						continue
 					}
 					if isPodRunning(&pod) {
-						notReadyInstances++
+						unreadyInstances++
 					}
 				}
 
 				// ensure there are still max ready instances
 				must.Eq(t, fn.Scale.MaxInstances, readyInstances)
 
-				// ensure there is still 1 not ready instance because we only delete not ready instances during scale down
-				must.Eq(t, 1, notReadyInstances)
+				// ensure there is still 1 unready instance because we only delete unready instances during scale down
+				must.Eq(t, 1, unreadyInstances)
 			},
 		},
 		{
-			name:             "scale to max with ready instances = 0, not ready instances = max+1",
+			name:             "scale to max with ready instances = 0, unready instances = max+1",
 			desiredInstances: 5,
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				// ensure desired instances is equal to max instances
 				must.Eq(t, 5, fn.Scale.MaxInstances)
 
-				// add max + 1 not ready instances
+				// add max + 1 unready instances
 				for range fn.Scale.MaxInstances + 1 {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
@@ -819,7 +819,7 @@ func TestScale(t *testing.T) {
 			},
 		},
 		{
-			name:             "scale to max with ready instances = 2, not ready instances = max+1",
+			name:             "scale to max with ready instances = 2, unready instances = max+1",
 			desiredInstances: 5,
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
@@ -832,7 +832,7 @@ func TestScale(t *testing.T) {
 					must.NoError(t, err)
 				}
 
-				// add max + 1 not ready instances
+				// add max + 1 unready instances
 				for range fn.Scale.MaxInstances + 1 {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
@@ -852,30 +852,30 @@ func TestScale(t *testing.T) {
 				must.Len(t, fn.Scale.MaxInstances+3, pods.Items)
 
 				readyInstances := 0
-				notReadyInstances := 0
+				unreadyInstances := 0
 				for _, pod := range pods.Items {
 					if isPodReady(&pod) {
 						readyInstances++
 						continue
 					}
 					if isPodRunning(&pod) {
-						notReadyInstances++
+						unreadyInstances++
 					}
 				}
 
 				// ensure there are 2 ready instances (matches what was returned)
 				must.Eq(t, 2, readyInstances)
 
-				// ensure there are still max+1 not ready instances because we only delete not ready instances during scale down
-				must.Eq(t, fn.Scale.MaxInstances+1, notReadyInstances)
+				// ensure there are still max+1 unready instances because we only delete unready instances during scale down
+				must.Eq(t, fn.Scale.MaxInstances+1, unreadyInstances)
 			},
 		},
 		{
-			name:             "scale to 0 with ready instances = 0, not ready instances = max+1",
+			name:             "scale to 0 with ready instances = 0, unready instances = max+1",
 			desiredInstances: 0,
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				// add max + 1 not ready instances
+				// add max + 1 unready instances
 				for range fn.Scale.MaxInstances + 1 {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
@@ -886,14 +886,14 @@ func TestScale(t *testing.T) {
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				must.Len(t, 0, instances)
 
-				// ensure all not ready instances were deleted
+				// ensure all unready instances were deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 0, pods.Items)
 			},
 		},
 		{
-			name:             "scale to 1 with ready instances = 1, not ready instances = max",
+			name:             "scale to 1 with ready instances = 1, unready instances = max",
 			desiredInstances: 1,
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
@@ -901,7 +901,7 @@ func TestScale(t *testing.T) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 
-				// add max not ready instances
+				// add max unready instances
 				for range fn.Scale.MaxInstances {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
@@ -913,14 +913,14 @@ func TestScale(t *testing.T) {
 				// ensure 1 instance was returned
 				must.Len(t, 1, instances)
 
-				// ensure all not ready instances were deleted
+				// ensure all unready instances were deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
 				must.NoError(t, err)
 				must.Len(t, 1, pods.Items)
 			},
 		},
 		{
-			name:             "scale to 2 with ready instances = 1, not ready instances = max",
+			name:             "scale to 2 with ready instances = 1, unready instances = max",
 			desiredInstances: 2,
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
@@ -928,7 +928,7 @@ func TestScale(t *testing.T) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				must.NoError(t, err)
 
-				// add max not ready instances
+				// add max unready instances
 				for range fn.Scale.MaxInstances {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
@@ -948,26 +948,26 @@ func TestScale(t *testing.T) {
 				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
 
 				readyInstances := 0
-				notReadyInstances := 0
+				unreadyInstances := 0
 				for _, pod := range pods.Items {
 					if isPodReady(&pod) {
 						readyInstances++
 						continue
 					}
 					if isPodRunning(&pod) {
-						notReadyInstances++
+						unreadyInstances++
 					}
 				}
 
 				// ensure there is 1 ready instance (matches what was returned)
 				must.Eq(t, 1, readyInstances)
 
-				// ensure there are still max not ready instances because we only delete not ready instances during scale down
-				must.Eq(t, fn.Scale.MaxInstances, notReadyInstances)
+				// ensure there are still max unready instances because we only delete unready instances during scale down
+				must.Eq(t, fn.Scale.MaxInstances, unreadyInstances)
 			},
 		},
 		{
-			name:             "scale to 2 with ready instances = max, not ready instances = 1",
+			name:             "scale to 2 with ready instances = max, unready instances = 1",
 			desiredInstances: 2,
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
@@ -977,7 +977,7 @@ func TestScale(t *testing.T) {
 					must.NoError(t, err)
 				}
 
-				// add 1 not ready instance
+				// add 1 unready instance
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				err := fakeKubernetes.Tracker().Add(pod)
@@ -995,22 +995,22 @@ func TestScale(t *testing.T) {
 				must.Len(t, 2, pods.Items)
 
 				readyInstances := 0
-				notReadyInstances := 0
+				unreadyInstances := 0
 				for _, pod := range pods.Items {
 					if isPodReady(&pod) {
 						readyInstances++
 						continue
 					}
 					if isPodRunning(&pod) {
-						notReadyInstances++
+						unreadyInstances++
 					}
 				}
 
 				// ensure there are 2 ready instances (matches what was returned)
 				must.Eq(t, 2, readyInstances)
 
-				// ensure there are 0 not ready instances because we always delete not ready instances during scale down
-				must.Eq(t, 0, notReadyInstances)
+				// ensure there are 0 unready instances because we always delete unready instances during scale down
+				must.Eq(t, 0, unreadyInstances)
 			},
 		},
 	}
