@@ -116,6 +116,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			fnInstances[instance.Function] = nil // ensure the function is in the map so that we loop over all the functions in the next step
 		}
 
+		// FIXME: this is true if the instance was assigned 3 minutes ago and it fails its readiness probe
 		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > function.FlagAssignTimeout.Value()*2 {
 			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
