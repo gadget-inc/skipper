@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	appsv1 "k8s.io/api/apps/v1"
@@ -219,13 +220,13 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 			ctx = log.With(ctx, key.Heartbeat.Field(heartbeat))
 			ctx = telemetry.WithPropagatedAttributes(ctx, key.Heartbeat.Attributes(heartbeat)...)
 
-			desiredInstances := calculateDesiredInstances(ctx, heartbeat, instances)
+			scalingDecision := calculateDesiredInstances(ctx, heartbeat, instances)
 
 			stabilizationWindow, _ := ctrl.stabilizationWindows.LoadOrCompute(fn, func() (*StabilizationWindow, bool) { return new(StabilizationWindow), false })
-			stabilizationWindow.RecordRecommendation(desiredInstances)
+			stabilizationWindow.RecordRecommendation(scalingDecision.DesiredInstances)
 
 			currentInstances := len(instances)
-			if desiredInstances < currentInstances {
+			if scalingDecision.DesiredInstances < currentInstances {
 				// we're scaling down
 				if time.Since(ctrl.startedAt) < FlagHPADownscaleStabilization.Value() {
 					// the controller hasn't been running long enough to
@@ -235,7 +236,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 					return
 				}
 
-				if desiredInstances == 0 {
+				if scalingDecision.DesiredInstances == 0 {
 					// we're scaling to 0, so forget about this function after we're done
 					defer ctrl.scaleMu.Delete(fn)
 					defer ctrl.routerHeartbeats.Delete(fn)
@@ -243,11 +244,11 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 				} else {
 					// we're scaling down, but not to 0, so scale down to the max recommended instances within the stabilization window
 					// if we're already lower than the max recommended instances, then use the current number of instances (i.e. don't scale up)
-					desiredInstances = min(stabilizationWindow.GetMaxRecommendation(), currentInstances)
+					scalingDecision.DesiredInstances = min(stabilizationWindow.GetMaxRecommendation(), currentInstances)
 				}
 			}
 
-			_, err = ctrl.scale(ctx, fn, desiredInstances)
+			_, err = ctrl.scale(ctx, fn, scalingDecision)
 			if err != nil {
 				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err))
 			}
@@ -259,7 +260,7 @@ func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) er
 	return nil
 }
 
-func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+func (ctrl *Controller) scale(ctx context.Context, fn function.Function, decision ScalingDecision) ([]*function.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.scale")
 	defer span.End()
 
@@ -282,7 +283,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		return false
 	})
 
-	if desiredInstances == len(readyInstances) && desiredInstances > len(unreadyInstances) {
+	if decision.DesiredInstances == len(readyInstances) && decision.DesiredInstances > len(unreadyInstances) {
 		// we already have the desired number of ready instances and we
 		// don't have extra unready instances, so there's nothing to do
 		return readyInstances, nil
@@ -291,16 +292,17 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	responsibleIP := ctrl.ring.Get(fn)
 	if responsibleIP != FlagPodIP.Value() {
 		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Field(responsibleIP))
-		return ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, desiredInstances)
+		return ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, decision.DesiredInstances, decision.Reason)
 	}
 
 	ctx = log.With(ctx,
-		key.DesiredInstances.Field(desiredInstances),
+		key.DesiredInstances.Field(decision.DesiredInstances),
+		key.ScalingDecision.Field(decision),
 		key.ReadyInstances.Field(len(readyInstances)),
 		key.UnreadyInstances.Field(len(unreadyInstances)),
 	)
 
-	if desiredInstances > len(readyInstances) {
+	if decision.DesiredInstances > len(readyInstances) {
 		// we need to scale up
 		if len(readyInstances)+len(unreadyInstances) >= fn.Scale.MaxInstances+1 {
 			// we have too many instances in total, so we can't scale up
@@ -309,9 +311,9 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		}
 
 		log.Info(ctx, "scaling function up")
-		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(desiredInstances - len(readyInstances)))
+		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(decision.DesiredInstances - len(readyInstances)))
 
-		for range desiredInstances - len(readyInstances) {
+		for range decision.DesiredInstances - len(readyInstances) {
 			instance, err := ctrl.assignPod(ctx, fn)
 			if err != nil {
 				return nil, fmt.Errorf("failed to assign pod: %w", err)
@@ -321,7 +323,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
-		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(len(readyInstances) + len(unreadyInstances) - desiredInstances))
+		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(len(readyInstances) + len(unreadyInstances) - decision.DesiredInstances))
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
@@ -335,7 +337,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, desired
 		slices.SortFunc(readyInstances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
 
 		// iterate over ready instances in reverse order, deleting the oldest ones first
-		for i := len(readyInstances) - 1; i >= desiredInstances; i-- {
+		for i := len(readyInstances) - 1; i >= decision.DesiredInstances; i-- {
 			instance := readyInstances[i]
 			err := ctrl.kubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
@@ -546,7 +548,7 @@ func (sw *StabilizationWindow) GetMaxRecommendation() int {
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instances []*function.Instance) int {
+func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instances []*function.Instance) (int, float64) {
 	currentInstances := len(instances)
 	var instancesWithMetrics []*function.Instance
 	var instancesWithoutMetrics []*function.Instance
@@ -559,7 +561,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 		case MetricMemory:
 			usage = instance.MemoryUsageMiB
 		default:
-			return currentInstances
+			return currentInstances, 0
 		}
 
 		if metric == MetricCPU && (instance.ReadyAt.IsZero() || time.Since(instance.ReadyAt) <= FlagHPAInitialReadinessDelay.Value()) {
@@ -576,7 +578,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 	}
 
 	if len(instancesWithMetrics) == 0 {
-		return currentInstances
+		return currentInstances, 0
 	}
 
 	var targetUsage int
@@ -595,7 +597,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 
 	if targetUsage == 0 {
 		// target usage = 0 means don't scale on this metric
-		return currentInstances
+		return currentInstances, 0
 	}
 
 	averageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
@@ -605,7 +607,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 
 	if usageDiscrepancy <= FlagHPATolerance.Value()+1e-10 { // add a small epsilon to avoid floating point errors
 		// the average usage is within tolerance of the target utilization, so we should not scale
-		return currentInstances
+		return currentInstances, 0
 	}
 
 	if len(instancesWithoutMetrics) > 0 {
@@ -628,39 +630,123 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 			// usage ratio, or the adjusted usage ratio is within
 			// tolerance of the target utilization. either way, we
 			// should noop and not scale
-			return currentInstances
+			return currentInstances, averageUsage
 		}
 
 		desiredInstances = int(math.Ceil(float64(currentInstances) * adjustedUsageRatio))
 	}
 
-	return desiredInstances
+	return desiredInstances, averageUsage
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance) int {
+func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance) ScalingDecision {
 	if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
-		return 0
+		return ScalingDecision{
+			DesiredInstances: 0,
+			Reason:           "heartbeat_timeout",
+		}
 	}
 
 	maxDesiredInstances := 1 // we only scale to 0 from a heartbeat timeout, so we start at 1
+	var scalingReason string
+	var scalingMetrics []ScalingMetric
 
 	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
 		desiredInstances := int(math.Ceil(float64(heartbeat.InFlightRequests) / float64(heartbeat.Function.Scale.TargetInFlightRequests)))
-		maxDesiredInstances = max(maxDesiredInstances, desiredInstances)
+		scalingMetrics = append(scalingMetrics, ScalingMetric{
+			Name:  "in_flight_requests",
+			Value: float64(heartbeat.InFlightRequests),
+		})
+		if desiredInstances > maxDesiredInstances {
+			maxDesiredInstances = desiredInstances
+			scalingReason = "in_flight_requests"
+		}
 	}
 
 	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
-		desiredInstances := calculateDesiredInstancesForMetric(ctx, MetricCPU, instances)
-		maxDesiredInstances = max(maxDesiredInstances, desiredInstances)
+		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, MetricCPU, instances)
+		scalingMetrics = append(scalingMetrics, ScalingMetric{
+			Name:  "cpu",
+			Value: averageUsage,
+		})
+		if desiredInstances > maxDesiredInstances {
+			maxDesiredInstances = desiredInstances
+			scalingReason = "cpu"
+		}
 	}
 
 	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
-		desiredInstances := calculateDesiredInstancesForMetric(ctx, MetricMemory, instances)
-		maxDesiredInstances = max(maxDesiredInstances, desiredInstances)
+		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, MetricMemory, instances)
+		scalingMetrics = append(scalingMetrics, ScalingMetric{
+			Name:  "memory",
+			Value: averageUsage,
+		})
+		if desiredInstances > maxDesiredInstances {
+			maxDesiredInstances = desiredInstances
+			scalingReason = "memory"
+		}
 	}
 
-	return min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
+	// Apply min/max clamping
+	clampedValue := min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
+
+	return ScalingDecision{
+		DesiredInstances:          clampedValue,
+		Reason:                    scalingReason,
+		Metrics:                   scalingMetrics,
+		UnclampedDesiredInstances: maxDesiredInstances,
+		MinInstances:              heartbeat.Function.Scale.MinInstances,
+		MaxInstances:              heartbeat.Function.Scale.MaxInstances,
+	}
+}
+
+// ScalingDecision contains the inputs and result of one scaling loop for one tenant
+type ScalingDecision struct {
+	DesiredInstances          int
+	Reason                    string
+	Metrics                   []ScalingMetric
+	UnclampedDesiredInstances int
+	MinInstances              int
+	MaxInstances              int
+}
+
+func (sd ScalingDecision) Fields() []slog.Attr {
+	var metricAttrs []slog.Attr
+	for _, metric := range sd.Metrics {
+		metricAttrs = append(metricAttrs, slog.Float64(metric.Name, metric.Value))
+	}
+
+	return []slog.Attr{
+		key.Reason.Field(sd.Reason),
+		key.UnclampedDesiredInstances.Field(sd.UnclampedDesiredInstances),
+		key.MinInstances.Field(sd.MinInstances),
+		key.MaxInstances.Field(sd.MaxInstances),
+		{
+			Key:   "metrics",
+			Value: slog.GroupValue(metricAttrs...),
+		},
+	}
+}
+
+func (sd ScalingDecision) Attributes() []attribute.KeyValue {
+	var metricAttrs []attribute.KeyValue
+	for _, metric := range sd.Metrics {
+		metricAttrs = append(metricAttrs, attribute.Float64("metrics."+metric.Name+".value", metric.Value))
+	}
+
+	return append([]attribute.KeyValue{
+		key.Reason.Attribute(sd.Reason),
+		key.UnclampedDesiredInstances.Attribute(sd.UnclampedDesiredInstances),
+		key.MinInstances.Attribute(sd.MinInstances),
+		key.MaxInstances.Attribute(sd.MaxInstances),
+	}, metricAttrs...)
+}
+
+// ScalingMetric represents an unclamped metric value for a specific metric observed for scaling decisions
+type ScalingMetric struct {
+	Name  string
+	Value float64
 }
 
 // RouterHeartbeats is a map of router IP to heartbeat
