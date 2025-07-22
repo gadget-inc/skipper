@@ -6,7 +6,7 @@ import process from "node:process";
 import { parseArgs } from "node:util";
 import { dedent } from "ts-dedent";
 import { $ } from "zx";
-import { abs, currentImageDigest, currentImageTag, deployKraneNamespace, emptyDir, isCI, renderKraneNamespace } from "./_utils.ts";
+import { abs, currentImageTag, deployKraneNamespace, emptyDir, isCI, renderKraneNamespace } from "./_utils.ts";
 
 $.cwd = abs();
 $.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
@@ -73,7 +73,6 @@ if (flags.values.only.includes("fixtures")) {
   if (flags.values.development) {
     await deployKraneNamespace("skipper-development-fixtures", {
       echo_image_tag: await currentImageTag(),
-      echo_image_digest: await currentImageDigest("skipper-fixtures-echo"),
       env: {
         OTEL_DENO: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
@@ -85,7 +84,6 @@ if (flags.values.only.includes("fixtures")) {
   if (flags.values.test) {
     await deployKraneNamespace("skipper-test-fixtures", {
       echo_image_tag: await currentImageTag(),
-      echo_image_digest: !isCI ? await currentImageDigest("skipper-fixtures-echo") : undefined,
       env: {
         OTEL_DENO: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
@@ -99,7 +97,6 @@ if (flags.values.only.includes("skipper")) {
   if (flags.values.development) {
     await deployKraneNamespace("skipper-development", {
       image_tag: await currentImageTag(),
-      image_digest: await currentImageDigest("skipper"),
       namespace: "skipper-development",
       function_namespaces: ["skipper-development-fixtures"],
       unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
@@ -116,7 +113,6 @@ if (flags.values.only.includes("skipper")) {
   if (flags.values.test) {
     await deployKraneNamespace("skipper-test", {
       image_tag: await currentImageTag(),
-      image_digest: !isCI ? await currentImageDigest("skipper") : undefined,
       namespace: "skipper-test",
       function_namespaces: ["skipper-test-fixtures"],
       unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
