@@ -64,7 +64,10 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
 
 	for len(instances) == 0 {
-		if instances, err = ctrl.scale(ctx, fn, 1); err != nil {
+		if instances, err = ctrl.scale(ctx, fn, ScalingDecision{
+			DesiredInstances: 1,
+			Reason:           "initial scale up for first request",
+		}); err != nil {
 			log.Error(ctx, "failed to scale function", key.Error.Field(err))
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
@@ -105,8 +108,15 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
+	reason := req.Header.Get(key.Reason.Header)
+	if reason == "" {
+		reason = "unknown for forwarded request"
+	}
 
-	instances, err := ctrl.scale(ctx, fn, desiredInstances)
+	instances, err := ctrl.scale(ctx, fn, ScalingDecision{
+		DesiredInstances: desiredInstances,
+		Reason:           reason,
+	})
 	if err != nil {
 		log.Error(ctx, "failed to scale function", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)

@@ -1030,7 +1030,10 @@ func TestScale(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
 
-			instances, err := ctrl.scale(ctx, fn, tc.desiredInstances)
+			instances, err := ctrl.scale(ctx, fn, ScalingDecision{
+				DesiredInstances: tc.desiredInstances,
+				Reason:           "test",
+			})
 			if tc.err != nil {
 				must.ErrorIs(t, err, tc.err)
 			} else {
@@ -1053,7 +1056,7 @@ func TestScaleForwarding(t *testing.T) {
 	fn := fixture.NewFunction()
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+	mcc.HandleScale(func(ctx context.Context, fn function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
 		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
@@ -1062,7 +1065,10 @@ func TestScaleForwarding(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	must.NoError(t, err)
 
-	instances, err := ctrl.scale(ctx, fn, 1)
+	instances, err := ctrl.scale(ctx, fn, ScalingDecision{
+		DesiredInstances: 1,
+		Reason:           "test",
+	})
 	must.NoError(t, err)
 	must.Len(t, 1, instances)
 }
@@ -1157,7 +1163,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				}
 			}
 
-			instances := calculateDesiredInstancesForMetric(t.Context(), tc.metricName, tc.podMetrics)
+			instances, _ := calculateDesiredInstancesForMetric(t.Context(), tc.metricName, tc.podMetrics)
 			must.Eq(t, tc.expectedInstances, instances)
 		})
 	}

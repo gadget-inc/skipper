@@ -65,7 +65,7 @@ if (flags.values.only.includes("skipper")) {
     buildFlags.push("--provenance=false");
   }
 
-  await $`docker buildx build . ${buildFlags}`;
+  await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
   if (flags.values.kind) {
     await $`kind load docker-image ${imageName}:${flags.values.tag}`;

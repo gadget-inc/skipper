@@ -13,7 +13,7 @@ import (
 
 type (
 	InstanceHandler  func(ctx context.Context, fn function.Function) (*function.Instance, error)
-	ScaleHandler     func(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error)
+	ScaleHandler     func(ctx context.Context, fn function.Function, desiredInstances int, reason string) ([]*function.Instance, error)
 	HeartbeatHandler func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error
 )
 
@@ -78,12 +78,12 @@ func (f *MockControllerClient) Instance(ctx context.Context, fn function.Functio
 }
 
 // Scale implements controller.Client.
-func (f *MockControllerClient) Scale(ctx context.Context, fn function.Function, desiredInstances int) ([]*function.Instance, error) {
+func (f *MockControllerClient) Scale(ctx context.Context, fn function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
 	if f.scaleHandler == nil {
 		f.t.Fatalf("mcc.Scale was called but not mocked")
 	}
 	f.scaleWasCalled = true
-	return f.scaleHandler(ctx, fn, desiredInstances)
+	return f.scaleHandler(ctx, fn, desiredInstances, reason)
 }
 
 // Heartbeat implements controller.Client.
