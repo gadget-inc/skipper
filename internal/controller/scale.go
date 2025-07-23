@@ -283,6 +283,19 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, decisio
 		return false
 	})
 
+	ctx = log.With(ctx,
+		key.ScalingDecision.Field(decision),
+		key.ReadyInstances.Field(len(readyInstances)),
+		key.UnreadyInstances.Field(len(unreadyInstances)),
+	)
+
+	if fn.Scale.MaxInstances > 1 && decision.UnclampedDesiredInstances > decision.DesiredInstances {
+		// this function is allowed to scale beyond a single instance
+		// and it wanted to scale up higher than its max instances, so
+		// let's log that for observability
+		log.Info(ctx, "scaling decision was clamped")
+	}
+
 	if decision.DesiredInstances == len(readyInstances) && decision.DesiredInstances > len(unreadyInstances) {
 		// we already have the desired number of ready instances and we
 		// don't have extra unready instances, so there's nothing to do
@@ -294,13 +307,6 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, decisio
 		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Field(responsibleIP))
 		return ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, decision.DesiredInstances, decision.Reason)
 	}
-
-	ctx = log.With(ctx,
-		key.DesiredInstances.Field(decision.DesiredInstances),
-		key.ScalingDecision.Field(decision),
-		key.ReadyInstances.Field(len(readyInstances)),
-		key.UnreadyInstances.Field(len(unreadyInstances)),
-	)
 
 	if decision.DesiredInstances > len(readyInstances) {
 		// we need to scale up
@@ -643,8 +649,9 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance) ScalingDecision {
 	if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
 		return ScalingDecision{
-			DesiredInstances: 0,
-			Reason:           "heartbeat_timeout",
+			DesiredInstances:          0,
+			UnclampedDesiredInstances: 0,
+			Reason:                    "heartbeat_timeout",
 		}
 	}
 
@@ -654,10 +661,8 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 
 	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
 		desiredInstances := int(math.Ceil(float64(heartbeat.InFlightRequests) / float64(heartbeat.Function.Scale.TargetInFlightRequests)))
-		scalingMetrics = append(scalingMetrics, ScalingMetric{
-			Name:  "in_flight_requests",
-			Value: float64(heartbeat.InFlightRequests),
-		})
+		averageUsage := float64(heartbeat.InFlightRequests) / float64(len(instances))
+		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "in_flight_requests", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
 			scalingReason = "in_flight_requests"
@@ -666,10 +671,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 
 	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, MetricCPU, instances)
-		scalingMetrics = append(scalingMetrics, ScalingMetric{
-			Name:  "cpu",
-			Value: averageUsage,
-		})
+		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "cpu", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
 			scalingReason = "cpu"
@@ -678,10 +680,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 
 	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, MetricMemory, instances)
-		scalingMetrics = append(scalingMetrics, ScalingMetric{
-			Name:  "memory",
-			Value: averageUsage,
-		})
+		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "memory", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
 			scalingReason = "memory"
@@ -693,22 +692,18 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 
 	return ScalingDecision{
 		DesiredInstances:          clampedValue,
+		UnclampedDesiredInstances: maxDesiredInstances,
 		Reason:                    scalingReason,
 		Metrics:                   scalingMetrics,
-		UnclampedDesiredInstances: maxDesiredInstances,
-		MinInstances:              heartbeat.Function.Scale.MinInstances,
-		MaxInstances:              heartbeat.Function.Scale.MaxInstances,
 	}
 }
 
 // ScalingDecision contains the inputs and result of one scaling loop for one tenant
 type ScalingDecision struct {
 	DesiredInstances          int
+	UnclampedDesiredInstances int
 	Reason                    string
 	Metrics                   []ScalingMetric
-	UnclampedDesiredInstances int
-	MinInstances              int
-	MaxInstances              int
 }
 
 func (sd ScalingDecision) Fields() []slog.Attr {
@@ -718,14 +713,10 @@ func (sd ScalingDecision) Fields() []slog.Attr {
 	}
 
 	return []slog.Attr{
-		key.Reason.Field(sd.Reason),
+		key.DesiredInstances.Field(sd.DesiredInstances),
 		key.UnclampedDesiredInstances.Field(sd.UnclampedDesiredInstances),
-		key.MinInstances.Field(sd.MinInstances),
-		key.MaxInstances.Field(sd.MaxInstances),
-		{
-			Key:   "metrics",
-			Value: slog.GroupValue(metricAttrs...),
-		},
+		key.Reason.Field(sd.Reason),
+		{Key: "metrics", Value: slog.GroupValue(metricAttrs...)},
 	}
 }
 
@@ -736,10 +727,9 @@ func (sd ScalingDecision) Attributes() []attribute.KeyValue {
 	}
 
 	return append([]attribute.KeyValue{
-		key.Reason.Attribute(sd.Reason),
+		key.DesiredInstances.Attribute(sd.DesiredInstances),
 		key.UnclampedDesiredInstances.Attribute(sd.UnclampedDesiredInstances),
-		key.MinInstances.Attribute(sd.MinInstances),
-		key.MaxInstances.Attribute(sd.MaxInstances),
+		key.Reason.Attribute(sd.Reason),
 	}, metricAttrs...)
 }
 

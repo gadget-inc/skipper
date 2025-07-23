@@ -65,8 +65,9 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 
 	for len(instances) == 0 {
 		if instances, err = ctrl.scale(ctx, fn, ScalingDecision{
-			DesiredInstances: 1,
-			Reason:           "initial scale up for first request",
+			DesiredInstances:          1,
+			UnclampedDesiredInstances: 1,
+			Reason:                    "no ready instances",
 		}); err != nil {
 			log.Error(ctx, "failed to scale function", key.Error.Field(err))
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
