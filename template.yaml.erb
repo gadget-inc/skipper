@@ -19,6 +19,7 @@ pre_stop_sleep ||= 20
 shutdown_timeout_seconds ||= 5
 env ||= {}
 annotations ||= {}
+node_affinity ||= {}
 service_annotations ||= {}
 service_spec ||= {}
 
@@ -43,6 +44,7 @@ controller_pre_stop_sleep ||= pre_stop_sleep
 controller_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + controller_shutdown_timeout_seconds + 5
 controller_env ||= {}
+controller_node_affinity ||= node_affinity
 controller_annotations ||= {}
 controller_service_annotations ||= {}
 controller_service_spec ||= {}
@@ -83,6 +85,7 @@ router_pre_stop_sleep ||= pre_stop_sleep
 router_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 router_termination_grace_period_seconds ||= router_pre_stop_sleep + router_shutdown_timeout_seconds + 5
 router_env ||= {}
+router_node_affinity ||= node_affinity
 router_annotations ||= {}
 router_service_annotations ||= {}
 router_service_spec ||= {}
@@ -270,6 +273,10 @@ spec:
             successThreshold: 1
             timeoutSeconds: 1
       affinity:
+        <%- if controller_node_affinity.any? -%>
+        nodeAffinity:
+          <%= to_yaml(controller_node_affinity, indentation: 10) %>
+        <%- end -%>
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
@@ -493,6 +500,10 @@ spec:
             successThreshold: 1
             timeoutSeconds: 1
       affinity:
+        <%- if router_node_affinity.any? -%>
+        nodeAffinity:
+          <%= to_yaml(router_node_affinity, indentation: 10) %>
+        <%- end -%>
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - weight: 100
