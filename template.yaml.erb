@@ -19,6 +19,7 @@ pre_stop_sleep ||= 20
 shutdown_timeout_seconds ||= 5
 env ||= {}
 annotations ||= {}
+tolerations ||= []
 node_affinity ||= {}
 service_annotations ||= {}
 service_spec ||= {}
@@ -43,9 +44,10 @@ controller_limit_memory ||= controller_request_memory
 controller_pre_stop_sleep ||= pre_stop_sleep
 controller_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + controller_shutdown_timeout_seconds + 5
-controller_env ||= {}
-controller_node_affinity ||= node_affinity
 controller_annotations ||= {}
+controller_env ||= {}
+controller_tolerations ||= []
+controller_node_affinity ||= node_affinity
 controller_service_annotations ||= {}
 controller_service_spec ||= {}
 
@@ -84,9 +86,10 @@ router_limit_memory ||= router_request_memory
 router_pre_stop_sleep ||= pre_stop_sleep
 router_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 router_termination_grace_period_seconds ||= router_pre_stop_sleep + router_shutdown_timeout_seconds + 5
-router_env ||= {}
-router_node_affinity ||= node_affinity
 router_annotations ||= {}
+router_env ||= {}
+router_tolerations ||= []
+router_node_affinity ||= node_affinity
 router_service_annotations ||= {}
 router_service_spec ||= {}
 
@@ -272,6 +275,15 @@ spec:
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
+      <%- if tolerations.any? || controller_tolerations.any? -%>
+      tolerations:
+        <%- tolerations.each do |toleration| -%>
+        - <%= to_yaml(toleration, indentation: 10) %>
+        <%- end -%>
+        <%- controller_tolerations.each do |toleration| -%>
+        - <%= to_yaml(toleration, indentation: 10) %>
+        <%- end -%>
+      <%- end -%>
       affinity:
         <%- if controller_node_affinity.any? -%>
         nodeAffinity:
@@ -499,6 +511,15 @@ spec:
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
+      <%- if tolerations.any? || router_tolerations.any? -%>
+      tolerations:
+        <%- tolerations.each do |toleration| -%>
+        - <%= to_yaml(toleration, indentation: 10) %>
+        <%- end -%>
+        <%- router_tolerations.each do |toleration| -%>
+        - <%= to_yaml(toleration, indentation: 10) %>
+        <%- end -%>
+      <%- end -%>
       affinity:
         <%- if router_node_affinity.any? -%>
         nodeAffinity:
