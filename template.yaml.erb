@@ -19,6 +19,7 @@ pre_stop_sleep ||= 20
 shutdown_timeout_seconds ||= 5
 env ||= {}
 annotations ||= {}
+service_annotations ||= {}
 
 controller_name = "#{namespace}-controller"
 controller_log_level ||= log_level
@@ -42,6 +43,7 @@ controller_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + controller_shutdown_timeout_seconds + 5
 controller_env ||= {}
 controller_annotations ||= {}
+controller_service_annotations ||= {}
 
 controller_image = ""
 if controller_image_registry.present?
@@ -80,6 +82,7 @@ router_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 router_termination_grace_period_seconds ||= router_pre_stop_sleep + router_shutdown_timeout_seconds + 5
 router_env ||= {}
 router_annotations ||= {}
+router_service_annotations ||= {}
 
 router_image = ""
 if router_image_registry.present?
@@ -279,11 +282,29 @@ spec:
                       operator: In
                       values:
                       - <%= namespace %>
+      topologySpreadConstraints:
+        - topologyKey: topology.kubernetes.io/zone
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: skipper
+              app.kubernetes.io/component: controller
+              app.kubernetes.io/instance: <%= namespace %>
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: <%= controller_name %>
+  <%- if service_annotations.any? || controller_service_annotations.any? -%>
+  annotations:
+    <%- service_annotations.each do |key, value| -%>
+    <%= key %>: "<%= value %>"
+    <%- end -%>
+    <%- controller_service_annotations.each do |key, value| -%>
+    <%= key %>: "<%= value %>"
+    <%- end -%>
+  <%- end -%>
 spec:
   selector:
     app.kubernetes.io/name: skipper
@@ -470,15 +491,37 @@ spec:
                       operator: In
                       values:
                       - skipper
+                    - key: app.kubernetes.io/component
+                      operator: In
+                      values:
+                      - router
                     - key: app.kubernetes.io/instance
                       operator: In
                       values:
                       - <%= namespace %>
+      topologySpreadConstraints:
+        - topologyKey: topology.kubernetes.io/zone
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: skipper
+              app.kubernetes.io/component: router
+              app.kubernetes.io/instance: <%= namespace %>
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: <%= router_name %>
+  <%- if service_annotations.any? || router_service_annotations.any? -%>
+  annotations:
+    <%- service_annotations.each do |key, value| -%>
+    <%= key %>: "<%= value %>"
+    <%- end -%>
+    <%- router_service_annotations.each do |key, value| -%>
+    <%= key %>: "<%= value %>"
+    <%- end -%>
+  <%- end -%>
 spec:
   <%- if defined? router_node_port -%>
   type: NodePort
