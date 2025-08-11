@@ -20,6 +20,7 @@ shutdown_timeout_seconds ||= 5
 env ||= {}
 annotations ||= {}
 service_annotations ||= {}
+service_spec ||= {}
 
 controller_name = "#{namespace}-controller"
 controller_log_level ||= log_level
@@ -44,6 +45,7 @@ controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + cont
 controller_env ||= {}
 controller_annotations ||= {}
 controller_service_annotations ||= {}
+controller_service_spec ||= {}
 
 controller_image = ""
 if controller_image_registry.present?
@@ -83,6 +85,7 @@ router_termination_grace_period_seconds ||= router_pre_stop_sleep + router_shutd
 router_env ||= {}
 router_annotations ||= {}
 router_service_annotations ||= {}
+router_service_spec ||= {}
 
 router_image = ""
 if router_image_registry.present?
@@ -97,6 +100,10 @@ end
 
 if router_image_digest.present?
   router_image += "@#{router_image_digest}"
+end
+
+def to_yaml(object, indentation: 0)
+  object.to_yaml.delete_prefix!("---\n").gsub(/\n/, "\n" + " " * indentation)
 end
 -%>
 ---
@@ -313,6 +320,12 @@ spec:
   ports:
     - port: 80
       targetPort: http
+  <%- if service_spec.any? -%>
+  <%= to_yaml(service_spec, indentation: 2) %>
+  <%- end -%>
+  <%- if controller_service_spec.any? -%>
+  <%= to_yaml(controller_service_spec, indentation: 2) %>
+  <%- end -%>
 <%- if controller_min_replicas != controller_max_replicas -%>
 ---
 apiVersion: autoscaling/v2
@@ -536,6 +549,12 @@ spec:
       <%- if defined? router_node_port -%>
       nodePort: <%= router_node_port %>
       <%- end -%>
+  <%- if service_spec.any? -%>
+  <%= to_yaml(service_spec, indentation: 2) %>
+  <%- end -%>
+  <%- if router_service_spec.any? -%>
+  <%= to_yaml(router_service_spec, indentation: 2) %>
+  <%- end -%>
 <%- if router_min_replicas != router_max_replicas -%>
 ---
 apiVersion: autoscaling/v2
