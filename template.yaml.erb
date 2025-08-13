@@ -19,8 +19,9 @@ pre_stop_sleep ||= 20
 shutdown_timeout_seconds ||= 5
 env ||= {}
 annotations ||= {}
+node_selector ||= {}
 tolerations ||= []
-node_affinity ||= {}
+affinity ||= {}
 service_annotations ||= {}
 service_spec ||= {}
 
@@ -44,10 +45,11 @@ controller_limit_memory ||= controller_request_memory
 controller_pre_stop_sleep ||= pre_stop_sleep
 controller_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 controller_termination_grace_period_seconds ||= controller_pre_stop_sleep + controller_shutdown_timeout_seconds + 5
-controller_annotations ||= {}
 controller_env ||= {}
+controller_annotations ||= {}
+controller_node_selector ||= node_selector
 controller_tolerations ||= []
-controller_node_affinity ||= node_affinity
+controller_affinity ||= affinity
 controller_service_annotations ||= {}
 controller_service_spec ||= {}
 
@@ -86,10 +88,11 @@ router_limit_memory ||= router_request_memory
 router_pre_stop_sleep ||= pre_stop_sleep
 router_shutdown_timeout_seconds ||= shutdown_timeout_seconds
 router_termination_grace_period_seconds ||= router_pre_stop_sleep + router_shutdown_timeout_seconds + 5
-router_annotations ||= {}
 router_env ||= {}
+router_annotations ||= {}
+router_node_selector ||= node_selector
 router_tolerations ||= []
-router_node_affinity ||= node_affinity
+router_affinity ||= affinity
 router_service_annotations ||= {}
 router_service_spec ||= {}
 
@@ -275,6 +278,10 @@ spec:
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
+      <%- if controller_node_selector.any? -%>
+      nodeSelector:
+        <%= to_yaml(controller_node_selector, indentation: 8) %>
+      <%- end -%>
       <%- if tolerations.any? || controller_tolerations.any? -%>
       tolerations:
         <%- tolerations.each do |toleration| -%>
@@ -284,32 +291,20 @@ spec:
         - <%= to_yaml(toleration, indentation: 10) %>
         <%- end -%>
       <%- end -%>
+      <%- if controller_affinity.any? -%>
       affinity:
-        <%- if controller_node_affinity.any? -%>
-        nodeAffinity:
-          <%= to_yaml(controller_node_affinity, indentation: 10) %>
-        <%- end -%>
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchExpressions:
-                    - key: app.kubernetes.io/name
-                      operator: In
-                      values:
-                      - skipper
-                    - key: app.kubernetes.io/component
-                      operator: In
-                      values:
-                      - controller
-                    - key: app.kubernetes.io/instance
-                      operator: In
-                      values:
-                      - <%= namespace %>
+        <%= to_yaml(controller_affinity, indentation: 8) %>
+      <%- end -%>
       topologySpreadConstraints:
         - topologyKey: topology.kubernetes.io/zone
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: skipper
+              app.kubernetes.io/component: controller
+              app.kubernetes.io/instance: <%= namespace %>
+        - topologyKey: kubernetes.io/hostname
           maxSkew: 1
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
@@ -511,6 +506,10 @@ spec:
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
+      <%- if router_node_selector.any? -%>
+      nodeSelector:
+        <%= to_yaml(router_node_selector, indentation: 8) %>
+      <%- end -%>
       <%- if tolerations.any? || router_tolerations.any? -%>
       tolerations:
         <%- tolerations.each do |toleration| -%>
@@ -520,32 +519,20 @@ spec:
         - <%= to_yaml(toleration, indentation: 10) %>
         <%- end -%>
       <%- end -%>
+      <%- if router_affinity.any? -%>
       affinity:
-        <%- if router_node_affinity.any? -%>
-        nodeAffinity:
-          <%= to_yaml(router_node_affinity, indentation: 10) %>
-        <%- end -%>
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                topologyKey: kubernetes.io/hostname
-                labelSelector:
-                  matchExpressions:
-                    - key: app.kubernetes.io/name
-                      operator: In
-                      values:
-                      - skipper
-                    - key: app.kubernetes.io/component
-                      operator: In
-                      values:
-                      - router
-                    - key: app.kubernetes.io/instance
-                      operator: In
-                      values:
-                      - <%= namespace %>
+        <%= to_yaml(router_affinity, indentation: 8) %>
+      <%- end -%>
       topologySpreadConstraints:
         - topologyKey: topology.kubernetes.io/zone
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: skipper
+              app.kubernetes.io/component: router
+              app.kubernetes.io/instance: <%= namespace %>
+        - topologyKey: kubernetes.io/hostname
           maxSkew: 1
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
