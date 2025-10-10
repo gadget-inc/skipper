@@ -34,8 +34,20 @@ export async function gitSha() {
   return await $stdout`git rev-parse --short HEAD`;
 }
 
+export async function currentDockerOs() {
+  return await $stdout`docker version --format '{{.Server.Os}}'`;
+}
+
+export async function currentDockerArch() {
+  return await $stdout`docker version --format '{{.Server.Arch}}'`;
+}
+
+export async function currentDockerPlatform() {
+  return `${await currentDockerOs()}/${await currentDockerArch()}`;
+}
+
 export async function currentImageTag() {
-  return `sha-${await gitSha()}`;
+  return `sha-${await gitSha()}-${await currentDockerArch()}`;
 }
 
 export async function currentImageDigest(name: string) {
@@ -45,10 +57,6 @@ export async function currentImageDigest(name: string) {
     throw new Error(`Image digest for ${name}:${tag} not found`);
   }
   return digest;
-}
-
-export async function currentDockerPlatform() {
-  return await $stdout`docker version --format '{{.Server.Os}}/{{.Server.Arch}}'`;
 }
 
 export async function renderKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
