@@ -12,12 +12,10 @@ const flags = parseArgs({
   allowNegative: true,
   options: {
     registry: { type: "string" },
-    name: { type: "string", default: "skipper" },
     tag: { type: "string", default: await currentImageTag() },
     platform: { type: "string", default: await currentDockerPlatform() },
     help: { type: "boolean", default: false },
     kind: { type: "boolean", default: isCI },
-    latest: { type: "boolean", default: true },
     load: { type: "boolean", default: true },
     only: { type: "string", default: "skipper,fixtures" },
     provenance: { type: "boolean", default: false },
@@ -31,9 +29,7 @@ if (flags.values.help) {
       build [flags]
 
     Flags:
-          --latest                  Build latest tag (${flags.values.latest})
           --load                    Load the image (${flags.values.load})
-          --name <string>           Name of the image (${flags.values.name})
           --only <string>           Only build the given images (${flags.values.only})
           --platform <string>       Platform to build for (${flags.values.platform})
           --provenance              Enable provenance (${flags.values.provenance})
@@ -46,12 +42,8 @@ if (flags.values.help) {
 }
 
 if (flags.values.only.includes("skipper")) {
-  const imageName = flags.values.registry ? `${flags.values.registry}/${flags.values.name}` : flags.values.name;
+  const imageName = flags.values.registry ? `${flags.values.registry}/skipper` : "skipper";
   const buildFlags = [`--platform=${flags.values.platform}`, `--tag=${imageName}:${flags.values.tag}`];
-
-  if (flags.values.latest) {
-    buildFlags.push(`--tag=${imageName}:latest`);
-  }
 
   if (flags.values.load) {
     buildFlags.push("--load");
@@ -69,9 +61,6 @@ if (flags.values.only.includes("skipper")) {
 
   if (flags.values.kind) {
     await $`kind load docker-image ${imageName}:${flags.values.tag}`;
-    if (flags.values.latest) {
-      await $`kind load docker-image ${imageName}:latest`;
-    }
   }
 }
 
@@ -86,10 +75,6 @@ if (flags.values.only.includes("fixtures")) {
       `--build-arg=NODE_VERSION=${process.version.slice(1)}`,
     ];
 
-    if (flags.values.latest) {
-      buildFlags.push(`--tag=${imageName}:latest`);
-    }
-
     if (flags.values.load) {
       buildFlags.push("--load");
     }
@@ -102,9 +87,6 @@ if (flags.values.only.includes("fixtures")) {
 
     if (flags.values.kind) {
       await $`kind load docker-image ${imageName}:${flags.values.tag}`;
-      if (flags.values.latest) {
-        await $`kind load docker-image ${imageName}:latest`;
-      }
     }
   }
 }
