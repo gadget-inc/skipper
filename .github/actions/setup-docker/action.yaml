@@ -5,17 +5,5 @@ outputs: {}
 runs:
   using: "composite"
   steps:
-    - name: Set up Blacksmith
-      uses: useblacksmith/build-push-action@v1
-      with:
-        setup-only: true
-
     - name: Set up Docker
-      uses: docker/setup-docker-action@v4
-      with:
-        daemon-config: |
-          {
-            "features": {
-              "containerd-snapshotter": true
-            }
-          }
+      uses: useblacksmith/setup-docker-builder@v1
