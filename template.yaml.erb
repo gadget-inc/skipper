@@ -22,6 +22,7 @@ annotations ||= {}
 node_selector ||= {}
 tolerations ||= []
 affinity ||= {}
+topology_spread_constraints ||= {}
 service_annotations ||= {}
 service_spec ||= {}
 
@@ -50,6 +51,7 @@ controller_annotations ||= {}
 controller_node_selector ||= node_selector
 controller_tolerations ||= []
 controller_affinity ||= affinity
+controller_topology_spread_constraints ||= topology_spread_constraints
 controller_service_annotations ||= {}
 controller_service_spec ||= {}
 
@@ -93,6 +95,7 @@ router_annotations ||= {}
 router_node_selector ||= node_selector
 router_tolerations ||= []
 router_affinity ||= affinity
+router_topology_spread_constraints ||= topology_spread_constraints
 router_service_annotations ||= {}
 router_service_spec ||= {}
 
@@ -296,17 +299,17 @@ spec:
         <%= to_yaml(controller_affinity, indentation: 8) %>
       <%- end -%>
       topologySpreadConstraints:
-        - topologyKey: topology.kubernetes.io/zone
+        - topologyKey: kubernetes.io/hostname
           maxSkew: 1
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: <%= controller_topology_spread_constraints["kubernetes.io/hostname"] || "ScheduleAnyway" %>
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: skipper
               app.kubernetes.io/component: controller
               app.kubernetes.io/instance: <%= namespace %>
-        - topologyKey: kubernetes.io/hostname
+        - topologyKey: topology.kubernetes.io/zone
           maxSkew: 1
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: <%= controller_topology_spread_constraints["topology.kubernetes.io/zone"] || "ScheduleAnyway" %>
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: skipper
@@ -524,17 +527,17 @@ spec:
         <%= to_yaml(router_affinity, indentation: 8) %>
       <%- end -%>
       topologySpreadConstraints:
-        - topologyKey: topology.kubernetes.io/zone
+        - topologyKey: kubernetes.io/hostname
           maxSkew: 1
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: <%= router_topology_spread_constraints["kubernetes.io/hostname"] || "ScheduleAnyway" %>
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: skipper
               app.kubernetes.io/component: router
               app.kubernetes.io/instance: <%= namespace %>
-        - topologyKey: kubernetes.io/hostname
+        - topologyKey: topology.kubernetes.io/zone
           maxSkew: 1
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: <%= router_topology_spread_constraints["topology.kubernetes.io/zone"] || "ScheduleAnyway" %>
           labelSelector:
             matchLabels:
               app.kubernetes.io/name: skipper
