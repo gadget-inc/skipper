@@ -120,12 +120,20 @@ function getPercentile(percentile: number): number {
     return 0;
   }
 
-  const idx = percentile * (latencies.length - 1);
-  const lower = unwrap(latencies[Math.floor(idx)], "latencies[lower] is undefined");
-  const upper = unwrap(latencies[Math.ceil(idx)], "latencies[upper] is undefined");
-  if (lower === upper) {
-    return lower;
+  const index = percentile * (latencies.length - 1);
+  const lowerIndex = Math.floor(index);
+  const upperIndex = Math.ceil(index);
+
+  const lower = unwrap(latencies[lowerIndex], "latencies[lowerIndex] is undefined");
+  const upper = unwrap(latencies[upperIndex], "latencies[upperIndex] is undefined");
+
+  let value: number;
+  if (lowerIndex === upperIndex) {
+    value = lower;
+  } else {
+    const weight = index - lowerIndex;
+    value = lower + (upper - lower) * weight;
   }
 
-  return lower + (upper - lower) * (idx - lower);
+  return Math.round(value);
 }
