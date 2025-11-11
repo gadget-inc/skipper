@@ -262,3 +262,145 @@ func TestHandleHeartbeat(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldThrottle(t *testing.T) {
+	ctrl := New(nil, fake.NewClientset(), nil)
+	fn := fixture.NewFunction()
+	fn.Scale.TargetInFlightRequests = 4
+
+	instances := []*function.Instance{
+		{Function: fn, Name: "a"},
+		{Function: fn, Name: "b"},
+	}
+
+	loads := map[string]int{
+		"a": 6,
+		"b": 6,
+	}
+
+	ctrl.markScaleActivity(fn)
+	must.True(t, ctrl.shouldThrottle(context.Background(), fn, instances, loads, time.Now()))
+}
+
+func TestShouldThrottleRespectsDeadline(t *testing.T) {
+	ctrl := New(nil, fake.NewClientset(), nil)
+	fn := fixture.NewFunction()
+	fn.Scale.TargetInFlightRequests = 4
+
+	instances := []*function.Instance{
+		{Function: fn, Name: "a"},
+		{Function: fn, Name: "b"},
+	}
+
+	loads := map[string]int{
+		"a": 6,
+		"b": 6,
+	}
+
+	ctrl.markScaleActivity(fn)
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(instanceThrottleDeadlineBuffer/2))
+	defer cancel()
+
+	must.False(t, ctrl.shouldThrottle(ctx, fn, instances, loads, time.Now()))
+}
+
+func TestChooseLeastBusyInstance(t *testing.T) {
+	ctrl := New(nil, fake.NewClientset(), nil)
+	fn := fixture.NewFunction()
+	fn.Scale.TargetInFlightRequests = 50 // threshold will be 50 * 1.25 = 62.5 -> 63
+
+	t.Run("filters out overloaded instances", func(t *testing.T) {
+		instances := []*function.Instance{
+			{Function: fn, Name: "a"},
+			{Function: fn, Name: "b"},
+			{Function: fn, Name: "c"},
+		}
+
+		loads := map[string]int{
+			"a": 100, // above threshold (63)
+			"b": 1,   // below threshold (63)
+			"c": 1,   // below threshold (63)
+		}
+
+		selected := ctrl.chooseLeastBusyInstance(fn, instances, loads)
+		// Only b and c should be selected (both below threshold)
+		must.True(t, selected.Name == "b" || selected.Name == "c")
+		must.NotEq(t, "a", selected.Name)
+	})
+
+	t.Run("all instances below threshold", func(t *testing.T) {
+		instances := []*function.Instance{
+			{Function: fn, Name: "a"},
+			{Function: fn, Name: "b"},
+			{Function: fn, Name: "c"},
+		}
+
+		loads := map[string]int{
+			"a": 5, // below threshold (63)
+			"b": 1, // below threshold (63)
+			"c": 1, // below threshold (63)
+		}
+
+		selected := ctrl.chooseLeastBusyInstance(fn, instances, loads)
+		// All instances are below threshold, so any can be selected
+		must.True(t, selected.Name == "a" || selected.Name == "b" || selected.Name == "c")
+	})
+
+	t.Run("all instances above threshold falls back to all", func(t *testing.T) {
+		instances := []*function.Instance{
+			{Function: fn, Name: "a"},
+			{Function: fn, Name: "b"},
+		}
+
+		loads := map[string]int{
+			"a": 100, // above threshold (63)
+			"b": 200, // above threshold (63)
+		}
+
+		selected := ctrl.chooseLeastBusyInstance(fn, instances, loads)
+		// All instances are above threshold, so fall back to all instances
+		must.True(t, selected.Name == "a" || selected.Name == "b")
+	})
+
+	t.Run("no threshold set uses all instances", func(t *testing.T) {
+		fnNoThreshold := fixture.NewFunction()
+		fnNoThreshold.Scale.TargetInFlightRequests = 0 // no threshold
+
+		instances := []*function.Instance{
+			{Function: fnNoThreshold, Name: "a"},
+			{Function: fnNoThreshold, Name: "b"},
+			{Function: fnNoThreshold, Name: "c"},
+		}
+
+		loads := map[string]int{
+			"a": 1000, // any load is acceptable when no threshold
+			"b": 5000,
+			"c": 100,
+		}
+
+		selected := ctrl.chooseLeastBusyInstance(fnNoThreshold, instances, loads)
+		// No threshold means all instances are candidates
+		must.True(t, selected.Name == "a" || selected.Name == "b" || selected.Name == "c")
+	})
+}
+
+func TestInFlightPerInstanceAggregates(t *testing.T) {
+	ctrl := New(nil, fake.NewClientset(), nil)
+	fn := fixture.NewFunction()
+
+	ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{
+		"router-1": {
+			Function:            fn,
+			InFlightPerInstance: map[string]int{"a": 2},
+		},
+		"router-2": {
+			Function:            fn,
+			InFlightPerInstance: map[string]int{"a": 3, "b": 1},
+		},
+	})
+
+	loads := ctrl.inFlightPerInstance(fn)
+	must.Eq(t, 5, loads["a"])
+	must.Eq(t, 1, loads["b"])
+}

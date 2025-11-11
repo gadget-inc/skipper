@@ -305,13 +305,16 @@ func TestHeartbeats(t *testing.T) {
 	done := make(chan struct{})
 	defer close(done)
 
+	var instanceName string
 	mcc := fixture.NewMockControllerClient(t)
 	mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+		instance := fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
 			<-done
-		}), nil
+		})
+		instanceName = instance.Name
+		return instance, nil
 	})
 	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 		if len(heartbeats) == 0 {
@@ -328,6 +331,10 @@ func TestHeartbeats(t *testing.T) {
 		must.True(t, heartbeat.Timestamp.After(testStartTime))
 		if heartbeat.InFlightRequests > 0 {
 			once.Do(func() {
+				if instanceName != "" && heartbeat.InFlightPerInstance != nil {
+					must.MapContainsKey(t, heartbeat.InFlightPerInstance, instanceName)
+					must.True(t, heartbeat.InFlightPerInstance[instanceName] > 0)
+				}
 				done <- struct{}{}
 			})
 		}
@@ -349,6 +356,7 @@ func TestHeartbeats(t *testing.T) {
 	must.Eq(t, fn, heartbeat.Function)
 	must.True(t, heartbeat.Timestamp.After(testStartTime))
 	must.Eq(t, 0, heartbeat.InFlightRequests) // ensure the number of in-flight requests is 0 now that the request is complete
+	must.True(t, len(heartbeat.InFlightPerInstance) == 0)
 }
 
 func TestRetries(t *testing.T) {

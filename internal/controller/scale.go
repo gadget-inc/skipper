@@ -46,28 +46,28 @@ var (
 		Subsystem: "controller",
 		Name:      "waiting_for_unassigned_pods",
 		Help:      "The number of functions that are waiting for an unassigned pod",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "function_tenant"})
 
 	assignmentsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "assignments_total",
 		Help:      "The number of times the controller has assigned a pod to a function",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "function_tenant"})
 
 	scaleUpsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "scale_ups_total",
 		Help:      "The number of times the controller has scaled up a function",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "function_tenant"})
 
 	scaleDownsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "scale_downs_total",
 		Help:      "The number of times the controller has scaled down a function",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "function_tenant"})
 )
 
 func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) error {
@@ -317,7 +317,8 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, decisio
 		}
 
 		log.Info(ctx, "scaling function up")
-		scaleUpsTotal.WithLabelValues(fn.Deployment).Add(float64(decision.DesiredInstances - len(readyInstances)))
+		ctrl.markScaleActivity(fn)
+		scaleUpsTotal.WithLabelValues(fn.Deployment, fn.Tenant).Add(float64(decision.DesiredInstances - len(readyInstances)))
 
 		for range decision.DesiredInstances - len(readyInstances) {
 			instance, err := ctrl.assignPod(ctx, fn)
@@ -329,7 +330,7 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, decisio
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
-		scaleDownsTotal.WithLabelValues(fn.Deployment).Add(float64(len(readyInstances) + len(unreadyInstances) - decision.DesiredInstances))
+		scaleDownsTotal.WithLabelValues(fn.Deployment, fn.Tenant).Add(float64(len(readyInstances) + len(unreadyInstances) - decision.DesiredInstances))
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
@@ -360,7 +361,7 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (in
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
-	assignmentsTotal.WithLabelValues(fn.Deployment).Inc()
+	assignmentsTotal.WithLabelValues(fn.Deployment, fn.Tenant).Inc()
 
 GET_UNASSIGNED_POD:
 	var pod *v1.Pod
@@ -469,8 +470,8 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	waitingForUnassignedPods.WithLabelValues(fn.Deployment).Inc()
-	defer waitingForUnassignedPods.WithLabelValues(fn.Deployment).Dec()
+	waitingForUnassignedPods.WithLabelValues(fn.Deployment, fn.Tenant).Inc()
+	defer waitingForUnassignedPods.WithLabelValues(fn.Deployment, fn.Tenant).Dec()
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		unassignedPods, err := ctrl.getUnassignedPods(fn)
@@ -745,12 +746,19 @@ type RouterHeartbeats map[string]function.Heartbeat
 // Combined returns a heartbeat that is the sum of all the heartbeats from all the routers
 func (r RouterHeartbeats) Combined() function.Heartbeat {
 	var combined function.Heartbeat
+	combined.InFlightPerInstance = make(map[string]int)
 	for _, heartbeat := range r {
 		combined.Function = heartbeat.Function
 		combined.InFlightRequests += heartbeat.InFlightRequests
 		if combined.Timestamp.Before(heartbeat.Timestamp) {
 			combined.Timestamp = heartbeat.Timestamp
 		}
+		for instance, count := range heartbeat.InFlightPerInstance {
+			combined.InFlightPerInstance[instance] += count
+		}
+	}
+	if len(combined.InFlightPerInstance) == 0 {
+		combined.InFlightPerInstance = map[string]int{}
 	}
 	return combined
 }

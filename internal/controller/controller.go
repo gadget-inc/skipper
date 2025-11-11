@@ -32,6 +32,8 @@ import (
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
+const scaleActivityWindow = 5 * time.Second
+
 type namespaceLister struct {
 	podIndexer        cache.Indexer
 	podLister         listerv1.PodLister
@@ -51,6 +53,7 @@ type Controller struct {
 	scaleMu              *xsync.Map[function.Function, *sync.Mutex]
 	routerHeartbeats     *xsync.Map[function.Function, RouterHeartbeats]
 	stabilizationWindows *xsync.Map[function.Function, *StabilizationWindow]
+	scaleActivity        *xsync.Map[function.Function, time.Time]
 }
 
 func New(newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
@@ -64,6 +67,7 @@ func New(newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernete
 		scaleMu:              xsync.NewMap[function.Function, *sync.Mutex](),
 		routerHeartbeats:     xsync.NewMap[function.Function, RouterHeartbeats](),
 		stabilizationWindows: xsync.NewMap[function.Function, *StabilizationWindow](),
+		scaleActivity:        xsync.NewMap[function.Function, time.Time](),
 	}
 }
 
@@ -97,6 +101,28 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 func (ctrl *Controller) getControllerClient(ip string) Client {
 	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, FlagPort.Value()), false })
 	return controllerClient
+}
+
+func (ctrl *Controller) markScaleActivity(fn function.Function) {
+	if ctrl.scaleActivity == nil {
+		return
+	}
+	ctrl.scaleActivity.Store(fn, time.Now())
+}
+
+func (ctrl *Controller) lastScaleActivity(fn function.Function) (time.Time, bool) {
+	if ctrl.scaleActivity == nil {
+		return time.Time{}, false
+	}
+	return ctrl.scaleActivity.Load(fn)
+}
+
+func (ctrl *Controller) isRecentlyScaling(fn function.Function) bool {
+	last, ok := ctrl.lastScaleActivity(fn)
+	if !ok {
+		return false
+	}
+	return time.Since(last) <= scaleActivityWindow
 }
 
 func (ctrl *Controller) startInformers(ctx context.Context) error {

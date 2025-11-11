@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"math"
 	"math/rand"
 	"net/http"
 	"slices"
@@ -19,12 +20,19 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+const (
+	instanceOverloadHeadroom       = 0.25 // 25% headroom for instance overload
+	instanceThrottleInterval       = 100 * time.Millisecond
+	instanceThrottleMaxWait        = 2 * time.Second
+	instanceThrottleDeadlineBuffer = 250 * time.Millisecond
+)
+
 var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "skipper",
 	Subsystem: "controller",
 	Name:      "heartbeats_total",
 	Help:      "The number of heartbeats received by the controller",
-}, []string{"function_deployment"})
+}, []string{"function_deployment", "function_tenant"})
 
 func (ctrl *Controller) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -54,41 +62,190 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 	ctx = log.With(ctx, key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
 
-	instances, err := ctrl.getReadyInstances(fn)
-	if err != nil {
-		log.Error(ctx, "failed to get instances", key.Error.Field(err))
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	selectionStart := time.Now()
+	var (
+		instances []*function.Instance
+		loads     map[string]int
+	)
 
-	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
-
-	for len(instances) == 0 {
-		if instances, err = ctrl.scale(ctx, fn, ScalingDecision{
-			DesiredInstances:          1,
-			UnclampedDesiredInstances: 1,
-			Reason:                    "no ready instances",
-		}); err != nil {
-			log.Error(ctx, "failed to scale function", key.Error.Field(err))
+	for {
+		instances, err = ctrl.getReadyInstances(fn)
+		if err != nil {
+			log.Error(ctx, "failed to get instances", key.Error.Field(err))
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
+
+		if len(instances) == 0 {
+			if _, err = ctrl.scale(ctx, fn, ScalingDecision{
+				DesiredInstances:          1,
+				UnclampedDesiredInstances: 1,
+				Reason:                    "no ready instances",
+			}); err != nil {
+				log.Error(ctx, "failed to scale function", key.Error.Field(err))
+				http.Error(rw, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			continue
+		}
+
+		if len(instances) > fn.Scale.MaxInstances {
+			// sort instances by assigned at in descending order (newest first)
+			slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+			// keep the newest instances
+			instances = instances[:fn.Scale.MaxInstances]
+		}
+
+		loads = ctrl.inFlightPerInstance(fn)
+
+		if ctrl.shouldThrottle(ctx, fn, instances, loads, selectionStart) {
+			totalLoad := totalInFlight(loads)
+			log.Debug(ctx, "delaying instance selection while scaling", key.InFlightRequests.Field(totalLoad), key.Count.Field(len(instances)))
+			if !ctrl.waitForCapacity(ctx, selectionStart) {
+				log.Debug(ctx, "unable to wait longer for additional capacity", key.InFlightRequests.Field(totalLoad))
+				break
+			}
+			continue
+		}
+
+		break
 	}
 
-	if len(instances) > fn.Scale.MaxInstances {
-		// sort instances by assigned at in descending order (newest first)
-		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
-		// keep the newest instances
-		instances = instances[:fn.Scale.MaxInstances]
+	if len(instances) == 0 {
+		http.Error(rw, "no ready instances", http.StatusServiceUnavailable)
+		return
 	}
 
-	instance := instances[rand.Intn(len(instances))]
+	instance := ctrl.chooseLeastBusyInstance(fn, instances, loads)
 
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
 	if err := json.MarshalWrite(rw, instance); err != nil {
 		log.Error(ctx, "failed to encode instance response", key.Error.Field(err))
 	}
+}
+
+func (ctrl *Controller) inFlightPerInstance(fn function.Function) map[string]int {
+	routerHeartbeats, ok := ctrl.routerHeartbeats.Load(fn)
+	if !ok {
+		return map[string]int{}
+	}
+
+	combined := routerHeartbeats.Combined()
+	if len(combined.InFlightPerInstance) == 0 {
+		return map[string]int{}
+	}
+
+	loads := make(map[string]int, len(combined.InFlightPerInstance))
+	for instance, count := range combined.InFlightPerInstance {
+		loads[instance] = count
+	}
+	return loads
+}
+
+func (ctrl *Controller) shouldThrottle(ctx context.Context, fn function.Function, instances []*function.Instance, loads map[string]int, start time.Time) bool {
+	if fn.Scale.TargetInFlightRequests <= 0 {
+		return false
+	}
+	if len(instances) == 0 {
+		return false
+	}
+
+	threshold := int(math.Ceil(float64(fn.Scale.TargetInFlightRequests) * (1 + instanceOverloadHeadroom)))
+	if threshold < 0 {
+		return false
+	}
+
+	for _, instance := range instances {
+		if loads[instance.Name] <= threshold {
+			return false
+		}
+	}
+
+	if !ctrl.isRecentlyScaling(fn) {
+		return false
+	}
+
+	return ctrl.canThrottle(ctx, start)
+}
+
+func (ctrl *Controller) canThrottle(ctx context.Context, start time.Time) bool {
+	if time.Since(start) >= instanceThrottleMaxWait {
+		return false
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		if time.Until(deadline) <= instanceThrottleDeadlineBuffer {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (ctrl *Controller) waitForCapacity(ctx context.Context, start time.Time) bool {
+	elapsed := time.Since(start)
+	if elapsed >= instanceThrottleMaxWait {
+		return false
+	}
+
+	wait := instanceThrottleInterval
+	if remaining := instanceThrottleMaxWait - elapsed; remaining < wait {
+		wait = remaining
+	}
+	if wait <= 0 {
+		return false
+	}
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(wait):
+		return true
+	}
+}
+
+func (ctrl *Controller) chooseLeastBusyInstance(fn function.Function, instances []*function.Instance, loads map[string]int) *function.Instance {
+	if len(instances) == 0 {
+		return nil
+	}
+
+	var candidates []*function.Instance
+
+	// If no threshold is set, use all instances
+	if fn.Scale.TargetInFlightRequests <= 0 {
+		candidates = instances
+	} else {
+		// Calculate threshold: instances above this are considered overloaded
+		threshold := int(math.Ceil(float64(fn.Scale.TargetInFlightRequests) * (1 + instanceOverloadHeadroom)))
+
+		// Filter out instances above the threshold
+		candidates = make([]*function.Instance, 0, len(instances))
+		for _, instance := range instances {
+			load := loads[instance.Name]
+			if load <= threshold {
+				candidates = append(candidates, instance)
+			}
+		}
+
+		// If no instances are below threshold, fall back to all instances
+		if len(candidates) == 0 {
+			candidates = instances
+		}
+	}
+
+	// Randomly select from the acceptable instances
+	return candidates[rand.Intn(len(candidates))]
+}
+
+func totalInFlight(loads map[string]int) int {
+	total := 0
+	for _, count := range loads {
+		total += count
+	}
+	return total
 }
 
 func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
@@ -147,7 +304,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	for _, heartbeat := range heartbeats {
-		heartbeatsCounter.WithLabelValues(heartbeat.Function.Deployment).Inc()
+		heartbeatsCounter.WithLabelValues(heartbeat.Function.Deployment, heartbeat.Function.Tenant).Inc()
 
 		ctrl.routerHeartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, xsync.ComputeOp) {
 			if !loaded {
