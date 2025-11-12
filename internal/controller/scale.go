@@ -20,8 +20,6 @@ import (
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/go-json-experiment/json"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/attribute"
@@ -40,34 +38,6 @@ import (
 var (
 	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
 	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
-
-	waitingForUnassignedPods = promauto.NewGaugeVec(prometheus.GaugeOpts{
-		Namespace: "skipper",
-		Subsystem: "controller",
-		Name:      "waiting_for_unassigned_pods",
-		Help:      "The number of functions that are waiting for an unassigned pod",
-	}, []string{"function_deployment"})
-
-	assignmentsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "skipper",
-		Subsystem: "controller",
-		Name:      "assignments_total",
-		Help:      "The number of times the controller has assigned a pod to a function",
-	}, []string{"function_deployment"})
-
-	scaleUpsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "skipper",
-		Subsystem: "controller",
-		Name:      "scale_ups_total",
-		Help:      "The number of times the controller has scaled up a function",
-	}, []string{"function_deployment"})
-
-	scaleDownsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "skipper",
-		Subsystem: "controller",
-		Name:      "scale_downs_total",
-		Help:      "The number of times the controller has scaled down a function",
-	}, []string{"function_deployment"})
 )
 
 func (ctrl *Controller) scaleNamespace(ctx context.Context, namespace string) error {

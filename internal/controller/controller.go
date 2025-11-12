@@ -20,6 +20,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/go-json-experiment/json"
 	"github.com/puzpuzpuz/xsync/v4"
+	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -135,15 +136,30 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	}
 
 	controllerPodInformer := controllerPodInformerFactory.Core().V1().Pods().Informer()
-	controllerPodInformer.SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
+	err := controllerPodInformer.SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
 		slog.String("watch_resource", "controller_pods"),
 		key.Namespace.Field(FlagNamespace.Value()),
 	))
+	if err != nil {
+		return fmt.Errorf("failed to set controller pod watch error handler: %w", err)
+	}
 
 	controllerPodHandler, err := controllerPodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    func(obj any) { updateRing(obj.(*v1.Pod)) },
-		UpdateFunc: func(_, newObj any) { updateRing(newObj.(*v1.Pod)) },
-		DeleteFunc: func(obj any) { removeFromRing(obj.(*v1.Pod)) },
+		AddFunc: func(obj any) {
+			pod := obj.(*v1.Pod)
+			RecordInformerEvent("controller_pods", "add", pod)
+			updateRing(pod)
+		},
+		UpdateFunc: func(_, newObj any) {
+			pod := newObj.(*v1.Pod)
+			RecordInformerEvent("controller_pods", "update", pod)
+			updateRing(pod)
+		},
+		DeleteFunc: func(obj any) {
+			pod := obj.(*v1.Pod)
+			RecordInformerEvent("controller_pods", "delete", pod)
+			removeFromRing(pod)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add controller pod event handler: %w", err)
@@ -175,16 +191,58 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		)
 
 		podInformer := informerFactory.Core().V1().Pods()
-		podInformer.Informer().SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
+		_, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj any) {
+				RecordInformerEvent("pods", "add", obj.(*v1.Pod))
+			},
+			UpdateFunc: func(_, newObj any) {
+				RecordInformerEvent("pods", "update", newObj.(*v1.Pod))
+			},
+			DeleteFunc: func(obj any) {
+				if deleted, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+					RecordInformerEvent("pods", "delete", deleted)
+				} else {
+					RecordInformerEvent("pods", "delete", obj.(*v1.Pod))
+				}
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add pod event handler: %w", err)
+		}
+		err = podInformer.Informer().SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
 			slog.String("watch_resource", "pods"),
 			key.Namespace.Field(namespace),
 		))
+		if err != nil {
+			return fmt.Errorf("failed to set pod watch error handler: %w", err)
+		}
 
 		replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()
-		replicaSetInformer.Informer().SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
+		_, err = replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj any) {
+				RecordInformerEvent("replicasets", "add", obj.(*appsv1.ReplicaSet))
+			},
+			UpdateFunc: func(_, newObj any) {
+				RecordInformerEvent("replicasets", "update", newObj.(*appsv1.ReplicaSet))
+			},
+			DeleteFunc: func(obj any) {
+				if deleted, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+					RecordInformerEvent("replicasets", "delete", deleted)
+				} else {
+					RecordInformerEvent("replicasets", "delete", obj.(*appsv1.ReplicaSet))
+				}
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add replica set event handler: %w", err)
+		}
+		err = replicaSetInformer.Informer().SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
 			slog.String("watch_resource", "replicasets"),
 			key.Namespace.Field(namespace),
 		))
+		if err != nil {
+			return fmt.Errorf("failed to set replica set watch error handler: %w", err)
+		}
 		ctrl.namespaceListers[namespace] = namespaceLister{
 			podIndexer:        podInformer.Informer().GetIndexer(),
 			podLister:         podInformer.Lister(),
