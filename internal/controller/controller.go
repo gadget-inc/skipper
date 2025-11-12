@@ -134,7 +134,13 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		}
 	}
 
-	controllerPodHandler, err := controllerPodInformerFactory.Core().V1().Pods().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	controllerPodInformer := controllerPodInformerFactory.Core().V1().Pods().Informer()
+	controllerPodInformer.SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
+		slog.String("watch_resource", "controller_pods"),
+		key.Namespace.Field(FlagNamespace.Value()),
+	))
+
+	controllerPodHandler, err := controllerPodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    func(obj any) { updateRing(obj.(*v1.Pod)) },
 		UpdateFunc: func(_, newObj any) { updateRing(newObj.(*v1.Pod)) },
 		DeleteFunc: func(obj any) { removeFromRing(obj.(*v1.Pod)) },
@@ -169,7 +175,16 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		)
 
 		podInformer := informerFactory.Core().V1().Pods()
+		podInformer.Informer().SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
+			slog.String("watch_resource", "pods"),
+			key.Namespace.Field(namespace),
+		))
+
 		replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()
+		replicaSetInformer.Informer().SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
+			slog.String("watch_resource", "replicasets"),
+			key.Namespace.Field(namespace),
+		))
 		ctrl.namespaceListers[namespace] = namespaceLister{
 			podIndexer:        podInformer.Informer().GetIndexer(),
 			podLister:         podInformer.Lister(),
@@ -188,6 +203,29 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (ctrl *Controller) watchErrorHandler(ctx context.Context, attrs ...slog.Attr) cache.WatchErrorHandler {
+	ctx = log.With(ctx, attrs...)
+
+	return func(reflector *cache.Reflector, err error) {
+		if err == nil {
+			return
+		}
+
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			log.Debug(ctx, "informer watch error", key.Error.Field(err))
+			return
+		}
+
+		var statusErr *apierrors.StatusError
+		if errors.As(err, &statusErr) && statusErr.ErrStatus.Reason == metav1.StatusReasonExpired {
+			log.Debug(ctx, "informer watch error", key.Error.Field(err))
+			return
+		}
+
+		log.Warn(ctx, "informer watch error", key.Error.Field(err))
+	}
 }
 
 func (ctrl *Controller) getReadyInstances(fn function.Function) ([]*function.Instance, error) {
