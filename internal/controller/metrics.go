@@ -54,6 +54,13 @@ var (
 		Help:      "Time between Kubernetes object creation/deletion and informer processing. Only measured for add (creation timestamp) and delete (deletion timestamp) events; update events are not measured due to lack of reliable timestamps.",
 		Buckets:   []float64{0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512},
 	}, []string{"resource", "event"})
+
+	informerLastEventTime = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "skipper",
+		Subsystem: "controller",
+		Name:      "informer_last_event_time_seconds",
+		Help:      "Unix timestamp of the last informer event processed. Use (time() - metric) to calculate time since last event.",
+	}, []string{"resource", "event"})
 )
 
 // InformerEventObject constrains the types that can be passed to RecordInformerEvent
@@ -66,6 +73,7 @@ type InformerEventObject interface {
 // The generic type constraint ensures only valid informer event types can be passed.
 func RecordInformerEvent[T InformerEventObject](resource, event string, obj T) {
 	informerEventsTotal.WithLabelValues(resource, event).Inc()
+	informerLastEventTime.WithLabelValues(resource, event).SetToCurrentTime()
 
 	eventTime, ok := informerEventTimestamp(obj, event)
 	if !ok {
