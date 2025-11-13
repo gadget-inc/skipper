@@ -376,7 +376,7 @@ kind: PodDisruptionBudget
 metadata:
   name: <%= controller_name %>-pdb
 spec:
-  minAvailable: <%= controller_min_replicas - 1 %>
+  maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: skipper
@@ -610,7 +610,7 @@ kind: PodDisruptionBudget
 metadata:
   name: <%= router_name %>-pdb
 spec:
-  minAvailable: <%= router_min_replicas - 1 %>
+  maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: skipper
