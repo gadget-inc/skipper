@@ -51,7 +51,7 @@ var (
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "informer_event_lag_seconds",
-		Help:      "Age of Kubernetes objects when processed by Skipper controller informers.",
+		Help:      "Time between Kubernetes object creation/deletion and informer processing. Only measured for add (creation timestamp) and delete (deletion timestamp) events; update events are not measured due to lack of reliable timestamps.",
 		Buckets:   []float64{0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512},
 	}, []string{"resource", "event"})
 )
@@ -67,36 +67,45 @@ type InformerEventObject interface {
 func RecordInformerEvent[T InformerEventObject](resource, event string, obj T) {
 	informerEventsTotal.WithLabelValues(resource, event).Inc()
 
-	eventTime, ok := informerEventTimestamp(obj)
+	eventTime, ok := informerEventTimestamp(obj, event)
 	if !ok {
 		return
 	}
 
-	lag := time.Since(eventTime)
-	if lag < 0 {
-		lag = 0
-	}
-
+	lag := max(0, time.Since(eventTime))
 	informerEventLag.WithLabelValues(resource, event).Observe(lag.Seconds())
 }
 
-func informerEventTimestamp(obj any) (time.Time, bool) {
+func informerEventTimestamp(obj any, eventType string) (time.Time, bool) {
 	metaObj, ok := metaAccessor(obj)
 	if !ok {
 		return time.Time{}, false
 	}
 
-	if ts := metaObj.GetDeletionTimestamp(); ts != nil {
-		return ts.Time, true
-	}
+	switch eventType {
+	case "delete":
+		// For delete events, use the deletion timestamp
+		if ts := metaObj.GetDeletionTimestamp(); ts != nil {
+			return ts.Time, true
+		}
 
-	if latest := latestManagedFieldsTime(metaObj.GetManagedFields()); !latest.IsZero() {
-		return latest, true
-	}
+	case "add":
+		// For add events, use the creation timestamp
+		creation := metaObj.GetCreationTimestamp()
+		if !creation.IsZero() {
+			return creation.Time, true
+		}
 
-	creation := metaObj.GetCreationTimestamp()
-	if !creation.IsZero() {
-		return creation.Time, true
+	case "update":
+		// Update events cannot be reliably measured for lag. There's no single timestamp
+		// that represents "when this update happened" - updates can change metadata
+		// (labels/annotations), spec, or status, and only some changes have associated
+		// timestamps. Status condition transitions and container state changes have
+		// timestamps, but these may not change on every update (e.g., metadata-only updates).
+		// ManagedFields timestamps exist but represent the last time any field manager
+		// touched the object, which could be hours or days ago for long-lived pods.
+		// Rather than provide misleading metrics, we skip update events entirely.
+		return time.Time{}, false
 	}
 
 	return time.Time{}, false
@@ -115,17 +124,4 @@ func metaAccessor(obj any) (metav1.Object, bool) {
 	default:
 		return nil, false
 	}
-}
-
-func latestManagedFieldsTime(entries []metav1.ManagedFieldsEntry) time.Time {
-	var latest time.Time
-	for i := range entries {
-		if entries[i].Time == nil {
-			continue
-		}
-		if entries[i].Time.After(latest) {
-			latest = entries[i].Time.Time
-		}
-	}
-	return latest
 }
