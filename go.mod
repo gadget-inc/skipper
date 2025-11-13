@@ -6,6 +6,7 @@ require (
 	aidanwoods.dev/go-paseto v1.5.4
 	github.com/go-json-experiment/json v0.0.0-20250223041408-d3c622f1b874
 	github.com/prometheus/client_golang v1.21.1
+	github.com/prometheus/common v0.63.0
 	github.com/puzpuzpuz/xsync/v4 v4.0.0
 	github.com/shoenig/test v1.12.1
 	github.com/spf13/pflag v1.0.6
@@ -32,7 +33,6 @@ require (
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.63.0 // indirect
 	github.com/prometheus/procfs v0.16.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
