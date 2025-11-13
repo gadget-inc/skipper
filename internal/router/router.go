@@ -31,21 +31,21 @@ var (
 		Subsystem: "router",
 		Name:      "requests_total",
 		Help:      "The number of requests handled by the router",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "function_tenant"})
 
 	requestsInFlight = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "requests_in_flight",
 		Help:      "The number of requests that are currently being handled by the router",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "function_tenant"})
 
 	heartbeatsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "heartbeats_total",
 		Help:      "The number of heartbeats sent by the router",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "function_tenant"})
 )
 
 type Router struct {
@@ -92,7 +92,7 @@ func (r *Router) Start(ctx context.Context) {
 				r.heartbeats.Delete(fn) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
-				heartbeatsTotal.WithLabelValues(fn.Deployment).Inc()
+				heartbeatsTotal.WithLabelValues(fn.Deployment, fn.Tenant).Inc()
 			}
 			return true
 		})
@@ -119,7 +119,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	ctx := log.With(req.Context(), key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
-	requestsTotal.WithLabelValues(fn.Deployment).Inc()
+	requestsTotal.WithLabelValues(fn.Deployment, fn.Tenant).Inc()
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
@@ -129,24 +129,6 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return heartbeat, xsync.UpdateOp
 		})
 		return nil
-	})
-
-	// increment the in-flight requests for this function
-	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
-		heartbeat.Function = fn
-		heartbeat.Timestamp = time.Now()
-		heartbeat.InFlightRequests++
-		requestsInFlight.WithLabelValues(fn.Deployment).Inc()
-		return heartbeat, xsync.UpdateOp
-	})
-
-	// decrement the in-flight requests for this function when the request is complete
-	defer r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
-		heartbeat.Function = fn
-		heartbeat.Timestamp = time.Now()
-		heartbeat.InFlightRequests--
-		requestsInFlight.WithLabelValues(fn.Deployment).Dec()
-		return heartbeat, xsync.UpdateOp
 	})
 
 	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(ctx, fn)))
@@ -190,18 +172,19 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
 			continue
 		}
+
 		getInstanceDuration += time.Since(getInstanceStart)
 
 		ctx = log.With(ctx, key.Instance.Field(instance))
 		ctx = telemetry.WithPropagatedAttributes(ctx, key.Instance.Attributes(instance)...)
 
-		req := req.WithContext(ctx)
-		req.URL.Scheme = "http"
-		req.URL.Host = instance.Addr
+		forwardReq := req.WithContext(ctx)
+		forwardReq.URL.Scheme = "http"
+		forwardReq.URL.Host = instance.Addr
 
 		log.Info(ctx, "forwarding request")
 		start := time.Now()
-		res, err := r.roundTripper.RoundTrip(req)
+		res, err := r.forward(forwardReq, fn, instance)
 		duration := time.Since(start)
 
 		ctx = log.With(ctx, key.Response.Field(res), key.Duration.Field(duration))
@@ -228,6 +211,53 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		return res, err
 	}
+}
+
+func (r *Router) forward(req *http.Request, fn function.Function, instance *function.Instance) (*http.Response, error) {
+	r.incrementInFlight(fn, instance)
+	defer r.decrementInFlight(fn, instance)
+	return r.roundTripper.RoundTrip(req)
+}
+
+func (r *Router) incrementInFlight(fn function.Function, instance *function.Instance) {
+	requestsInFlight.WithLabelValues(fn.Deployment, fn.Tenant).Inc()
+
+	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
+		heartbeat.Function = fn
+		heartbeat.Timestamp = time.Now()
+		heartbeat.InFlightRequests++
+
+		if heartbeat.InFlightPerInstance == nil {
+			heartbeat.InFlightPerInstance = make(map[string]int)
+		}
+		heartbeat.InFlightPerInstance[instance.Name]++
+
+		return heartbeat, xsync.UpdateOp
+	})
+}
+
+func (r *Router) decrementInFlight(fn function.Function, instance *function.Instance) {
+	requestsInFlight.WithLabelValues(fn.Deployment, fn.Tenant).Dec()
+
+	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
+		heartbeat.Function = fn
+		heartbeat.Timestamp = time.Now()
+		if heartbeat.InFlightRequests > 0 {
+			heartbeat.InFlightRequests--
+		}
+
+		if heartbeat.InFlightPerInstance != nil && instance != nil {
+			if count, ok := heartbeat.InFlightPerInstance[instance.Name]; ok {
+				if count <= 1 {
+					delete(heartbeat.InFlightPerInstance, instance.Name)
+				} else {
+					heartbeat.InFlightPerInstance[instance.Name] = count - 1
+				}
+			}
+		}
+
+		return heartbeat, xsync.UpdateOp
+	})
 }
 
 func rewriteRequestHeaders(pr *httputil.ProxyRequest) {

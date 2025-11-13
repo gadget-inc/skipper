@@ -9,9 +9,10 @@ import (
 )
 
 type Heartbeat struct {
-	Function         Function  `json:"function"`
-	Timestamp        time.Time `json:"timestamp"`
-	InFlightRequests int       `json:"in_flight_requests"`
+	Function            Function       `json:"function"`
+	Timestamp           time.Time      `json:"timestamp"`
+	InFlightRequests    int            `json:"in_flight_requests"`
+	InFlightPerInstance map[string]int `json:"in_flight_per_instance,omitempty"`
 }
 
 func (h Heartbeat) Fields() []slog.Attr {
