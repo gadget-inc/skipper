@@ -16,10 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var (
-	goCollectorOnce sync.Once
-	goMetricsReg    *prometheus.Registry
-)
+var goCollectorOnce sync.Once
 
 func initMetrics(ctx context.Context) func(context.Context) error {
 	if !FlagTelemetryMetric.Value() {
@@ -27,31 +24,37 @@ func initMetrics(ctx context.Context) func(context.Context) error {
 	}
 
 	// Register Go runtime metrics collector (only once)
+	// Unregister the default basic Go collector and replace it with our enhanced version
 	goCollectorOnce.Do(func() {
-		goMetricsReg = prometheus.NewRegistry()
+		// Try to unregister the default Go collector from the default registry
+		// Create a basic Go collector instance - if one matches what's registered, it will be unregistered
+		if reg, ok := prometheus.DefaultRegisterer.(*prometheus.Registry); ok {
+			basicCollector := collectors.NewGoCollector()
+			unregistered := reg.Unregister(basicCollector)
+			if unregistered {
+				log.Debug(ctx, "unregistered default Go collector")
+			}
+		}
 
+		// Register our enhanced Go collector with runtime metrics to the default registry
 		enhancedCollector := collectors.NewGoCollector(
 			collectors.WithGoCollectorMemStatsMetricsDisabled(),
 			collectors.WithGoCollectorRuntimeMetrics(
 				collectors.MetricsAll,
 			),
 		)
-		err := goMetricsReg.Register(enhancedCollector)
+		err := prometheus.DefaultRegisterer.Register(enhancedCollector)
 		if err != nil {
 			log.Error(ctx, "failed to register Go collector with runtime metrics", key.Error.Field(err))
+		} else {
+			log.Debug(ctx, "registered enhanced Go collector with runtime metrics")
 		}
 	})
 
-	combinedGatherer := prometheus.Gatherers{
-		prometheus.DefaultGatherer,
-		goMetricsReg,
-	}
-
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(combinedGatherer, promhttp.HandlerOpts{
+	mux.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 		ProcessStartTime: time.Now(),
 		ErrorLog:         log.StdLogger(slog.LevelError),
-		ErrorHandling:    promhttp.ContinueOnError, // Continue even if some metrics conflict
 	}))
 
 	promServer := &http.Server{
