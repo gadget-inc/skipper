@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/function"
@@ -80,6 +81,34 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
 		// keep the newest instances
 		instances = instances[:fn.Scale.MaxInstances]
+	}
+
+	filteredInstances := instances
+	// Optionally exclude instances by name if provided by the router
+	if excludeHeader := req.Header.Get("X-Exclude-Instance-Names"); excludeHeader != "" && len(instances) > 0 {
+		exclude := map[string]struct{}{}
+		for _, name := range strings.Split(excludeHeader, ",") {
+			if name == "" {
+				continue
+			}
+			exclude[strings.TrimSpace(name)] = struct{}{}
+		}
+		if len(exclude) > 0 {
+			filteredInstances = instances[:0]
+			for _, inst := range instances {
+				if _, found := exclude[inst.Name]; !found {
+					filteredInstances = append(filteredInstances, inst)
+				}
+			}
+		}
+	}
+
+	if len(filteredInstances) == 0 {
+		log.Error(ctx, "no instances available")
+		http.Error(rw, "no instances available", http.StatusInternalServerError)
+		return
+	} else {
+		instances = filteredInstances
 	}
 
 	instance := instances[rand.Intn(len(instances))]

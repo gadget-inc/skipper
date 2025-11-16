@@ -69,7 +69,7 @@ func (f *MockControllerClient) HandleHeartbeat(h HeartbeatHandler) {
 }
 
 // Instance implements controller.Client.
-func (f *MockControllerClient) Instance(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
+func (f *MockControllerClient) Instance(ctx context.Context, fn function.Function, _ ...string) (instance *function.Instance, err error) {
 	if f.instanceHandler == nil {
 		f.t.Fatalf("mcc.Instance was called but not mocked")
 	}

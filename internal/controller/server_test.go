@@ -34,6 +34,41 @@ func TestHandleInstance(t *testing.T) {
 		check func(*testing.T, *Controller, *fake.Clientset, function.Function, *httptest.ResponseRecorder)
 	}{
 		{
+			name: "filters by excluded instance names",
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				// add two ready instances
+				podA := fixture.NewAssignedPod(t, fn, nil)
+				podA.Name = fn.Deployment + "-a"
+				podB := fixture.NewAssignedPod(t, fn, nil)
+				podB.Name = fn.Deployment + "-b"
+				fakeKubernetes.Tracker().Add(podA)
+				fakeKubernetes.Tracker().Add(podB)
+				return fn
+			},
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+				must.Eq(t, http.StatusOK, rw.Code)
+				var instance *function.Instance
+				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				// ensure we did not receive the excluded one
+				must.NotEq(t, fn.Deployment+"-a", instance.Name)
+			},
+		},
+		{
+			name: "errors when all instances excluded",
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+				fn := fixture.NewFunction()
+				// add one ready instance
+				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod.Name = fn.Deployment + "-only"
+				fakeKubernetes.Tracker().Add(pod)
+				return fn
+			},
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+				must.Eq(t, http.StatusInternalServerError, rw.Code)
+			},
+		},
+		{
 			name: "smoke",
 			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
 				fn := fixture.NewFunction()
@@ -131,6 +166,12 @@ func TestHandleInstance(t *testing.T) {
 
 			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/instance", nil)
 			fn.SetHeader(req)
+			if tc.name == "filters by excluded instance names" {
+				req.Header.Set("X-Exclude-Instance-Names", fn.Deployment+"-a")
+			}
+			if tc.name == "errors when all instances excluded" {
+				req.Header.Set("X-Exclude-Instance-Names", fn.Deployment+"-only")
+			}
 			rw := httptest.NewRecorder()
 			ctrl.Handler().ServeHTTP(rw, req)
 

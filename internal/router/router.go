@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/controller"
@@ -159,6 +160,8 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	getInstanceDuration := time.Duration(0)
+	// Keep a local set of instance names to exclude for this request
+	excludeSet := map[string]struct{}{}
 
 	attempt := 0
 	for {
@@ -185,7 +188,11 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		ctx = telemetry.WithPropagatedAttributes(ctx, key.Attempt.Attribute(attempt))
 
 		getInstanceStart := time.Now()
-		instance, err := r.ctrl.Instance(ctx, fn)
+		var exclude []string
+		for name := range excludeSet {
+			exclude = append(exclude, name)
+		}
+		instance, err := r.ctrl.Instance(ctx, fn, exclude...)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
 			continue
@@ -209,8 +216,10 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
-			if netOpErr.Op == "dial" {
+			// Only exclude on dial/cannot connect scenarios (including connection refused)
+			if netOpErr.Op == "dial" || errors.Is(err, syscall.ECONNREFUSED) {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err))
+				excludeSet[instance.Name] = struct{}{}
 				continue
 			}
 		}

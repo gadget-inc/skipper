@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
@@ -14,7 +15,7 @@ import (
 )
 
 type Client interface {
-	Instance(ctx context.Context, fn function.Function) (instance *function.Instance, err error)
+	Instance(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (instance *function.Instance, err error)
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn function.Function, desiredInstances int, reason string) ([]*function.Instance, error)
 }
@@ -39,13 +40,16 @@ func NewHTTPClient(host string, port int) Client {
 	}
 }
 
-func (c *httpClient) Instance(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
+func (c *httpClient) Instance(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (instance *function.Instance, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/instance", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create instance request: %w", err)
 	}
 
 	fn.SetHeader(req)
+	if len(excludeInstanceNames) > 0 {
+		req.Header["X-Exclude-Instance-Names"] = []string{strings.Join(excludeInstanceNames, ",")}
+	}
 
 	res, err := c.Do(req)
 	if err != nil {
