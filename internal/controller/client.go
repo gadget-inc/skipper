@@ -48,7 +48,7 @@ func (c *httpClient) Instance(ctx context.Context, fn function.Function, exclude
 
 	fn.SetHeader(req)
 	if len(excludeInstanceNames) > 0 {
-		req.Header["X-Exclude-Instance-Names"] = []string{strings.Join(excludeInstanceNames, ",")}
+		req.Header[key.ExcludeInstanceNames.Header] = []string{strings.Join(excludeInstanceNames, ",")}
 	}
 
 	res, err := c.Do(req)

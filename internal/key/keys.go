@@ -12,6 +12,7 @@ var (
 	DesiredInstances          = intKey{new("desired-instances")}
 	Duration                  = durationKey{new("duration")}
 	Error                     = errorKey{new("error")}
+	ExcludeInstanceNames      = stringSliceKey{new("exclude-instance-names")}
 	ForwardedFor              = stringSliceKey{new("forwarded-for")}
 	Function                  = groupValueKey{new("function")}
 	GetInstanceDurationMs     = durationKey{new("get-instance-duration-ms")}

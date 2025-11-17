@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/controller"
@@ -24,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -185,13 +185,20 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		ctx := log.With(req.Context(), key.Attempt.Field(attempt))
-		ctx = telemetry.WithPropagatedAttributes(ctx, key.Attempt.Attribute(attempt))
+		attributes := []attribute.KeyValue{key.Attempt.Attribute(attempt)}
 
-		getInstanceStart := time.Now()
 		var exclude []string
 		for name := range excludeSet {
 			exclude = append(exclude, name)
 		}
+
+		if len(exclude) > 0 {
+			attributes = append(attributes, key.ExcludeInstanceNames.Attribute(exclude))
+		}
+
+		ctx = telemetry.WithPropagatedAttributes(ctx, attributes...)
+
+		getInstanceStart := time.Now()
 		instance, err := r.ctrl.Instance(ctx, fn, exclude...)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
@@ -217,7 +224,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			// Only exclude on dial/cannot connect scenarios (including connection refused)
-			if netOpErr.Op == "dial" || errors.Is(err, syscall.ECONNREFUSED) {
+			if netOpErr.Op == "dial" {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err))
 				excludeSet[instance.Name] = struct{}{}
 				continue

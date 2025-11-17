@@ -85,28 +85,15 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 
 	filteredInstances := instances
 	// Optionally exclude instances by name if provided by the router
-	if excludeHeader := req.Header.Get("X-Exclude-Instance-Names"); excludeHeader != "" && len(instances) > 0 {
-		exclude := map[string]struct{}{}
-		for _, name := range strings.Split(excludeHeader, ",") {
-			if name == "" {
-				continue
-			}
-			exclude[strings.TrimSpace(name)] = struct{}{}
-		}
-		if len(exclude) > 0 {
-			filteredInstances = instances[:0]
-			for _, inst := range instances {
-				if _, found := exclude[inst.Name]; !found {
-					filteredInstances = append(filteredInstances, inst)
-				}
-			}
-		}
+	if excludeHeader := req.Header.Get(key.ExcludeInstanceNames.Header); excludeHeader != "" && len(instances) > 0 {
+		excludedInstanceNames := strings.Split(excludeHeader, ",")
+		filteredInstances = slices.DeleteFunc(slices.Clone(instances), func(inst *function.Instance) bool {
+			return slices.Contains(excludedInstanceNames, inst.Name)
+		})
 	}
 
 	if len(filteredInstances) == 0 {
-		log.Error(ctx, "no instances available")
-		http.Error(rw, "no instances available", http.StatusInternalServerError)
-		return
+		log.Error(ctx, "no instances available, all instances filtered out, reverting back to all instances")
 	} else {
 		instances = filteredInstances
 	}
