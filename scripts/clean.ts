@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --no-warnings --experimental-strip-types
+#!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import { rm } from "node:fs/promises";
 import { $ } from "zx";
 import { abs } from "./_utils.ts";

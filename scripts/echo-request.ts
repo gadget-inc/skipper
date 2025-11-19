@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --no-warnings --experimental-strip-types
+#!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import { echoFunction, EchoResponseBody, routerUrl } from "./_echo_utils.ts";
 
 const response = await fetch(`${routerUrl}/hello`, {

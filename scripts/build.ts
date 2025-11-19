@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --no-warnings --experimental-strip-types
+#!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { dedent } from "ts-dedent";

@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --no-warnings --experimental-strip-types
+#!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import ms from "ms";
 import { setTimeout } from "node:timers/promises";
 import WebSocket from "ws";

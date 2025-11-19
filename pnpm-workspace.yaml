@@ -1,3 +1,5 @@
 packages:
   - "fixtures/*"
   - "scripts"
+updateNotifier: false
+verifyDepsBeforeRun: "prompt"
