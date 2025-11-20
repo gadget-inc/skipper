@@ -296,6 +296,11 @@ func (ctrl *Controller) scale(ctx context.Context, fn function.Function, decisio
 			}
 			readyInstances = append(readyInstances, instance)
 		}
+	} else if decision.Reason == ScalingReasonNoReadyInstances {
+		// we were asked to scale up to 1 instance because there were no
+		// ready instances at the time of the request, but now we have
+		// at least 1 ready instance, so there's nothing to do
+		return readyInstances, nil
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
@@ -621,12 +626,12 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 		return ScalingDecision{
 			DesiredInstances:          0,
 			UnclampedDesiredInstances: 0,
-			Reason:                    "heartbeat_timeout",
+			Reason:                    ScalingReasonHeartbeatTimeout,
 		}
 	}
 
 	maxDesiredInstances := 1 // we only scale to 0 from a heartbeat timeout, so we start at 1
-	var scalingReason string
+	var scalingReason ScalingReason
 	var scalingMetrics []ScalingMetric
 
 	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
@@ -635,7 +640,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "in_flight_requests", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = "in_flight_requests"
+			scalingReason = ScalingReasonInFlightRequests
 		}
 	}
 
@@ -644,7 +649,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "cpu", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = "cpu"
+			scalingReason = ScalingReasonCPU
 		}
 	}
 
@@ -653,7 +658,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "memory", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = "memory"
+			scalingReason = ScalingReasonMemory
 		}
 	}
 
@@ -672,7 +677,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 type ScalingDecision struct {
 	DesiredInstances          int
 	UnclampedDesiredInstances int
-	Reason                    string
+	Reason                    ScalingReason
 	Metrics                   []ScalingMetric
 }
 
@@ -701,6 +706,32 @@ func (sd ScalingDecision) Attributes() []attribute.KeyValue {
 		key.UnclampedDesiredInstances.Attribute(sd.UnclampedDesiredInstances),
 		key.Reason.Attribute(sd.Reason),
 	}, metricAttrs...)
+}
+
+// TODO: make this a type definition instead of a type alias so its more typesafe
+type ScalingReason = string
+
+const (
+	ScalingReasonCPU              ScalingReason = "cpu"
+	ScalingReasonHeartbeatTimeout ScalingReason = "heartbeat_timeout"
+	ScalingReasonInFlightRequests ScalingReason = "in_flight_requests"
+	ScalingReasonMemory           ScalingReason = "memory"
+	ScalingReasonNoReadyInstances ScalingReason = "no ready instances"
+	ScalingReasonUnknown          ScalingReason = "unknown"
+)
+
+func isValidScalingReason(reason string) bool {
+	switch reason {
+	case ScalingReasonCPU,
+		ScalingReasonHeartbeatTimeout,
+		ScalingReasonInFlightRequests,
+		ScalingReasonMemory,
+		ScalingReasonNoReadyInstances,
+		ScalingReasonUnknown:
+		return true
+	default:
+		return false
+	}
 }
 
 // ScalingMetric represents an unclamped metric value for a specific metric observed for scaling decisions

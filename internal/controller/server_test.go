@@ -13,6 +13,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
 	"github.com/shoenig/test/must"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -113,6 +114,50 @@ func TestHandleInstance(t *testing.T) {
 
 				// ensure we didn't receive the earliest assigned at instance
 				must.NotEq(t, "earliest-assigned-at", instance.Name)
+			},
+		},
+		{
+			name: "no ready instances while scaling up race",
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+				fn := fixture.NewFunction()
+
+				// grab scale lock
+				scaleMu := ctrl.getScaleMu(fn)
+				scaleMu.Lock()
+
+				go func() {
+					// wait for GET /instance and have it scale to 1 because there are no ready instances
+					time.Sleep(500 * time.Millisecond)
+
+					// add 2 ready instances
+					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+
+					// give the informers a chance to update their caches
+					time.Sleep(10 * time.Millisecond)
+
+					// release scale lock
+					scaleMu.Unlock()
+				}()
+
+				return fn
+			},
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+				// ensure we received an instance
+				must.Eq(t, http.StatusOK, rw.Code)
+
+				var instance *function.Instance
+				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				must.Eq(t, fn, instance.Function)
+				must.False(t, instance.ReadyAt.IsZero())
+
+				// ensure we still have the 2 ready instances because we didn't scale down to 1
+				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				must.NoError(t, err)
+				must.Len(t, 2, pods.Items)
+				for _, pod := range pods.Items {
+					ensurePodIsAssignedToFunction(t, pod, fn)
+				}
 			},
 		},
 	}
