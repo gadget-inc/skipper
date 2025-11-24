@@ -17,7 +17,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 )
 
 func init() {
@@ -35,8 +35,8 @@ func TestHealthz(t *testing.T) {
 	router := New(fixture.NewMockControllerClient(t))
 	router.ServeHTTP(rw, req)
 
-	must.Eq(t, http.StatusOK, rw.Code)
-	must.Length(t, 0, rw.Body)
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, rw.Body.Len() == 0)
 }
 
 func TestGetInstanceDuration(t *testing.T) {
@@ -54,8 +54,8 @@ func TestGetInstanceDuration(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-			must.Eq(t, req.Method, http.MethodGet)
-			must.Eq(t, req.URL.Path, "/")
+			assert.Assert(t, http.MethodGet == req.Method)
+			assert.Assert(t, req.URL.Path == "/")
 
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
@@ -68,13 +68,13 @@ func TestGetInstanceDuration(t *testing.T) {
 	router := New(mockControllerClient)
 	router.ServeHTTP(rw, req)
 
-	must.Eq(t, http.StatusOK, rw.Code)
-	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
-	must.SliceLen(t, 1, rw.Header()[key.GetInstanceDurationMs.Header])
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, "Hello, "+fn.Tenant == rw.Body.String())
+	assert.Assert(t, len(rw.Header()[key.GetInstanceDurationMs.Header]) == 1)
 
 	duration, err := strconv.ParseInt(rw.Header()[key.GetInstanceDurationMs.Header][0], 10, 64)
-	must.NoError(t, err)
-	must.GreaterEq(t, duration, 20)
+	assert.NilError(t, err)
+	assert.Assert(t, duration >= 20)
 }
 
 func TestMethods(t *testing.T) {
@@ -98,7 +98,7 @@ func TestMethods(t *testing.T) {
 			mcc := fixture.NewMockControllerClient(t)
 			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
-					must.Eq(t, req.Method, tc.method)
+					assert.Assert(t, tc.method == req.Method)
 				}), nil
 			})
 
@@ -108,7 +108,7 @@ func TestMethods(t *testing.T) {
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
 
-			must.Eq(t, http.StatusOK, rw.Code)
+			assert.Assert(t, rw.Code == http.StatusOK)
 		})
 
 		// integration tests
@@ -117,13 +117,13 @@ func TestMethods(t *testing.T) {
 			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterIntegrationURL, nil)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 			defer res.Body.Close()
-			must.Eq(t, http.StatusOK, res.StatusCode)
+			assert.Assert(t, res.StatusCode == http.StatusOK)
 
 			echoResponse, err := fixture.ParseEchoResponse(res)
-			must.NoError(t, err)
-			must.Eq(t, tc.method, echoResponse.Method)
+			assert.NilError(t, err)
+			assert.Assert(t, echoResponse.Method == tc.method)
 		})
 	}
 }
@@ -143,12 +143,12 @@ func TestHeaders(t *testing.T) {
 				expectedHost := fn.Tenant + ".example.com"
 				expectedProto := "http"
 
-				must.Eq(t, []string{expectedHost}, headers.Values("Host"))
-				must.SliceLen(t, 1, headers.Values("X-Forwarded-For")) // TODO: check the actual value
-				must.Eq(t, []string{expectedHost}, headers.Values("X-Forwarded-Host"))
-				must.Eq(t, []string{expectedProto}, headers.Values("X-Forwarded-Proto"))
-				must.Eq(t, []string{fmt.Sprintf("for=%s;host=%s;proto=%s", headers.Get("X-Forwarded-For"), expectedHost, expectedProto)}, headers.Values("Forwarded"))
-				must.MapLen(t, 5, headers)
+				assert.DeepEqual(t, headers.Values("Host"), []string{expectedHost})
+				assert.Assert(t, len(headers.Values("X-Forwarded-For")) == 1) // TODO: check the actual value
+				assert.DeepEqual(t, headers.Values("X-Forwarded-Host"), []string{expectedHost})
+				assert.DeepEqual(t, headers.Values("X-Forwarded-Proto"), []string{expectedProto})
+				assert.DeepEqual(t, headers.Values("Forwarded"), []string{fmt.Sprintf("for=%s;host=%s;proto=%s", headers.Get("X-Forwarded-For"), expectedHost, expectedProto)})
+				assert.Assert(t, len(headers) == 5)
 			},
 		},
 		{
@@ -159,9 +159,9 @@ func TestHeaders(t *testing.T) {
 				req.Header.Add("X-Custom-Multi-Header", "multi-value-2")
 			},
 			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
-				must.Eq(t, []string{"custom-value"}, headers.Values("X-Custom-Header"))
-				must.Eq(t, []string{"multi-value-1", "multi-value-2"}, headers.Values("X-Custom-Multi-Header"))
-				must.MapLen(t, 7, headers)
+				assert.DeepEqual(t, headers.Values("X-Custom-Header"), []string{"custom-value"})
+				assert.DeepEqual(t, headers.Values("X-Custom-Multi-Header"), []string{"multi-value-1", "multi-value-2"})
+				assert.Assert(t, len(headers) == 7)
 			},
 		},
 	}
@@ -186,8 +186,8 @@ func TestHeaders(t *testing.T) {
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
 
-			must.Eq(t, http.StatusOK, rw.Code)
-			must.Length(t, 0, rw.Body)
+			assert.Assert(t, rw.Code == http.StatusOK)
+			assert.Assert(t, rw.Body.Len() == 0)
 		})
 
 		// integration tests
@@ -199,12 +199,12 @@ func TestHeaders(t *testing.T) {
 
 			transport := &http.Transport{DisableCompression: true} // disable the default "Accept-Encoding: gzip" header
 			res, err := transport.RoundTrip(req)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 			defer res.Body.Close()
-			must.Eq(t, http.StatusOK, res.StatusCode)
+			assert.Assert(t, res.StatusCode == http.StatusOK)
 
 			echoResponse, err := fixture.ParseEchoResponse(res)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			headers := echoResponse.Header()
 			headers.Del("Traceparent") // ignore the Traceparent header since it may or may not be present depending on the test environment
@@ -225,7 +225,7 @@ func TestBody(t *testing.T) {
 				return "", nil
 			},
 			checkBody: func(t *testing.T, body string) {
-				must.Zero(t, len(body))
+				assert.Assert(t, len(body) == 0)
 			},
 		},
 		{
@@ -234,7 +234,7 @@ func TestBody(t *testing.T) {
 				return "text/plain", strings.NewReader("hello, world!")
 			},
 			checkBody: func(t *testing.T, body string) {
-				must.Eq(t, "hello, world!", body)
+				assert.Assert(t, body == "hello, world!")
 			},
 		},
 		{
@@ -243,7 +243,7 @@ func TestBody(t *testing.T) {
 				return "application/json", strings.NewReader(`{"key":"value"}`)
 			},
 			checkBody: func(t *testing.T, body string) {
-				must.Eq(t, `{"key":"value"}`, body)
+				assert.Assert(t, body == `{"key":"value"}`)
 			},
 		},
 	}
@@ -257,7 +257,7 @@ func TestBody(t *testing.T) {
 			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
-					must.NoError(t, err)
+					assert.NilError(t, err)
 					tc.checkBody(t, string(content))
 				}), nil
 			})
@@ -271,7 +271,7 @@ func TestBody(t *testing.T) {
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
 
-			must.Eq(t, http.StatusOK, rw.Code)
+			assert.Assert(t, rw.Code == http.StatusOK)
 		})
 
 		// integration tests
@@ -283,12 +283,12 @@ func TestBody(t *testing.T) {
 			req.Header.Set("Content-Type", contentType)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 			defer res.Body.Close()
-			must.Eq(t, http.StatusOK, res.StatusCode)
+			assert.Assert(t, res.StatusCode == http.StatusOK)
 
 			echoResponse, err := fixture.ParseEchoResponse(res)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			tc.checkBody(t, echoResponse.Body)
 		})
@@ -319,13 +319,13 @@ func TestHeartbeats(t *testing.T) {
 			return nil
 		}
 
-		must.Eq(t, fixture.RouterIP, routerIP)
-		must.Eq(t, 1, len(heartbeats))
-		must.Len(t, 0, forwardedFor)
+		assert.Assert(t, routerIP == fixture.RouterIP)
+		assert.Assert(t, len(heartbeats) == 1)
+		assert.Assert(t, len(forwardedFor) == 0)
 
 		heartbeat := heartbeats[0]
-		must.Eq(t, fn, heartbeat.Function)
-		must.True(t, heartbeat.Timestamp.After(testStartTime))
+		assert.Assert(t, heartbeat.Function == fn)
+		assert.Assert(t, heartbeat.Timestamp.After(testStartTime))
 		if heartbeat.InFlightRequests > 0 {
 			once.Do(func() {
 				done <- struct{}{}
@@ -341,14 +341,14 @@ func TestHeartbeats(t *testing.T) {
 	router.Start(ctx)
 	router.ServeHTTP(rw, req)
 
-	must.Eq(t, http.StatusOK, rw.Code)
-	must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
 
 	heartbeat, ok := router.heartbeats.Load(fn)
-	must.True(t, ok)
-	must.Eq(t, fn, heartbeat.Function)
-	must.True(t, heartbeat.Timestamp.After(testStartTime))
-	must.Eq(t, 0, heartbeat.InFlightRequests) // ensure the number of in-flight requests is 0 now that the request is complete
+	assert.Assert(t, ok)
+	assert.Assert(t, heartbeat.Function == fn)
+	assert.Assert(t, heartbeat.Timestamp.After(testStartTime))
+	assert.Assert(t, heartbeat.InFlightRequests == 0) // ensure the number of in-flight requests is 0 now that the request is complete
 }
 
 func TestRetries(t *testing.T) {
@@ -363,8 +363,8 @@ func TestRetries(t *testing.T) {
 			name:        "no errors",
 			maxAttempts: 1,
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
-				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+				assert.Assert(t, rw.Code == http.StatusOK)
+				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
 			},
 		},
 		{
@@ -372,8 +372,8 @@ func TestRetries(t *testing.T) {
 			maxAttempts:  2,
 			instanceErrs: []error{errors.New("arbitrary error")},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
-				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+				assert.Assert(t, rw.Code == http.StatusOK)
+				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
 			},
 		},
 		{
@@ -381,8 +381,8 @@ func TestRetries(t *testing.T) {
 			maxAttempts:   2,
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
-				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+				assert.Assert(t, rw.Code == http.StatusOK)
+				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
 			},
 		},
 		{
@@ -393,8 +393,8 @@ func TestRetries(t *testing.T) {
 				&net.OpError{Op: "dial", Err: errors.New("arbitrary error")},
 			},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
-				must.Eq(t, "Hello, "+fn.Tenant, rw.Body.String())
+				assert.Assert(t, rw.Code == http.StatusOK)
+				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
 			},
 		},
 		{
@@ -403,8 +403,8 @@ func TestRetries(t *testing.T) {
 			instanceErrs:  []error{errors.New("arbitrary error")},
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusBadGateway, rw.Code)
-				must.Length(t, 0, rw.Body)
+				assert.Assert(t, rw.Code == http.StatusBadGateway)
+				assert.Assert(t, rw.Body.Len() == 0)
 			},
 		},
 	}

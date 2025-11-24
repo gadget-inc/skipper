@@ -21,4 +21,9 @@ if (isCI && !goTestFlags.some((arg) => arg.startsWith("-count"))) {
   goTestFlags.push("-count=1");
 }
 
-await $nothrow`go test ${goTestFlags} | tee tmp/logs/tests.log`;
+const gotestsumFlags = ["--format-hide-empty-pkg"];
+if (!isCI) {
+  gotestsumFlags.push("--hide-summary=skipped");
+}
+
+await $nothrow`gotestsum ${gotestsumFlags} -- ${goTestFlags} | tee tmp/logs/tests.log`;

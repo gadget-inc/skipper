@@ -4,7 +4,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 )
 
 func TestPoolAllocations(t *testing.T) {
@@ -29,7 +29,7 @@ func TestPoolAllocations(t *testing.T) {
 
 	// the pool returns []byte, not *[]byte, so we need to account for
 	// the allocation of the slice header (24 bytes) across the 3 calls.
-	must.Eq(t, heap, 72)
+	assert.Assert(t, heap == 72)
 }
 
 func TestPoolLargeBuffer(t *testing.T) {
@@ -38,5 +38,5 @@ func TestPoolLargeBuffer(t *testing.T) {
 
 	// verify the buffer was discarded by checking that we get a new buffer
 	// with the default size when we Get from the pool
-	must.Eq(t, cap(bufferPool.Get()), bufCapacity)
+	assert.Assert(t, bufCapacity == cap(bufferPool.Get()))
 }

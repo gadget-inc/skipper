@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 )
 
 // testKey implements RingKey interface for testing
@@ -95,12 +95,12 @@ func TestHashRing(t *testing.T) {
 
 			// Test List() if wantList is specified
 			if tt.wantList != nil {
-				must.Eq(t, tt.wantList, h.List())
+				assert.DeepEqual(t, h.List(), tt.wantList)
 			}
 
 			// Test Get() if wantIP is specified
 			if tt.wantIP != "" {
-				must.Eq(t, tt.wantIP, h.Get(tt.key))
+				assert.Assert(t, h.Get(tt.key) == tt.wantIP)
 			}
 
 			// Test empty ring panic
