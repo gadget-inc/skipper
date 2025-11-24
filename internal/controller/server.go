@@ -67,7 +67,7 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 		if instances, err = ctrl.scale(ctx, fn, ScalingDecision{
 			DesiredInstances:          1,
 			UnclampedDesiredInstances: 1,
-			Reason:                    "no ready instances",
+			Reason:                    ScalingReasonNoReadyInstances,
 		}); err != nil {
 			log.Error(ctx, "failed to scale function", key.Error.Field(err))
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -109,9 +109,11 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
+
 	reason := req.Header.Get(key.Reason.Header)
-	if reason == "" {
-		reason = "unknown for forwarded request"
+	if !isValidScalingReason(reason) {
+		log.Warn(ctx, "invalid scaling reason, using unknown", key.Reason.Field(reason))
+		reason = ScalingReasonUnknown
 	}
 
 	instances, err := ctrl.scale(ctx, fn, ScalingDecision{
