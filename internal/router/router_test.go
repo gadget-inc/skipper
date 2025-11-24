@@ -45,7 +45,7 @@ func TestGetInstanceDuration(t *testing.T) {
 	sentError := false
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	mockControllerClient.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 		if !sentError {
 			time.Sleep(10 * time.Millisecond)
 			sentError = true
@@ -96,7 +96,7 @@ func TestMethods(t *testing.T) {
 			fn := fixture.NewFunction()
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					must.Eq(t, req.Method, tc.method)
 				}), nil
@@ -172,7 +172,7 @@ func TestHeaders(t *testing.T) {
 			fn := fixture.NewFunction()
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
 					tc.checkHeaders(t, fn, req.Header)
@@ -254,7 +254,7 @@ func TestBody(t *testing.T) {
 		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
 					must.NoError(t, err)
@@ -306,7 +306,7 @@ func TestHeartbeats(t *testing.T) {
 	defer close(done)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
@@ -417,7 +417,7 @@ func TestRetries(t *testing.T) {
 
 			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				if len(tc.instanceErrs) > 0 && instanceErrsIndex < len(tc.instanceErrs) {
 					instanceErrsIndex++
 					return nil, tc.instanceErrs[instanceErrsIndex-1]

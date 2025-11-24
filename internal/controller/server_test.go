@@ -17,6 +17,10 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
+type handleInstanceSetupStruct struct {
+	headers map[string]string
+}
+
 func TestHealthz(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rw := httptest.NewRecorder()
@@ -31,15 +35,60 @@ func TestHealthz(t *testing.T) {
 func TestHandleInstance(t *testing.T) {
 	testCases := []struct {
 		name  string
-		setup func(*testing.T, *Controller, *fake.Clientset) function.Function
+		setup func(*testing.T, *Controller, *fake.Clientset) (function.Function, handleInstanceSetupStruct)
 		check func(*testing.T, *Controller, *fake.Clientset, function.Function, *httptest.ResponseRecorder)
 	}{
 		{
+			name: "filters by excluded instance names",
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) (function.Function, handleInstanceSetupStruct) {
+				fn := fixture.NewFunction()
+				// add two ready instances
+				podA := fixture.NewAssignedPod(t, fn, nil)
+				podA.Name = fn.Deployment + "-a"
+				podB := fixture.NewAssignedPod(t, fn, nil)
+				podB.Name = fn.Deployment + "-b"
+				fakeKubernetes.Tracker().Add(podA)
+				fakeKubernetes.Tracker().Add(podB)
+				return fn, handleInstanceSetupStruct{headers: map[string]string{key.ExcludeInstanceNames.Header: fn.Deployment + "-a"}}
+			},
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+				must.Eq(t, http.StatusOK, rw.Code)
+				var instance *function.Instance
+				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				// ensure we did not receive the excluded one
+				must.Eq(t, fn.Deployment+"-b", instance.Name)
+			},
+		},
+		{
+			name: "reverts to all instances when all instances on excluded list",
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) (function.Function, handleInstanceSetupStruct) {
+				fn := fixture.NewFunction()
+				// add multiple ready instances
+				podA := fixture.NewAssignedPod(t, fn, nil)
+				podA.Name = fn.Deployment + "-a"
+				podB := fixture.NewAssignedPod(t, fn, nil)
+				podB.Name = fn.Deployment + "-b"
+				podC := fixture.NewAssignedPod(t, fn, nil)
+				podC.Name = fn.Deployment + "-c"
+				fakeKubernetes.Tracker().Add(podA)
+				fakeKubernetes.Tracker().Add(podB)
+				fakeKubernetes.Tracker().Add(podC)
+				return fn, handleInstanceSetupStruct{headers: map[string]string{key.ExcludeInstanceNames.Header: fn.Deployment + "-a," + fn.Deployment + "-b," + fn.Deployment + "-c"}}
+			},
+			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
+				must.Eq(t, http.StatusOK, rw.Code)
+				var instance *function.Instance
+				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				// should return one of the instances since we revert to unfiltered list
+				must.True(t, instance.Name == fn.Deployment+"-a" || instance.Name == fn.Deployment+"-b" || instance.Name == fn.Deployment+"-c")
+			},
+		},
+		{
 			name: "smoke",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) (function.Function, handleInstanceSetupStruct) {
 				fn := fixture.NewFunction()
 				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				return fn
+				return fn, handleInstanceSetupStruct{headers: map[string]string{}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
@@ -52,10 +101,10 @@ func TestHandleInstance(t *testing.T) {
 		},
 		{
 			name: "unassigned with unassigned pod",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) (function.Function, handleInstanceSetupStruct) {
 				fn := fixture.NewFunction()
 				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-				return fn
+				return fn, handleInstanceSetupStruct{headers: map[string]string{}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
@@ -68,13 +117,13 @@ func TestHandleInstance(t *testing.T) {
 		},
 		{
 			name: "unassigned with eventual unassigned pod",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) (function.Function, handleInstanceSetupStruct) {
 				fn := fixture.NewFunction()
 				go func() {
 					time.Sleep(500 * time.Millisecond)
 					fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 				}()
-				return fn
+				return fn, handleInstanceSetupStruct{headers: map[string]string{}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
@@ -87,7 +136,7 @@ func TestHandleInstance(t *testing.T) {
 		},
 		{
 			name: "instances > max",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) function.Function {
+			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) (function.Function, handleInstanceSetupStruct) {
 				fn := fixture.NewFunction()
 				fn.Scale.MaxInstances = 1 // ensure we can only have one instance
 
@@ -102,7 +151,7 @@ func TestHandleInstance(t *testing.T) {
 				pod.Annotations[key.AssignedAt.Label] = time.Now().Add(-time.Second).UTC().Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(pod)
 
-				return fn
+				return fn, handleInstanceSetupStruct{headers: map[string]string{}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, fn function.Function, rw *httptest.ResponseRecorder) {
 				must.Eq(t, http.StatusOK, rw.Code)
@@ -169,13 +218,16 @@ func TestHandleInstance(t *testing.T) {
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			ctrl := New(nil, fakeKubernetes, nil)
-			fn := tc.setup(t, ctrl, fakeKubernetes)
+			fn, setupStruct := tc.setup(t, ctrl, fakeKubernetes)
 
 			err := ctrl.startInformers(ctx)
 			must.NoError(t, err)
 
 			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/instance", nil)
 			fn.SetHeader(req)
+			for header, value := range setupStruct.headers {
+				req.Header.Set(header, value)
+			}
 			rw := httptest.NewRecorder()
 			ctrl.Handler().ServeHTTP(rw, req)
 
