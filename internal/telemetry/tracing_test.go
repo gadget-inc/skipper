@@ -8,27 +8,28 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
-	"github.com/shoenig/test/must"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
+	"gotest.tools/v3/assert"
 )
 
 func TestWithPropagatedAttributes(t *testing.T) {
 	ctx := context.Background()
 	ctx = WithPropagatedAttributes(ctx, attribute.KeyValue{Key: "test", Value: attribute.StringValue("test")})
 	attrs, ok := ctx.Value(attrsCtxKey).([]attribute.KeyValue)
-	must.True(t, ok)
-	must.Eq(t, []attribute.KeyValue{{Key: "test", Value: attribute.StringValue("test")}}, attrs)
+	assert.Assert(t, ok)
+	assert.DeepEqual(t, attrs, []attribute.KeyValue{{Key: "test", Value: attribute.StringValue("test")}}, cmpopts.EquateComparable(attribute.KeyValue{}))
 
 	ctx = WithPropagatedAttributes(ctx, attribute.KeyValue{Key: "test2", Value: attribute.StringValue("test2")})
 	attrs, ok = ctx.Value(attrsCtxKey).([]attribute.KeyValue)
-	must.True(t, ok)
-	must.Eq(t, []attribute.KeyValue{
+	assert.Assert(t, ok)
+	assert.DeepEqual(t, attrs, []attribute.KeyValue{
 		{Key: "test", Value: attribute.StringValue("test")},
 		{Key: "test2", Value: attribute.StringValue("test2")},
-	}, attrs)
+	}, cmpopts.EquateComparable(attribute.KeyValue{}))
 }
 
 type testSpan struct {
@@ -61,7 +62,7 @@ func TestLogHook(t *testing.T) {
 
 	logHook(ctx, &record)
 
-	must.Eq(t, err, testSpan.err)
-	must.Eq(t, codes.Error, testSpan.statusCode)
-	must.Eq(t, err.Error(), testSpan.description)
+	assert.Assert(t, testSpan.err == err)
+	assert.Assert(t, testSpan.statusCode == codes.Error)
+	assert.Assert(t, testSpan.description == err.Error())
 }

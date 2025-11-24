@@ -200,11 +200,11 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		getInstanceStart := time.Now()
 		instance, err := r.ctrl.Instance(ctx, fn, exclude...)
+		getInstanceDuration += time.Since(getInstanceStart)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
 			continue
 		}
-		getInstanceDuration += time.Since(getInstanceStart)
 
 		ctx = log.With(ctx, key.Instance.Field(instance))
 		ctx = telemetry.WithPropagatedAttributes(ctx, key.Instance.Attributes(instance)...)
@@ -230,6 +230,9 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 				continue
 			}
 		}
+
+		ctx = log.With(ctx, key.GetInstanceDurationMs.Field(getInstanceDuration))
+		ctx = telemetry.WithPropagatedAttributes(ctx, key.GetInstanceDurationMs.Attribute(getInstanceDuration))
 
 		if err != nil {
 			log.Error(ctx, "failed to forward request", key.Error.Field(err))

@@ -7,7 +7,7 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/function"
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -29,23 +29,23 @@ func TestGetReadyInstances(t *testing.T) {
 			name: "one",
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 1, instances)
+				assert.Assert(t, len(instances) == 1)
 			},
 		},
 		{
 			name: "many",
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 
 				err = fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 2, instances)
+				assert.Assert(t, len(instances) == 2)
 			},
 		},
 		{
@@ -54,10 +54,10 @@ func TestGetReadyInstances(t *testing.T) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 			},
 		},
 		{
@@ -66,10 +66,10 @@ func TestGetReadyInstances(t *testing.T) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Phase = v1.PodFailed
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 			},
 		},
 		{
@@ -78,10 +78,10 @@ func TestGetReadyInstances(t *testing.T) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.PodIP = ""
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 			},
 		},
 		{
@@ -90,10 +90,10 @@ func TestGetReadyInstances(t *testing.T) {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 			},
 		},
 		{
@@ -101,10 +101,10 @@ func TestGetReadyInstances(t *testing.T) {
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				fn.Metadata = "different"
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 			},
 		},
 	}
@@ -121,13 +121,13 @@ func TestGetReadyInstances(t *testing.T) {
 
 			ctrl := New(nil, fakeKubernetes, nil)
 			err := ctrl.startInformers(ctx)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			instances, err := ctrl.getReadyInstances(fn)
 			if tc.err != nil {
-				must.ErrorIs(t, err, tc.err)
+				assert.ErrorIs(t, err, tc.err)
 			} else {
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			}
 
 			tc.check(t, fakeKubernetes, instances)
@@ -139,14 +139,14 @@ func TestControllerInformer(t *testing.T) {
 	assertCtrlPodInRing := func(t *testing.T, ctrl *Controller) {
 		t.Helper()
 		ringIps := ctrl.ring.List()
-		must.Len(t, 1, ringIps)
-		must.Eq(t, ringIps[0], fixture.ControllerIP)
+		assert.Assert(t, len(ringIps) == 1)
+		assert.Assert(t, fixture.ControllerIP == ringIps[0])
 	}
 
 	assertCtrlPodNotInRing := func(t *testing.T, ctrl *Controller) {
 		t.Helper()
 		ringIps := ctrl.ring.List()
-		must.Len(t, 0, ringIps)
+		assert.Assert(t, len(ringIps) == 0)
 	}
 
 	testCases := []struct {
@@ -277,7 +277,7 @@ func TestControllerInformer(t *testing.T) {
 
 			ctrl := New(nil, fakeKubernetes, nil)
 			err := ctrl.startInformers(ctx)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			if tc.change != nil {
 				tc.change(t, ctrlPod, fakeKubernetes, ctrl)

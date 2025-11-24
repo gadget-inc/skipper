@@ -14,7 +14,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/prometheus/common/expfmt"
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -34,19 +34,19 @@ func TestPrometheusMetricsEndpoints_Controller(t *testing.T) {
 	resp := scrapeMetrics(t, metricsURL)
 	defer resp.Body.Close()
 
-	must.Eq(t, http.StatusOK, resp.StatusCode)
+	assert.Assert(t, resp.StatusCode == http.StatusOK)
 
 	body, err := io.ReadAll(resp.Body)
-	must.NoError(t, err)
-	must.True(t, len(body) > 0)
+	assert.NilError(t, err)
+	assert.Assert(t, len(body) > 0)
 
 	var parser expfmt.TextParser
 	metrics, err := parser.TextToMetricFamilies(bytes.NewReader(body))
-	must.NoError(t, err)
-	must.True(t, len(metrics) > 0)
+	assert.NilError(t, err)
+	assert.Assert(t, len(metrics) > 0)
 
-	must.NotNil(t, metrics["skipper_controller_informer_events_total"])
-	must.NotNil(t, metrics["skipper_controller_informer_event_lag_seconds"])
+	assert.Assert(t, metrics["skipper_controller_informer_events_total"] != nil)
+	assert.Assert(t, metrics["skipper_controller_informer_event_lag_seconds"] != nil)
 }
 
 func TestPrometheusMetricsEndpoints_Router(t *testing.T) {
@@ -56,16 +56,16 @@ func TestPrometheusMetricsEndpoints_Router(t *testing.T) {
 	resp := scrapeMetrics(t, metricsURL)
 	defer resp.Body.Close()
 
-	must.Eq(t, http.StatusOK, resp.StatusCode)
+	assert.Assert(t, resp.StatusCode == http.StatusOK)
 
 	body, err := io.ReadAll(resp.Body)
-	must.NoError(t, err)
-	must.True(t, len(body) > 0)
+	assert.NilError(t, err)
+	assert.Assert(t, len(body) > 0)
 
 	var parser expfmt.TextParser
 	metrics, err := parser.TextToMetricFamilies(bytes.NewReader(body))
-	must.NoError(t, err)
-	must.True(t, len(metrics) > 0)
+	assert.NilError(t, err)
+	assert.Assert(t, len(metrics) > 0)
 }
 
 func bootMetricsServer(t *testing.T, component string) (func(), string) {
@@ -108,7 +108,7 @@ func scrapeMetrics(t *testing.T, url string) *http.Response {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	must.NoError(t, err)
+	assert.NilError(t, err)
 	return resp
 }
 
@@ -116,7 +116,7 @@ func getFreePort(t *testing.T) int {
 	t.Helper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	must.NoError(t, err)
+	assert.NilError(t, err)
 	defer listener.Close()
 
 	return listener.Addr().(*net.TCPAddr).Port

@@ -12,7 +12,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -24,8 +24,8 @@ func TestHealthz(t *testing.T) {
 	ctrl := New(nil, fake.NewClientset(), nil)
 	ctrl.Handler().ServeHTTP(rw, req)
 
-	must.Eq(t, http.StatusOK, rw.Code)
-	must.Length(t, 0, rw.Body)
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, rw.Body.Len() == 0)
 }
 
 func TestHandleInstance(t *testing.T) {
@@ -53,11 +53,11 @@ func TestHandleInstance(t *testing.T) {
 				return setupStruct{fn: fn, headers: map[string]string{key.ExcludeInstanceNames.Header: fn.Deployment + "-a"}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
 				// ensure we did not receive the excluded one
-				must.Eq(t, setupStruct.fn.Deployment+"-b", instance.Name)
+				assert.Assert(t, instance.Name == setupStruct.fn.Deployment+"-b")
 			},
 		},
 		{
@@ -77,11 +77,11 @@ func TestHandleInstance(t *testing.T) {
 				return setupStruct{fn: fn, headers: map[string]string{key.ExcludeInstanceNames.Header: fn.Deployment + "-a," + fn.Deployment + "-b," + fn.Deployment + "-c"}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
 				// should return one of the instances since we revert to unfiltered list
-				must.True(t, instance.Name == setupStruct.fn.Deployment+"-a" || instance.Name == setupStruct.fn.Deployment+"-b" || instance.Name == setupStruct.fn.Deployment+"-c")
+				assert.Assert(t, instance.Name == setupStruct.fn.Deployment+"-a" || instance.Name == setupStruct.fn.Deployment+"-b" || instance.Name == setupStruct.fn.Deployment+"-c")
 			},
 		},
 		{
@@ -92,12 +92,12 @@ func TestHandleInstance(t *testing.T) {
 				return setupStruct{fn: fn, headers: map[string]string{}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, setupStruct.fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
 		{
@@ -108,12 +108,12 @@ func TestHandleInstance(t *testing.T) {
 				return setupStruct{fn: fn, headers: map[string]string{}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, setupStruct.fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
 		{
@@ -127,12 +127,12 @@ func TestHandleInstance(t *testing.T) {
 				return setupStruct{fn: fn, headers: map[string]string{}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, setupStruct.fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
 		{
@@ -155,15 +155,15 @@ func TestHandleInstance(t *testing.T) {
 				return setupStruct{fn: fn, headers: map[string]string{}}
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, setupStruct.fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.Assert(t, !instance.ReadyAt.IsZero())
 
 				// ensure we didn't receive the earliest assigned at instance
-				must.NotEq(t, "earliest-assigned-at", instance.Name)
+				assert.Assert(t, instance.Name != "earliest-assigned-at")
 			},
 		},
 		{
@@ -194,17 +194,17 @@ func TestHandleInstance(t *testing.T) {
 			},
 			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
 				// ensure we received an instance
-				must.Eq(t, http.StatusOK, rw.Code)
+				assert.Assert(t, rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				must.NoError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				must.Eq(t, setupStruct.fn, instance.Function)
-				must.False(t, instance.ReadyAt.IsZero())
+				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.Assert(t, !instance.ReadyAt.IsZero())
 
 				// ensure we still have the 2 ready instances because we didn't scale down to 1
 				pods, err := fakeKubernetes.CoreV1().Pods(setupStruct.fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 2, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 2)
 				for _, pod := range pods.Items {
 					ensurePodIsAssignedToFunction(t, pod, setupStruct.fn)
 				}
@@ -222,7 +222,7 @@ func TestHandleInstance(t *testing.T) {
 			setupStruct := tc.setup(t, ctrl, fakeKubernetes)
 
 			err := ctrl.startInformers(ctx)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/instance", nil)
 			setupStruct.fn.SetHeader(req)
@@ -251,10 +251,10 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 1, ctrl.routerHeartbeats.Size())
+				assert.Assert(t, ctrl.routerHeartbeats.Size() == 1)
 				heartbeat, ok := ctrl.routerHeartbeats.Load(heartbeats[0].Function)
-				must.True(t, ok)
-				must.Eq(t, heartbeats[0].Timestamp, heartbeat[fixture.RouterIP].Timestamp)
+				assert.Assert(t, ok)
+				assert.Assert(t, heartbeat[fixture.RouterIP].Timestamp.Equal(heartbeats[0].Timestamp))
 			},
 		},
 		{
@@ -266,11 +266,11 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 2, ctrl.routerHeartbeats.Size())
+				assert.Assert(t, ctrl.routerHeartbeats.Size() == 2)
 				for _, hb := range heartbeats {
 					heartbeat, ok := ctrl.routerHeartbeats.Load(hb.Function)
-					must.True(t, ok)
-					must.Eq(t, hb.Timestamp, heartbeat[fixture.RouterIP].Timestamp)
+					assert.Assert(t, ok)
+					assert.Assert(t, heartbeat[fixture.RouterIP].Timestamp.Equal(hb.Timestamp))
 				}
 			},
 		},
@@ -288,14 +288,14 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				must.Eq(t, 1, ctrl.routerHeartbeats.Size())
+				assert.Assert(t, ctrl.routerHeartbeats.Size() == 1)
 
 				sentHeartbeat := heartbeats[0]
 				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
 
-				must.True(t, ok)
-				must.NotEq(t, keptHeartbeat[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp)
-				must.Eq(t, keptHeartbeat[fixture.RouterIP].Timestamp, sentHeartbeat.Timestamp.Add(time.Hour))
+				assert.Assert(t, ok)
+				assert.Assert(t, !keptHeartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
+				assert.Assert(t, sentHeartbeat.Timestamp.Add(time.Hour).Equal(keptHeartbeat[fixture.RouterIP].Timestamp))
 			},
 		},
 		{
@@ -306,8 +306,8 @@ func TestHandleHeartbeat(t *testing.T) {
 				hbs := []function.Heartbeat{{Function: fixture.NewFunction(), Timestamp: time.Now()}}
 
 				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
-					must.Eq(t, hbs, heartbeats)
-					must.Eq(t, []string{fixture.ControllerIP, fixture.ControllerIP2}, forwardedFor)
+					assert.DeepEqual(t, heartbeats, hbs)
+					assert.DeepEqual(t, forwardedFor, []string{fixture.ControllerIP, fixture.ControllerIP2})
 					return nil
 				})
 
@@ -332,10 +332,11 @@ func TestHandleHeartbeat(t *testing.T) {
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
 				sentHeartbeat := heartbeats[0]
 				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
-				must.True(t, ok)
-				must.Eq(t, 1, len(keptHeartbeat))
-				must.MapNotContainsKey(t, keptHeartbeat, fixture.RouterIP2)
-				must.Eq(t, sentHeartbeat.Timestamp, keptHeartbeat[fixture.RouterIP].Timestamp)
+				assert.Assert(t, ok)
+				assert.Assert(t, len(keptHeartbeat) == 1)
+				_, ok = keptHeartbeat[fixture.RouterIP2] // ensure the old heartbeat is garbage collected
+				assert.Assert(t, !ok)
+				assert.Assert(t, keptHeartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
 			},
 		},
 	}
@@ -347,15 +348,15 @@ func TestHandleHeartbeat(t *testing.T) {
 
 			heartbeats := tc.setup(t, mcc, ctrl)
 			heartbeatBytes, err := json.Marshal(heartbeats)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			req := httptest.NewRequest(http.MethodPost, "/heartbeat", bytes.NewReader(heartbeatBytes))
 			req.Header.Set(key.RouterIP.Header, fixture.RouterIP)
 			rw := httptest.NewRecorder()
 			ctrl.Handler().ServeHTTP(rw, req)
 
-			must.Eq(t, http.StatusOK, rw.Code)
-			must.Length(t, 0, rw.Body)
+			assert.Assert(t, rw.Code == http.StatusOK)
+			assert.Assert(t, rw.Body.Len() == 0)
 			tc.check(t, mcc, ctrl, heartbeats)
 		})
 	}

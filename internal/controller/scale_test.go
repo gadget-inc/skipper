@@ -13,7 +13,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
-	"github.com/shoenig/test/must"
+	"gotest.tools/v3/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -37,41 +37,41 @@ func init() {
 }
 
 func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, pod v1.Pod) {
-	must.Eq(t, instance.Deployment, pod.Labels[key.Deployment.Label])
-	must.Eq(t, instance.Tenant, pod.Labels[key.Tenant.Label])
+	assert.Assert(t, instance.Deployment == pod.Labels[key.Deployment.Label])
+	assert.Assert(t, instance.Tenant == pod.Labels[key.Tenant.Label])
 
 	fnJSON, err := json.Marshal(instance.Function)
-	must.NoError(t, err)
-	must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
+	assert.NilError(t, err)
+	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Label])
 
 	port, err := portFromPod(&pod)
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
-	must.Eq(t, instance.Name, pod.Name)
-	must.Eq(t, instance.Addr, net.JoinHostPort(pod.Status.PodIP, port))
-	must.Eq(t, instance.ReplicaSet, pod.Annotations[key.ReplicaSet.Label])
-	must.Eq(t, instance.AssignedAt.Format(time.RFC3339), pod.Annotations[key.AssignedAt.Label])
-	must.Eq(t, instance.ReadyAt.Format(time.RFC3339), pod.Annotations[key.ReadyAt.Label])
+	assert.Assert(t, instance.Name == pod.Name)
+	assert.Assert(t, instance.Addr == net.JoinHostPort(pod.Status.PodIP, port))
+	assert.Assert(t, instance.ReplicaSet == pod.Annotations[key.ReplicaSet.Label])
+	assert.Assert(t, instance.AssignedAt.Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Label])
+	assert.Assert(t, instance.ReadyAt.Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Label])
 }
 
 func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn function.Function) {
 	fnJSON, err := json.Marshal(fn)
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
-	must.Eq(t, fn.Deployment, pod.Labels[key.Deployment.Label])
-	must.Eq(t, fn.Tenant, pod.Labels[key.Tenant.Label])
-	must.Eq(t, string(fnJSON), pod.Annotations[key.Function.Label])
-	must.MapContainsKey(t, pod.Annotations, key.ReplicaSet.Label)
-	must.MapContainsKey(t, pod.Annotations, key.AssignedAt.Label)
-	must.MapContainsKey(t, pod.Annotations, key.ReadyAt.Label)
+	assert.Assert(t, fn.Deployment == pod.Labels[key.Deployment.Label])
+	assert.Assert(t, fn.Tenant == pod.Labels[key.Tenant.Label])
+	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Label])
+	assert.Assert(t, pod.Annotations[key.ReplicaSet.Label] != "")
+	assert.Assert(t, pod.Annotations[key.AssignedAt.Label] != "")
+	assert.Assert(t, pod.Annotations[key.ReadyAt.Label] != "")
 }
 
 func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
-	must.MapNotContainsKey(t, pod.Labels, key.Tenant.Label)
-	must.MapNotContainsKey(t, pod.Annotations, key.Function.Label)
-	must.MapNotContainsKey(t, pod.Annotations, key.ReplicaSet.Label)
-	must.MapNotContainsKey(t, pod.Annotations, key.AssignedAt.Label)
-	must.MapNotContainsKey(t, pod.Annotations, key.ReadyAt.Label)
+	assert.Assert(t, pod.Labels[key.Tenant.Label] == "")
+	assert.Assert(t, pod.Annotations[key.Function.Label] == "")
+	assert.Assert(t, pod.Annotations[key.ReplicaSet.Label] == "")
+	assert.Assert(t, pod.Annotations[key.AssignedAt.Label] == "")
+	assert.Assert(t, pod.Annotations[key.ReadyAt.Label] == "")
 }
 
 func TestScaleNamespace(t *testing.T) {
@@ -102,8 +102,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 2, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 2)
 				ensurePodIsAssignedToFunction(t, pods.Items[0], fn)
 				ensurePodIsAssignedToFunction(t, pods.Items[1], fn)
 			},
@@ -129,8 +129,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 2, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 2)
 				ensurePodIsAssignedToFunction(t, pods.Items[0], fn)
 				ensurePodIsAssignedToFunction(t, pods.Items[1], fn)
 			},
@@ -159,8 +159,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 2, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 2)
 				ensurePodIsAssignedToFunction(t, pods.Items[0], fn)
 				ensurePodIsAssignedToFunction(t, pods.Items[1], fn)
 			},
@@ -191,8 +191,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 				ensurePodIsAssignedToFunction(t, pods.Items[0], fn)
 			},
 		},
@@ -221,8 +221,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 2, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 2)
 
 				var assignedPod v1.Pod
 				var unassignedPod v1.Pod
@@ -255,17 +255,17 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 0, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
 
 				_, ok := c.routerHeartbeats.Load(fn)
-				must.False(t, ok)
+				assert.Assert(t, !ok)
 
 				_, ok = c.scaleMu.Load(fn)
-				must.False(t, ok)
+				assert.Assert(t, !ok)
 
 				_, ok = c.stabilizationWindows.Load(fn)
-				must.False(t, ok)
+				assert.Assert(t, !ok)
 			},
 		},
 		{
@@ -287,17 +287,17 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 0, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
 
 				_, ok := c.routerHeartbeats.Load(fn)
-				must.False(t, ok)
+				assert.Assert(t, !ok)
 
 				_, ok = c.scaleMu.Load(fn)
-				must.False(t, ok)
+				assert.Assert(t, !ok)
 
 				_, ok = c.stabilizationWindows.Load(fn)
-				must.False(t, ok)
+				assert.Assert(t, !ok)
 			},
 		},
 		{
@@ -317,8 +317,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 				ensurePodIsAssignedToFunction(t, pods.Items[0], fn)
 			},
 		},
@@ -340,8 +340,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 0, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
 			},
 		},
 		{
@@ -366,8 +366,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 				ensurePodIsAssignedToFunction(t, pods.Items[0], fn)
 			},
 		},
@@ -390,8 +390,8 @@ func TestScaleNamespace(t *testing.T) {
 			},
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 				ensurePodIsAssignedToFunction(t, pods.Items[0], fn) // the assigned pod should still be around because we're not responsible for it
 			},
 		},
@@ -413,8 +413,8 @@ func TestScaleNamespace(t *testing.T) {
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				// ensure the extra ready instance was deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, fn.Scale.MaxInstances, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances)
 				for _, pod := range pods.Items {
 					ensurePodIsAssignedToFunction(t, pod, fn)
 				}
@@ -443,8 +443,8 @@ func TestScaleNamespace(t *testing.T) {
 			check: func(t *testing.T, c *Controller, fakeKubernetes *fake.Clientset, fakeKubernetesMetrics *fakekubernetesmetrics.Clientset, fn function.Function) {
 				// ensure the extra unready instance was not deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+1)
 				for _, pod := range pods.Items {
 					ensurePodIsAssignedToFunction(t, pod, fn)
 				}
@@ -464,7 +464,7 @@ func TestScaleNamespace(t *testing.T) {
 			fn := tc.setup(t, ctrl, fakeKubernetes, fakeKubernetesMetrics)
 
 			err := ctrl.startInformers(ctx)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			if ctrl.startedAt.IsZero() {
 				// if the test doesn't set the startedAt time, assume the test is testing behavior that happens after the controller has been running for a while
@@ -473,9 +473,9 @@ func TestScaleNamespace(t *testing.T) {
 
 			err = ctrl.scaleNamespace(ctx, fn.Namespace)
 			if tc.err != nil {
-				must.ErrorIs(t, err, tc.err)
+				assert.ErrorIs(t, err, tc.err)
 			} else {
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			}
 
 			tc.check(t, ctrl, fakeKubernetes, fakeKubernetesMetrics, fn)
@@ -494,12 +494,12 @@ func TestAssignPod(t *testing.T) {
 			name: "smoke",
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
 				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
 			},
 		},
@@ -510,7 +510,7 @@ func TestAssignPod(t *testing.T) {
 				// no pods
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
-				must.Nil(t, instance)
+				assert.Assert(t, instance == nil)
 			},
 		},
 		{
@@ -519,13 +519,13 @@ func TestAssignPod(t *testing.T) {
 				go func() {
 					time.Sleep(100 * time.Millisecond)
 					err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}()
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
 				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
 			},
 		},
@@ -538,10 +538,10 @@ func TestAssignPod(t *testing.T) {
 					time.Sleep(10 * time.Millisecond)
 					w.WriteHeader(http.StatusOK)
 				})))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
-				must.Nil(t, instance)
+				assert.Assert(t, instance == nil)
 			},
 		},
 		{
@@ -549,8 +549,8 @@ func TestAssignPod(t *testing.T) {
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				// ensure the pod has a port annotation
 				pod := fixture.NewAvailablePod(t, fn, nil)
-				must.Eq(t, "http", pod.Annotations[key.Port.Label])
-				must.Eq(t, "http", pod.Spec.Containers[0].Ports[0].Name)
+				assert.Assert(t, pod.Annotations[key.Port.Label] == "http")
+				assert.Assert(t, pod.Spec.Containers[0].Ports[0].Name == "http")
 
 				// add another port and make the http port the second port on the container
 				pod.Spec.Containers[0].Ports = []v1.ContainerPort{
@@ -559,12 +559,12 @@ func TestAssignPod(t *testing.T) {
 				}
 
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
 				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
 			},
 		},
@@ -574,12 +574,12 @@ func TestAssignPod(t *testing.T) {
 				pod := fixture.NewAvailablePod(t, fn, nil)
 				pod.Annotations[key.Port.Label] = ""
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
 				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, instance, pods.Items[0])
 			},
 		},
@@ -598,15 +598,15 @@ func TestAssignPod(t *testing.T) {
 				pod := fixture.NewAvailablePod(t, fn, nil)
 				pod.Labels[key.Tenant.Label] = "other"
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 
 				pod := pods.Items[0]
-				must.Eq(t, "other", pod.Labels[key.Tenant.Label])
+				assert.Assert(t, pod.Labels[key.Tenant.Label] == "other")
 				delete(pod.Labels, key.Tenant.Label)
 				ensurePodIsNotAssignedToFunction(t, pod)
 			},
@@ -625,13 +625,13 @@ func TestAssignPod(t *testing.T) {
 			ctrl := New(nil, fakeKubernetes, nil)
 
 			err := ctrl.startInformers(ctx)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			instance, err := ctrl.assignPod(ctx, fn)
 			if tc.err != nil {
-				must.ErrorIs(t, err, tc.err)
+				assert.ErrorIs(t, err, tc.err)
 			} else {
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			}
 
 			tc.check(t, fakeKubernetes, fn, instance)
@@ -653,10 +653,10 @@ func TestScale(t *testing.T) {
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 1, instances)
+				assert.Assert(t, len(instances) == 1)
 			},
 		},
 		{
@@ -666,17 +666,17 @@ func TestScale(t *testing.T) {
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				for range 5 {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 1, instances)
+				assert.Assert(t, len(instances) == 1)
 				instance := instances[0]
 				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{
 					LabelSelector: doesNotHaveTenantSelector.String(),
 				})
-				must.NoError(t, err)
-				must.Len(t, 4, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 4)
 			},
 		},
 		{
@@ -687,7 +687,7 @@ func TestScale(t *testing.T) {
 				// no pods
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 			},
 		},
 		{
@@ -697,10 +697,10 @@ func TestScale(t *testing.T) {
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				fn.Metadata = "different"
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 			},
 		},
 		{
@@ -709,10 +709,10 @@ func TestScale(t *testing.T) {
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 1, instances)
+				assert.Assert(t, len(instances) == 1)
 			},
 		},
 		{
@@ -722,7 +722,7 @@ func TestScale(t *testing.T) {
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				for range fn.Scale.MaxInstances - 1 {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 
 				// make the last instance known and have the most recent assigned at
@@ -730,13 +730,13 @@ func TestScale(t *testing.T) {
 				pod.Name = "most-recent-assigned-at"
 				pod.Annotations[key.AssignedAt.Label] = time.Now().Add(time.Second).UTC().Format(time.RFC3339)
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 1, instances)
+				assert.Assert(t, len(instances) == 1)
 
 				// ensure the most recent assigned at instance was kept
-				must.Eq(t, "most-recent-assigned-at", instances[0].Name)
+				assert.Assert(t, instances[0].Name == "most-recent-assigned-at")
 			},
 		},
 		{
@@ -745,34 +745,34 @@ func TestScale(t *testing.T) {
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				// ensure desired instances is equal to max instances
-				must.Eq(t, 5, fn.Scale.MaxInstances)
+				assert.Assert(t, fn.Scale.MaxInstances == 5)
 
 				// add max - 1 ready instances
 				for range fn.Scale.MaxInstances - 1 {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 
 				// add 1 unready instance
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 
 				// add 1 unassigned pod
 				err = fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				fn := instances[0].Function
 
 				// ensure max instances were returned
-				must.Len(t, fn.Scale.MaxInstances, instances)
+				assert.Assert(t, len(instances) == fn.Scale.MaxInstances)
 
 				// ensure there are max + 1 pods
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+1)
 
 				readyInstances := 0
 				unreadyInstances := 0
@@ -787,10 +787,10 @@ func TestScale(t *testing.T) {
 				}
 
 				// ensure there are still max ready instances
-				must.Eq(t, fn.Scale.MaxInstances, readyInstances)
+				assert.Assert(t, readyInstances == fn.Scale.MaxInstances)
 
 				// ensure there is still 1 unready instance because we only delete unready instances during scale down
-				must.Eq(t, 1, unreadyInstances)
+				assert.Assert(t, unreadyInstances == 1)
 			},
 		},
 		{
@@ -799,23 +799,23 @@ func TestScale(t *testing.T) {
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				// ensure desired instances is equal to max instances
-				must.Eq(t, 5, fn.Scale.MaxInstances)
+				assert.Assert(t, fn.Scale.MaxInstances == 5)
 
 				// add max + 1 unready instances
 				for range fn.Scale.MaxInstances + 1 {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					err := fakeKubernetes.Tracker().Add(pod)
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 
 				// add 1 unassigned pod
 				err := fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				// ensure no instances were returned because this function already has too many instances in total
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 			},
 		},
 		{
@@ -824,12 +824,12 @@ func TestScale(t *testing.T) {
 			err:              nil,
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				// ensure desired instances is equal to max instances
-				must.Eq(t, 5, fn.Scale.MaxInstances)
+				assert.Assert(t, fn.Scale.MaxInstances == 5)
 
 				// add 2 ready instances
 				for range 2 {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 
 				// add max + 1 unready instances
@@ -837,19 +837,19 @@ func TestScale(t *testing.T) {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					err := fakeKubernetes.Tracker().Add(pod)
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				// ensure 2 instances were returned because we already had 2 ready instances but couldn't scale up because we have too many instances in total
-				must.Len(t, 2, instances)
+				assert.Assert(t, len(instances) == 2)
 
 				fn := instances[0].Function
 
 				// ensure there are max + 3 pods
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, fn.Scale.MaxInstances+3, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+3)
 
 				readyInstances := 0
 				unreadyInstances := 0
@@ -864,10 +864,10 @@ func TestScale(t *testing.T) {
 				}
 
 				// ensure there are 2 ready instances (matches what was returned)
-				must.Eq(t, 2, readyInstances)
+				assert.Assert(t, readyInstances == 2)
 
 				// ensure there are still max+1 unready instances because we only delete unready instances during scale down
-				must.Eq(t, fn.Scale.MaxInstances+1, unreadyInstances)
+				assert.Assert(t, unreadyInstances == fn.Scale.MaxInstances+1)
 			},
 		},
 		{
@@ -880,16 +880,16 @@ func TestScale(t *testing.T) {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					err := fakeKubernetes.Tracker().Add(pod)
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				must.Len(t, 0, instances)
+				assert.Assert(t, len(instances) == 0)
 
 				// ensure all unready instances were deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 0, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
 			},
 		},
 		{
@@ -899,24 +899,24 @@ func TestScale(t *testing.T) {
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				// add 1 ready instance
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 
 				// add max unready instances
 				for range fn.Scale.MaxInstances {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					err := fakeKubernetes.Tracker().Add(pod)
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				// ensure 1 instance was returned
-				must.Len(t, 1, instances)
+				assert.Assert(t, len(instances) == 1)
 
 				// ensure all unready instances were deleted
 				pods, err := fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
 			},
 		},
 		{
@@ -926,26 +926,26 @@ func TestScale(t *testing.T) {
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				// add 1 ready instance
 				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				must.NoError(t, err)
+				assert.NilError(t, err)
 
 				// add max unready instances
 				for range fn.Scale.MaxInstances {
 					pod := fixture.NewAssignedPod(t, fn, nil)
 					pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					err := fakeKubernetes.Tracker().Add(pod)
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				// ensure only 1 instance was returned because we already have max+1 instances in total
-				must.Len(t, 1, instances)
+				assert.Assert(t, len(instances) == 1)
 
 				fn := instances[0].Function
 
 				// ensure there are max + 1 pods
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, fn.Scale.MaxInstances+1, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+1)
 
 				readyInstances := 0
 				unreadyInstances := 0
@@ -960,10 +960,10 @@ func TestScale(t *testing.T) {
 				}
 
 				// ensure there is 1 ready instance (matches what was returned)
-				must.Eq(t, 1, readyInstances)
+				assert.Assert(t, readyInstances == 1)
 
 				// ensure there are still max unready instances because we only delete unready instances during scale down
-				must.Eq(t, fn.Scale.MaxInstances, unreadyInstances)
+				assert.Assert(t, unreadyInstances == fn.Scale.MaxInstances)
 			},
 		},
 		{
@@ -974,25 +974,25 @@ func TestScale(t *testing.T) {
 				// add max ready instances
 				for range fn.Scale.MaxInstances {
 					err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-					must.NoError(t, err)
+					assert.NilError(t, err)
 				}
 
 				// add 1 unready instance
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				err := fakeKubernetes.Tracker().Add(pod)
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
 				// ensure 2 instances were returned
-				must.Len(t, 2, instances)
+				assert.Assert(t, len(instances) == 2)
 
 				fn := instances[0].Function
 
 				// ensure there are 2 pods
 				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				must.NoError(t, err)
-				must.Len(t, 2, pods.Items)
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 2)
 
 				readyInstances := 0
 				unreadyInstances := 0
@@ -1007,10 +1007,10 @@ func TestScale(t *testing.T) {
 				}
 
 				// ensure there are 2 ready instances (matches what was returned)
-				must.Eq(t, 2, readyInstances)
+				assert.Assert(t, readyInstances == 2)
 
 				// ensure there are 0 unready instances because we always delete unready instances during scale down
-				must.Eq(t, 0, unreadyInstances)
+				assert.Assert(t, unreadyInstances == 0)
 			},
 		},
 	}
@@ -1028,16 +1028,16 @@ func TestScale(t *testing.T) {
 			ctrl := New(nil, fakeKubernetes, nil)
 
 			err := ctrl.startInformers(ctx)
-			must.NoError(t, err)
+			assert.NilError(t, err)
 
 			instances, err := ctrl.scale(ctx, fn, ScalingDecision{
 				DesiredInstances: tc.desiredInstances,
 				Reason:           "test",
 			})
 			if tc.err != nil {
-				must.ErrorIs(t, err, tc.err)
+				assert.ErrorIs(t, err, tc.err)
 			} else {
-				must.NoError(t, err)
+				assert.NilError(t, err)
 			}
 
 			tc.check(t, fakeKubernetes, instances)
@@ -1063,14 +1063,14 @@ func TestScaleForwarding(t *testing.T) {
 	ctrl := New(func(host string, port int) Client { return mcc }, fakeKubernetes, nil)
 
 	err := ctrl.startInformers(ctx)
-	must.NoError(t, err)
+	assert.NilError(t, err)
 
 	instances, err := ctrl.scale(ctx, fn, ScalingDecision{
 		DesiredInstances: 1,
 		Reason:           "test",
 	})
-	must.NoError(t, err)
-	must.Len(t, 1, instances)
+	assert.NilError(t, err)
+	assert.Assert(t, len(instances) == 1)
 }
 
 func TestCalculateDesiredInstancesForMetric(t *testing.T) {
@@ -1164,7 +1164,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			}
 
 			instances, _ := calculateDesiredInstancesForMetric(t.Context(), tc.metricName, tc.podMetrics)
-			must.Eq(t, tc.expectedInstances, instances)
+			assert.Assert(t, instances == tc.expectedInstances)
 		})
 	}
 }
