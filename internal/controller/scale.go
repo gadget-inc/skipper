@@ -338,14 +338,14 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (in
 	assignmentsTotal.WithLabelValues(fn.Deployment).Inc()
 
 GET_UNASSIGNED_POD:
-	var pod *v1.Pod
-	pod, err = ctrl.getUnassignedPod(ctx, fn)
+	var unassignedPod *v1.Pod
+	unassignedPod, err = ctrl.getUnassignedPod(ctx, fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get unassigned pod: %w", err)
 	}
 
 	var port string
-	port, err = portFromPod(pod)
+	port, err = portFromPod(unassignedPod)
 	if err != nil {
 		return nil, err
 	}
@@ -372,10 +372,11 @@ GET_UNASSIGNED_POD:
 		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
 	]`)
 
-	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	var assignedPod *v1.Pod
+	assignedPod, err = ctrl.kubernetes.CoreV1().Pods(unassignedPod.Namespace).Patch(ctx, unassignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		if apierrors.IsInvalid(err) || errors.Is(err, jsonpatch.ErrTestFailed) {
-			log.Warn(ctx, "failed to patch pod, retrying", key.Error.Field(err), key.Pod.Field(pod))
+			log.Warn(ctx, "failed to patch pod, retrying", key.Error.Field(err), key.Pod.Field(unassignedPod))
 			// there are many reasons this can fail, but one hard to debug one is that the pod doesn't have any annotations
 			// see: https://stackoverflow.com/a/57480206, https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12
 			goto GET_UNASSIGNED_POD
@@ -383,18 +384,18 @@ GET_UNASSIGNED_POD:
 		return nil, fmt.Errorf("failed to patch pod: %w", err)
 	}
 
-	// delete the pod if we fail to assign the function
+	// delete the unassigned pod if the assign request fails
 	defer func() {
 		if err != nil {
-			if deleteErr := ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{}); deleteErr != nil {
-				log.Error(ctx, "failed to delete pod after failed assign request", key.Error.Field(deleteErr), key.Pod.Field(pod))
+			if deleteErr := ctrl.kubernetes.CoreV1().Pods(unassignedPod.Namespace).Delete(ctx, unassignedPod.Name, metav1.DeleteOptions{}); deleteErr != nil {
+				log.Error(ctx, "failed to delete pod after failed assign request", key.Error.Field(deleteErr), key.Pod.Field(unassignedPod))
 			}
 		}
 	}()
 
-	ctrl.updatePodCache(ctx, pod)
+	ctrl.updatePodCache(ctx, assignedPod)
 
-	assignURL := "http://" + net.JoinHostPort(pod.Status.PodIP, port) + function.FlagAssignPath.Value()
+	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + function.FlagAssignPath.Value()
 	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
 	defer cancel()
 
@@ -414,7 +415,7 @@ GET_UNASSIGNED_POD:
 	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
-	log.Info(ctx, "assigning pod", key.Pod.Field(pod))
+	log.Info(ctx, "assigning pod", key.Pod.Field(assignedPod))
 	var res *http.Response
 	res, err = otelhttp.DefaultClient.Do(req)
 	if err != nil {
@@ -429,14 +430,14 @@ GET_UNASSIGNED_POD:
 
 	// annotate the pod as ready
 	patches = []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + now.UTC().Format(time.RFC3339) + `" }]`)
-	pod, err = ctrl.kubernetes.CoreV1().Pods(pod.Namespace).Patch(ctx, pod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	assignedPod, err = ctrl.kubernetes.CoreV1().Pods(assignedPod.Namespace).Patch(ctx, assignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		return nil, fmt.Errorf("failed to patch pod as ready: %w", err)
 	}
 
-	ctrl.updatePodCache(ctx, pod)
+	ctrl.updatePodCache(ctx, assignedPod)
 
-	instance, err = instanceFromPod(pod)
+	instance, err = instanceFromPod(assignedPod)
 	return
 }
 
