@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"slices"
 	"strconv"
 	"time"
 
@@ -23,7 +25,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
@@ -159,11 +160,10 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
+	excludedInstanceNameSet := map[string]struct{}{}
 	getInstanceDuration := time.Duration(0)
-	// Keep a local set of instance names to exclude for this request
-	excludeSet := map[string]struct{}{}
-
 	attempt := 0
+
 	for {
 		attempt++
 		if attempt > FlagMaxRoundTripAttempts.Value() {
@@ -184,22 +184,12 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		default:
 		}
 
-		ctx := log.With(req.Context(), key.Attempt.Field(attempt))
-		attributes := []attribute.KeyValue{key.Attempt.Attribute(attempt)}
-
-		var exclude []string
-		for name := range excludeSet {
-			exclude = append(exclude, name)
-		}
-
-		if len(exclude) > 0 {
-			attributes = append(attributes, key.ExcludeInstanceNames.Attribute(exclude))
-		}
-
-		ctx = telemetry.WithPropagatedAttributes(ctx, attributes...)
+		excludedInstanceNames := slices.Collect(maps.Keys(excludedInstanceNameSet))
+		ctx := log.With(req.Context(), key.Attempt.Field(attempt), key.ExcludeInstanceNames.Field(excludedInstanceNames))
+		ctx = telemetry.WithPropagatedAttributes(ctx, key.Attempt.Attribute(attempt), key.ExcludeInstanceNames.Attribute(excludedInstanceNames))
 
 		getInstanceStart := time.Now()
-		instance, err := r.ctrl.Instance(ctx, fn, exclude...)
+		instance, err := r.ctrl.Instance(ctx, fn, excludedInstanceNames...)
 		getInstanceDuration += time.Since(getInstanceStart)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
@@ -226,7 +216,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			// Only exclude on dial/cannot connect scenarios (including connection refused)
 			if netOpErr.Op == "dial" {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err))
-				excludeSet[instance.Name] = struct{}{}
+				excludedInstanceNameSet[instance.Name] = struct{}{}
 				continue
 			}
 		}
