@@ -160,7 +160,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	excludedInstanceNameSet := map[string]struct{}{}
+	excludedInstanceNameSet := make(map[string]struct{})
 	getInstanceDuration := time.Duration(0)
 	attempt := 0
 
@@ -171,17 +171,11 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		if attempt > 1 {
-			minTimeout := float64(FlagRoundTripRetryMinTimeout.Value())
-			maxTimeout := float64(FlagRoundTripRetryMaxTimeout.Value())
-			factor := 1 + rand.Float64() // randomize the factor between 1 and 2 to add jitter
-			delay := min(factor*minTimeout*math.Pow(2, float64(attempt)), maxTimeout)
-			time.Sleep(time.Duration(delay))
-		}
-
-		select {
-		case <-req.Context().Done():
-			return nil, req.Context().Err()
-		default:
+			select {
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			case <-time.After(calculateBackoff(attempt)):
+			}
 		}
 
 		excludedInstanceNames := slices.Collect(maps.Keys(excludedInstanceNameSet))
@@ -213,10 +207,9 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
-			// Only exclude on dial/cannot connect scenarios (including connection refused)
 			if netOpErr.Op == "dial" {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err))
-				excludedInstanceNameSet[instance.Name] = struct{}{}
+				excludedInstanceNameSet[instance.Name] = struct{}{} // exclude this instance from future requests in case it's the problem
 				continue
 			}
 		}
@@ -231,7 +224,6 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		if res != nil {
-			telemetry.SetAttributes(ctx, key.GetInstanceDurationMs.Attribute(getInstanceDuration))
 			res.Header[key.GetInstanceDurationMs.Header] = []string{strconv.FormatInt(getInstanceDuration.Milliseconds(), 10)}
 		}
 
@@ -286,4 +278,11 @@ func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
 
 		pr.Out.Header["Forwarded"] = []string{forwarded}
 	}
+}
+
+func calculateBackoff(attempt int) time.Duration {
+	minTimeout := float64(FlagRoundTripRetryMinTimeout.Value())
+	maxTimeout := float64(FlagRoundTripRetryMaxTimeout.Value())
+	factor := 1 + rand.Float64() // randomize the factor between 1 and 2 to add jitter
+	return time.Duration(min(factor*minTimeout*math.Pow(2, float64(attempt)), maxTimeout))
 }

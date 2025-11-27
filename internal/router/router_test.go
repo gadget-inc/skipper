@@ -368,7 +368,7 @@ func TestRetries(t *testing.T) {
 			},
 		},
 		{
-			name:         "controller.get arbitrary error",
+			name:         "ctrl.Instance arbitrary error",
 			maxAttempts:  2,
 			instanceErrs: []error{errors.New("arbitrary error")},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
@@ -377,7 +377,7 @@ func TestRetries(t *testing.T) {
 			},
 		},
 		{
-			name:          "round trip dial error",
+			name:          "roundTripper dial error",
 			maxAttempts:   2,
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
@@ -386,19 +386,17 @@ func TestRetries(t *testing.T) {
 			},
 		},
 		{
-			name:         "ctrl.instance and round trip errors",
-			maxAttempts:  4,
-			instanceErrs: []error{errors.New("arbitrary error")},
-			roundTripErrs: []error{
-				&net.OpError{Op: "dial", Err: errors.New("arbitrary error")},
-			},
+			name:          "ctrl.Instance and roundTripper errors",
+			maxAttempts:   3,
+			instanceErrs:  []error{errors.New("arbitrary error")},
+			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
 			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
 				assert.Assert(t, rw.Code == http.StatusOK)
 				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
 			},
 		},
 		{
-			name:          "ctrl.instance and round trip errors exceed max attempts",
+			name:          "ctrl.Instance and roundTripper errors exceed max attempts",
 			maxAttempts:   2,
 			instanceErrs:  []error{errors.New("arbitrary error")},
 			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
