@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"math"
@@ -158,6 +159,15 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 	fn, err := function.From(req.Context())
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Body != nil && req.Body != http.NoBody {
+		// wrap the request body with io.NopCloser to prevent the
+		// underlying http.RoundTripper from closing it on dial errors,
+		// allowing the body to be reused between retry attempts
+		originalBody := req.Body
+		req.Body = io.NopCloser(originalBody)
+		defer func() { req.Body = originalBody }()
 	}
 
 	excludedInstanceNameSet := make(map[string]struct{})

@@ -411,7 +411,9 @@ func TestRetries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture.SetFlag(t, &FlagMaxRoundTripAttempts, tc.maxAttempts)
 
-			fn := fixture.NewFunction()
+			expectedMethod := http.MethodPost
+			expectedPath := "/"
+			expectedBody := "Hello, world!"
 
 			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
@@ -422,20 +424,28 @@ func TestRetries(t *testing.T) {
 				}
 
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+					assert.Assert(t, req.Method == expectedMethod)
+					assert.Assert(t, req.URL.Path == expectedPath)
+
+					receivedBody, err := io.ReadAll(req.Body)
+					assert.NilError(t, err)
+					assert.Assert(t, string(receivedBody) == expectedBody)
+
 					rw.WriteHeader(http.StatusOK)
 					rw.Write([]byte("Hello, " + fn.Tenant))
 				}), nil
 			})
 
-			rw := httptest.NewRecorder()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+			fn := fixture.NewFunction()
+			body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
+			req := fixture.NewFunctionRequest(t, fn, expectedMethod, expectedPath, body)
 
 			router := New(mcc)
 
-			originalTransport := router.roundTripper
-
 			roundTripperErrsIndex := 0
+			originalTransport := router.roundTripper
 			router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				defer req.Body.Close() // RoundTripper always closes the body so imitate that behavior
 				if len(tc.roundTripErrs) > 0 && roundTripperErrsIndex < len(tc.roundTripErrs) {
 					roundTripperErrsIndex++
 					return nil, tc.roundTripErrs[roundTripperErrsIndex-1]
@@ -443,9 +453,10 @@ func TestRetries(t *testing.T) {
 				return originalTransport.RoundTrip(req)
 			})
 
+			rw := httptest.NewRecorder()
 			router.ServeHTTP(rw, req)
-
 			tc.check(t, fn, rw)
+			assert.Assert(t, body.closed)
 		})
 	}
 }
@@ -454,4 +465,26 @@ type roundTripperFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
+}
+
+// noReadAfterClose wraps an io.ReadCloser and returns
+// http.ErrBodyReadAfterClose after Close is called.
+//
+// This is used to mimic net/http's internal body implementation:
+// https://cs.opensource.google/go/go/+/refs/tags/go1.25.4:src/net/http/transfer.go;l=825-838;drc=998ce1c4262aab0153b5e89f84ef2ddd57507ec7
+type noReadAfterClose struct {
+	io.ReadCloser
+	closed bool
+}
+
+func (r *noReadAfterClose) Read(p []byte) (n int, err error) {
+	if r.closed {
+		return 0, http.ErrBodyReadAfterClose
+	}
+	return r.ReadCloser.Read(p)
+}
+
+func (r *noReadAfterClose) Close() error {
+	r.closed = true
+	return r.ReadCloser.Close()
 }
