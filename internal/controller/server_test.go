@@ -244,33 +244,39 @@ func TestHandleHeartbeat(t *testing.T) {
 		check func(*testing.T, *fixture.MockControllerClient, *Controller, []function.Heartbeat)
 	}{
 		{
-			name: "one",
+			name: "receiving one heartbeat",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				return []function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
+				// ensure the controller has added a heartbeat
 				assert.Assert(t, ctrl.routerHeartbeats.Size() == 1)
-				heartbeat, ok := ctrl.routerHeartbeats.Load(heartbeats[0].Function)
+
+				// ensure the heartbeat was associated with the expected router IP and has the expected timestamp
+				sentHeartbeat := sentHeartbeats[0]
+				heartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
 				assert.Assert(t, ok)
-				assert.Assert(t, heartbeat[fixture.RouterIP].Timestamp.Equal(heartbeats[0].Timestamp))
+				assert.Assert(t, heartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
 			},
 		},
 		{
-			name: "multiple",
+			name: "receiving multiple heartbeats",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
 				return []function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
+				// ensure the controller has added both heartbeats
 				assert.Assert(t, ctrl.routerHeartbeats.Size() == 2)
-				for _, hb := range heartbeats {
-					heartbeat, ok := ctrl.routerHeartbeats.Load(hb.Function)
+				for _, sentHeartbeat := range sentHeartbeats {
+					// ensure each heartbeat was associated with the expected router IP and has the expected timestamp
+					heartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
 					assert.Assert(t, ok)
-					assert.Assert(t, heartbeat[fixture.RouterIP].Timestamp.Equal(hb.Timestamp))
+					assert.Assert(t, heartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
 				}
 			},
 		},
@@ -287,12 +293,12 @@ func TestHandleHeartbeat(t *testing.T) {
 					{Function: fn, Timestamp: heartbeatTimestamp.Add(-time.Hour)},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
 				assert.Assert(t, ctrl.routerHeartbeats.Size() == 1)
 
-				sentHeartbeat := heartbeats[0]
+				// ensure the controller kept the heartbeat with the most recent timestamp
+				sentHeartbeat := sentHeartbeats[0]
 				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
-
 				assert.Assert(t, ok)
 				assert.Assert(t, !keptHeartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
 				assert.Assert(t, sentHeartbeat.Timestamp.Add(time.Hour).Equal(keptHeartbeat[fixture.RouterIP].Timestamp))
@@ -301,27 +307,36 @@ func TestHandleHeartbeat(t *testing.T) {
 		{
 			name: "forwards heartbeats",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+				// seed the ring with multiple controller IPs
 				ctrl.ring.Add(fixture.ControllerIP)
 				ctrl.ring.Add(fixture.ControllerIP2)
-				hbs := []function.Heartbeat{{Function: fixture.NewFunction(), Timestamp: time.Now()}}
 
+				// send multiple heartbeats for different functions
+				sentHeartbeats := []function.Heartbeat{
+					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+				}
+
+				// ensure the controller sends the heartbeats to the other controllers
 				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
-					assert.DeepEqual(t, heartbeats, hbs)
+					// ensure the controller forwards the same heartbeats to the other controllers
+					assert.DeepEqual(t, heartbeats, sentHeartbeats)
+					// ensure the controller forwards the list of controllers that have received heartbeats
 					assert.DeepEqual(t, forwardedFor, []string{fixture.ControllerIP, fixture.ControllerIP2})
 					return nil
 				})
 
-				return hbs
+				return sentHeartbeats
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
 				// give the goroutine that forwards the heartbeats a chance to run
 				time.Sleep(10 * time.Millisecond)
 			},
 		},
 		{
-			name: "garbage collects old heartbeats",
+			name: "deletes expired heartbeats",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
-				// seed the controller with a old heartbeat from a different router
+				// seed the controller with an expired heartbeat from a different router
 				fn := fixture.NewFunction()
 				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP2: {Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))}})
 
@@ -329,14 +344,18 @@ func TestHandleHeartbeat(t *testing.T) {
 					{Function: fn, Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, heartbeats []function.Heartbeat) {
-				sentHeartbeat := heartbeats[0]
+			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
+				sentHeartbeat := sentHeartbeats[0]
 				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
 				assert.Assert(t, ok)
+
+				// ensure the controller kept the sent heartbeat
 				assert.Assert(t, len(keptHeartbeat) == 1)
-				_, ok = keptHeartbeat[fixture.RouterIP2] // ensure the old heartbeat is garbage collected
-				assert.Assert(t, !ok)
 				assert.Assert(t, keptHeartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
+
+				// ensure the expired heartbeat was deleted
+				_, ok = keptHeartbeat[fixture.RouterIP2]
+				assert.Assert(t, !ok)
 			},
 		},
 	}
