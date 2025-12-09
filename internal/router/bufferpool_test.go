@@ -8,6 +8,11 @@ import (
 )
 
 func TestPoolAllocations(t *testing.T) {
+	if raceEnabled {
+		// we can't measure allocations accurately when the race detector is enabled
+		t.Skip("skipping allocation test with race detector enabled")
+	}
+
 	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 
 	// warm up the pool
@@ -29,7 +34,7 @@ func TestPoolAllocations(t *testing.T) {
 
 	// the pool returns []byte, not *[]byte, so we need to account for
 	// the allocation of the slice header (24 bytes) across the 3 calls.
-	assert.Assert(t, heap == 72)
+	assert.Equal(t, heap, uint64(72))
 }
 
 func TestPoolLargeBuffer(t *testing.T) {
