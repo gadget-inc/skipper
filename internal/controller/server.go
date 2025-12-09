@@ -16,7 +16,6 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -65,7 +64,7 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
 
 	for len(instances) == 0 {
-		if instances, err = ctrl.scale(ctx, fn, ScalingDecision{
+		if instances, err = ctrl.supervisor(fn).scale(ctx, ScalingDecision{
 			DesiredInstances:          1,
 			UnclampedDesiredInstances: 1,
 			Reason:                    ScalingReasonNoReadyInstances,
@@ -132,7 +131,7 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 		reason = ScalingReasonUnknown
 	}
 
-	instances, err := ctrl.scale(ctx, fn, ScalingDecision{
+	instances, err := ctrl.supervisor(fn).scale(ctx, ScalingDecision{
 		DesiredInstances: desiredInstances,
 		Reason:           reason,
 	})
@@ -166,22 +165,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 
 	for _, heartbeat := range heartbeats {
 		heartbeatsCounter.WithLabelValues(heartbeat.Function.Deployment).Inc()
-
-		ctrl.routerHeartbeats.Compute(heartbeat.Function, func(routerHeartbeats RouterHeartbeats, loaded bool) (RouterHeartbeats, xsync.ComputeOp) {
-			if !loaded {
-				routerHeartbeats = make(RouterHeartbeats)
-			}
-			if routerHeartbeats[routerIP].Timestamp.Before(heartbeat.Timestamp) {
-				routerHeartbeats[routerIP] = heartbeat
-			}
-			// garbage collect router heartbeats that haven't been updated in the timeout period
-			for routerIP := range routerHeartbeats {
-				if time.Since(routerHeartbeats[routerIP].Timestamp) > FlagHeartbeatTimeout.Value() {
-					delete(routerHeartbeats, routerIP)
-				}
-			}
-			return routerHeartbeats, xsync.UpdateOp
-		})
+		ctrl.supervisor(heartbeat.Function).heartbeat(routerIP, heartbeat)
 	}
 
 	log.Trace(req.Context(), "received heartbeats", key.Count.Field(len(heartbeats)))

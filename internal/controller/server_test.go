@@ -171,9 +171,9 @@ func TestHandleInstance(t *testing.T) {
 			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) setupStruct {
 				fn := fixture.NewFunction()
 
-				// grab scale lock
-				scaleMu := ctrl.getScaleMu(fn)
-				scaleMu.Lock()
+				// grab supervisor lock
+				supervisor := ctrl.supervisor(fn)
+				supervisor.mu.Lock()
 
 				go func() {
 					// wait for GET /instance and have it scale to 1 because there are no ready instances
@@ -186,8 +186,8 @@ func TestHandleInstance(t *testing.T) {
 					// give the informers a chance to update their caches
 					time.Sleep(10 * time.Millisecond)
 
-					// release scale lock
-					scaleMu.Unlock()
+					// release supervisor lock
+					supervisor.mu.Unlock()
 				}()
 
 				return setupStruct{fn: fn, headers: map[string]string{}}
@@ -251,14 +251,15 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
-				// ensure the controller has added a heartbeat
-				assert.Assert(t, ctrl.routerHeartbeats.Size() == 1)
+				// ensure the supervisor has added a heartbeat
+				sentHeartbeat := sentHeartbeats[0]
+				supervisor := ctrl.supervisor(sentHeartbeat.Function)
+				assert.Assert(t, supervisor.routerHeartbeats.Size() == 1)
 
 				// ensure the heartbeat was associated with the expected router IP and has the expected timestamp
-				sentHeartbeat := sentHeartbeats[0]
-				heartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
+				receivedHeartbeat, ok := supervisor.routerHeartbeats.Load(fixture.RouterIP)
 				assert.Assert(t, ok)
-				assert.Assert(t, heartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
+				assert.Assert(t, receivedHeartbeat.Timestamp.Equal(sentHeartbeat.Timestamp))
 			},
 		},
 		{
@@ -270,23 +271,28 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
-				// ensure the controller has added both heartbeats
-				assert.Assert(t, ctrl.routerHeartbeats.Size() == 2)
+				// ensure the controller has added both supervisors
+				assert.Assert(t, ctrl.supervisors.Size() == len(sentHeartbeats))
 				for _, sentHeartbeat := range sentHeartbeats {
-					// ensure each heartbeat was associated with the expected router IP and has the expected timestamp
-					heartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
+					// ensure the supervisor has added the heartbeat
+					supervisor := ctrl.supervisor(sentHeartbeat.Function)
+					assert.Assert(t, supervisor.routerHeartbeats.Size() == 1)
+
+					// ensure the heartbeat was associated with the expected router IP and has the expected timestamp
+					receivedHeartbeat, ok := supervisor.routerHeartbeats.Load(fixture.RouterIP)
 					assert.Assert(t, ok)
-					assert.Assert(t, heartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
+					assert.Assert(t, receivedHeartbeat.Timestamp.Equal(sentHeartbeat.Timestamp))
 				}
 			},
 		},
 		{
 			name: "keeps most recent",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
-				// seed the controller with a recent heartbeat
+				// seed the supervisor with a recent heartbeat
 				fn := fixture.NewFunction()
 				heartbeatTimestamp := time.Now()
-				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP: {Timestamp: heartbeatTimestamp}})
+				supervisor := ctrl.supervisor(fn)
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: fn, Timestamp: heartbeatTimestamp})
 
 				// send an old heartbeat
 				return []function.Heartbeat{
@@ -294,14 +300,13 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
-				assert.Assert(t, ctrl.routerHeartbeats.Size() == 1)
-
-				// ensure the controller kept the heartbeat with the most recent timestamp
 				sentHeartbeat := sentHeartbeats[0]
-				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
+				keptHeartbeat, ok := ctrl.supervisor(sentHeartbeat.Function).routerHeartbeats.Load(fixture.RouterIP)
+
+				// ensure the supervisor kept the heartbeat with the most recent timestamp
 				assert.Assert(t, ok)
-				assert.Assert(t, !keptHeartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
-				assert.Assert(t, sentHeartbeat.Timestamp.Add(time.Hour).Equal(keptHeartbeat[fixture.RouterIP].Timestamp))
+				assert.Assert(t, !keptHeartbeat.Timestamp.Equal(sentHeartbeat.Timestamp))
+				assert.Assert(t, sentHeartbeat.Timestamp.Add(time.Hour).Equal(keptHeartbeat.Timestamp))
 			},
 		},
 		{
@@ -336,9 +341,10 @@ func TestHandleHeartbeat(t *testing.T) {
 		{
 			name: "deletes expired heartbeats",
 			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
-				// seed the controller with an expired heartbeat from a different router
+				// seed the supervisor with an expired heartbeat from a different router
 				fn := fixture.NewFunction()
-				ctrl.routerHeartbeats.Store(fn, RouterHeartbeats{fixture.RouterIP2: {Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))}})
+				supervisor := ctrl.supervisor(fn)
+				supervisor.routerHeartbeats.Store(fixture.RouterIP2, function.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))})
 
 				return []function.Heartbeat{
 					{Function: fn, Timestamp: time.Now()},
@@ -346,15 +352,15 @@ func TestHandleHeartbeat(t *testing.T) {
 			},
 			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
 				sentHeartbeat := sentHeartbeats[0]
-				keptHeartbeat, ok := ctrl.routerHeartbeats.Load(sentHeartbeat.Function)
-				assert.Assert(t, ok)
+				supervisor := ctrl.supervisor(sentHeartbeat.Function)
 
-				// ensure the controller kept the sent heartbeat
-				assert.Assert(t, len(keptHeartbeat) == 1)
-				assert.Assert(t, keptHeartbeat[fixture.RouterIP].Timestamp.Equal(sentHeartbeat.Timestamp))
+				// ensure the supervisor kept the sent heartbeat
+				keptHeartbeat, ok := supervisor.routerHeartbeats.Load(fixture.RouterIP)
+				assert.Assert(t, ok)
+				assert.Assert(t, keptHeartbeat.Timestamp.Equal(sentHeartbeat.Timestamp))
 
 				// ensure the expired heartbeat was deleted
-				_, ok = keptHeartbeat[fixture.RouterIP2]
+				_, ok = supervisor.routerHeartbeats.Load(fixture.RouterIP2)
 				assert.Assert(t, !ok)
 			},
 		},
