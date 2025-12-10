@@ -19,92 +19,100 @@ func init() {
 }
 
 func TestGetReadyInstances(t *testing.T) {
+	type testState struct {
+		fn             function.Function
+		fakeKubernetes *fake.Clientset
+		instances      []*function.Instance
+	}
+
 	testCases := []struct {
 		name  string
 		err   error
-		setup func(*testing.T, *fake.Clientset, function.Function)
-		check func(*testing.T, *fake.Clientset, []*function.Instance)
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
 	}{
 		{
 			name: "one",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			setup: func(t *testing.T, state *testState) {
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				assert.NilError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 1)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1)
 			},
 		},
 		{
 			name: "many",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			setup: func(t *testing.T, state *testState) {
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				assert.NilError(t, err)
 
-				err = fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				err = state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				assert.NilError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 2)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 2)
 			},
 		},
 		{
 			name: "deleted",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				pod := fixture.NewAssignedPod(t, fn, nil)
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.DeletionTimestamp = &metav1.Time{Time: time.Now()}
-				err := fakeKubernetes.Tracker().Add(pod)
+				err := state.fakeKubernetes.Tracker().Add(pod)
 				assert.NilError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
 			},
 		},
 		{
 			name: "failed",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				pod := fixture.NewAssignedPod(t, fn, nil)
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Status.Phase = v1.PodFailed
-				err := fakeKubernetes.Tracker().Add(pod)
+				err := state.fakeKubernetes.Tracker().Add(pod)
 				assert.NilError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
 			},
 		},
 		{
 			name: "no pod IP",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				pod := fixture.NewAssignedPod(t, fn, nil)
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Status.PodIP = ""
-				err := fakeKubernetes.Tracker().Add(pod)
+				err := state.fakeKubernetes.Tracker().Add(pod)
 				assert.NilError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
 			},
 		},
 		{
 			name: "unready",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				pod := fixture.NewAssignedPod(t, fn, nil)
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-				err := fakeKubernetes.Tracker().Add(pod)
+				err := state.fakeKubernetes.Tracker().Add(pod)
 				assert.NilError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
 			},
 		},
 		{
 			name: "different metadata",
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
+				// create a pod with different metadata than state.fn
+				fn := state.fn
 				fn.Metadata = "different"
-				err := fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				assert.NilError(t, err)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
 			},
 		},
 	}
@@ -112,156 +120,164 @@ func TestGetReadyInstances(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			t.Cleanup(cancel)
+			defer cancel()
 
-			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
-			fn := fixture.NewFunction()
+			state := &testState{
+				fn:             fixture.NewFunction(),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
 
-			tc.setup(t, fakeKubernetes, fn)
+			tc.setup(t, state)
 
-			ctrl := New(nil, fakeKubernetes, nil)
+			ctrl := New(nil, state.fakeKubernetes, nil)
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			instances, err := ctrl.getReadyInstances(fn)
+			state.instances, err = ctrl.getReadyInstances(state.fn)
 			if tc.err != nil {
 				assert.ErrorIs(t, err, tc.err)
 			} else {
 				assert.NilError(t, err)
 			}
 
-			tc.check(t, fakeKubernetes, instances)
+			tc.check(t, state)
 		})
 	}
 }
 
 func TestControllerInformer(t *testing.T) {
-	assertCtrlPodInRing := func(t *testing.T, ctrl *Controller) {
+	type testState struct {
+		ctrlPod        *v1.Pod
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+	}
+
+	assertCtrlPodInRing := func(t *testing.T, state *testState) {
 		t.Helper()
-		ringIps := ctrl.ring.List()
+		ringIps := state.ctrl.ring.List()
 		assert.Assert(t, len(ringIps) == 1)
 		assert.Assert(t, fixture.ControllerIP == ringIps[0])
 	}
 
-	assertCtrlPodNotInRing := func(t *testing.T, ctrl *Controller) {
+	assertCtrlPodNotInRing := func(t *testing.T, state *testState) {
 		t.Helper()
-		ringIps := ctrl.ring.List()
+		ringIps := state.ctrl.ring.List()
 		assert.Assert(t, len(ringIps) == 0)
 	}
 
 	testCases := []struct {
 		name   string
-		setup  func(*testing.T) *v1.Pod
-		change func(*testing.T, *v1.Pod, *fake.Clientset, *Controller)
-		check  func(*testing.T, *v1.Pod, *fake.Clientset, *Controller)
+		setup  func(*testing.T, *testState)
+		change func(*testing.T, *testState)
+		check  func(*testing.T, *testState)
 	}{
 		{
 			name: "pod exists",
-			setup: func(t *testing.T) *v1.Pod {
-				return fixture.NewControllerPod()
+			setup: func(t *testing.T, state *testState) {
+				state.ctrlPod = fixture.NewControllerPod()
 			},
-			check: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodInRing(t, ctrl)
+			check: func(t *testing.T, state *testState) {
+				assertCtrlPodInRing(t, state)
 			},
 		},
 		{
 			name: "pod added",
-			setup: func(t *testing.T) *v1.Pod {
-				return nil
+			setup: func(t *testing.T, state *testState) {
+				// intentionally leave ctrlPod nil
 			},
-			change: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				fakeKubernetes.Tracker().Add(fixture.NewControllerPod())
+			change: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.NewControllerPod())
 			},
-			check: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodInRing(t, ctrl)
+			check: func(t *testing.T, state *testState) {
+				assertCtrlPodInRing(t, state)
 			},
 		},
 		{
 			name: "pod deleted",
-			setup: func(t *testing.T) *v1.Pod {
-				return fixture.NewControllerPod()
+			setup: func(t *testing.T, state *testState) {
+				state.ctrlPod = fixture.NewControllerPod()
 			},
-			change: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodInRing(t, ctrl)
-				fakeKubernetes.Tracker().Delete(v1.SchemeGroupVersion.WithResource("pods"), ctrlPod.Namespace, ctrlPod.Name)
+			change: func(t *testing.T, state *testState) {
+				assertCtrlPodInRing(t, state)
+				state.fakeKubernetes.Tracker().Delete(v1.SchemeGroupVersion.WithResource("pods"), state.ctrlPod.Namespace, state.ctrlPod.Name)
 			},
-			check: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodNotInRing(t, ctrl)
+			check: func(t *testing.T, state *testState) {
+				assertCtrlPodNotInRing(t, state)
 			},
 		},
 		{
 			name: "pod updated with condition unready",
-			setup: func(t *testing.T) *v1.Pod {
-				return fixture.NewControllerPod()
+			setup: func(t *testing.T, state *testState) {
+				state.ctrlPod = fixture.NewControllerPod()
 			},
-			change: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodInRing(t, ctrl)
-				ctrlPod.Status.Conditions = []v1.PodCondition{
+			change: func(t *testing.T, state *testState) {
+				assertCtrlPodInRing(t, state)
+				state.ctrlPod.Status.Conditions = []v1.PodCondition{
 					{
 						Type:   v1.PodReady,
 						Status: v1.ConditionFalse,
 					},
 				}
-				fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), ctrlPod, ctrlPod.Namespace)
+				state.fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), state.ctrlPod, state.ctrlPod.Namespace)
 			},
-			check: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodNotInRing(t, ctrl)
+			check: func(t *testing.T, state *testState) {
+				assertCtrlPodNotInRing(t, state)
 			},
 		},
 		{
 			name: "pod updated with phase succeeded",
-			setup: func(t *testing.T) *v1.Pod {
-				return fixture.NewControllerPod()
+			setup: func(t *testing.T, state *testState) {
+				state.ctrlPod = fixture.NewControllerPod()
 			},
-			change: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodInRing(t, ctrl)
-				ctrlPod.Status.Phase = v1.PodSucceeded
-				fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), ctrlPod, ctrlPod.Namespace)
+			change: func(t *testing.T, state *testState) {
+				assertCtrlPodInRing(t, state)
+				state.ctrlPod.Status.Phase = v1.PodSucceeded
+				state.fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), state.ctrlPod, state.ctrlPod.Namespace)
 			},
-			check: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodNotInRing(t, ctrl)
+			check: func(t *testing.T, state *testState) {
+				assertCtrlPodNotInRing(t, state)
 			},
 		},
 		{
 			name: "pod updated with phase failed",
-			setup: func(t *testing.T) *v1.Pod {
-				return fixture.NewControllerPod()
+			setup: func(t *testing.T, state *testState) {
+				state.ctrlPod = fixture.NewControllerPod()
 			},
-			change: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodInRing(t, ctrl)
-				ctrlPod.Status.Phase = v1.PodFailed
-				fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), ctrlPod, ctrlPod.Namespace)
+			change: func(t *testing.T, state *testState) {
+				assertCtrlPodInRing(t, state)
+				state.ctrlPod.Status.Phase = v1.PodFailed
+				state.fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), state.ctrlPod, state.ctrlPod.Namespace)
 			},
-			check: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodNotInRing(t, ctrl)
+			check: func(t *testing.T, state *testState) {
+				assertCtrlPodNotInRing(t, state)
 			},
 		},
 		{
 			name: "pod updated with phase unknown",
-			setup: func(t *testing.T) *v1.Pod {
-				return fixture.NewControllerPod()
+			setup: func(t *testing.T, state *testState) {
+				state.ctrlPod = fixture.NewControllerPod()
 			},
-			change: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodInRing(t, ctrl)
-				ctrlPod.Status.Phase = v1.PodUnknown
-				fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), ctrlPod, ctrlPod.Namespace)
+			change: func(t *testing.T, state *testState) {
+				assertCtrlPodInRing(t, state)
+				state.ctrlPod.Status.Phase = v1.PodUnknown
+				state.fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), state.ctrlPod, state.ctrlPod.Namespace)
 			},
-			check: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodNotInRing(t, ctrl)
+			check: func(t *testing.T, state *testState) {
+				assertCtrlPodNotInRing(t, state)
 			},
 		},
 		{
 			name: "pod updated with no ip",
-			setup: func(t *testing.T) *v1.Pod {
-				return fixture.NewControllerPod()
+			setup: func(t *testing.T, state *testState) {
+				state.ctrlPod = fixture.NewControllerPod()
 			},
-			change: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodInRing(t, ctrl)
-				ctrlPod.Status.PodIP = ""
-				fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), ctrlPod, ctrlPod.Namespace)
+			change: func(t *testing.T, state *testState) {
+				assertCtrlPodInRing(t, state)
+				state.ctrlPod.Status.PodIP = ""
+				state.fakeKubernetes.Tracker().Update(v1.SchemeGroupVersion.WithResource("pods"), state.ctrlPod, state.ctrlPod.Namespace)
 			},
-			check: func(t *testing.T, ctrlPod *v1.Pod, fakeKubernetes *fake.Clientset, ctrl *Controller) {
-				assertCtrlPodNotInRing(t, ctrl)
+			check: func(t *testing.T, state *testState) {
+				assertCtrlPodNotInRing(t, state)
 			},
 		},
 	}
@@ -269,22 +285,28 @@ func TestControllerInformer(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			t.Cleanup(cancel)
+			defer cancel()
 
-			ctrlPod := tc.setup(t)
-			fakeKubernetes := fake.NewClientset()
-			fakeKubernetes.Tracker().Add(ctrlPod)
+			state := &testState{
+				fakeKubernetes: fake.NewClientset(),
+			}
 
-			ctrl := New(nil, fakeKubernetes, nil)
-			err := ctrl.startInformers(ctx)
+			tc.setup(t, state)
+
+			if state.ctrlPod != nil {
+				state.fakeKubernetes.Tracker().Add(state.ctrlPod)
+			}
+
+			state.ctrl = New(nil, state.fakeKubernetes, nil)
+			err := state.ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
 			if tc.change != nil {
-				tc.change(t, ctrlPod, fakeKubernetes, ctrl)
+				tc.change(t, state)
 				time.Sleep(100 * time.Millisecond)
 			}
 
-			tc.check(t, ctrlPod, fakeKubernetes, ctrl)
+			tc.check(t, state)
 		})
 	}
 }

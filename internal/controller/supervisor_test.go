@@ -16,40 +16,46 @@ import (
 )
 
 func TestScale(t *testing.T) {
+	type testState struct {
+		fn             function.Function
+		fakeKubernetes *fake.Clientset
+		instances      []*function.Instance
+	}
+
 	testCases := []struct {
 		name             string
 		desiredInstances int
 		err              error
-		setup            func(*testing.T, *fake.Clientset, function.Function)
-		check            func(*testing.T, *fake.Clientset, []*function.Instance)
+		setup            func(*testing.T, *testState)
+		check            func(*testing.T, *testState)
 	}{
 		// ==================== Basic scaling operations ====================
 		{
 			// Basic scale up: assign an available pod to reach desired instance count
 			name:             "scales up by assigning available pod",
 			desiredInstances: 1,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 1)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1)
 			},
 		},
 		{
 			// Scale up with surplus pods: only assigns needed pods, leaves extras unassigned
 			name:             "only assigns needed pods when extras available",
 			desiredInstances: 1,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
 				for range 5 {
-					fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 				}
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 1)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1)
 
 				// verify 4 pods remain unassigned
-				instance := instances[0]
-				pods, err := fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{
+				instance := state.instances[0]
+				pods, err := state.fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{
 					LabelSelector: doesNotHaveTenantSelector.String(),
 				})
 				assert.NilError(t, err)
@@ -61,11 +67,11 @@ func TestScale(t *testing.T) {
 			name:             "times out when no pods available",
 			desiredInstances: 1,
 			err:              context.DeadlineExceeded,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
 				// intentionally empty - no pods available
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
 			},
 		},
 		{
@@ -73,23 +79,24 @@ func TestScale(t *testing.T) {
 			name:             "ignores pods with different metadata",
 			desiredInstances: 1,
 			err:              context.DeadlineExceeded,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
+				fn := state.fn
 				fn.Metadata = "different"
-				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
 			},
 		},
 		{
 			// Already at desired count: no scaling needed, returns existing instances
 			name:             "returns existing instances when already at desired count",
 			desiredInstances: 1,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 1)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1)
 			},
 		},
 
@@ -98,21 +105,21 @@ func TestScale(t *testing.T) {
 			// Scale down: keeps most recently assigned instance (likely has warmest cache)
 			name:             "keeps most recently assigned instance when scaling down",
 			desiredInstances: 1,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
 				// add max - 1 instances with older assignment times
-				for range fn.Scale.MaxInstances - 1 {
-					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				for range state.fn.Scale.MaxInstances - 1 {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				}
 
 				// add one instance with the most recent assignment time
-				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Name = "most-recent-assigned-at"
-				pod.Annotations[key.AssignedAt.Label] = time.Now().Add(time.Second).UTC().Format(time.RFC3339)
-				fakeKubernetes.Tracker().Add(pod)
+				pod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(time.Second).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(pod)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 1)
-				assert.Assert(t, instances[0].Name == "most-recent-assigned-at")
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1)
+				assert.Assert(t, state.instances[0].Name == "most-recent-assigned-at")
 			},
 		},
 
@@ -122,27 +129,27 @@ func TestScale(t *testing.T) {
 			// Unready instances are preserved during scale up (they might become ready soon)
 			name:             "scales to max ready instances while preserving unready",
 			desiredInstances: 5, // max instances
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				assert.Assert(t, fn.Scale.MaxInstances == 5)
+			setup: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.fn.Scale.MaxInstances == 5)
 
 				// add max - 1 ready instances
-				for range fn.Scale.MaxInstances - 1 {
-					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				for range state.fn.Scale.MaxInstances - 1 {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				}
 
 				// add 1 unready instance
-				unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+				unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 				unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-				fakeKubernetes.Tracker().Add(unreadyPod)
+				state.fakeKubernetes.Tracker().Add(unreadyPod)
 
 				// add 1 available pod for scaling
-				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				fn := instances[0].Function
-				assert.Assert(t, len(instances) == fn.Scale.MaxInstances)
+			check: func(t *testing.T, state *testState) {
+				fn := state.instances[0].Function
+				assert.Assert(t, len(state.instances) == fn.Scale.MaxInstances)
 
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+1)
 
@@ -155,49 +162,49 @@ func TestScale(t *testing.T) {
 			// All unready, over max: can't scale up when too many total instances exist
 			name:             "blocks scale up when total instances exceed max",
 			desiredInstances: 5, // max instances
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				assert.Assert(t, fn.Scale.MaxInstances == 5)
+			setup: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.fn.Scale.MaxInstances == 5)
 
 				// add max + 1 unready instances (exceeds total instance limit)
-				for range fn.Scale.MaxInstances + 1 {
-					unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+				for range state.fn.Scale.MaxInstances + 1 {
+					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-					fakeKubernetes.Tracker().Add(unreadyPod)
+					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
 
 				// available pod exists but shouldn't be used
-				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+			check: func(t *testing.T, state *testState) {
 				// no ready instances returned because total count exceeds max
-				assert.Assert(t, len(instances) == 0)
+				assert.Assert(t, len(state.instances) == 0)
 			},
 		},
 		{
 			// Some ready, many unready: returns ready instances but can't scale up further
 			name:             "returns existing ready instances when blocked by total count",
 			desiredInstances: 5, // max instances
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
-				assert.Assert(t, fn.Scale.MaxInstances == 5)
+			setup: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.fn.Scale.MaxInstances == 5)
 
 				// add 2 ready instances
 				for range 2 {
-					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				}
 
 				// add max + 1 unready instances
-				for range fn.Scale.MaxInstances + 1 {
-					unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+				for range state.fn.Scale.MaxInstances + 1 {
+					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-					fakeKubernetes.Tracker().Add(unreadyPod)
+					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+			check: func(t *testing.T, state *testState) {
 				// only 2 ready instances returned (can't scale up due to total count)
-				assert.Assert(t, len(instances) == 2)
+				assert.Assert(t, len(state.instances) == 2)
 
-				fn := instances[0].Function
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				fn := state.instances[0].Function
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+3)
 
@@ -210,19 +217,19 @@ func TestScale(t *testing.T) {
 			// Scale to 0 cleans up all unready instances
 			name:             "deletes all unready instances when scaling to zero",
 			desiredInstances: 0,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
 				// add max + 1 unready instances
-				for range fn.Scale.MaxInstances + 1 {
-					unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+				for range state.fn.Scale.MaxInstances + 1 {
+					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-					fakeKubernetes.Tracker().Add(unreadyPod)
+					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
 
 				// all unready instances should be deleted
-				pods, err := fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0)
 			},
@@ -231,22 +238,22 @@ func TestScale(t *testing.T) {
 			// Scale down deletes all unready instances when maintaining one ready
 			name:             "deletes all unready instances when scaling down to one",
 			desiredInstances: 1,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
 				// add 1 ready instance
-				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 
 				// add max unready instances
-				for range fn.Scale.MaxInstances {
-					unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+				for range state.fn.Scale.MaxInstances {
+					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-					fakeKubernetes.Tracker().Add(unreadyPod)
+					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 1)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1)
 
 				// all unready instances should be deleted
-				pods, err := fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fixture.FunctionNamespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 			},
@@ -255,23 +262,23 @@ func TestScale(t *testing.T) {
 			// Can't scale up when total instances at limit (preserves unready during scale up)
 			name:             "preserves unready instances during blocked scale up",
 			desiredInstances: 2,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
 				// add 1 ready instance
-				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 
 				// add max unready instances (1 ready + max unready = max+1 total)
-				for range fn.Scale.MaxInstances {
-					unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+				for range state.fn.Scale.MaxInstances {
+					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-					fakeKubernetes.Tracker().Add(unreadyPod)
+					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
+			check: func(t *testing.T, state *testState) {
 				// only 1 ready instance returned (can't scale up, already over max total)
-				assert.Assert(t, len(instances) == 1)
+				assert.Assert(t, len(state.instances) == 1)
 
-				fn := instances[0].Function
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				fn := state.instances[0].Function
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+1)
 
@@ -284,22 +291,22 @@ func TestScale(t *testing.T) {
 			// Scale down from max ready + 1 unready: deletes excess ready and unready
 			name:             "deletes excess ready and unready instances when scaling down",
 			desiredInstances: 2,
-			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
+			setup: func(t *testing.T, state *testState) {
 				// add max ready instances
-				for range fn.Scale.MaxInstances {
-					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				for range state.fn.Scale.MaxInstances {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				}
 
 				// add 1 unready instance
-				unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+				unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 				unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-				fakeKubernetes.Tracker().Add(unreadyPod)
+				state.fakeKubernetes.Tracker().Add(unreadyPod)
 			},
-			check: func(t *testing.T, fakeKubernetes *fake.Clientset, instances []*function.Instance) {
-				assert.Assert(t, len(instances) == 2)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 2)
 
-				fn := instances[0].Function
-				pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				fn := state.instances[0].Function
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 2)
 
@@ -313,18 +320,20 @@ func TestScale(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			t.Cleanup(cancel)
+			defer cancel()
 
-			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
-			fn := fixture.NewFunction()
+			state := &testState{
+				fn:             fixture.NewFunction(),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
 
-			tc.setup(t, fakeKubernetes, fn)
+			tc.setup(t, state)
 
-			ctrl := New(nil, fakeKubernetes, nil)
+			ctrl := New(nil, state.fakeKubernetes, nil)
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			instances, err := ctrl.supervisor(fn).scale(ctx, ScalingDecision{
+			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, ScalingDecision{
 				DesiredInstances: tc.desiredInstances,
 				Reason:           "test",
 			})
@@ -334,7 +343,7 @@ func TestScale(t *testing.T) {
 				assert.NilError(t, err)
 			}
 
-			tc.check(t, fakeKubernetes, instances)
+			tc.check(t, state)
 		})
 	}
 }

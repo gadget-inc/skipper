@@ -29,137 +29,129 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestHandleInstance(t *testing.T) {
-	type setupStruct struct {
-		fn      function.Function
-		headers map[string]string
+	type testState struct {
+		fn             function.Function
+		headers        map[string]string
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+		rw             *httptest.ResponseRecorder
 	}
 
 	testCases := []struct {
 		name  string
-		setup func(*testing.T, *Controller, *fake.Clientset) setupStruct
-		check func(*testing.T, *Controller, *fake.Clientset, setupStruct, *httptest.ResponseRecorder)
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
 	}{
 		{
 			name: "filters by excluded instance names",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) setupStruct {
-				fn := fixture.NewFunction()
+			setup: func(t *testing.T, state *testState) {
 				// add two ready instances
-				podA := fixture.NewAssignedPod(t, fn, nil)
-				podA.Name = fn.Deployment + "-a"
-				podB := fixture.NewAssignedPod(t, fn, nil)
-				podB.Name = fn.Deployment + "-b"
-				fakeKubernetes.Tracker().Add(podA)
-				fakeKubernetes.Tracker().Add(podB)
-				return setupStruct{fn: fn, headers: map[string]string{key.ExcludeInstanceNames.Header: fn.Deployment + "-a"}}
+				podA := fixture.NewAssignedPod(t, state.fn, nil)
+				podA.Name = state.fn.Deployment + "-a"
+				podB := fixture.NewAssignedPod(t, state.fn, nil)
+				podB.Name = state.fn.Deployment + "-b"
+				state.fakeKubernetes.Tracker().Add(podA)
+				state.fakeKubernetes.Tracker().Add(podB)
+				state.headers = map[string]string{key.ExcludeInstanceNames.Header: state.fn.Deployment + "-a"}
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
 				var instance *function.Instance
-				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				// ensure we did not receive the excluded one
-				assert.Assert(t, instance.Name == setupStruct.fn.Deployment+"-b")
+				assert.Assert(t, instance.Name == state.fn.Deployment+"-b")
 			},
 		},
 		{
 			name: "reverts to all instances when all instances on excluded list",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) setupStruct {
-				fn := fixture.NewFunction()
+			setup: func(t *testing.T, state *testState) {
 				// add multiple ready instances
-				podA := fixture.NewAssignedPod(t, fn, nil)
-				podA.Name = fn.Deployment + "-a"
-				podB := fixture.NewAssignedPod(t, fn, nil)
-				podB.Name = fn.Deployment + "-b"
-				podC := fixture.NewAssignedPod(t, fn, nil)
-				podC.Name = fn.Deployment + "-c"
-				fakeKubernetes.Tracker().Add(podA)
-				fakeKubernetes.Tracker().Add(podB)
-				fakeKubernetes.Tracker().Add(podC)
-				return setupStruct{fn: fn, headers: map[string]string{key.ExcludeInstanceNames.Header: fn.Deployment + "-a," + fn.Deployment + "-b," + fn.Deployment + "-c"}}
+				podA := fixture.NewAssignedPod(t, state.fn, nil)
+				podA.Name = state.fn.Deployment + "-a"
+				podB := fixture.NewAssignedPod(t, state.fn, nil)
+				podB.Name = state.fn.Deployment + "-b"
+				podC := fixture.NewAssignedPod(t, state.fn, nil)
+				podC.Name = state.fn.Deployment + "-c"
+				state.fakeKubernetes.Tracker().Add(podA)
+				state.fakeKubernetes.Tracker().Add(podB)
+				state.fakeKubernetes.Tracker().Add(podC)
+				state.headers = map[string]string{key.ExcludeInstanceNames.Header: state.fn.Deployment + "-a," + state.fn.Deployment + "-b," + state.fn.Deployment + "-c"}
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
 				var instance *function.Instance
-				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				// should return one of the instances since we revert to unfiltered list
-				assert.Assert(t, instance.Name == setupStruct.fn.Deployment+"-a" || instance.Name == setupStruct.fn.Deployment+"-b" || instance.Name == setupStruct.fn.Deployment+"-c")
+				assert.Assert(t, instance.Name == state.fn.Deployment+"-a" || instance.Name == state.fn.Deployment+"-b" || instance.Name == state.fn.Deployment+"-c")
 			},
 		},
 		{
 			name: "smoke",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) setupStruct {
-				fn := fixture.NewFunction()
-				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-				return setupStruct{fn: fn, headers: map[string]string{}}
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == state.fn)
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
 		{
 			name: "unassigned with unassigned pod",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) setupStruct {
-				fn := fixture.NewFunction()
-				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-				return setupStruct{fn: fn, headers: map[string]string{}}
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == state.fn)
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
 		{
 			name: "unassigned with eventual unassigned pod",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) setupStruct {
-				fn := fixture.NewFunction()
+			setup: func(t *testing.T, state *testState) {
 				go func() {
 					time.Sleep(500 * time.Millisecond)
-					fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 				}()
-				return setupStruct{fn: fn, headers: map[string]string{}}
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == state.fn)
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
 		{
 			name: "instances > max",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) setupStruct {
-				fn := fixture.NewFunction()
-				fn.Scale.MaxInstances = 1 // ensure we can only have one instance
+			setup: func(t *testing.T, state *testState) {
+				state.fn.Scale.MaxInstances = 1 // ensure we can only have one instance
 
 				// add max instances
-				for range fn.Scale.MaxInstances {
-					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				for range state.fn.Scale.MaxInstances {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				}
 
 				// add another instance with an earlier assigned at
-				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Name = "earliest-assigned-at"
 				pod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-time.Second).UTC().Format(time.RFC3339)
-				fakeKubernetes.Tracker().Add(pod)
-
-				return setupStruct{fn: fn, headers: map[string]string{}}
+				state.fakeKubernetes.Tracker().Add(pod)
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == state.fn)
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 
 				// ensure we didn't receive the earliest assigned at instance
@@ -168,11 +160,9 @@ func TestHandleInstance(t *testing.T) {
 		},
 		{
 			name: "no ready instances while scaling up race",
-			setup: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset) setupStruct {
-				fn := fixture.NewFunction()
-
+			setup: func(t *testing.T, state *testState) {
 				// grab supervisor lock
-				supervisor := ctrl.supervisor(fn)
+				supervisor := state.ctrl.supervisor(state.fn)
 				supervisor.mu.Lock()
 
 				go func() {
@@ -180,8 +170,8 @@ func TestHandleInstance(t *testing.T) {
 					time.Sleep(500 * time.Millisecond)
 
 					// add 2 ready instances
-					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-					fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 
 					// give the informers a chance to update their caches
 					time.Sleep(10 * time.Millisecond)
@@ -189,24 +179,22 @@ func TestHandleInstance(t *testing.T) {
 					// release supervisor lock
 					supervisor.mu.Unlock()
 				}()
-
-				return setupStruct{fn: fn, headers: map[string]string{}}
 			},
-			check: func(t *testing.T, ctrl *Controller, fakeKubernetes *fake.Clientset, setupStruct setupStruct, rw *httptest.ResponseRecorder) {
+			check: func(t *testing.T, state *testState) {
 				// ensure we received an instance
-				assert.Assert(t, rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Code == http.StatusOK)
 
 				var instance *function.Instance
-				assert.NilError(t, json.Unmarshal(rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == setupStruct.fn)
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
+				assert.Assert(t, instance.Function == state.fn)
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 
 				// ensure we still have the 2 ready instances because we didn't scale down to 1
-				pods, err := fakeKubernetes.CoreV1().Pods(setupStruct.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 2)
 				for _, pod := range pods.Items {
-					ensurePodIsAssignedToFunction(t, pod, setupStruct.fn)
+					ensurePodIsAssignedToFunction(t, pod, state.fn)
 				}
 			},
 		},
@@ -215,45 +203,55 @@ func TestHandleInstance(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			t.Cleanup(cancel)
+			defer cancel()
 
-			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
-			ctrl := New(nil, fakeKubernetes, nil)
-			setupStruct := tc.setup(t, ctrl, fakeKubernetes)
+			state := &testState{
+				fn:             fixture.NewFunction(),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+			state.ctrl = New(nil, state.fakeKubernetes, nil)
 
-			err := ctrl.startInformers(ctx)
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
 			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/instance", nil)
-			setupStruct.fn.SetHeader(req)
-			for header, value := range setupStruct.headers {
+			state.fn.SetHeader(req)
+			for header, value := range state.headers {
 				req.Header.Set(header, value)
 			}
-			rw := httptest.NewRecorder()
-			ctrl.Handler().ServeHTTP(rw, req)
+			state.rw = httptest.NewRecorder()
+			state.ctrl.Handler().ServeHTTP(state.rw, req)
 
-			tc.check(t, ctrl, fakeKubernetes, setupStruct, rw)
+			tc.check(t, state)
 		})
 	}
 }
 
 func TestHandleHeartbeat(t *testing.T) {
+	type testState struct {
+		mcc        *fixture.MockControllerClient
+		ctrl       *Controller
+		heartbeats []function.Heartbeat
+	}
+
 	testCases := []struct {
 		name  string
-		setup func(*testing.T, *fixture.MockControllerClient, *Controller) []function.Heartbeat
-		check func(*testing.T, *fixture.MockControllerClient, *Controller, []function.Heartbeat)
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
 	}{
 		{
 			name: "receiving one heartbeat",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
-				return []function.Heartbeat{
+			setup: func(t *testing.T, state *testState) {
+				state.heartbeats = []function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
+			check: func(t *testing.T, state *testState) {
 				// ensure the supervisor has added a heartbeat
-				sentHeartbeat := sentHeartbeats[0]
-				supervisor := ctrl.supervisor(sentHeartbeat.Function)
+				sentHeartbeat := state.heartbeats[0]
+				supervisor := state.ctrl.supervisor(sentHeartbeat.Function)
 				assert.Assert(t, supervisor.routerHeartbeats.Size() == 1)
 
 				// ensure the heartbeat was associated with the expected router IP and has the expected timestamp
@@ -264,18 +262,18 @@ func TestHandleHeartbeat(t *testing.T) {
 		},
 		{
 			name: "receiving multiple heartbeats",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
-				return []function.Heartbeat{
+			setup: func(t *testing.T, state *testState) {
+				state.heartbeats = []function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
+			check: func(t *testing.T, state *testState) {
 				// ensure the controller has added both supervisors
-				assert.Assert(t, ctrl.supervisors.Size() == len(sentHeartbeats))
-				for _, sentHeartbeat := range sentHeartbeats {
+				assert.Assert(t, state.ctrl.supervisors.Size() == len(state.heartbeats))
+				for _, sentHeartbeat := range state.heartbeats {
 					// ensure the supervisor has added the heartbeat
-					supervisor := ctrl.supervisor(sentHeartbeat.Function)
+					supervisor := state.ctrl.supervisor(sentHeartbeat.Function)
 					assert.Assert(t, supervisor.routerHeartbeats.Size() == 1)
 
 					// ensure the heartbeat was associated with the expected router IP and has the expected timestamp
@@ -287,21 +285,21 @@ func TestHandleHeartbeat(t *testing.T) {
 		},
 		{
 			name: "keeps most recent",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+			setup: func(t *testing.T, state *testState) {
 				// seed the supervisor with a recent heartbeat
 				fn := fixture.NewFunction()
 				heartbeatTimestamp := time.Now()
-				supervisor := ctrl.supervisor(fn)
+				supervisor := state.ctrl.supervisor(fn)
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: fn, Timestamp: heartbeatTimestamp})
 
 				// send an old heartbeat
-				return []function.Heartbeat{
+				state.heartbeats = []function.Heartbeat{
 					{Function: fn, Timestamp: heartbeatTimestamp.Add(-time.Hour)},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
-				sentHeartbeat := sentHeartbeats[0]
-				keptHeartbeat, ok := ctrl.supervisor(sentHeartbeat.Function).routerHeartbeats.Load(fixture.RouterIP)
+			check: func(t *testing.T, state *testState) {
+				sentHeartbeat := state.heartbeats[0]
+				keptHeartbeat, ok := state.ctrl.supervisor(sentHeartbeat.Function).routerHeartbeats.Load(fixture.RouterIP)
 
 				// ensure the supervisor kept the heartbeat with the most recent timestamp
 				assert.Assert(t, ok)
@@ -311,48 +309,46 @@ func TestHandleHeartbeat(t *testing.T) {
 		},
 		{
 			name: "forwards heartbeats",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+			setup: func(t *testing.T, state *testState) {
 				// seed the ring with multiple controller IPs
-				ctrl.ring.Add(fixture.ControllerIP)
-				ctrl.ring.Add(fixture.ControllerIP2)
+				state.ctrl.ring.Add(fixture.ControllerIP)
+				state.ctrl.ring.Add(fixture.ControllerIP2)
 
 				// send multiple heartbeats for different functions
-				sentHeartbeats := []function.Heartbeat{
+				state.heartbeats = []function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 
 				// ensure the controller sends the heartbeats to the other controllers
-				mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+				state.mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
 					// ensure the controller forwards the same heartbeats to the other controllers
-					assert.DeepEqual(t, heartbeats, sentHeartbeats)
+					assert.DeepEqual(t, heartbeats, state.heartbeats)
 					// ensure the controller forwards the list of controllers that have received heartbeats
 					assert.DeepEqual(t, forwardedFor, []string{fixture.ControllerIP, fixture.ControllerIP2})
 					return nil
 				})
-
-				return sentHeartbeats
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
+			check: func(t *testing.T, state *testState) {
 				// give the goroutine that forwards the heartbeats a chance to run
 				time.Sleep(10 * time.Millisecond)
 			},
 		},
 		{
 			name: "deletes expired heartbeats",
-			setup: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller) []function.Heartbeat {
+			setup: func(t *testing.T, state *testState) {
 				// seed the supervisor with an expired heartbeat from a different router
 				fn := fixture.NewFunction()
-				supervisor := ctrl.supervisor(fn)
+				supervisor := state.ctrl.supervisor(fn)
 				supervisor.routerHeartbeats.Store(fixture.RouterIP2, function.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))})
 
-				return []function.Heartbeat{
+				state.heartbeats = []function.Heartbeat{
 					{Function: fn, Timestamp: time.Now()},
 				}
 			},
-			check: func(t *testing.T, mcc *fixture.MockControllerClient, ctrl *Controller, sentHeartbeats []function.Heartbeat) {
-				sentHeartbeat := sentHeartbeats[0]
-				supervisor := ctrl.supervisor(sentHeartbeat.Function)
+			check: func(t *testing.T, state *testState) {
+				sentHeartbeat := state.heartbeats[0]
+				supervisor := state.ctrl.supervisor(sentHeartbeat.Function)
 
 				// ensure the supervisor kept the sent heartbeat
 				keptHeartbeat, ok := supervisor.routerHeartbeats.Load(fixture.RouterIP)
@@ -368,21 +364,25 @@ func TestHandleHeartbeat(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			mcc := fixture.NewMockControllerClient(t)
-			ctrl := New(func(host string, port int) Client { return mcc }, fake.NewClientset(), nil)
+			state := &testState{
+				mcc: fixture.NewMockControllerClient(t),
+			}
+			state.ctrl = New(func(host string, port int) Client { return state.mcc }, fake.NewClientset(), nil)
 
-			heartbeats := tc.setup(t, mcc, ctrl)
-			heartbeatBytes, err := json.Marshal(heartbeats)
+			tc.setup(t, state)
+
+			heartbeatBytes, err := json.Marshal(state.heartbeats)
 			assert.NilError(t, err)
 
 			req := httptest.NewRequest(http.MethodPost, "/heartbeat", bytes.NewReader(heartbeatBytes))
 			req.Header.Set(key.RouterIP.Header, fixture.RouterIP)
 			rw := httptest.NewRecorder()
-			ctrl.Handler().ServeHTTP(rw, req)
+			state.ctrl.Handler().ServeHTTP(rw, req)
 
 			assert.Assert(t, rw.Code == http.StatusOK)
 			assert.Assert(t, rw.Body.Len() == 0)
-			tc.check(t, mcc, ctrl, heartbeats)
+
+			tc.check(t, state)
 		})
 	}
 }

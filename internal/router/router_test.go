@@ -129,39 +129,45 @@ func TestMethods(t *testing.T) {
 }
 
 func TestHeaders(t *testing.T) {
+	type testState struct {
+		fn      function.Function
+		req     *http.Request
+		headers http.Header
+	}
+
 	testCases := []struct {
-		name         string
-		setHeaders   func(fn function.Function, req *http.Request)
-		checkHeaders func(t *testing.T, fn function.Function, headers http.Header)
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
 	}{
 		{
 			name: "smoke",
-			setHeaders: func(fn function.Function, req *http.Request) {
-				req.Host = fn.Tenant + ".example.com"
+			setup: func(t *testing.T, state *testState) {
+				state.req.Host = state.fn.Tenant + ".example.com"
 			},
-			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
-				expectedHost := fn.Tenant + ".example.com"
+			check: func(t *testing.T, state *testState) {
+				expectedHost := state.fn.Tenant + ".example.com"
 				expectedProto := "http"
 
-				assert.DeepEqual(t, headers.Values("Host"), []string{expectedHost})
-				assert.Assert(t, len(headers.Values("X-Forwarded-For")) == 1) // TODO: check the actual value
-				assert.DeepEqual(t, headers.Values("X-Forwarded-Host"), []string{expectedHost})
-				assert.DeepEqual(t, headers.Values("X-Forwarded-Proto"), []string{expectedProto})
-				assert.DeepEqual(t, headers.Values("Forwarded"), []string{fmt.Sprintf("for=%s;host=%s;proto=%s", headers.Get("X-Forwarded-For"), expectedHost, expectedProto)})
-				assert.Assert(t, len(headers) == 5)
+				assert.DeepEqual(t, state.headers.Values("Host"), []string{expectedHost})
+				assert.Assert(t, len(state.headers.Values("X-Forwarded-For")) == 1) // TODO: check the actual value
+				assert.DeepEqual(t, state.headers.Values("X-Forwarded-Host"), []string{expectedHost})
+				assert.DeepEqual(t, state.headers.Values("X-Forwarded-Proto"), []string{expectedProto})
+				assert.DeepEqual(t, state.headers.Values("Forwarded"), []string{fmt.Sprintf("for=%s;host=%s;proto=%s", state.headers.Get("X-Forwarded-For"), expectedHost, expectedProto)})
+				assert.Assert(t, len(state.headers) == 5)
 			},
 		},
 		{
 			name: "custom",
-			setHeaders: func(fn function.Function, req *http.Request) {
-				req.Header.Set("X-Custom-Header", "custom-value")
-				req.Header.Add("X-Custom-Multi-Header", "multi-value-1")
-				req.Header.Add("X-Custom-Multi-Header", "multi-value-2")
+			setup: func(t *testing.T, state *testState) {
+				state.req.Header.Set("X-Custom-Header", "custom-value")
+				state.req.Header.Add("X-Custom-Multi-Header", "multi-value-1")
+				state.req.Header.Add("X-Custom-Multi-Header", "multi-value-2")
 			},
-			checkHeaders: func(t *testing.T, fn function.Function, headers http.Header) {
-				assert.DeepEqual(t, headers.Values("X-Custom-Header"), []string{"custom-value"})
-				assert.DeepEqual(t, headers.Values("X-Custom-Multi-Header"), []string{"multi-value-1", "multi-value-2"})
-				assert.Assert(t, len(headers) == 7)
+			check: func(t *testing.T, state *testState) {
+				assert.DeepEqual(t, state.headers.Values("X-Custom-Header"), []string{"custom-value"})
+				assert.DeepEqual(t, state.headers.Values("X-Custom-Multi-Header"), []string{"multi-value-1", "multi-value-2"})
+				assert.Assert(t, len(state.headers) == 7)
 			},
 		},
 	}
@@ -169,36 +175,43 @@ func TestHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
-			fn := fixture.NewFunction()
+			state := &testState{
+				fn: fixture.NewFunction(),
+			}
+			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, "/", nil)
 
 			mcc := fixture.NewMockControllerClient(t)
 			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
-					tc.checkHeaders(t, fn, req.Header)
+					state.headers = req.Header
 				}), nil
 			})
 
-			rw := httptest.NewRecorder()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
-			tc.setHeaders(fn, req)
+			tc.setup(t, state)
 
+			rw := httptest.NewRecorder()
 			router := New(mcc)
-			router.ServeHTTP(rw, req)
+			router.ServeHTTP(rw, state.req)
 
 			assert.Assert(t, rw.Code == http.StatusOK)
 			assert.Assert(t, rw.Body.Len() == 0)
+
+			tc.check(t, state)
 		})
 
 		// integration tests
 		t.Run(tc.name+" integration", func(t *testing.T) {
-			fn := fixture.NewEchoFunction()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, fixture.RouterIntegrationURL, nil)
-			req.Header.Set("User-Agent", "") // disable the default User-Agent header
-			tc.setHeaders(fn, req)
+			state := &testState{
+				fn: fixture.NewEchoFunction(),
+			}
+			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, fixture.RouterIntegrationURL, nil)
+			state.req.Header.Set("User-Agent", "") // disable the default User-Agent header
+
+			tc.setup(t, state)
 
 			transport := &http.Transport{DisableCompression: true} // disable the default "Accept-Encoding: gzip" header
-			res, err := transport.RoundTrip(req)
+			res, err := transport.RoundTrip(state.req)
 			assert.NilError(t, err)
 			defer res.Body.Close()
 			assert.Assert(t, res.StatusCode == http.StatusOK)
@@ -206,81 +219,99 @@ func TestHeaders(t *testing.T) {
 			echoResponse, err := fixture.ParseEchoResponse(res)
 			assert.NilError(t, err)
 
-			headers := echoResponse.Header()
-			headers.Del("Traceparent") // ignore the Traceparent header since it may or may not be present depending on the test environment
-			tc.checkHeaders(t, fn, headers)
+			state.headers = echoResponse.Header()
+			state.headers.Del("Traceparent") // ignore the Traceparent header since it may or may not be present depending on the test environment
+
+			tc.check(t, state)
 		})
 	}
 }
 
 func TestBody(t *testing.T) {
+	type testState struct {
+		fn           function.Function
+		contentType  string
+		body         io.Reader
+		receivedBody string
+	}
+
 	testCases := []struct {
-		name      string
-		getBody   func() (string, io.Reader)
-		checkBody func(t *testing.T, body string)
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
 	}{
 		{
 			name: "empty",
-			getBody: func() (string, io.Reader) {
-				return "", nil
+			setup: func(t *testing.T, state *testState) {
+				state.contentType = ""
+				state.body = nil
 			},
-			checkBody: func(t *testing.T, body string) {
-				assert.Assert(t, len(body) == 0)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.receivedBody) == 0)
 			},
 		},
 		{
 			name: "text",
-			getBody: func() (string, io.Reader) {
-				return "text/plain", strings.NewReader("hello, world!")
+			setup: func(t *testing.T, state *testState) {
+				state.contentType = "text/plain"
+				state.body = strings.NewReader("hello, world!")
 			},
-			checkBody: func(t *testing.T, body string) {
-				assert.Assert(t, body == "hello, world!")
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.receivedBody == "hello, world!")
 			},
 		},
 		{
 			name: "json",
-			getBody: func() (string, io.Reader) {
-				return "application/json", strings.NewReader(`{"key":"value"}`)
+			setup: func(t *testing.T, state *testState) {
+				state.contentType = "application/json"
+				state.body = strings.NewReader(`{"key":"value"}`)
 			},
-			checkBody: func(t *testing.T, body string) {
-				assert.Assert(t, body == `{"key":"value"}`)
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.receivedBody == `{"key":"value"}`)
 			},
 		},
 	}
 
-	fn := fixture.NewFunction()
-
 	for _, tc := range testCases {
 		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
+			state := &testState{
+				fn: fixture.NewFunction(),
+			}
+
+			tc.setup(t, state)
+
 			mcc := fixture.NewMockControllerClient(t)
 			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
 					assert.NilError(t, err)
-					tc.checkBody(t, string(content))
+					state.receivedBody = string(content)
 				}), nil
 			})
 
 			rw := httptest.NewRecorder()
-
-			contentType, body := tc.getBody()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodPost, "/", body)
-			req.Header.Set("Content-Type", contentType)
+			req := fixture.NewFunctionRequest(t, state.fn, http.MethodPost, "/", state.body)
+			req.Header.Set("Content-Type", state.contentType)
 
 			router := New(mcc)
 			router.ServeHTTP(rw, req)
 
 			assert.Assert(t, rw.Code == http.StatusOK)
+
+			tc.check(t, state)
 		})
 
 		// integration tests
 		t.Run(tc.name+" integration", func(t *testing.T) {
-			fn := fixture.NewEchoFunction()
+			state := &testState{
+				fn: fixture.NewEchoFunction(),
+			}
 
-			contentType, body := tc.getBody()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodPost, fixture.RouterIntegrationURL, body)
-			req.Header.Set("Content-Type", contentType)
+			tc.setup(t, state)
+
+			req := fixture.NewFunctionRequest(t, state.fn, http.MethodPost, fixture.RouterIntegrationURL, state.body)
+			req.Header.Set("Content-Type", state.contentType)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
 			assert.NilError(t, err)
@@ -290,7 +321,9 @@ func TestBody(t *testing.T) {
 			echoResponse, err := fixture.ParseEchoResponse(res)
 			assert.NilError(t, err)
 
-			tc.checkBody(t, echoResponse.Body)
+			state.receivedBody = echoResponse.Body
+
+			tc.check(t, state)
 		})
 	}
 }
@@ -352,64 +385,87 @@ func TestHeartbeats(t *testing.T) {
 }
 
 func TestRetries(t *testing.T) {
-	testCases := []struct {
-		name          string
+	type testState struct {
+		fn            function.Function
+		rw            *httptest.ResponseRecorder
 		maxAttempts   int
 		instanceErrs  []error
 		roundTripErrs []error
-		check         func(*testing.T, function.Function, *httptest.ResponseRecorder)
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
 	}{
 		{
-			name:        "no errors",
-			maxAttempts: 1,
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
-				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
+			name: "no errors",
+			setup: func(t *testing.T, state *testState) {
+				state.maxAttempts = 1
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.Tenant)
 			},
 		},
 		{
-			name:         "ctrl.Instance arbitrary error",
-			maxAttempts:  2,
-			instanceErrs: []error{errors.New("arbitrary error")},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
-				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
+			name: "ctrl.Instance arbitrary error",
+			setup: func(t *testing.T, state *testState) {
+				state.maxAttempts = 2
+				state.instanceErrs = []error{errors.New("arbitrary error")}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.Tenant)
 			},
 		},
 		{
-			name:          "roundTripper dial error",
-			maxAttempts:   2,
-			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
-				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
+			name: "roundTripper dial error",
+			setup: func(t *testing.T, state *testState) {
+				state.maxAttempts = 2
+				state.roundTripErrs = []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.Tenant)
 			},
 		},
 		{
-			name:          "ctrl.Instance and roundTripper errors",
-			maxAttempts:   3,
-			instanceErrs:  []error{errors.New("arbitrary error")},
-			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusOK)
-				assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
+			name: "ctrl.Instance and roundTripper errors",
+			setup: func(t *testing.T, state *testState) {
+				state.maxAttempts = 3
+				state.instanceErrs = []error{errors.New("arbitrary error")}
+				state.roundTripErrs = []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.Tenant)
 			},
 		},
 		{
-			name:          "ctrl.Instance and roundTripper errors exceed max attempts",
-			maxAttempts:   2,
-			instanceErrs:  []error{errors.New("arbitrary error")},
-			roundTripErrs: []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}},
-			check: func(t *testing.T, fn function.Function, rw *httptest.ResponseRecorder) {
-				assert.Assert(t, rw.Code == http.StatusBadGateway)
-				assert.Assert(t, rw.Body.Len() == 0)
+			name: "ctrl.Instance and roundTripper errors exceed max attempts",
+			setup: func(t *testing.T, state *testState) {
+				state.maxAttempts = 2
+				state.instanceErrs = []error{errors.New("arbitrary error")}
+				state.roundTripErrs = []error{&net.OpError{Op: "dial", Err: errors.New("arbitrary error")}}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadGateway)
+				assert.Assert(t, state.rw.Body.Len() == 0)
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fixture.SetFlag(t, &FlagMaxRoundTripAttempts, tc.maxAttempts)
+			state := &testState{
+				fn: fixture.NewFunction(),
+				rw: httptest.NewRecorder(),
+			}
+
+			tc.setup(t, state)
+
+			fixture.SetFlag(t, &FlagMaxRoundTripAttempts, state.maxAttempts)
 
 			expectedMethod := http.MethodPost
 			expectedPath := "/"
@@ -418,9 +474,9 @@ func TestRetries(t *testing.T) {
 			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
 			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
-				if len(tc.instanceErrs) > 0 && instanceErrsIndex < len(tc.instanceErrs) {
+				if len(state.instanceErrs) > 0 && instanceErrsIndex < len(state.instanceErrs) {
 					instanceErrsIndex++
-					return nil, tc.instanceErrs[instanceErrsIndex-1]
+					return nil, state.instanceErrs[instanceErrsIndex-1]
 				}
 
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
@@ -436,9 +492,8 @@ func TestRetries(t *testing.T) {
 				}), nil
 			})
 
-			fn := fixture.NewFunction()
 			body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
-			req := fixture.NewFunctionRequest(t, fn, expectedMethod, expectedPath, body)
+			req := fixture.NewFunctionRequest(t, state.fn, expectedMethod, expectedPath, body)
 
 			router := New(mcc)
 
@@ -446,16 +501,16 @@ func TestRetries(t *testing.T) {
 			originalTransport := router.roundTripper
 			router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				defer req.Body.Close() // RoundTripper always closes the body so imitate that behavior
-				if len(tc.roundTripErrs) > 0 && roundTripperErrsIndex < len(tc.roundTripErrs) {
+				if len(state.roundTripErrs) > 0 && roundTripperErrsIndex < len(state.roundTripErrs) {
 					roundTripperErrsIndex++
-					return nil, tc.roundTripErrs[roundTripperErrsIndex-1]
+					return nil, state.roundTripErrs[roundTripperErrsIndex-1]
 				}
 				return originalTransport.RoundTrip(req)
 			})
 
-			rw := httptest.NewRecorder()
-			router.ServeHTTP(rw, req)
-			tc.check(t, fn, rw)
+			router.ServeHTTP(state.rw, req)
+
+			tc.check(t, state)
 			assert.Assert(t, body.closed)
 		})
 	}
