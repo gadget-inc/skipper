@@ -15,7 +15,7 @@
         packages = {
           # dependencies
           git = pkgs.git;
-          go = pkgs.go_1_24;
+          go = pkgs.go_1_25;
           gofumpt = pkgs.gofumpt;
           golangci-lint = pkgs.golangci-lint;
           gotestsum = pkgs.gotestsum;
