@@ -77,7 +77,7 @@ func NewController() *cobra.Command {
 			httpServerError := make(chan error, 1)
 
 			go func() {
-				log.Info(ctx, "serving controller", key.Addr.Field(httpServer.Addr))
+				log.Info(ctx, "serving controller", key.Addr.Slog(httpServer.Addr))
 				if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					httpServerError <- err
 				}

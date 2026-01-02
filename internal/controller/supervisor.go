@@ -86,8 +86,7 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 	defer span.End()
 
 	heartbeat := s.combinedHeartbeat(instances)
-	ctx = log.With(ctx, key.Heartbeat.Field(heartbeat))
-	ctx = telemetry.WithPropagatedAttributes(ctx, key.Heartbeat.Attributes(heartbeat)...)
+	ctx = telemetry.With(ctx, key.Heartbeat.Attr(heartbeat))
 
 	scalingDecision := calculateDesiredInstances(ctx, heartbeat, instances)
 
@@ -158,9 +157,9 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 	})
 
 	ctx = log.With(ctx,
-		key.ScalingDecision.Field(decision),
-		key.ReadyInstances.Field(len(readyInstances)),
-		key.UnreadyInstances.Field(len(unreadyInstances)),
+		key.ScalingDecision.Slog(decision),
+		key.ReadyInstances.Slog(len(readyInstances)),
+		key.UnreadyInstances.Slog(len(unreadyInstances)),
 	)
 
 	if s.fn.Scale.MaxInstances > 1 && decision.UnclampedDesiredInstances > decision.DesiredInstances {
@@ -178,7 +177,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 
 	responsibleIP := s.ctrl.ring.Get(s.fn)
 	if responsibleIP != FlagPodIP.Value() {
-		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Field(responsibleIP))
+		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Slog(responsibleIP))
 		return s.ctrl.getControllerClient(responsibleIP).Scale(ctx, s.fn, decision.DesiredInstances, decision.Reason)
 	}
 
@@ -444,33 +443,21 @@ type ScalingDecision struct {
 	Metrics                   []ScalingMetric
 }
 
-// Fields returns slog attributes for structured logging of the scaling decision.
-func (sd ScalingDecision) Fields() []slog.Attr {
+var _ slog.LogValuer = ScalingDecision{}
+
+// LogValue implements slog.LogValuer for structured logging.
+func (sd ScalingDecision) LogValue() slog.Value {
 	var metricAttrs []slog.Attr
 	for _, metric := range sd.Metrics {
 		metricAttrs = append(metricAttrs, slog.Float64(metric.Name, metric.Value))
 	}
 
-	return []slog.Attr{
-		key.DesiredInstances.Field(sd.DesiredInstances),
-		key.UnclampedDesiredInstances.Field(sd.UnclampedDesiredInstances),
-		key.Reason.Field(sd.Reason),
-		{Key: "metrics", Value: slog.GroupValue(metricAttrs...)},
-	}
-}
-
-// Attributes returns OpenTelemetry attributes for tracing the scaling decision.
-func (sd ScalingDecision) Attributes() []attribute.KeyValue {
-	var metricAttrs []attribute.KeyValue
-	for _, metric := range sd.Metrics {
-		metricAttrs = append(metricAttrs, attribute.Float64("metrics."+metric.Name+".value", metric.Value))
-	}
-
-	return append([]attribute.KeyValue{
-		key.DesiredInstances.Attribute(sd.DesiredInstances),
-		key.UnclampedDesiredInstances.Attribute(sd.UnclampedDesiredInstances),
-		key.Reason.Attribute(sd.Reason),
-	}, metricAttrs...)
+	return slog.GroupValue(
+		key.DesiredInstances.Slog(sd.DesiredInstances),
+		key.UnclampedDesiredInstances.Slog(sd.UnclampedDesiredInstances),
+		key.Reason.Slog(sd.Reason),
+		slog.GroupAttrs("metrics", metricAttrs...),
+	)
 }
 
 // ScalingReason represents the reason for a scaling decision.

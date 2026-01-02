@@ -102,7 +102,7 @@ func (r *Router) Start(ctx context.Context) {
 
 		err := r.ctrl.Heartbeat(ctx, FlagPodIP.Value(), heartbeats)
 		if err != nil {
-			log.Warn(ctx, "failed to send heartbeats", key.Error.Field(err))
+			log.Warn(ctx, "failed to send heartbeats", key.Error.Slog(err))
 		}
 		return nil
 	})
@@ -115,13 +115,12 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			return
 		}
-		log.Error(req.Context(), "failed to get function from header", key.Error.Field(err))
+		log.Error(req.Context(), "failed to get function from header", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	ctx := log.With(req.Context(), key.Function.Field(fn))
-	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
+	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), key.Function.Attr(fn))
 	requestsTotal.WithLabelValues(fn.Deployment).Inc()
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
@@ -189,19 +188,17 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		excludedInstanceNames := slices.Collect(maps.Keys(excludedInstanceNameSet))
-		ctx := log.With(req.Context(), key.Attempt.Field(attempt), key.ExcludeInstanceNames.Field(excludedInstanceNames))
-		ctx = telemetry.WithPropagatedAttributes(ctx, key.Attempt.Attribute(attempt), key.ExcludeInstanceNames.Attribute(excludedInstanceNames))
+		ctx := telemetry.With(req.Context(), key.Attempt.Attr(attempt), key.ExcludeInstanceNames.Attr(excludedInstanceNames))
 
 		getInstanceStart := time.Now()
 		instance, err := r.ctrl.Instance(ctx, fn, excludedInstanceNames...)
 		getInstanceDuration += time.Since(getInstanceStart)
 		if err != nil {
-			log.Warn(ctx, "failed to get instance for function", key.Error.Field(err))
+			log.Warn(ctx, "failed to get instance for function", key.Error.Slog(err))
 			continue
 		}
 
-		ctx = log.With(ctx, key.Instance.Field(instance))
-		ctx = telemetry.WithPropagatedAttributes(ctx, key.Instance.Attributes(instance)...)
+		ctx = telemetry.With(ctx, key.Instance.Attr(instance))
 
 		req := req.WithContext(ctx)
 		req.URL.Scheme = "http"
@@ -212,23 +209,21 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		res, err := r.roundTripper.RoundTrip(req)
 		duration := time.Since(start)
 
-		ctx = log.With(ctx, key.Response.Field(res), key.Duration.Field(duration))
-		ctx = telemetry.WithPropagatedAttributes(ctx, append(key.Response.Attributes(res), key.Duration.Attribute(duration))...)
+		ctx = telemetry.With(ctx, key.Response.Attr(res), key.Duration.Attr(duration))
 
 		var netOpErr *net.OpError
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
-				log.Warn(ctx, "failed to connect to instance", key.Error.Field(err))
+				log.Warn(ctx, "failed to connect to instance", key.Error.Slog(err))
 				excludedInstanceNameSet[instance.Name] = struct{}{} // exclude this instance from future requests in case it's the problem
 				continue
 			}
 		}
 
-		ctx = log.With(ctx, key.GetInstanceDurationMs.Field(getInstanceDuration))
-		ctx = telemetry.WithPropagatedAttributes(ctx, key.GetInstanceDurationMs.Attribute(getInstanceDuration))
+		ctx = telemetry.With(ctx, key.GetInstanceDurationMs.Attr(getInstanceDuration))
 
 		if err != nil {
-			log.Error(ctx, "failed to forward request", key.Error.Field(err))
+			log.Error(ctx, "failed to forward request", key.Error.Slog(err))
 		} else {
 			log.Info(ctx, "forwarding response")
 		}

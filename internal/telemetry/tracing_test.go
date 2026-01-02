@@ -58,7 +58,7 @@ func TestLogHook(t *testing.T) {
 
 	err := errors.New("test")
 	record := slog.NewRecord(time.Now(), slog.LevelError, "failed to do something", 0)
-	record.AddAttrs(key.Error.Field(err))
+	record.AddAttrs(key.Error.Slog(err))
 
 	logHook(ctx, &record)
 

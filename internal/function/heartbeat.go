@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type Heartbeat struct {
@@ -14,22 +13,11 @@ type Heartbeat struct {
 	InFlightRequests int       `json:"in_flight_requests"`
 }
 
-func (h Heartbeat) Fields() []slog.Attr {
-	return []slog.Attr{
-		key.Function.Field(h.Function),
-		key.Timestamp.Field(h.Timestamp),
-		key.InFlightRequests.Field(h.InFlightRequests),
-	}
-}
+var _ slog.LogValuer = Heartbeat{}
 
-func (h Heartbeat) Attributes() []attribute.KeyValue {
-	return append(
-		key.Function.Attributes(h.Function),
-		key.Timestamp.Attribute(h.Timestamp),
-		key.InFlightRequests.Attribute(h.InFlightRequests),
+func (h Heartbeat) LogValue() slog.Value {
+	return slog.GroupValue(
+		key.Timestamp.Slog(h.Timestamp),
+		key.InFlightRequests.Slog(h.InFlightRequests),
 	)
-}
-
-func (h Heartbeat) AttributesToNotPrefix() []string {
-	return []string{"function"}
 }

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type Instance struct {
@@ -19,32 +18,16 @@ type Instance struct {
 	MemoryUsageMiB int       // memory usage in MiB
 }
 
-func (instance *Instance) Fields() []slog.Attr {
-	return []slog.Attr{
-		key.Function.Field(instance.Function),
-		key.Name.Field(instance.Name),
-		key.Addr.Field(instance.Addr),
-		slog.String("replica_set", instance.ReplicaSet),
-		key.AssignedAt.Field(instance.AssignedAt),
-		key.ReadyAt.Field(instance.ReadyAt),
-		key.CPUUsageMilli.Field(instance.CPUUsageMilli),
-		key.MemoryUsageMiB.Field(instance.MemoryUsageMiB),
-	}
-}
+var _ slog.LogValuer = (*Instance)(nil)
 
-func (instance *Instance) Attributes() []attribute.KeyValue {
-	return append(
-		key.Function.Attributes(instance.Function),
-		key.Name.Attribute(instance.Name),
-		key.Addr.Attribute(instance.Addr),
-		attribute.String("replica_set", instance.ReplicaSet),
-		key.AssignedAt.Attribute(instance.AssignedAt),
-		key.ReadyAt.Attribute(instance.ReadyAt),
-		key.CPUUsageMilli.Attribute(instance.CPUUsageMilli),
-		key.MemoryUsageMiB.Attribute(instance.MemoryUsageMiB),
+func (instance *Instance) LogValue() slog.Value {
+	return slog.GroupValue(
+		key.Name.Slog(instance.Name),
+		key.Addr.Slog(instance.Addr),
+		key.ReplicaSet.Slog(instance.ReplicaSet),
+		key.AssignedAt.Slog(instance.AssignedAt),
+		key.ReadyAt.Slog(instance.ReadyAt),
+		key.CPUUsageMilli.Slog(instance.CPUUsageMilli),
+		key.MemoryUsageMiB.Slog(instance.MemoryUsageMiB),
 	)
-}
-
-func (instance *Instance) AttributesToNotPrefix() []string {
-	return []string{"function"}
 }

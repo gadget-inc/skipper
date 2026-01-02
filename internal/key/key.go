@@ -2,38 +2,43 @@ package key
 
 import (
 	"log/slog"
-	"net/textproto"
-	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 )
 
-type Key[v any] interface {
-	Field(value v) slog.Attr
-	Attribute(value v) attribute.KeyValue
+// Key is a typed key for creating structured log and telemetry attributes.
+type Key[V any] struct {
+	Identifier
+	toSlogAttr func(v V) slog.Attr
 }
 
-type GroupKey[v any] interface {
-	Field(value v) slog.Attr
-	Attributes(value v) []attribute.KeyValue
+// Slog returns a slog.Attr for use in logging calls.
+// This is the most efficient method when only logging is needed.
+func (k Key[V]) Slog(v V) slog.Attr {
+	return k.toSlogAttr(v)
 }
 
-type key struct {
-	KebabCased      string
-	Underscored     string
-	Header          string
-	Label           string
-	PatchLabel      string
-	PatchAnnotation string
+// Otel returns OpenTelemetry attributes for use in span creation.
+// Groups are flattened using dot notation. This is efficient when only
+// tracing attributes are needed without logging.
+func (k Key[V]) Otel(v V) []attribute.KeyValue {
+	return slogAttrToOtelAttrs(k.Slog(v))
 }
 
-func new(kebabCasedName string) key {
-	return key{
-		KebabCased:      kebabCasedName,
-		Underscored:     strings.ReplaceAll(kebabCasedName, "-", "_"),
-		Header:          "X-Skipper-" + textproto.CanonicalMIMEHeaderKey(kebabCasedName),
-		Label:           "skipper/" + kebabCasedName,
-		PatchLabel:      "/metadata/labels/skipper~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
-		PatchAnnotation: "/metadata/annotations/skipper~1" + strings.ReplaceAll(strings.ReplaceAll(kebabCasedName, "~", "~0"), "/", "~1"),
+// Attr returns both slog and OTel representations, pre-computed for efficiency.
+// Use this with telemetry.With() when propagating attributes to both
+// logging and tracing contexts.
+func (k Key[V]) Attr(v V) Attr {
+	slogAttr := k.toSlogAttr(v)
+	return Attr{
+		Slog: slogAttr,
+		Otel: slogAttrToOtelAttrs(slogAttr),
 	}
+}
+
+// Attr holds a pre-computed slog attribute and its OTel equivalent
+// for efficient telemetry context propagation.
+type Attr struct {
+	Slog slog.Attr
+	Otel []attribute.KeyValue
 }

@@ -30,9 +30,9 @@ func Init(ctx context.Context) func() {
 	}
 
 	go func() {
-		log.Info(ctx, "serving pprof", key.Addr.Field(server.Addr))
+		log.Info(ctx, "serving pprof", key.Addr.Slog(server.Addr))
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error(ctx, "failed to serve pprof", key.Error.Field(err))
+			log.Error(ctx, "failed to serve pprof", key.Error.Slog(err))
 		}
 	}()
 
@@ -40,7 +40,7 @@ func Init(ctx context.Context) func() {
 		ctx, cancel := context.WithTimeout(context.Background(), FlagPprofShutdownTimeout.Value())
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
-			log.Error(ctx, "failed to shutdown pprof", key.Error.Field(err))
+			log.Error(ctx, "failed to shutdown pprof", key.Error.Slog(err))
 		}
 	}
 }

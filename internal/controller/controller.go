@@ -72,13 +72,13 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 		go timer.Loop(ctx, FlagScaleInterval.Value(), func(ctx context.Context) error {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Error(ctx, "panic in scaleNamespace", key.Error.Field(fmt.Errorf("%v", r)))
+					log.Error(ctx, "panic in scaleNamespace", key.Error.Slog(fmt.Errorf("%v", r)))
 				}
 			}()
 
 			err := ctrl.convergeNamespace(ctx, namespace)
 			if err != nil {
-				log.Error(ctx, "failed to scale namespace", key.Error.Field(err), key.Namespace.Field(namespace))
+				log.Error(ctx, "failed to scale namespace", key.Error.Slog(err), key.Namespace.Slog(namespace))
 			}
 			return nil
 		})
@@ -115,7 +115,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		if ctrlIP != "" {
 			delete(ctrlPodNameToIP, pod.Name)
 			ctrl.ring.Remove(ctrlIP)
-			log.Debug(ctx, "removed controller from ring", key.Pod.Field(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+			log.Debug(ctx, "removed controller from ring", key.Pod.Slog(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 		}
 	}
 
@@ -123,7 +123,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		if isPodReady(pod) {
 			ctrlPodNameToIP[pod.Name] = pod.Status.PodIP
 			ctrl.ring.Add(pod.Status.PodIP)
-			log.Debug(ctx, "added controller to ring", key.Pod.Field(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+			log.Debug(ctx, "added controller to ring", key.Pod.Slog(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
 		} else {
 			removeFromRing(pod)
 		}
@@ -132,7 +132,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	controllerPodInformer := controllerPodInformerFactory.Core().V1().Pods().Informer()
 	err := controllerPodInformer.SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
 		slog.String("watch_resource", "controller_pods"),
-		key.Namespace.Field(FlagNamespace.Value()),
+		key.Namespace.Slog(FlagNamespace.Value()),
 	))
 	if err != nil {
 		return fmt.Errorf("failed to set controller pod watch error handler: %w", err)
@@ -169,7 +169,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		_, err := ctrl.kubernetes.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
 			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value() {
-				log.Warn(ctx, "skipping namespace", key.Namespace.Field(namespace), key.Error.Field(err))
+				log.Warn(ctx, "skipping namespace", key.Namespace.Slog(namespace), key.Error.Slog(err))
 				continue
 			}
 			return fmt.Errorf("failed to list pods in namespace %s: %w", namespace, err)
@@ -205,7 +205,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		}
 		err = podInformer.Informer().SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
 			slog.String("watch_resource", "pods"),
-			key.Namespace.Field(namespace),
+			key.Namespace.Slog(namespace),
 		))
 		if err != nil {
 			return fmt.Errorf("failed to set pod watch error handler: %w", err)
@@ -232,7 +232,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		}
 		err = replicaSetInformer.Informer().SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
 			slog.String("watch_resource", "replicasets"),
-			key.Namespace.Field(namespace),
+			key.Namespace.Slog(namespace),
 		))
 		if err != nil {
 			return fmt.Errorf("failed to set replica set watch error handler: %w", err)
@@ -266,17 +266,17 @@ func (ctrl *Controller) watchErrorHandler(ctx context.Context, attrs ...slog.Att
 		}
 
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			log.Debug(ctx, "informer watch error", key.Error.Field(err))
+			log.Debug(ctx, "informer watch error", key.Error.Slog(err))
 			return
 		}
 
 		var statusErr *apierrors.StatusError
 		if errors.As(err, &statusErr) && statusErr.ErrStatus.Reason == metav1.StatusReasonExpired {
-			log.Debug(ctx, "informer watch error", key.Error.Field(err))
+			log.Debug(ctx, "informer watch error", key.Error.Slog(err))
 			return
 		}
 
-		log.Warn(ctx, "informer watch error", key.Error.Field(err))
+		log.Warn(ctx, "informer watch error", key.Error.Slog(err))
 	}
 }
 
@@ -335,13 +335,13 @@ func (ctrl *Controller) listPods(namespace string, selector labels.Selector) ([]
 func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
 	namespaceLister, found := ctrl.namespaceListers[pod.Namespace]
 	if !found {
-		log.Warn(ctx, "managed pod lister not started for namespace", key.Namespace.Field(pod.Namespace))
+		log.Warn(ctx, "managed pod lister not started for namespace", key.Namespace.Slog(pod.Namespace))
 		return
 	}
 
 	err := namespaceLister.podIndexer.Update(pod)
 	if err != nil {
-		log.Warn(ctx, "failed to update pod cache", key.Error.Field(err), key.Pod.Field(pod))
+		log.Warn(ctx, "failed to update pod cache", key.Error.Slog(err), key.Pod.Slog(pod))
 	}
 }
 
@@ -354,7 +354,7 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 		Name: pod.Name,
 	}
 
-	if fnJson, ok := pod.Annotations[key.Function.Label]; ok {
+	if fnJson, ok := pod.Annotations[key.Function.Annotation]; ok {
 		err := json.Unmarshal([]byte(fnJson), &instance.Function)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
@@ -363,18 +363,18 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 		return nil, errors.New("missing function annotation")
 	}
 
-	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Label]
+	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Annotation]
 	if instance.ReplicaSet == "" {
 		return nil, errors.New("missing replica set annotation")
 	}
 
 	var err error
-	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Label])
+	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Annotation])
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
 	}
 
-	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Label]; ok && isPodReady(pod) {
+	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Annotation]; ok && isPodReady(pod) {
 		instance.ReadyAt, err = time.Parse(time.RFC3339, readyAtStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)
@@ -392,7 +392,7 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 }
 
 func portFromPod(pod *v1.Pod) (string, error) {
-	port := pod.Annotations[key.Port.Label]
+	port := pod.Annotations[key.Port.Annotation]
 	if port == "" {
 		// no port annotation, grab the first port from the first container
 		if len(pod.Spec.Containers) > 0 && len(pod.Spec.Containers[0].Ports) > 0 {

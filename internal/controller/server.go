@@ -44,13 +44,12 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 	ctx := req.Context()
 	fn, err := function.FromHeader(req)
 	if err != nil {
-		log.Error(ctx, "failed to get function from header", key.Error.Field(err))
+		log.Error(ctx, "failed to get function from header", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	ctx = log.With(ctx, key.Function.Field(fn))
-	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
+	ctx = telemetry.With(ctx, key.Function.Attr(fn))
 
 	var excludeNames []string
 	if excludeHeader := req.Header.Get(key.ExcludeInstanceNames.Header); excludeHeader != "" {
@@ -59,7 +58,7 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 
 	instance, err := ctrl.supervisor(fn).getReadyInstance(ctx, excludeNames)
 	if err != nil {
-		log.Error(ctx, "failed to get ready instance", key.Error.Field(err))
+		log.Error(ctx, "failed to get ready instance", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -67,7 +66,7 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
 	if err := json.MarshalWrite(rw, instance); err != nil {
-		log.Error(ctx, "failed to encode instance response", key.Error.Field(err))
+		log.Error(ctx, "failed to encode instance response", key.Error.Slog(err))
 	}
 }
 
@@ -75,24 +74,23 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	fn, err := function.FromHeader(req)
 	if err != nil {
-		log.Error(ctx, "failed to get function from header", key.Error.Field(err))
+		log.Error(ctx, "failed to get function from header", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	ctx = log.With(ctx, key.Function.Field(fn))
-	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
+	ctx = telemetry.With(ctx, key.Function.Attr(fn))
 
 	desiredInstances, err := strconv.Atoi(req.Header.Get(key.DesiredInstances.Header))
 	if err != nil {
-		log.Error(ctx, "failed to get desired instances from header", key.Error.Field(err))
+		log.Error(ctx, "failed to get desired instances from header", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	reason := req.Header.Get(key.Reason.Header)
 	if !isValidScalingReason(reason) {
-		log.Warn(ctx, "invalid scaling reason, using unknown", key.Reason.Field(reason))
+		log.Warn(ctx, "invalid scaling reason, using unknown", key.Reason.Slog(reason))
 		reason = ScalingReasonUnknown
 	}
 
@@ -101,7 +99,7 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 		Reason:           reason,
 	})
 	if err != nil {
-		log.Error(ctx, "failed to scale function", key.Error.Field(err))
+		log.Error(ctx, "failed to scale function", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -109,7 +107,7 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)
 	if err := json.MarshalWrite(rw, instances); err != nil {
-		log.Error(ctx, "failed to encode scale response", key.Error.Field(err))
+		log.Error(ctx, "failed to encode scale response", key.Error.Slog(err))
 	}
 }
 
@@ -123,7 +121,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 
 	var heartbeats []function.Heartbeat
 	if err := json.UnmarshalRead(req.Body, &heartbeats); err != nil {
-		log.Error(req.Context(), "failed to decode heartbeats", key.Error.Field(err))
+		log.Error(req.Context(), "failed to decode heartbeats", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -133,7 +131,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 		ctrl.supervisor(heartbeat.Function).heartbeat(routerIP, heartbeat)
 	}
 
-	log.Trace(req.Context(), "received heartbeats", key.Count.Field(len(heartbeats)))
+	log.Trace(req.Context(), "received heartbeats", key.Count.Slog(len(heartbeats)))
 	rw.WriteHeader(http.StatusOK)
 
 	controllersThatHaveReceivedHeartbeats := slices.Clone(req.Header[key.ForwardedFor.Header])
@@ -156,7 +154,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 			defer cancel()
 
 			if err := ctrl.getControllerClient(controllerIP).Heartbeat(ctx, routerIP, heartbeats, forwardedFor...); err != nil {
-				log.Warn(ctx, "failed to forward heartbeats", key.Error.Field(err), key.ResponsibleIP.Field(controllerIP))
+				log.Warn(ctx, "failed to forward heartbeats", key.Error.Slog(err), key.ResponsibleIP.Slog(controllerIP))
 			}
 		}()
 	}

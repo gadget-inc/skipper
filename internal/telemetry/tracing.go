@@ -51,7 +51,7 @@ func logHook(ctx context.Context, record *slog.Record) {
 
 	if span.IsRecording() && record.Level == slog.LevelError {
 		record.Attrs(func(attr slog.Attr) bool {
-			if attr.Key == key.Error.Underscored {
+			if attr.Key == key.Error.Name {
 				if err, ok := attr.Value.Any().(error); ok {
 					span.RecordError(err)
 					span.SetStatus(codes.Error, err.Error())
@@ -70,7 +70,7 @@ func initTracing(ctx context.Context, res *resource.Resource) func(context.Conte
 
 	traceExporter, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
-		log.Error(ctx, "failed to create otlptrace exporter", key.Error.Field(err))
+		log.Error(ctx, "failed to create otlptrace exporter", key.Error.Slog(err))
 		return func(context.Context) error { return nil }
 	}
 
