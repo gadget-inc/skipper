@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"math/rand"
 	"net/http"
 	"slices"
 	"strconv"
@@ -16,7 +15,6 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -54,50 +52,17 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 	ctx = log.With(ctx, key.Function.Field(fn))
 	ctx = telemetry.WithPropagatedAttributes(ctx, key.Function.Attributes(fn)...)
 
-	instances, err := ctrl.getReadyInstances(fn)
+	var excludeNames []string
+	if excludeHeader := req.Header.Get(key.ExcludeInstanceNames.Header); excludeHeader != "" {
+		excludeNames = strings.Split(excludeHeader, ",")
+	}
+
+	instance, err := ctrl.supervisor(fn).getReadyInstance(ctx, excludeNames)
 	if err != nil {
-		log.Error(ctx, "failed to get instances", key.Error.Field(err))
+		log.Error(ctx, "failed to get ready instance", key.Error.Field(err))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
-
-	for len(instances) == 0 {
-		if instances, err = ctrl.supervisor(fn).scale(ctx, ScalingDecision{
-			DesiredInstances:          1,
-			UnclampedDesiredInstances: 1,
-			Reason:                    ScalingReasonNoReadyInstances,
-		}); err != nil {
-			log.Error(ctx, "failed to scale function", key.Error.Field(err))
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	if len(instances) > fn.Scale.MaxInstances {
-		// sort instances by assigned at in descending order (newest first)
-		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
-		// keep the newest instances
-		instances = instances[:fn.Scale.MaxInstances]
-	}
-
-	filteredInstances := instances
-	// Optionally exclude instances by name if provided by the router
-	if excludeHeader := req.Header.Get(key.ExcludeInstanceNames.Header); excludeHeader != "" && len(instances) > 0 {
-		excludedInstanceNames := strings.Split(excludeHeader, ",")
-		filteredInstances = slices.DeleteFunc(slices.Clone(instances), func(inst *function.Instance) bool {
-			return slices.Contains(excludedInstanceNames, inst.Name)
-		})
-	}
-
-	if len(filteredInstances) == 0 {
-		log.Error(ctx, "no instances available, all instances filtered out, reverting back to all instances")
-	} else {
-		instances = filteredInstances
-	}
-
-	instance := instances[rand.Intn(len(instances))]
 
 	rw.Header().Set("Content-Type", "application/json")
 	rw.WriteHeader(http.StatusOK)

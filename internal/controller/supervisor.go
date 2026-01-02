@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"math/rand"
 	"slices"
 	"sync"
 	"time"
@@ -232,6 +233,48 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 	}
 
 	return readyInstances, nil
+}
+
+// getReadyInstance returns a ready instance for the function, scaling
+// up if necessary. If excludeNames is provided, those instances are
+// excluded from selection (unless all instances would be excluded).
+func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string) (*function.Instance, error) {
+	instances, err := s.ctrl.getReadyInstances(s.fn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instances: %w", err)
+	}
+
+	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
+
+	for len(instances) == 0 {
+		if instances, err = s.scale(ctx, ScalingDecision{
+			DesiredInstances:          1,
+			UnclampedDesiredInstances: 1,
+			Reason:                    ScalingReasonNoReadyInstances,
+		}); err != nil {
+			return nil, fmt.Errorf("failed to scale function: %w", err)
+		}
+	}
+
+	if len(instances) > s.fn.Scale.MaxInstances {
+		// sort instances by assigned at in descending order (newest first)
+		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+		// keep the newest instances up to the max instances allowed for the function
+		instances = instances[:s.fn.Scale.MaxInstances]
+	}
+
+	if len(excludeNames) > 0 {
+		filtered := slices.DeleteFunc(slices.Clone(instances), func(inst *function.Instance) bool {
+			return slices.Contains(excludeNames, inst.Name)
+		})
+		if len(filtered) > 0 {
+			instances = filtered
+		} else {
+			log.Warn(ctx, "no instances available, all instances filtered out, reverting back to all instances")
+		}
+	}
+
+	return instances[rand.Intn(len(instances))], nil
 }
 
 // Metric represents a metric type used for autoscaling decisions.
