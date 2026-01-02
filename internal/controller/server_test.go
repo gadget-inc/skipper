@@ -149,7 +149,7 @@ func TestHandleInstance(t *testing.T) {
 				// add another instance with an earlier assigned at
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				pod.Name = "earliest-assigned-at"
-				pod.Annotations[key.AssignedAt.Label] = time.Now().Add(-time.Second).UTC().Format(time.RFC3339)
+				pod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-time.Second).UTC().Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(pod)
 
 				return setupStruct{fn: fn, headers: map[string]string{}}

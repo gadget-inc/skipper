@@ -4,7 +4,6 @@ import (
 	"log/slog"
 
 	"github.com/gadget-inc/skipper/internal/key"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type Scale struct {
@@ -15,22 +14,14 @@ type Scale struct {
 	TargetInFlightRequests int `json:"target_in_flight_requests"`
 }
 
-func (s Scale) Fields() []slog.Attr {
-	return []slog.Attr{
-		key.MinInstances.Field(s.MinInstances),
-		key.MaxInstances.Field(s.MaxInstances),
-		key.TargetCPUUsageMilli.Field(s.TargetCPUUsageMilli),
-		key.TargetMemoryUsageMiB.Field(s.TargetMemoryUsageMiB),
-		key.TargetInFlightRequests.Field(s.TargetInFlightRequests),
-	}
-}
+var _ slog.LogValuer = Scale{}
 
-func (s Scale) Attributes() []attribute.KeyValue {
-	return []attribute.KeyValue{
-		key.MinInstances.Attribute(s.MinInstances),
-		key.MaxInstances.Attribute(s.MaxInstances),
-		key.TargetCPUUsageMilli.Attribute(s.TargetCPUUsageMilli),
-		key.TargetMemoryUsageMiB.Attribute(s.TargetMemoryUsageMiB),
-		key.TargetInFlightRequests.Attribute(s.TargetInFlightRequests),
-	}
+func (s Scale) LogValue() slog.Value {
+	return slog.GroupValue(
+		key.MinInstances.Slog(s.MinInstances),
+		key.MaxInstances.Slog(s.MaxInstances),
+		key.TargetCPUUsageMilli.Slog(s.TargetCPUUsageMilli),
+		key.TargetMemoryUsageMiB.Slog(s.TargetMemoryUsageMiB),
+		key.TargetInFlightRequests.Slog(s.TargetInFlightRequests),
+	)
 }

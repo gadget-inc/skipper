@@ -4,7 +4,6 @@ import (
 	"log/slog"
 
 	"github.com/gadget-inc/skipper/internal/key"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type Function struct {
@@ -19,22 +18,14 @@ func (f Function) RingKey() string {
 	return f.Namespace + f.Deployment + f.Tenant
 }
 
-func (f Function) Fields() []slog.Attr {
-	return []slog.Attr{
-		key.Namespace.Field(f.Namespace),
-		key.Deployment.Field(f.Deployment),
-		key.Tenant.Field(f.Tenant),
-		key.Metadata.Field(f.Metadata),
-		key.Scale.Field(f.Scale),
-	}
-}
+var _ slog.LogValuer = Function{}
 
-func (f Function) Attributes() []attribute.KeyValue {
-	return append(
-		key.Scale.Attributes(f.Scale),
-		key.Namespace.Attribute(f.Namespace),
-		key.Deployment.Attribute(f.Deployment),
-		key.Tenant.Attribute(f.Tenant),
-		key.Metadata.Attribute(f.Metadata),
+func (f Function) LogValue() slog.Value {
+	return slog.GroupValue(
+		key.Namespace.Slog(f.Namespace),
+		key.Deployment.Slog(f.Deployment),
+		key.Tenant.Slog(f.Tenant),
+		key.Metadata.Slog(f.Metadata),
+		key.Scale.Slog(f.Scale),
 	)
 }

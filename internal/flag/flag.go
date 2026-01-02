@@ -2,6 +2,7 @@ package flag
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"strconv"
@@ -108,8 +109,6 @@ type Flag[T any] struct {
 	isInitialized bool
 }
 
-var _ pflag.Value = (*Flag[any])(nil)
-
 // Init initializes the flag.
 //
 // This sets the flag's value to the default value and sets the
@@ -154,6 +153,8 @@ func (f *Flag[T]) SetValue(value T) error {
 	}
 	return nil
 }
+
+var _ pflag.Value = (*Flag[any])(nil)
 
 // Set implements pflag.Value.Set.
 func (f *Flag[T]) Set(s string) error {
@@ -406,4 +407,18 @@ func (f *Flag[T]) bind(cmd *cobra.Command, persistent bool) {
 	} else {
 		cmd.PreRunE = preRunE
 	}
+}
+
+var _ slog.LogValuer = (*Flag[any])(nil)
+
+func (f *Flag[T]) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("name", f.Name),
+		slog.String("shorthand", f.Shorthand),
+		slog.String("description", f.Description),
+		slog.Bool("required", f.Required),
+		slog.String("separator", f.Separator),
+		slog.Bool("was_set", f.WasProvided),
+		slog.String("value", f.String()),
+	)
 }

@@ -38,7 +38,7 @@ var (
 )
 
 func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string) error {
-	ctx, span := telemetry.TraceRoot(ctx, "controller.converge_namespace", trace.WithAttributes(key.Namespace.Attribute(namespace)))
+	ctx, span := telemetry.TraceRoot(ctx, "controller.converge_namespace", trace.WithAttributes(key.Namespace.Otel(namespace)...))
 	defer span.End()
 
 	pods, err := ctrl.listPods(namespace, hasTenantSelector)
@@ -49,7 +49,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 	// TODO: paginate
 	metrics, err := ctrl.kubernetesMetrics.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{LabelSelector: key.Tenant.Label})
 	if err != nil {
-		log.Error(ctx, "failed to get pod metrics", key.Error.Field(err))
+		log.Error(ctx, "failed to get pod metrics", key.Error.Slog(err))
 	}
 
 	podNameToMetric := make(map[string]metricsv1beta1.PodMetrics, len(metrics.Items))
@@ -63,19 +63,19 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 	for _, pod := range pods {
 		instance, err := instanceFromPod(pod)
 		if err != nil {
-			log.Warn(ctx, "failed to get instance from pod", key.Error.Field(err), key.Pod.Field(pod))
+			log.Warn(ctx, "failed to get instance from pod", key.Error.Slog(err), key.Pod.Slog(pod))
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
-				log.Error(ctx, "failed to terminate pod", key.Error.Field(err), key.Pod.Field(pod))
+				log.Error(ctx, "failed to terminate pod", key.Error.Slog(err), key.Pod.Slog(pod))
 			}
 			continue
 		}
 
-		ctx := log.With(ctx, key.Instance.Field(instance))
+		ctx := log.With(ctx, key.Instance.Slog(instance))
 
 		responsibleIP := ctrl.ring.Get(instance)
 		if responsibleIP != FlagPodIP.Value() {
-			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.ResponsibleIP.Field(responsibleIP))
+			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.ResponsibleIP.Slog(responsibleIP))
 			continue
 		}
 
@@ -88,7 +88,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
-				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Field(err))
+				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
 			}
 			continue
 		}
@@ -106,7 +106,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 
 		replicaSet, err := ctrl.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
 		if err != nil {
-			log.Error(ctx, "failed to get replica set for instance", key.Error.Field(err))
+			log.Error(ctx, "failed to get replica set for instance", key.Error.Slog(err))
 			continue
 		}
 
@@ -119,7 +119,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 		// this is a stale instance, find a replica set that has replicas
 		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Deployment}))
 		if err != nil {
-			log.Error(ctx, "failed to list replica sets", key.Error.Field(err))
+			log.Error(ctx, "failed to list replica sets", key.Error.Slog(err))
 			continue
 		}
 
@@ -131,7 +131,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 			}
 		}
 
-		ctx = log.With(ctx, key.ReplicaSet.Field(activeReplicaSet))
+		ctx = log.With(ctx, key.K8sReplicaSet.Slog(activeReplicaSet))
 
 		if activeReplicaSet != nil {
 			minAvailableReplicas := max(1, int32(float32(activeReplicaSet.Status.Replicas)/FlagAvailableReplicaDivisor.Value()))
@@ -151,7 +151,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 		log.Info(ctx, "terminating stale instance")
 		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 		if err != nil {
-			log.Error(ctx, "failed to terminate stale instance", key.Error.Field(err))
+			log.Error(ctx, "failed to terminate stale instance", key.Error.Slog(err))
 		}
 		ctrl.supervisor(instance.Function).mu.Unlock()
 	}
@@ -162,7 +162,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 		go func() {
 			defer wg.Done()
 			if _, err := ctrl.supervisor(fn).converge(ctx, instances); err != nil {
-				log.Error(ctx, "failed to scale function to desired instances", key.Error.Field(err))
+				log.Error(ctx, "failed to scale function to desired instances", key.Error.Slog(err))
 			}
 		}()
 	}
@@ -217,7 +217,7 @@ GET_UNASSIGNED_POD:
 	assignedPod, err = ctrl.kubernetes.CoreV1().Pods(unassignedPod.Namespace).Patch(ctx, unassignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		if apierrors.IsInvalid(err) || errors.Is(err, jsonpatch.ErrTestFailed) {
-			log.Warn(ctx, "failed to patch pod, retrying", key.Error.Field(err), key.Pod.Field(unassignedPod))
+			log.Warn(ctx, "failed to patch pod, retrying", key.Error.Slog(err), key.Pod.Slog(unassignedPod))
 			// there are many reasons this can fail, but one hard to debug one is that the pod doesn't have any annotations
 			// see: https://stackoverflow.com/a/57480206, https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12
 			goto GET_UNASSIGNED_POD
@@ -229,7 +229,7 @@ GET_UNASSIGNED_POD:
 	defer func() {
 		if err != nil {
 			if deleteErr := ctrl.kubernetes.CoreV1().Pods(unassignedPod.Namespace).Delete(ctx, unassignedPod.Name, metav1.DeleteOptions{}); deleteErr != nil {
-				log.Error(ctx, "failed to delete pod after failed assign request", key.Error.Field(deleteErr), key.Pod.Field(unassignedPod))
+				log.Error(ctx, "failed to delete pod after failed assign request", key.Error.Slog(deleteErr), key.Pod.Slog(unassignedPod))
 			}
 		}
 	}()
@@ -256,7 +256,7 @@ GET_UNASSIGNED_POD:
 	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
-	log.Info(ctx, "assigning pod", key.Pod.Field(assignedPod))
+	log.Info(ctx, "assigning pod", key.Pod.Slog(assignedPod))
 	var res *http.Response
 	res, err = otelhttp.DefaultClient.Do(req)
 	if err != nil {

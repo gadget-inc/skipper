@@ -45,7 +45,7 @@ func initMetrics(ctx context.Context) func(context.Context) error {
 		)
 		err := prometheus.DefaultRegisterer.Register(enhancedCollector)
 		if err != nil {
-			log.Error(ctx, "failed to register Go collector with runtime metrics", key.Error.Field(err))
+			log.Error(ctx, "failed to register Go collector with runtime metrics", key.Error.Slog(err))
 		} else {
 			log.Debug(ctx, "registered enhanced Go collector with runtime metrics")
 		}
@@ -64,7 +64,7 @@ func initMetrics(ctx context.Context) func(context.Context) error {
 
 	go func() {
 		if err := promServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error(ctx, "failed to serve prometheus metrics", key.Error.Field(err))
+			log.Error(ctx, "failed to serve prometheus metrics", key.Error.Slog(err))
 		}
 	}()
 

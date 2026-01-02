@@ -1,0 +1,230 @@
+{
+  "otel": {
+    "address": "test",
+    "assigned_at": "2024-01-15T10:30:00Z",
+    "attempt": 42,
+    "count": 42,
+    "cpu_usage_milli": 42,
+    "deployment": "test",
+    "desired_instances": 42,
+    "duration_ms": 100,
+    "error": "error",
+    "exclude_instance_names": [
+      "a",
+      "b"
+    ],
+    "function.deployment": "test",
+    "function.metadata": "test",
+    "function.namespace": "test",
+    "function.scale.max_instances": 42,
+    "function.scale.min_instances": 42,
+    "function.scale.target_cpu_usage_milli": 42,
+    "function.scale.target_in_flight_requests": 42,
+    "function.scale.target_memory_usage_mib": 42,
+    "function.tenant": "test",
+    "get_instance_duration_ms": 100,
+    "heartbeat.in_flight_requests": 42,
+    "heartbeat.timestamp": "2024-01-15T10:30:00Z",
+    "http.request.body.size": 42,
+    "http.request.header.content-length": [
+      "42"
+    ],
+    "http.request.header.content-type": [
+      "test"
+    ],
+    "http.request.method": "test",
+    "http.response.body.size": 42,
+    "http.response.header.content-length": [
+      "42"
+    ],
+    "http.response.header.content-type": [
+      "test"
+    ],
+    "http.response.status_code": 42,
+    "in_flight_requests": 42,
+    "instance.address": "test",
+    "instance.assigned_at": "2024-01-15T10:30:00Z",
+    "instance.cpu_usage_milli": 42,
+    "instance.memory_usage_mib": 42,
+    "instance.name": "test",
+    "instance.ready_at": "2024-01-15T10:30:00Z",
+    "instance.replica_set": "test",
+    "k8s.pod.conditions.Ready": "True",
+    "k8s.pod.label.key": "value",
+    "k8s.pod.name": "test",
+    "k8s.pod.namespace": "test",
+    "k8s.pod.status.ip": "test",
+    "k8s.pod.status.phase": "Running",
+    "k8s.pod.uid": "test",
+    "k8s.replicaset.available_replicas": 42,
+    "k8s.replicaset.name": "test",
+    "k8s.replicaset.namespace": "test",
+    "k8s.replicaset.replicas": 42,
+    "k8s.replicaset.uid": "test",
+    "labels.key": "value",
+    "max_instances": 42,
+    "memory_usage_mib": 42,
+    "metadata": "test",
+    "min_instances": 42,
+    "name": "test",
+    "namespace": "test",
+    "ready_at": "2024-01-15T10:30:00Z",
+    "ready_instances": 42,
+    "reason": "test",
+    "replica_set": "test",
+    "responsible_ip": "test",
+    "router_ip": "test",
+    "scale.max_instances": 42,
+    "scale.min_instances": 42,
+    "scale.target_cpu_usage_milli": 42,
+    "scale.target_in_flight_requests": 42,
+    "scale.target_memory_usage_mib": 42,
+    "scaling_decision.desired_instances": 42,
+    "scaling_decision.metrics.test": 1.5,
+    "scaling_decision.reason": "test",
+    "scaling_decision.unclamped_desired_instances": 42,
+    "target_cpu_usage_milli": 42,
+    "target_in_flight_requests": 42,
+    "target_memory_usage_mib": 42,
+    "tenant": "test",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "unclamped_desired_instances": 42,
+    "unready_instances": 42,
+    "url.domain": "example.com",
+    "url.fragment": "fragment",
+    "url.full": "http://user:xxxxx@example.com/path?query=value#fragment",
+    "url.path": "/path",
+    "url.query": "query=value",
+    "url.scheme": "http"
+  },
+  "slog": {
+    "address": "test",
+    "assigned_at": "2024-01-15T10:30:00Z",
+    "attempt": 42,
+    "count": 42,
+    "cpu_usage_milli": 42,
+    "deployment": "test",
+    "desired_instances": 42,
+    "duration_ms": 100,
+    "error": "error",
+    "exclude_instance_names": [
+      "a",
+      "b"
+    ],
+    "function": {
+      "deployment": "test",
+      "metadata": "test",
+      "namespace": "test",
+      "scale": {
+        "max_instances": 42,
+        "min_instances": 42,
+        "target_cpu_usage_milli": 42,
+        "target_in_flight_requests": 42,
+        "target_memory_usage_mib": 42
+      },
+      "tenant": "test"
+    },
+    "get_instance_duration_ms": 100,
+    "heartbeat": {
+      "in_flight_requests": 42,
+      "timestamp": "2024-01-15T10:30:00Z"
+    },
+    "http.request": {
+      "body.size": 42,
+      "header.content-length": [
+        "42"
+      ],
+      "header.content-type": [
+        "test"
+      ],
+      "method": "test"
+    },
+    "http.response": {
+      "body.size": 42,
+      "header.content-length": [
+        "42"
+      ],
+      "header.content-type": [
+        "test"
+      ],
+      "status_code": 42
+    },
+    "in_flight_requests": 42,
+    "instance": {
+      "address": "test",
+      "assigned_at": "2024-01-15T10:30:00Z",
+      "cpu_usage_milli": 42,
+      "memory_usage_mib": 42,
+      "name": "test",
+      "ready_at": "2024-01-15T10:30:00Z",
+      "replica_set": "test"
+    },
+    "k8s.pod": {
+      "conditions": {
+        "Ready": "True"
+      },
+      "label": {
+        "key": "value"
+      },
+      "name": "test",
+      "namespace": "test",
+      "status": {
+        "ip": "test",
+        "phase": "Running"
+      },
+      "uid": "test"
+    },
+    "k8s.replicaset": {
+      "available_replicas": 42,
+      "name": "test",
+      "namespace": "test",
+      "replicas": 42,
+      "uid": "test"
+    },
+    "labels": {
+      "key": "value"
+    },
+    "max_instances": 42,
+    "memory_usage_mib": 42,
+    "metadata": "test",
+    "min_instances": 42,
+    "name": "test",
+    "namespace": "test",
+    "ready_at": "2024-01-15T10:30:00Z",
+    "ready_instances": 42,
+    "reason": "test",
+    "replica_set": "test",
+    "responsible_ip": "test",
+    "router_ip": "test",
+    "scale": {
+      "max_instances": 42,
+      "min_instances": 42,
+      "target_cpu_usage_milli": 42,
+      "target_in_flight_requests": 42,
+      "target_memory_usage_mib": 42
+    },
+    "scaling_decision": {
+      "desired_instances": 42,
+      "metrics": {
+        "test": 1.5
+      },
+      "reason": "test",
+      "unclamped_desired_instances": 42
+    },
+    "target_cpu_usage_milli": 42,
+    "target_in_flight_requests": 42,
+    "target_memory_usage_mib": 42,
+    "tenant": "test",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "unclamped_desired_instances": 42,
+    "unready_instances": 42,
+    "url": {
+      "domain": "example.com",
+      "fragment": "fragment",
+      "full": "http://user:xxxxx@example.com/path?query=value#fragment",
+      "path": "/path",
+      "query": "query=value",
+      "scheme": "http"
+    }
+  }
+}

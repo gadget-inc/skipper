@@ -40,7 +40,7 @@ func Init(ctx context.Context, component string) func() {
 		),
 	)
 	if err != nil {
-		log.Error(ctx, "failed to create otel resource", key.Error.Field(err))
+		log.Error(ctx, "failed to create otel resource", key.Error.Slog(err))
 		return func() {}
 	}
 
@@ -59,7 +59,7 @@ func Init(ctx context.Context, component string) func() {
 			defer wg.Done()
 			err := shutdownTracing(ctx)
 			if err != nil {
-				log.Error(ctx, "failed to shutdown tracing", key.Error.Field(err))
+				log.Error(ctx, "failed to shutdown tracing", key.Error.Slog(err))
 			}
 		}()
 
@@ -67,7 +67,7 @@ func Init(ctx context.Context, component string) func() {
 			defer wg.Done()
 			err := shutdownMetrics(ctx)
 			if err != nil {
-				log.Error(ctx, "failed to shutdown metrics", key.Error.Field(err))
+				log.Error(ctx, "failed to shutdown metrics", key.Error.Slog(err))
 			}
 		}()
 

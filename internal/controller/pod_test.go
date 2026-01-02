@@ -41,16 +41,16 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, po
 
 	fnJSON, err := json.Marshal(instance.Function)
 	assert.NilError(t, err)
-	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Label])
+	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Annotation])
 
 	port, err := portFromPod(&pod)
 	assert.NilError(t, err)
 
 	assert.Assert(t, instance.Name == pod.Name)
 	assert.Assert(t, instance.Addr == net.JoinHostPort(pod.Status.PodIP, port))
-	assert.Assert(t, instance.ReplicaSet == pod.Annotations[key.ReplicaSet.Label])
-	assert.Assert(t, instance.AssignedAt.Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Label])
-	assert.Assert(t, instance.ReadyAt.Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Label])
+	assert.Assert(t, instance.ReplicaSet == pod.Annotations[key.ReplicaSet.Annotation])
+	assert.Assert(t, instance.AssignedAt.Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Annotation])
+	assert.Assert(t, instance.ReadyAt.Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Annotation])
 }
 
 func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn function.Function) {
@@ -59,18 +59,18 @@ func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn function.Functio
 
 	assert.Assert(t, fn.Deployment == pod.Labels[key.Deployment.Label])
 	assert.Assert(t, fn.Tenant == pod.Labels[key.Tenant.Label])
-	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Label])
-	assert.Assert(t, pod.Annotations[key.ReplicaSet.Label] != "")
-	assert.Assert(t, pod.Annotations[key.AssignedAt.Label] != "")
-	assert.Assert(t, pod.Annotations[key.ReadyAt.Label] != "")
+	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Annotation])
+	assert.Assert(t, pod.Annotations[key.ReplicaSet.Annotation] != "")
+	assert.Assert(t, pod.Annotations[key.AssignedAt.Annotation] != "")
+	assert.Assert(t, pod.Annotations[key.ReadyAt.Annotation] != "")
 }
 
 func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
 	assert.Assert(t, pod.Labels[key.Tenant.Label] == "")
-	assert.Assert(t, pod.Annotations[key.Function.Label] == "")
-	assert.Assert(t, pod.Annotations[key.ReplicaSet.Label] == "")
-	assert.Assert(t, pod.Annotations[key.AssignedAt.Label] == "")
-	assert.Assert(t, pod.Annotations[key.ReadyAt.Label] == "")
+	assert.Assert(t, pod.Annotations[key.Function.Annotation] == "")
+	assert.Assert(t, pod.Annotations[key.ReplicaSet.Annotation] == "")
+	assert.Assert(t, pod.Annotations[key.AssignedAt.Annotation] == "")
+	assert.Assert(t, pod.Annotations[key.ReadyAt.Annotation] == "")
 }
 
 func countReadyAndUnreadyPods(pods []v1.Pod) (ready, unready int) {
@@ -100,8 +100,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed kubernetes with an assigned pod
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
-				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod)
 
 				// seed kubernetes with pod metrics for the assigned pod at 2x target CPU usage and 1x target memory usage
@@ -134,8 +134,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed kubernetes with an assigned pod
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
-				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod)
 
 				// seed kubernetes metrics with 1x target CPU usage and 2x target memory usage for the assigned pod
@@ -168,8 +168,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed kubernetes with an assigned pod
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
-				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod)
 
 				// seed kubernetes metrics with 1x target CPU usage and 1x target memory usage for the assigned pod
@@ -202,13 +202,13 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed kubernetes with 2 assigned pods
 				assignedPod1 := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod1.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
-				assignedPod1.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod1.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod1.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod1)
 
 				assignedPod2 := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod2.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
-				assignedPod2.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod2.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod2.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod2)
 
 				// seed kubernetes metrics with 0.5x target CPU usage and 0.5x target memory usage for the assigned pods
@@ -246,8 +246,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed kubernetes with an assigned pod and an available pod
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
-				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHPAInitialReadinessDelay.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod)
 				fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
 
@@ -267,7 +267,7 @@ func TestConvergeNamespace(t *testing.T) {
 				var assignedPod v1.Pod
 				var unassignedPod v1.Pod
 
-				if pods.Items[0].Annotations[key.Function.Label] == "" {
+				if pods.Items[0].Annotations[key.Function.Annotation] == "" {
 					unassignedPod = pods.Items[0]
 					assignedPod = pods.Items[1]
 				} else {
@@ -288,8 +288,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed kubernetes with an assigned pod that has been assigned longer than a heartbeat timeout
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
-				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod)
 
 				// seed the supervisor without a heartbeat for the function
@@ -316,8 +316,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed kubernetes with an assigned pod that has been assigned longer than a heartbeat timeout
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
-				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod)
 
 				// seed the supervisor with a heartbeat that has expired
@@ -348,8 +348,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed kubernetes with an assigned pod that has been assigned longer than a heartbeat timeout
 				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				assignedPod.Annotations[key.ReadyAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
-				assignedPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.ReadyAt.Annotation] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
+				assignedPod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-FlagHeartbeatTimeout.Value()).Format(time.RFC3339)
 				fakeKubernetes.Tracker().Add(assignedPod)
 
 				return fn
@@ -598,7 +598,7 @@ func TestAssignPod(t *testing.T) {
 				pod := fixture.NewAvailablePod(t, fn, nil)
 
 				// verify default port setup
-				assert.Assert(t, pod.Annotations[key.Port.Label] == "http")
+				assert.Assert(t, pod.Annotations[key.Port.Annotation] == "http")
 				assert.Assert(t, pod.Spec.Containers[0].Ports[0].Name == "http")
 
 				// add another port and make the http port the second port on the container
@@ -620,7 +620,7 @@ func TestAssignPod(t *testing.T) {
 			name: "uses first container port when port annotation is empty",
 			setup: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function) {
 				pod := fixture.NewAvailablePod(t, fn, nil)
-				pod.Annotations[key.Port.Label] = ""
+				pod.Annotations[key.Port.Annotation] = ""
 				fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, fakeKubernetes *fake.Clientset, fn function.Function, instance *function.Instance) {

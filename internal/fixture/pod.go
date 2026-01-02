@@ -52,7 +52,7 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 				key.Deployment.Label: fn.Deployment,
 			},
 			Annotations: map[string]string{
-				key.Port.Label: "http",
+				key.Port.Annotation: "http",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				{
@@ -129,10 +129,10 @@ func NewAssignedPod(t *testing.T, fn function.Function, handler http.Handler) *v
 				key.Tenant.Label:     fn.Tenant,
 			},
 			Annotations: map[string]string{
-				key.Function.Label:   string(fnJSON),
-				key.ReplicaSet.Label: CurrentReplicaSetName(fn),
-				key.AssignedAt.Label: time.Now().UTC().Format(time.RFC3339),
-				key.ReadyAt.Label:    time.Now().UTC().Format(time.RFC3339),
+				key.Function.Annotation:   string(fnJSON),
+				key.ReplicaSet.Annotation: CurrentReplicaSetName(fn),
+				key.AssignedAt.Annotation: time.Now().UTC().Format(time.RFC3339),
+				key.ReadyAt.Annotation:    time.Now().UTC().Format(time.RFC3339),
 			},
 		},
 		Status: v1.PodStatus{
