@@ -90,7 +90,7 @@ func NewAvailablePod(t *testing.T, fn function.Function, handler http.Handler) *
 func defaultAvailablePodHandler(t *testing.T, fn function.Function) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		assert.Assert(t, req.Method == http.MethodPost)
-		assert.Assert(t, req.URL.Path == function.FlagAssignPath.Value())
+		assert.Assert(t, req.URL.Path == "/__skipper/assign")
 
 		assignedFn, err := function.FromHeader(req)
 		assert.NilError(t, err)

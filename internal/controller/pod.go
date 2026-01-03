@@ -74,7 +74,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 		ctx := log.With(ctx, key.Instance.Slog(instance))
 
 		responsibleIP := ctrl.ring.Get(instance)
-		if responsibleIP != FlagPodIP.Value() {
+		if responsibleIP != ctrl.config.PodIP {
 			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.ResponsibleIP.Slog(responsibleIP))
 			continue
 		}
@@ -84,7 +84,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 		}
 
 		// FIXME: this is true if the instance was assigned 3 minutes ago and it fails its readiness probe
-		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > function.FlagAssignTimeout.Value()*2 {
+		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > ctrl.config.FunctionAssignTimeout*2 {
 			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
@@ -134,7 +134,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 		ctx = log.With(ctx, key.K8sReplicaSet.Slog(activeReplicaSet))
 
 		if activeReplicaSet != nil {
-			minAvailableReplicas := max(1, int32(float32(activeReplicaSet.Status.Replicas)/FlagAvailableReplicaDivisor.Value()))
+			minAvailableReplicas := max(1, int32(float32(activeReplicaSet.Status.Replicas)/ctrl.config.AvailableReplicaDivisor))
 			availableReplicas := activeReplicaSet.Status.AvailableReplicas - terminatedStaleInstances[activeReplicaSet.Name]
 			if availableReplicas < minAvailableReplicas {
 				log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance",
@@ -236,8 +236,8 @@ GET_UNASSIGNED_POD:
 
 	ctrl.updatePodCache(ctx, assignedPod)
 
-	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + function.FlagAssignPath.Value()
-	assignCtx, cancel := context.WithTimeout(ctx, function.FlagAssignTimeout.Value())
+	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + ctrl.config.FunctionAssignPath
+	assignCtx, cancel := context.WithTimeout(ctx, ctrl.config.FunctionAssignTimeout)
 	defer cancel()
 
 	now := time.Now()
@@ -253,7 +253,7 @@ GET_UNASSIGNED_POD:
 		return nil, fmt.Errorf("failed to create assign request: %w", err)
 	}
 
-	req.Header.Set(key.Token.Header, token.V2Sign(FlagPasetoPrivateKey.Value()))
+	req.Header.Set(key.Token.Header, token.V2Sign(ctrl.config.PasetoPrivateKey.V2AsymmetricSecretKey))
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
 	log.Info(ctx, "assigning pod", key.Pod.Slog(assignedPod))

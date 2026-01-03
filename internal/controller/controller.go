@@ -40,6 +40,7 @@ type namespaceLister struct {
 }
 
 type Controller struct {
+	config            *Config
 	startedAt         time.Time
 	ring              *hashring.HashRing
 	supervisors       *xsync.Map[function.Function, *Supervisor]
@@ -50,15 +51,16 @@ type Controller struct {
 	namespaceListers  map[string]namespaceLister
 }
 
-func New(newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
+func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
 	return &Controller{
-		ring:              hashring.New(hashring.WithWaitTime(FlagHashRingWaitTime.Value())),
+		config:            cfg,
+		ring:              hashring.New(hashring.WithWaitTime(cfg.HashRingWaitTime)),
 		supervisors:       xsync.NewMap[function.Function, *Supervisor](),
 		newClientFunc:     newClientFunc,
 		controllerClients: xsync.NewMap[string, Client](),
 		kubernetes:        kubernetes,
 		kubernetesMetrics: kubernetesMetrics,
-		namespaceListers:  make(map[string]namespaceLister, len(function.FlagNamespaces.Value())),
+		namespaceListers:  make(map[string]namespaceLister, len(cfg.FunctionNamespaces)),
 	}
 }
 
@@ -68,8 +70,8 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start informers: %w", err)
 	}
 
-	for _, namespace := range function.FlagNamespaces.Value() {
-		go timer.Loop(ctx, FlagScaleInterval.Value(), func(ctx context.Context) error {
+	for _, namespace := range ctrl.config.FunctionNamespaces {
+		go timer.Loop(ctx, ctrl.config.ScaleInterval, func(ctx context.Context) error {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Error(ctx, "panic in scaleNamespace", key.Error.Slog(fmt.Errorf("%v", r)))
@@ -90,7 +92,7 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 }
 
 func (ctrl *Controller) getControllerClient(ip string) Client {
-	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, FlagPort.Value()), false })
+	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, ctrl.config.Port), false })
 	return controllerClient
 }
 
@@ -101,7 +103,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		ctrl.kubernetes,
 		5*time.Minute,
-		informers.WithNamespace(FlagNamespace.Value()),
+		informers.WithNamespace(ctrl.config.Namespace),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.LabelSelector = "app.kubernetes.io/name=skipper,app.kubernetes.io/component=controller"
 		}),
@@ -132,7 +134,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	controllerPodInformer := controllerPodInformerFactory.Core().V1().Pods().Informer()
 	err := controllerPodInformer.SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
 		slog.String("watch_resource", "controller_pods"),
-		key.Namespace.Slog(FlagNamespace.Value()),
+		key.Namespace.Slog(ctrl.config.Namespace),
 	))
 	if err != nil {
 		return fmt.Errorf("failed to set controller pod watch error handler: %w", err)
@@ -165,10 +167,10 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		return errors.New("failed to sync controller pod informer")
 	}
 
-	for _, namespace := range function.FlagNamespaces.Value() {
+	for _, namespace := range ctrl.config.FunctionNamespaces {
 		_, err := ctrl.kubernetes.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
-			if apierrors.IsForbidden(err) && function.FlagSkipForbiddenNamespaces.Value() {
+			if apierrors.IsForbidden(err) && ctrl.config.SkipForbiddenNamespaces {
 				log.Warn(ctx, "skipping namespace", key.Namespace.Slog(namespace), key.Error.Slog(err))
 				continue
 			}

@@ -95,4 +95,4 @@ console.log(body);
 // }
 ```
 
-Skipper will assign one of the echo servers to the tenant and return the response from the assigned echo server. All subsequent requests to the same function will be sent to the same echo server. If the function doesn't receive a request within the `SKIPPER_CONTROLLER_HEARTBEAT_TIMEOUT` (default: 90s), the pod will be terminated.
+Skipper will assign one of the echo servers to the tenant and return the response from the assigned echo server. All subsequent requests to the same function will be sent to the same echo server. If the function doesn't receive a request within the `SKIPPER_HEARTBEAT_TIMEOUT` (default: 90s), the pod will be terminated.

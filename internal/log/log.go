@@ -5,9 +5,9 @@ import (
 	"os"
 )
 
-func Init() {
+func Init(cfg *Config) {
 	logOptions := &slog.HandlerOptions{
-		Level: FlagLogLevel.Value(),
+		Level: cfg.Level.Level,
 		ReplaceAttr: func(groups []string, field slog.Attr) slog.Attr {
 			if field.Key == slog.LevelKey && field.Value.Any().(slog.Level) == LevelTrace {
 				field.Value = slog.StringValue("TRACE")
@@ -17,7 +17,7 @@ func Init() {
 	}
 
 	var handler slog.Handler
-	if FlagLogFormat.Value() == "json" {
+	if cfg.Format == "json" {
 		handler = slog.NewJSONHandler(os.Stderr, logOptions)
 	} else {
 		handler = slog.NewTextHandler(os.Stderr, logOptions)

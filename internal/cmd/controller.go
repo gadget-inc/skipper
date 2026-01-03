@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/gadget-inc/skipper/internal/config"
 	"github.com/gadget-inc/skipper/internal/controller"
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/spf13/cobra"
@@ -25,6 +25,8 @@ import (
 )
 
 func NewController() *cobra.Command {
+	cfg := config.New[controller.Config]()
+
 	cmd := &cobra.Command{
 		Use:   "controller",
 		Short: "Start the controller",
@@ -33,27 +35,32 @@ func NewController() *cobra.Command {
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
 
+			// validate config
+			if err := cfg.Validate(); err != nil {
+				return fmt.Errorf("invalid configuration: %w", err)
+			}
+
 			// make klog use slog which will have already been configured by the root command
 			klog.SetSlogLogger(slog.Default())
 
-			config, err := rest.InClusterConfig()
+			kubeConfig, err := rest.InClusterConfig()
 			if errors.Is(err, rest.ErrNotInCluster) {
-				config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
+				kubeConfig, err = clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
 			}
 			if err != nil {
 				return fmt.Errorf("failed to load kubernetes config: %w", err)
 			}
 
-			config.QPS = controller.FlagKubeConfigQPS.Value()
-			config.Burst = controller.FlagKubeConfigBurst.Value()
-			config.WrapTransport = func(rt http.RoundTripper) http.RoundTripper { return otelhttp.NewTransport(rt) }
+			kubeConfig.QPS = cfg.KubeConfigQPS
+			kubeConfig.Burst = cfg.KubeConfigBurst
+			kubeConfig.WrapTransport = func(rt http.RoundTripper) http.RoundTripper { return otelhttp.NewTransport(rt) }
 
-			kubernetes, err := kubernetes.NewForConfig(config)
+			kubernetesClient, err := kubernetes.NewForConfig(kubeConfig)
 			if err != nil {
 				return fmt.Errorf("failed to create kubernetes client: %w", err)
 			}
 
-			kubernetesMetrics, err := kubernetesmetrics.NewForConfig(config)
+			kubernetesMetrics, err := kubernetesmetrics.NewForConfig(kubeConfig)
 			if err != nil {
 				return fmt.Errorf("failed to create metrics client: %w", err)
 			}
@@ -61,13 +68,13 @@ func NewController() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			ctrl := controller.New(controller.NewHTTPClient, kubernetes, kubernetesMetrics)
+			ctrl := controller.New(cfg, controller.NewHTTPClient, kubernetesClient, kubernetesMetrics)
 			if err := ctrl.Start(ctx); err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)
 			}
 
 			httpServer := &http.Server{
-				Addr: net.JoinHostPort(controller.FlagHost.Value(), strconv.Itoa(controller.FlagPort.Value())),
+				Addr: net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
 				Handler: otelhttp.NewHandler(ctrl.Handler(), "",
 					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
 					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
@@ -90,7 +97,7 @@ func NewController() *cobra.Command {
 				log.Info(ctx, "shutting down controller")
 			}
 
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), controller.FlagShutdownTimeout.Value())
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 			defer cancel()
 
 			if err := httpServer.Shutdown(shutdownCtx); err != nil {
@@ -102,25 +109,7 @@ func NewController() *cobra.Command {
 		},
 	}
 
-	controller.FlagAvailableReplicaDivisor.Bind(cmd)
-	controller.FlagHPADownscaleStabilization.Bind(cmd)
-	controller.FlagHPAInitialReadinessDelay.Bind(cmd)
-	controller.FlagHPATolerance.Bind(cmd)
-	controller.FlagHashRingWaitTime.Bind(cmd)
-	controller.FlagHeartbeatTimeout.Bind(cmd)
-	controller.FlagHost.Bind(cmd)
-	controller.FlagKubeConfigBurst.Bind(cmd)
-	controller.FlagKubeConfigQPS.Bind(cmd)
-	controller.FlagNamespace.Bind(cmd)
-	controller.FlagPasetoPrivateKey.Bind(cmd)
-	controller.FlagPodIP.Bind(cmd)
-	controller.FlagPort.Bind(cmd)
-	controller.FlagScaleInterval.Bind(cmd)
-	controller.FlagShutdownTimeout.Bind(cmd)
-	function.FlagAssignPath.Bind(cmd)
-	function.FlagAssignTimeout.Bind(cmd)
-	function.FlagNamespaces.Bind(cmd)
-	function.FlagSkipForbiddenNamespaces.Bind(cmd)
+	config.Bind(cmd, cfg)
 
 	return cmd
 }

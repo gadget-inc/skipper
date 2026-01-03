@@ -13,8 +13,8 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
-func Init(ctx context.Context, component string) func() {
-	if !FlagTelemetry.Value() {
+func Init(ctx context.Context, cfg *Config, component string) func() {
+	if !cfg.Enabled {
 		log.Info(ctx, "telemetry disabled", slog.String("component", component))
 		return func() {}
 	}
@@ -44,12 +44,12 @@ func Init(ctx context.Context, component string) func() {
 		return func() {}
 	}
 
-	shutdownTracing := initTracing(ctx, res)
-	shutdownMetrics := initMetrics(ctx)
+	shutdownTracing := initTracing(ctx, cfg, res)
+	shutdownMetrics := initMetrics(ctx, cfg)
 	log.Info(ctx, "telemetry enabled", slog.String("component", component))
 
 	return func() {
-		ctx, cancel := context.WithTimeout(context.Background(), FlagTelemetryShutdownTimeout.Value())
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
 		wg := new(sync.WaitGroup)

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gadget-inc/skipper/internal/config"
 	"github.com/gadget-inc/skipper/internal/controller"
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/telemetry"
@@ -71,25 +72,24 @@ func TestPrometheusMetricsEndpoints_Router(t *testing.T) {
 func bootMetricsServer(t *testing.T, component string) (func(), string) {
 	t.Helper()
 
-	fixture.SetFlag(t, &telemetry.FlagTelemetry, true)
-	fixture.SetFlag(t, &telemetry.FlagTelemetryMetric, true)
-	fixture.SetFlag(t, &telemetry.FlagTelemetryTrace, false)
-	fixture.SetFlag(t, &telemetry.FlagTelemetryShutdownTimeout, 2*time.Second)
-	fixture.SetFlag(t, &telemetry.FlagTelemetryPrometheusHost, "127.0.0.1")
-	fixture.SetFlag(t, &telemetry.FlagTelemetryMetricOTLP, false)
-
-	port := getFreePort(t)
-	fixture.SetFlag(t, &telemetry.FlagTelemetryPrometheusPort, port)
+	cfg := config.New[telemetry.Config]()
+	cfg.Enabled = true
+	cfg.Metric = true
+	cfg.Trace = false
+	cfg.ShutdownTimeout = 2 * time.Second
+	cfg.PrometheusHost = "127.0.0.1"
+	cfg.MetricOTLP = false
+	cfg.PrometheusPort = getFreePort(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	shutdown := telemetry.Init(ctx, component)
+	shutdown := telemetry.Init(ctx, cfg, component)
 
 	cleanup := func() {
 		cancel()
 		shutdown()
 	}
 
-	return cleanup, fmt.Sprintf("http://127.0.0.1:%d/metrics", port)
+	return cleanup, fmt.Sprintf("http://127.0.0.1:%d/metrics", cfg.PrometheusPort)
 }
 
 func scrapeMetrics(t *testing.T, url string) *http.Response {

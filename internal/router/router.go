@@ -52,14 +52,16 @@ var (
 )
 
 type Router struct {
+	config       *Config
 	ctrl         controller.Client
 	heartbeats   *xsync.Map[function.Function, function.Heartbeat]
 	reverseProxy *httputil.ReverseProxy
 	roundTripper http.RoundTripper
 }
 
-func New(ctrl controller.Client) *Router {
+func New(cfg *Config, ctrl controller.Client) *Router {
 	r := &Router{
+		config:     cfg,
 		ctrl:       ctrl,
 		heartbeats: xsync.NewMap[function.Function, function.Heartbeat](),
 		roundTripper: otelhttp.NewTransport(&http.Transport{
@@ -88,10 +90,10 @@ func New(ctrl controller.Client) *Router {
 }
 
 func (r *Router) Start(ctx context.Context) {
-	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
+	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		var heartbeats []function.Heartbeat
 		r.heartbeats.Range(func(fn function.Function, heartbeat function.Heartbeat) bool {
-			if time.Since(heartbeat.Timestamp) > FlagHeartbeatInterval.Value()*3 {
+			if time.Since(heartbeat.Timestamp) > r.config.HeartbeatInterval*3 {
 				r.heartbeats.Delete(fn) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
@@ -100,7 +102,7 @@ func (r *Router) Start(ctx context.Context) {
 			return true
 		})
 
-		err := r.ctrl.Heartbeat(ctx, FlagPodIP.Value(), heartbeats)
+		err := r.ctrl.Heartbeat(ctx, r.config.PodIP, heartbeats)
 		if err != nil {
 			log.Warn(ctx, "failed to send heartbeats", key.Error.Slog(err))
 		}
@@ -124,7 +126,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	requestsTotal.WithLabelValues(fn.Deployment).Inc()
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
-	go timer.Loop(ctx, FlagHeartbeatInterval.Value(), func(ctx context.Context) error {
+	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
 			heartbeat.Function = fn
 			heartbeat.Timestamp = time.Now()
@@ -175,15 +177,15 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	for {
 		attempt++
-		if attempt > FlagMaxRoundTripAttempts.Value() {
-			return nil, fmt.Errorf("failed to proxy request after %d attempts", FlagMaxRoundTripAttempts.Value())
+		if attempt > r.config.MaxRoundTripAttempts {
+			return nil, fmt.Errorf("failed to proxy request after %d attempts", r.config.MaxRoundTripAttempts)
 		}
 
 		if attempt > 1 {
 			select {
 			case <-req.Context().Done():
 				return nil, req.Context().Err()
-			case <-time.After(calculateBackoff(attempt)):
+			case <-time.After(r.calculateBackoff(attempt)):
 			}
 		}
 
@@ -285,9 +287,9 @@ func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
 	}
 }
 
-func calculateBackoff(attempt int) time.Duration {
-	minTimeout := float64(FlagRoundTripRetryMinTimeout.Value())
-	maxTimeout := float64(FlagRoundTripRetryMaxTimeout.Value())
+func (r *Router) calculateBackoff(attempt int) time.Duration {
+	minTimeout := float64(r.config.RoundTripRetryMinTimeout)
+	maxTimeout := float64(r.config.RoundTripRetryMaxTimeout)
 	factor := 1 + rand.Float64() // randomize the factor between 1 and 2 to add jitter
 	return time.Duration(min(factor*minTimeout*math.Pow(2, float64(attempt)), maxTimeout))
 }

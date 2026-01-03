@@ -3,29 +3,27 @@ package fixture
 import (
 	"os"
 
+	"github.com/gadget-inc/skipper/internal/config"
 	"github.com/gadget-inc/skipper/internal/log"
 )
 
 func init() {
+	cfg := config.New[log.Config]()
+
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
 		logLevel = "error"
 	}
-
-	err := log.FlagLogLevel.Set(logLevel)
-	if err != nil {
+	if err := cfg.Level.UnmarshalText([]byte(logLevel)); err != nil {
 		panic(err)
 	}
 
 	logFormat := os.Getenv("LOG_FORMAT")
-	if logFormat == "" {
-		logFormat = "text"
+	if logFormat != "" {
+		cfg.Format = logFormat
+	} else {
+		cfg.Format = "text"
 	}
 
-	err = log.FlagLogFormat.Set(logFormat)
-	if err != nil {
-		panic(err)
-	}
-
-	log.Init()
+	log.Init(cfg)
 }

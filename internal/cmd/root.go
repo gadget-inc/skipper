@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/gadget-inc/skipper/internal/config"
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/pprof"
 	"github.com/gadget-inc/skipper/internal/telemetry"
@@ -8,12 +9,20 @@ import (
 )
 
 func NewRoot() *cobra.Command {
+	logCfg := config.New[log.Config]()
+	pprofCfg := config.New[pprof.Config]()
+	telemetryCfg := config.New[telemetry.Config]()
+
 	cmd := &cobra.Command{
 		Use: "skipper",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			log.Init()
-			shutdownTelemetry := telemetry.Init(cmd.Context(), cmd.Name())
-			shutdownPprof := pprof.Init(cmd.Context())
+			if err := logCfg.Validate(); err != nil {
+				return err
+			}
+
+			log.Init(logCfg)
+			shutdownTelemetry := telemetry.Init(cmd.Context(), telemetryCfg, cmd.Name())
+			shutdownPprof := pprof.Init(cmd.Context(), pprofCfg)
 
 			// we can't use PersistentPostRunE because it doesn't run if RunE returns an error
 			// https://github.com/spf13/cobra/issues/1893
@@ -25,19 +34,9 @@ func NewRoot() *cobra.Command {
 	cmd.AddCommand(NewController())
 	cmd.AddCommand(NewRouter())
 
-	log.FlagLogFormat.BindPersistent(cmd)
-	log.FlagLogLevel.BindPersistent(cmd)
-	pprof.FlagPprof.BindPersistent(cmd)
-	pprof.FlagPprofHost.BindPersistent(cmd)
-	pprof.FlagPprofPort.BindPersistent(cmd)
-	pprof.FlagPprofShutdownTimeout.BindPersistent(cmd)
-	telemetry.FlagTelemetry.BindPersistent(cmd)
-	telemetry.FlagTelemetryMetric.BindPersistent(cmd)
-	telemetry.FlagTelemetryMetricOTLP.BindPersistent(cmd)
-	telemetry.FlagTelemetryPrometheusHost.BindPersistent(cmd)
-	telemetry.FlagTelemetryPrometheusPort.BindPersistent(cmd)
-	telemetry.FlagTelemetryShutdownTimeout.BindPersistent(cmd)
-	telemetry.FlagTelemetryTrace.BindPersistent(cmd)
+	config.BindPersistent(cmd, logCfg)
+	config.BindPersistent(cmd, pprofCfg)
+	config.BindPersistent(cmd, telemetryCfg)
 
 	return cmd
 }

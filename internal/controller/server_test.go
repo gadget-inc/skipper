@@ -21,7 +21,7 @@ func TestHealthz(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rw := httptest.NewRecorder()
 
-	ctrl := New(nil, fake.NewClientset(), nil)
+	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
 	ctrl.Handler().ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
@@ -209,7 +209,7 @@ func TestHandleInstance(t *testing.T) {
 				fn:             fixture.NewFunction(),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
-			state.ctrl = New(nil, state.fakeKubernetes, nil)
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
 
 			tc.setup(t, state)
 
@@ -340,7 +340,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				// seed the supervisor with an expired heartbeat from a different router
 				fn := fixture.NewFunction()
 				supervisor := state.ctrl.supervisor(fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP2, function.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(FlagHeartbeatTimeout.Value() + time.Second))})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP2, function.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(state.ctrl.config.HeartbeatTimeout + time.Second))})
 
 				state.heartbeats = []function.Heartbeat{
 					{Function: fn, Timestamp: time.Now()},
@@ -367,7 +367,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			state := &testState{
 				mcc: fixture.NewMockControllerClient(t),
 			}
-			state.ctrl = New(func(host string, port int) Client { return state.mcc }, fake.NewClientset(), nil)
+			state.ctrl = New(testConfig(), func(host string, port int) Client { return state.mcc }, fake.NewClientset(), nil)
 
 			tc.setup(t, state)
 

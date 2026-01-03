@@ -135,7 +135,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	rw.WriteHeader(http.StatusOK)
 
 	controllersThatHaveReceivedHeartbeats := slices.Clone(req.Header[key.ForwardedFor.Header])
-	controllersThatHaveReceivedHeartbeats = append(controllersThatHaveReceivedHeartbeats, FlagPodIP.Value())
+	controllersThatHaveReceivedHeartbeats = append(controllersThatHaveReceivedHeartbeats, ctrl.config.PodIP)
 
 	var controllersThatWillReceiveHeartbeats []string
 	for _, controllerIP := range ctrl.ring.List() {
