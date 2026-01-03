@@ -18,8 +18,8 @@ import (
 
 var goCollectorOnce sync.Once
 
-func initMetrics(ctx context.Context) func(context.Context) error {
-	if !FlagTelemetryMetric.Value() {
+func initMetrics(ctx context.Context, cfg *Config) func(context.Context) error {
+	if !cfg.Metric {
 		return func(context.Context) error { return nil }
 	}
 
@@ -58,7 +58,7 @@ func initMetrics(ctx context.Context) func(context.Context) error {
 	}))
 
 	promServer := &http.Server{
-		Addr:    net.JoinHostPort(FlagTelemetryPrometheusHost.Value(), strconv.Itoa(FlagTelemetryPrometheusPort.Value())),
+		Addr:    net.JoinHostPort(cfg.PrometheusHost, strconv.Itoa(cfg.PrometheusPort)),
 		Handler: mux,
 	}
 

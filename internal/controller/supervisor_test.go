@@ -329,7 +329,7 @@ func TestScale(t *testing.T) {
 
 			tc.setup(t, state)
 
-			ctrl := New(nil, state.fakeKubernetes, nil)
+			ctrl := New(testConfig(), nil, state.fakeKubernetes, nil)
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
@@ -368,7 +368,7 @@ func TestScaleForwarding(t *testing.T) {
 		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
-	ctrl := New(func(host string, port int) Client { return mcc }, fakeKubernetes, nil)
+	ctrl := New(testConfig(), func(host string, port int) Client { return mcc }, fakeKubernetes, nil)
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
@@ -389,18 +389,12 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	t.Cleanup(cancel)
 
-	// Set different values for the two flags to distinguish which one is being used
+	// Set different values for the two configs to distinguish which one is being used
 	// HeartbeatTimeout: 30s (shorter) - used for scaling to 0 when no heartbeats
 	// DownscaleStabilization: 90s (longer) - used for stabilization window
-	originalHeartbeatTimeout := FlagHeartbeatTimeout.Value()
-	originalDownscaleStabilization := FlagHPADownscaleStabilization.Value()
-	t.Cleanup(func() {
-		_ = FlagHeartbeatTimeout.SetValue(originalHeartbeatTimeout)
-		_ = FlagHPADownscaleStabilization.SetValue(originalDownscaleStabilization)
-	})
-
-	_ = FlagHeartbeatTimeout.SetValue(30 * time.Second)
-	_ = FlagHPADownscaleStabilization.SetValue(90 * time.Second)
+	cfg := testConfig()
+	cfg.HeartbeatTimeout = 30 * time.Second
+	cfg.HPADownscaleStabilization = 90 * time.Second
 
 	fn := fixture.NewFunction()
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
@@ -411,8 +405,8 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	fakeKubernetes.Tracker().Add(pod1)
 	fakeKubernetes.Tracker().Add(pod2)
 
-	ctrl := New(nil, fakeKubernetes, nil)
-	ctrl.startedAt = time.Now().Add(-(FlagHPADownscaleStabilization.Value() + time.Second))
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	ctrl.startedAt = time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second))
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
@@ -471,8 +465,9 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 		fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 	}
 
-	ctrl := New(nil, fakeKubernetes, nil)
-	ctrl.startedAt = time.Now().Add(-(FlagHPADownscaleStabilization.Value() + time.Second))
+	cfg := testConfig()
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	ctrl.startedAt = time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second))
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
@@ -521,7 +516,8 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 // The algorithm follows Kubernetes HPA behavior: desiredInstances = ceil(currentInstances * (currentUsage / targetUsage))
 func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 	// Instances must be ready past the initial readiness delay to be included in scaling decisions
-	readyAt := time.Now().Add(-FlagHPAInitialReadinessDelay.Value())
+	cfg := testConfig()
+	readyAt := time.Now().Add(-cfg.HPAInitialReadinessDelay)
 
 	testCases := []struct {
 		name              string
@@ -629,7 +625,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				}
 			}
 
-			instances, _ := calculateDesiredInstancesForMetric(t.Context(), tc.metricName, tc.podMetrics)
+			instances, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, tc.metricName, tc.podMetrics)
 			assert.Assert(t, instances == tc.expectedInstances)
 		})
 	}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gadget-inc/skipper/internal/config"
 	"github.com/gadget-inc/skipper/internal/controller"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
@@ -16,6 +17,8 @@ import (
 )
 
 func NewRouter() *cobra.Command {
+	cfg := config.New[router.Config]()
+
 	cmd := &cobra.Command{
 		Use:   "router",
 		Short: "Start the router",
@@ -27,11 +30,11 @@ func NewRouter() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			r := router.New(controller.NewHTTPClient(router.FlagControllerServiceHost.Value(), router.FlagControllerServicePort.Value()))
+			r := router.New(cfg, controller.NewHTTPClient(cfg.ControllerServiceHost, cfg.ControllerServicePort))
 			r.Start(ctx)
 
 			httpServer := &http.Server{
-				Addr: net.JoinHostPort(router.FlagHost.Value(), strconv.Itoa(router.FlagPort.Value())),
+				Addr: net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
 				Handler: otelhttp.NewHandler(r, "",
 					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
 					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method }),
@@ -54,7 +57,7 @@ func NewRouter() *cobra.Command {
 				log.Info(ctx, "shutting down router")
 			}
 
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), router.FlagShutdownTimeout.Value())
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 			defer cancel()
 
 			if err := httpServer.Shutdown(shutdownCtx); err != nil {
@@ -66,16 +69,7 @@ func NewRouter() *cobra.Command {
 		},
 	}
 
-	router.FlagControllerServiceHost.Bind(cmd)
-	router.FlagControllerServicePort.Bind(cmd)
-	router.FlagHeartbeatInterval.Bind(cmd)
-	router.FlagHost.Bind(cmd)
-	router.FlagMaxRoundTripAttempts.Bind(cmd)
-	router.FlagPodIP.Bind(cmd)
-	router.FlagPort.Bind(cmd)
-	router.FlagRoundTripRetryMaxTimeout.Bind(cmd)
-	router.FlagRoundTripRetryMinTimeout.Bind(cmd)
-	router.FlagShutdownTimeout.Bind(cmd)
+	config.Bind(cmd, cfg)
 
 	return cmd
 }

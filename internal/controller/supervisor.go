@@ -46,7 +46,7 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat function.Heartbeat) {
 
 	// garbage collect expired router heartbeats
 	s.routerHeartbeats.Range(func(routerIP string, heartbeat function.Heartbeat) bool {
-		if time.Since(heartbeat.Timestamp) > FlagHeartbeatTimeout.Value() {
+		if time.Since(heartbeat.Timestamp) > s.ctrl.config.HeartbeatTimeout {
 			s.routerHeartbeats.Delete(routerIP)
 		}
 		return true
@@ -88,11 +88,11 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 	heartbeat := s.combinedHeartbeat(instances)
 	ctx = telemetry.With(ctx, key.Heartbeat.Attr(heartbeat))
 
-	scalingDecision := calculateDesiredInstances(ctx, heartbeat, instances)
+	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
 
 	s.mu.Lock()
 	now := time.Now()
-	stabilizationCutoff := now.Add(-FlagHPADownscaleStabilization.Value())
+	stabilizationCutoff := now.Add(-s.ctrl.config.HPADownscaleStabilization)
 	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{DesiredInstances: scalingDecision.DesiredInstances, Timestamp: now})
 	s.stabilizationWindow = slices.DeleteFunc(s.stabilizationWindow, func(r Recommendation) bool {
 		return r.Timestamp.Before(stabilizationCutoff)
@@ -103,7 +103,7 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 	currentInstances := len(instances)
 	if scalingDecision.DesiredInstances < currentInstances {
 		// we're scaling down
-		if time.Since(s.ctrl.startedAt) < FlagHPADownscaleStabilization.Value() {
+		if time.Since(s.ctrl.startedAt) < s.ctrl.config.HPADownscaleStabilization {
 			// the controller hasn't been running long enough to record
 			// recommendations or receive heartbeats, so don't scale
 			// anything down yet
@@ -176,7 +176,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 	}
 
 	responsibleIP := s.ctrl.ring.Get(s.fn)
-	if responsibleIP != FlagPodIP.Value() {
+	if responsibleIP != s.ctrl.config.PodIP {
 		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Slog(responsibleIP))
 		return s.ctrl.getControllerClient(responsibleIP).Scale(ctx, s.fn, decision.DesiredInstances, decision.Reason)
 	}
@@ -291,7 +291,7 @@ type Recommendation struct {
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instances []*function.Instance) (int, float64) {
+func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric Metric, instances []*function.Instance) (int, float64) {
 	currentInstances := len(instances)
 	var instancesWithMetrics []*function.Instance
 	var instancesWithoutMetrics []*function.Instance
@@ -307,7 +307,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 			return currentInstances, 0
 		}
 
-		if metric == MetricCPU && (instance.ReadyAt.IsZero() || time.Since(instance.ReadyAt) <= FlagHPAInitialReadinessDelay.Value()) {
+		if metric == MetricCPU && (instance.ReadyAt.IsZero() || time.Since(instance.ReadyAt) <= cfg.HPAInitialReadinessDelay) {
 			// ignore CPU metrics for pods that have been ready for less than the initial readiness delay
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 			continue
@@ -348,7 +348,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 	usageDiscrepancy := math.Abs(1.0 - usageRatio)
 	desiredInstances := int(math.Ceil(float64(currentInstances) * usageRatio))
 
-	if usageDiscrepancy <= FlagHPATolerance.Value()+1e-10 { // add a small epsilon to avoid floating point errors
+	if usageDiscrepancy <= cfg.HPATolerance+1e-10 { // add a small epsilon to avoid floating point errors
 		// the average usage is within tolerance of the target utilization, so we should not scale
 		return currentInstances, 0
 	}
@@ -368,7 +368,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
-			math.Abs(1.0-adjustedUsageRatio) <= FlagHPATolerance.Value()+1e-10 {
+			math.Abs(1.0-adjustedUsageRatio) <= cfg.HPATolerance+1e-10 {
 			// the adjusted usage ratio is the opposite of the original
 			// usage ratio, or the adjusted usage ratio is within
 			// tolerance of the target utilization. either way, we
@@ -383,8 +383,8 @@ func calculateDesiredInstancesForMetric(_ context.Context, metric Metric, instan
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat, instances []*function.Instance) ScalingDecision {
-	if time.Since(heartbeat.Timestamp) >= FlagHeartbeatTimeout.Value() {
+func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat function.Heartbeat, instances []*function.Instance) ScalingDecision {
+	if time.Since(heartbeat.Timestamp) >= cfg.HeartbeatTimeout {
 		return ScalingDecision{
 			DesiredInstances:          0,
 			UnclampedDesiredInstances: 0,
@@ -407,7 +407,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 	}
 
 	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
-		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, MetricCPU, instances)
+		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricCPU, instances)
 		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "cpu", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
@@ -416,7 +416,7 @@ func calculateDesiredInstances(ctx context.Context, heartbeat function.Heartbeat
 	}
 
 	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
-		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, MetricMemory, instances)
+		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricMemory, instances)
 		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "memory", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances

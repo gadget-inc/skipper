@@ -13,11 +13,6 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-func init() {
-	FlagHashRingWaitTime.Init()
-	_ = function.FlagNamespaces.SetValue([]string{fixture.FunctionNamespace})
-}
-
 func TestGetReadyInstances(t *testing.T) {
 	type testState struct {
 		fn             function.Function
@@ -129,7 +124,7 @@ func TestGetReadyInstances(t *testing.T) {
 
 			tc.setup(t, state)
 
-			ctrl := New(nil, state.fakeKubernetes, nil)
+			ctrl := New(testConfig(), nil, state.fakeKubernetes, nil)
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
@@ -297,7 +292,7 @@ func TestControllerInformer(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(state.ctrlPod)
 			}
 
-			state.ctrl = New(nil, state.fakeKubernetes, nil)
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
 			err := state.ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 

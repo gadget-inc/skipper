@@ -63,8 +63,8 @@ func logHook(ctx context.Context, record *slog.Record) {
 	}
 }
 
-func initTracing(ctx context.Context, res *resource.Resource) func(context.Context) error {
-	if !FlagTelemetryTrace.Value() {
+func initTracing(ctx context.Context, cfg *Config, res *resource.Resource) func(context.Context) error {
+	if !cfg.Trace {
 		return func(context.Context) error { return nil }
 	}
 

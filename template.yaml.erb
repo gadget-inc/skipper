@@ -213,11 +213,11 @@ spec:
             - name: metrics
               containerPort: 9090
           env:
-            - name: SKIPPER_CONTROLLER_NAMESPACE
+            - name: SKIPPER_NAMESPACE
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: SKIPPER_CONTROLLER_POD_IP
+            - name: SKIPPER_POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
@@ -229,7 +229,7 @@ spec:
               value: "<%= function_namespaces.join(',') %>"
             - name: SKIPPER_SKIP_FORBIDDEN_NAMESPACES
               value: "<%= skip_forbidden_namespaces %>"
-            - name: SKIPPER_CONTROLLER_SHUTDOWN_TIMEOUT
+            - name: SKIPPER_SHUTDOWN_TIMEOUT
               value: "<%= controller_shutdown_timeout_seconds %>s"
             <%- env.each do |key, value| -%>
             - name: "<%= key %>"
@@ -240,7 +240,7 @@ spec:
               value: "<%= value %>"
             <%- end -%>
             <%- if defined? unsafe_controller_paseto_private_key -%>
-            - name: SKIPPER_CONTROLLER_PASETO_PRIVATE_KEY
+            - name: SKIPPER_PASETO_PRIVATE_KEY
               value: <%= unsafe_controller_paseto_private_key.to_json %>
             <%- else -%>
           envFrom:
@@ -455,7 +455,7 @@ spec:
             - name: metrics
               containerPort: 9090
           env:
-            - name: SKIPPER_ROUTER_POD_IP
+            - name: SKIPPER_POD_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
@@ -465,7 +465,7 @@ spec:
               value: "<%= router_log_format %>"
             - name: SKIPPER_CONTROLLER_SERVICE_HOST
               value: "<%= controller_name %>.<%= namespace %>.svc.cluster.local"
-            - name: SKIPPER_ROUTER_SHUTDOWN_TIMEOUT
+            - name: SKIPPER_SHUTDOWN_TIMEOUT
               value: "<%= router_shutdown_timeout_seconds %>s"
             <%- env.each do |key, value| -%>
             - name: "<%= key %>"

@@ -20,19 +20,11 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-func init() {
-	FlagMaxRoundTripAttempts.Init()
-	FlagRoundTripRetryMinTimeout.Init()
-	_ = FlagHeartbeatInterval.SetValue(100 * time.Millisecond)
-	_ = FlagPodIP.SetValue(fixture.RouterIP)
-	_ = FlagRoundTripRetryMaxTimeout.SetValue(10 * time.Millisecond)
-}
-
 func TestHealthz(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rw := httptest.NewRecorder()
 
-	router := New(fixture.NewMockControllerClient(t))
+	router := New(testConfig(), fixture.NewMockControllerClient(t))
 	router.ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
@@ -65,7 +57,7 @@ func TestGetInstanceDuration(t *testing.T) {
 	rw := httptest.NewRecorder()
 	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
 
-	router := New(mockControllerClient)
+	router := New(testConfig(), mockControllerClient)
 	router.ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
@@ -105,7 +97,7 @@ func TestMethods(t *testing.T) {
 			rw := httptest.NewRecorder()
 			req := fixture.NewFunctionRequest(t, fn, tc.method, "/", nil)
 
-			router := New(mcc)
+			router := New(testConfig(), mcc)
 			router.ServeHTTP(rw, req)
 
 			assert.Assert(t, rw.Code == http.StatusOK)
@@ -195,7 +187,7 @@ func TestHeaders(t *testing.T) {
 			tc.setup(t, state)
 
 			rw := httptest.NewRecorder()
-			router := New(mcc)
+			router := New(testConfig(), mcc)
 			router.ServeHTTP(rw, state.req)
 
 			assert.Assert(t, rw.Code == http.StatusOK)
@@ -302,7 +294,7 @@ func TestBody(t *testing.T) {
 			req := fixture.NewFunctionRequest(t, state.fn, http.MethodPost, "/", state.body)
 			req.Header.Set("Content-Type", state.contentType)
 
-			router := New(mcc)
+			router := New(testConfig(), mcc)
 			router.ServeHTTP(rw, req)
 
 			assert.Assert(t, rw.Code == http.StatusOK)
@@ -382,7 +374,7 @@ func TestHeartbeats(t *testing.T) {
 	rw := httptest.NewRecorder()
 	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil).WithContext(ctx)
 
-	router := New(mcc)
+	router := New(testConfig(), mcc)
 	router.Start(ctx)
 	router.ServeHTTP(rw, req)
 
@@ -477,8 +469,6 @@ func TestRetries(t *testing.T) {
 
 			tc.setup(t, state)
 
-			fixture.SetFlag(t, &FlagMaxRoundTripAttempts, state.maxAttempts)
-
 			expectedMethod := http.MethodPost
 			expectedPath := "/"
 			expectedBody := "Hello, world!"
@@ -507,7 +497,9 @@ func TestRetries(t *testing.T) {
 			body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
 			req := fixture.NewFunctionRequest(t, state.fn, expectedMethod, expectedPath, body)
 
-			router := New(mcc)
+			cfg := testConfig()
+			cfg.MaxRoundTripAttempts = state.maxAttempts
+			router := New(cfg, mcc)
 
 			roundTripperErrsIndex := 0
 			originalTransport := router.roundTripper
