@@ -2,7 +2,8 @@
 .DS_Store
 .cursor/
 .direnv/
-.vscode/
-!.vscode/settings.json
+.vscode/**
+!.vscode/settings.example.json
+!.vscode/extensions.json
 node_modules/
 tmp/
