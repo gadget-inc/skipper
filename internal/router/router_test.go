@@ -113,6 +113,10 @@ func TestMethods(t *testing.T) {
 
 		// integration tests
 		t.Run(tc.method+" integration", func(t *testing.T) {
+			if testing.Short() {
+				t.Skip("skipping integration test in short mode")
+			}
+
 			fn := fixture.NewEchoFunction()
 			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterIntegrationURL, nil)
 
@@ -202,6 +206,10 @@ func TestHeaders(t *testing.T) {
 
 		// integration tests
 		t.Run(tc.name+" integration", func(t *testing.T) {
+			if testing.Short() {
+				t.Skip("skipping integration test in short mode")
+			}
+
 			state := &testState{
 				fn: fixture.NewEchoFunction(),
 			}
@@ -304,6 +312,10 @@ func TestBody(t *testing.T) {
 
 		// integration tests
 		t.Run(tc.name+" integration", func(t *testing.T) {
+			if testing.Short() {
+				t.Skip("skipping integration test in short mode")
+			}
+
 			state := &testState{
 				fn: fixture.NewEchoFunction(),
 			}

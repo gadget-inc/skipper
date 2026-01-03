@@ -117,7 +117,11 @@ $ tests # Runs `go test ./...`.
 
 ```bash
 $ tests -v ./internal/controller/...  # Runs verbose tests only for the controller package.
+$ tests -short ./...                  # Skips integration tests (no Orbstack required).
 ```
+
+> [!TIP]
+> Some tests are integration tests that require Skipper to be deployed to Orbstack. Pass `-short` to skip these tests if you haven't deployed yet.
 
 ## Linting & Formatting
 
