@@ -59,7 +59,10 @@ export async function currentImageDigest(name: string) {
   return digest;
 }
 
-export async function renderKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
+export async function renderKraneNamespace(
+  namespace: string,
+  bindings: Record<string, unknown> = {},
+) {
   const deployDir = abs(`deploy/${namespace}`);
   const renderDir = abs(`tmp/krane/${namespace}`);
   await emptyDir(renderDir);
@@ -80,10 +83,15 @@ export async function renderKraneNamespace(namespace: string, bindings: Record<s
   return renderDir;
 }
 
-export async function deployKraneNamespace(namespace: string, bindings: Record<string, unknown> = {}) {
+export async function deployKraneNamespace(
+  namespace: string,
+  bindings: Record<string, unknown> = {},
+) {
   $.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
   const renderDir = await renderKraneNamespace(namespace, bindings);
-  await $`kubectl --context="$SKIPPER_KUBECTL_CONTEXT" create namespace ${namespace}`.nothrow().quiet();
+  await $`kubectl --context="$SKIPPER_KUBECTL_CONTEXT" create namespace ${namespace}`
+    .nothrow()
+    .quiet();
   await $`krane deploy ${namespace} "$SKIPPER_KUBECTL_CONTEXT" -f ${renderDir}/*`;
 }
 

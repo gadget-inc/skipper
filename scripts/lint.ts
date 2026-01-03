@@ -7,6 +7,5 @@ $.verbose = true;
 $.stdio = "inherit";
 
 await $nothrow`golangci-lint run`;
-await $nothrow`prettier --check .`;
-await $nothrow`eslint --max-warnings=0 .`;
-await $nothrow`tsc --project .`;
+await $nothrow`oxfmt --check .`;
+await $nothrow`oxlint --type-aware --type-check --max-warnings=0 .`;

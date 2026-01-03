@@ -16,7 +16,7 @@ socket.on("open", () => {
 });
 
 socket.on("message", async (data, isBinary) => {
-  // eslint-disable-next-line @typescript-eslint/no-base-to-string
+  // oxlint-disable-next-line typescript/no-base-to-string
   const message = data.toString("utf8");
   console.log("websocket message", { message, isBinary });
   if (message === "pong") {
