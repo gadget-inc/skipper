@@ -35,6 +35,7 @@ import (
 var (
 	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
 	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
+	otelHTTPClient            = &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 )
 
 func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string) error {
@@ -258,7 +259,7 @@ GET_UNASSIGNED_POD:
 
 	log.Info(ctx, "assigning pod", key.Pod.Slog(assignedPod))
 	var res *http.Response
-	res, err = otelhttp.DefaultClient.Do(req)
+	res, err = otelHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send assign request: %w", err)
 	}

@@ -437,7 +437,7 @@ func TestConvergeNamespace(t *testing.T) {
 			state := &testState{
 				fn:                    fixture.NewFunction(),
 				fakeKubernetes:        fake.NewClientset(fixture.NewControllerPod()),
-				fakeKubernetesMetrics: fakekubernetesmetrics.NewSimpleClientset(),
+				fakeKubernetesMetrics: fakekubernetesmetrics.NewSimpleClientset(), //nolint:staticcheck // NewClientset isn't generated for this package
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, state.fakeKubernetesMetrics)
 
