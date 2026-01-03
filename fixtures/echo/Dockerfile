@@ -1,3 +1,4 @@
+# check=skip=InvalidDefaultArgInFrom
 # syntax=docker/dockerfile:1
 
 # Setup Nix and direnv

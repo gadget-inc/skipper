@@ -22,7 +22,7 @@
           graphviz = pkgs.graphviz;
           krane = pkgs.krane;
           kubectl = pkgs.kubectl;
-          nodejs = pkgs.nodejs_22;
+          nodejs = pkgs.nodejs_24;
           pnpm = pkgs.pnpm.override { nodejs = flake.packages.nodejs; };
           stern = pkgs.stern;
 
