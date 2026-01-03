@@ -126,7 +126,7 @@ $ tests -short ./...                  # Skips integration tests (no Orbstack req
 ## Linting & Formatting
 
 ```bash
-$ lint # Runs golangci-lint, prettier, eslint, and tsc.
+$ lint # Runs golangci-lint, oxfmt, and oxlint (with type checking).
 $ fmt  # Attempts to fix linting errors.
 ```
 

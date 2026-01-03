@@ -43,7 +43,10 @@ if (flags.values.help) {
 
 if (flags.values.only.includes("skipper")) {
   const imageName = flags.values.registry ? `${flags.values.registry}/skipper` : "skipper";
-  const buildFlags = [`--platform=${flags.values.platform}`, `--tag=${imageName}:${flags.values.tag}`];
+  const buildFlags = [
+    `--platform=${flags.values.platform}`,
+    `--tag=${imageName}:${flags.values.tag}`,
+  ];
 
   if (flags.values.load) {
     buildFlags.push("--load");

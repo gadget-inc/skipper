@@ -14,7 +14,11 @@ $.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
 const flags = parseArgs({
   args: process.argv.slice(2),
   options: {
-    namespace: { type: "string", default: "skipper-development,skipper-development-fixtures,skipper-test,skipper-test-fixtures" },
+    namespace: {
+      type: "string",
+      default:
+        "skipper-development,skipper-development-fixtures,skipper-test,skipper-test-fixtures",
+    },
     file: { type: "string", default: abs("tmp/logs/logs.log"), short: "f" },
   },
 });

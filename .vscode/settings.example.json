@@ -3,8 +3,9 @@
   "gopls": {
     "formatting.gofumpt": true
   },
+  "oxc.enable": true,
   "typescript.tsdk": "node_modules/typescript/lib",
   "[javascript,javascriptreact,typescript,typescriptreact,json,jsonc,yaml,markdown]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "oxc.oxc-vscode"
   }
 }

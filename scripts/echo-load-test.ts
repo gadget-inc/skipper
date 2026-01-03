@@ -40,7 +40,10 @@ let request = 0;
 let failures = 0;
 const latencies: number[] & { sorted?: boolean } = [];
 const percentiles = [0.5, 0.9, 0.99, 0.999, 1];
-const tenants = Array.from({ length: parseInt(flags.values.tenants, 10) }, (_, i) => `tenant${i + 1}`);
+const tenants = Array.from(
+  { length: parseInt(flags.values.tenants, 10) },
+  (_, i) => `tenant${i + 1}`,
+);
 
 try {
   await pMap(Array.from({ length: parseInt(flags.values.requests, 10) }), sendRequest, {
@@ -60,7 +63,9 @@ if (failures > 0) {
 
 console.log("\nPercentiles");
 for (const percentile of percentiles) {
-  console.log(`${percentile.toString().padStart(6)}  ${ms(getPercentile(percentile), { long: true })}`);
+  console.log(
+    `${percentile.toString().padStart(6)}  ${ms(getPercentile(percentile), { long: true })}`,
+  );
 }
 
 async function sendRequest() {
@@ -99,13 +104,17 @@ async function sendRequest() {
     } else {
       failures++;
       const body = await response.text().catch(() => "unknown");
-      console.error(`request: ${request.toLocaleString().padEnd(flags.values.requests.length)}  status: ${response.status}  body: ${body}`);
+      console.error(
+        `request: ${request.toLocaleString().padEnd(flags.values.requests.length)}  status: ${response.status}  body: ${body}`,
+      );
     }
   } catch (error) {
     request++;
     if (!isAbortError(error)) {
       failures++;
-      console.error(`request: ${request.toLocaleString().padEnd(flags.values.requests.length)}  error: ${String(error)}`);
+      console.error(
+        `request: ${request.toLocaleString().padEnd(flags.values.requests.length)}  error: ${String(error)}`,
+      );
     }
   }
 }
