@@ -15,6 +15,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"gotest.tools/v3/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,7 +42,7 @@ func TestPrometheusMetricsEndpoints_Controller(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Assert(t, len(body) > 0)
 
-	var parser expfmt.TextParser
+	parser := expfmt.NewTextParser(model.UTF8Validation)
 	metrics, err := parser.TextToMetricFamilies(bytes.NewReader(body))
 	assert.NilError(t, err)
 	assert.Assert(t, len(metrics) > 0)
@@ -63,7 +64,7 @@ func TestPrometheusMetricsEndpoints_Router(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Assert(t, len(body) > 0)
 
-	var parser expfmt.TextParser
+	parser := expfmt.NewTextParser(model.UTF8Validation)
 	metrics, err := parser.TextToMetricFamilies(bytes.NewReader(body))
 	assert.NilError(t, err)
 	assert.Assert(t, len(metrics) > 0)
