@@ -5,19 +5,19 @@
   "type": "module",
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.60.0",
-    "@opentelemetry/exporter-metrics-otlp-proto": "^0.202.0",
-    "@opentelemetry/exporter-trace-otlp-proto": "^0.202.0",
-    "@opentelemetry/sdk-metrics": "^2.0.1",
-    "@opentelemetry/sdk-node": "^0.202.0",
-    "@opentelemetry/sdk-trace-node": "^2.0.1"
+    "@opentelemetry/auto-instrumentations-node": "^0.67.3",
+    "@opentelemetry/exporter-metrics-otlp-proto": "^0.208.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.208.0",
+    "@opentelemetry/sdk-metrics": "^2.2.0",
+    "@opentelemetry/sdk-node": "^0.208.0",
+    "@opentelemetry/sdk-trace-node": "^2.2.0"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^25.0.3",
     "oxfmt": "^0.21.0",
     "oxlint": "^1.36.0",
     "oxlint-tsgolint": "^0.10.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.9.3"
   },
-  "packageManager": "pnpm@10.11.0"
+  "packageManager": "pnpm@10.26.1"
 }
