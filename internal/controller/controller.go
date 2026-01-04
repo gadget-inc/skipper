@@ -282,7 +282,7 @@ func (ctrl *Controller) watchErrorHandler(ctx context.Context, attrs ...slog.Att
 	}
 }
 
-func (ctrl *Controller) getReadyInstances(fn function.Function) ([]*function.Instance, error) {
+func (ctrl *Controller) getReadyInstances(fn *function.Function) ([]*function.Instance, error) {
 	instances, err := ctrl.getInstances(fn)
 	if err != nil {
 		return nil, err
@@ -292,7 +292,7 @@ func (ctrl *Controller) getReadyInstances(fn function.Function) ([]*function.Ins
 	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
 }
 
-func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance, error) {
+func (ctrl *Controller) getInstances(fn *function.Function) ([]*function.Instance, error) {
 	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
@@ -308,7 +308,7 @@ func (ctrl *Controller) getInstances(fn function.Function) ([]*function.Instance
 			return nil, fmt.Errorf("failed to get instance from pod: %w", err)
 		}
 
-		if instance.Function != fn {
+		if !instance.Function.Equal(fn) {
 			// pod is assigned to a different function
 			continue
 		}
@@ -353,13 +353,17 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 	}
 
 	instance := &function.Instance{
-		Name: pod.Name,
+		Function: &function.Function{},
+		Name:     pod.Name,
 	}
 
 	if fnJson, ok := pod.Annotations[key.Function.Annotation]; ok {
-		err := json.Unmarshal([]byte(fnJson), &instance.Function)
+		err := json.Unmarshal([]byte(fnJson), instance.Function)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
+		}
+		if err := instance.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid function in pod annotation: %w", err)
 		}
 	} else {
 		return nil, errors.New("missing function annotation")
@@ -419,9 +423,9 @@ func portFromPod(pod *v1.Pod) (string, error) {
 	return port, nil
 }
 
-func (ctrl *Controller) supervisor(fn function.Function) *Supervisor {
+func (ctrl *Controller) supervisor(fn *function.Function) *Supervisor {
 	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
-		return &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: xsync.NewMap[string, function.Heartbeat]()}, false
+		return &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: xsync.NewMap[string, *function.Heartbeat]()}, false
 	})
 	return supervisor
 }

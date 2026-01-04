@@ -15,7 +15,7 @@ import (
 
 func TestGetReadyInstances(t *testing.T) {
 	type testState struct {
-		fn             function.Function
+		fn             *function.Function
 		fakeKubernetes *fake.Clientset
 		instances      []*function.Instance
 	}
@@ -101,9 +101,9 @@ func TestGetReadyInstances(t *testing.T) {
 			name: "different metadata",
 			setup: func(t *testing.T, state *testState) {
 				// create a pod with different metadata than state.fn
-				fn := state.fn
+				fn := *state.fn // copy the function
 				fn.Metadata = "different"
-				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, &fn, nil))
 				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, state *testState) {

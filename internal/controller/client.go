@@ -15,9 +15,9 @@ import (
 )
 
 type Client interface {
-	Instance(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (instance *function.Instance, err error)
-	Heartbeat(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error
-	Scale(ctx context.Context, fn function.Function, desiredInstances int, reason string) ([]*function.Instance, error)
+	Instance(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (instance *function.Instance, err error)
+	Heartbeat(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error
+	Scale(ctx context.Context, fn *function.Function, desiredInstances int, reason string) ([]*function.Instance, error)
 }
 
 type NewClientFunc func(host string, port int) Client
@@ -40,7 +40,7 @@ func NewHTTPClient(host string, port int) Client {
 	}
 }
 
-func (c *httpClient) Instance(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (instance *function.Instance, err error) {
+func (c *httpClient) Instance(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (instance *function.Instance, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/instance", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create instance request: %w", err)
@@ -68,7 +68,7 @@ func (c *httpClient) Instance(ctx context.Context, fn function.Function, exclude
 	return instance, nil
 }
 
-func (c *httpClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+func (c *httpClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
 	if len(heartbeats) == 0 {
 		return nil
 	}
@@ -99,7 +99,7 @@ func (c *httpClient) Heartbeat(ctx context.Context, routerIP string, heartbeats 
 	return nil
 }
 
-func (c *httpClient) Scale(ctx context.Context, fn function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
+func (c *httpClient) Scale(ctx context.Context, fn *function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/scale", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scale request: %w", err)

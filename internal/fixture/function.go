@@ -18,15 +18,15 @@ const (
 	FunctionDeployment = "test"
 )
 
-func NewFunction() function.Function {
+func NewFunction() *function.Function {
 	tenantCounter.Add(1)
 
-	return function.Function{
+	return &function.Function{
 		Tenant:     "tenant-" + strconv.Itoa(int(tenantCounter.Load())),
 		Metadata:   uuid.NewString(),
 		Namespace:  FunctionNamespace,
 		Deployment: FunctionDeployment,
-		Scale: function.Scale{
+		Scale: &function.Scale{
 			MinInstances:           0,
 			MaxInstances:           5,
 			TargetCPUUsageMilli:    100,
@@ -36,7 +36,7 @@ func NewFunction() function.Function {
 	}
 }
 
-func NewFunctionRequest(t *testing.T, fn function.Function, method string, path string, body io.Reader) *http.Request {
+func NewFunctionRequest(t *testing.T, fn *function.Function, method string, path string, body io.Reader) *http.Request {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
 	req := httptest.NewRequestWithContext(ctx, method, path, body)
@@ -44,7 +44,7 @@ func NewFunctionRequest(t *testing.T, fn function.Function, method string, path 
 	return req
 }
 
-func NewInstance(t *testing.T, fn function.Function, handler http.HandlerFunc) *function.Instance {
+func NewInstance(t *testing.T, fn *function.Function, handler http.HandlerFunc) *function.Instance {
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 

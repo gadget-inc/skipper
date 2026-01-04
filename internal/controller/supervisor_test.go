@@ -17,7 +17,7 @@ import (
 
 func TestScale(t *testing.T) {
 	type testState struct {
-		fn             function.Function
+		fn             *function.Function
 		fakeKubernetes *fake.Clientset
 		instances      []*function.Instance
 	}
@@ -80,9 +80,9 @@ func TestScale(t *testing.T) {
 			desiredInstances: 1,
 			err:              context.DeadlineExceeded,
 			setup: func(t *testing.T, state *testState) {
-				fn := state.fn
+				fn := *state.fn // copy the function
 				fn.Metadata = "different"
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, &fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 0)
@@ -364,7 +364,7 @@ func TestScaleForwarding(t *testing.T) {
 
 	// Set up mock client to handle forwarded scale request
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
+	mcc.HandleScale(func(ctx context.Context, fn *function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
 		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
@@ -421,7 +421,7 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	}
 
 	// Add a recent heartbeat so we don't scale to 0
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
 		Function:  fn,
 		Timestamp: time.Now(),
 	})
@@ -474,7 +474,7 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 	supervisor := ctrl.supervisor(fn)
 
 	// Add a heartbeat so we don't scale to 0
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
 		Function:  fn,
 		Timestamp: time.Now(),
 	})
@@ -496,7 +496,7 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 					fixture.NewInstance(t, fn, nil),
 				}
 				// Update heartbeat timestamp to keep function alive
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
 					Function:  fn,
 					Timestamp: time.Now(),
 				})
@@ -617,6 +617,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Configure target usage for each instance
 			for _, pm := range tc.podMetrics {
+				if pm.Function == nil {
+					pm.Function = &function.Function{Scale: &function.Scale{}}
+				}
 				switch tc.metricName {
 				case MetricCPU:
 					pm.Scale.TargetCPUUsageMilli = tc.targetUsage

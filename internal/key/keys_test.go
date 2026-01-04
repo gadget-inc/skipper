@@ -148,7 +148,7 @@ var (
 	fakeStringSlice = []string{"a", "b"}
 	fakeStringMap   = map[string]string{"key": "value"}
 
-	fakeScale = function.Scale{
+	fakeScale = &function.Scale{
 		MinInstances:           fakeInt,
 		MaxInstances:           fakeInt,
 		TargetCPUUsageMilli:    fakeInt,
@@ -156,7 +156,7 @@ var (
 		TargetInFlightRequests: fakeInt,
 	}
 
-	fakeFunction = function.Function{
+	fakeFunction = &function.Function{
 		Namespace:  fakeString,
 		Deployment: fakeString,
 		Tenant:     fakeString,
@@ -164,7 +164,7 @@ var (
 		Scale:      fakeScale,
 	}
 
-	fakeHeartbeat = function.Heartbeat{
+	fakeHeartbeat = &function.Heartbeat{
 		Function:         fakeFunction,
 		Timestamp:        fakeTime,
 		InFlightRequests: fakeInt,

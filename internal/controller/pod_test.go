@@ -47,7 +47,7 @@ func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
 
 func TestConvergeNamespace(t *testing.T) {
 	type testState struct {
-		fn                    function.Function
+		fn                    *function.Function
 		fakeKubernetes        *fake.Clientset
 		fakeKubernetesMetrics *fakekubernetesmetrics.Clientset
 		ctrl                  *Controller
@@ -78,7 +78,7 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed the supervisor with a recent heartbeat
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure both pods are now assigned to the function because we scaled up to 2 instances
@@ -109,7 +109,7 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed the supervisor with a recent heartbeat
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure both pods are now assigned to the function because we scaled up to 2 instances
@@ -140,8 +140,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed the supervisor with 2 heartbeats across 2 routers with 1x target in-flight requests each
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests})
-				supervisor.routerHeartbeats.Store(fixture.RouterIP2, function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP2, &function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests})
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure both pods are now assigned to the function because we scaled up to 2 instances
@@ -177,7 +177,7 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed the supervisor with a recent heartbeat that has 0.5x target in-flight requests
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests / 2})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests / 2})
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure only 1 pod is assigned to the function because we scaled down to 1 instance
@@ -196,8 +196,8 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed the supervisor with 2 heartbeats across 2 routers with 0.5x target in-flight requests each
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests / 2})
-				supervisor.routerHeartbeats.Store(fixture.RouterIP2, function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests / 2})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests / 2})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP2, &function.Heartbeat{Function: state.fn, Timestamp: time.Now(), InFlightRequests: state.fn.Scale.TargetInFlightRequests / 2})
 
 				// seed kubernetes with an assigned pod and an available pod
 				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
@@ -272,7 +272,7 @@ func TestConvergeNamespace(t *testing.T) {
 
 				// seed the supervisor with a heartbeat that has expired
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now().Add(-state.ctrl.config.HeartbeatTimeout)})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now().Add(-state.ctrl.config.HeartbeatTimeout)})
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure the assigned pod was deleted because it has been assigned longer than a heartbeat timeout and its heartbeat has expired
@@ -311,7 +311,7 @@ func TestConvergeNamespace(t *testing.T) {
 			name: "stale instance",
 			setup: func(t *testing.T, state *testState) {
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
 
 				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
 				state.fakeKubernetes.Tracker().Add(assignedPod)
@@ -331,7 +331,7 @@ func TestConvergeNamespace(t *testing.T) {
 			name: "stale instance without enough available pods",
 			setup: func(t *testing.T, state *testState) {
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
 
 				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
 				state.fakeKubernetes.Tracker().Add(assignedPod)
@@ -357,7 +357,7 @@ func TestConvergeNamespace(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				// seed the supervisor with a heartbeat that has expired
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now().Add(-state.ctrl.config.HeartbeatTimeout)})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now().Add(-state.ctrl.config.HeartbeatTimeout)})
 
 				// seed kubernetes with an assigned pod that needs to be terminated
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
@@ -376,7 +376,7 @@ func TestConvergeNamespace(t *testing.T) {
 			name: "extra ready instance",
 			setup: func(t *testing.T, state *testState) {
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
 
 				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
 
@@ -399,7 +399,7 @@ func TestConvergeNamespace(t *testing.T) {
 			name: "extra unready instance",
 			setup: func(t *testing.T, state *testState) {
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
 
 				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
 
@@ -456,7 +456,7 @@ func TestConvergeNamespace(t *testing.T) {
 
 func TestAssignPod(t *testing.T) {
 	type testState struct {
-		fn             function.Function
+		fn             *function.Function
 		cfg            *Config
 		fakeKubernetes *fake.Clientset
 		instance       *function.Instance

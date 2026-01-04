@@ -21,7 +21,7 @@ func testConfig() *Config {
 	return cfg
 }
 
-func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn function.Function) {
+func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn *function.Function) {
 	fnJSON, err := json.Marshal(fn)
 	assert.NilError(t, err)
 

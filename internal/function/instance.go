@@ -8,7 +8,7 @@ import (
 )
 
 type Instance struct {
-	Function
+	*Function
 	Name           string    // pod name
 	Addr           string    // pod ip : pod port
 	ReplicaSet     string    // replica set name
@@ -30,4 +30,18 @@ func (instance *Instance) LogValue() slog.Value {
 		key.CPUUsageMilli.Slog(instance.CPUUsageMilli),
 		key.MemoryUsageMiB.Slog(instance.MemoryUsageMiB),
 	)
+}
+
+func (i *Instance) Equal(other *Instance) bool {
+	if i == nil || other == nil {
+		return i == other
+	}
+	return i.Function.Equal(other.Function) &&
+		i.Name == other.Name &&
+		i.Addr == other.Addr &&
+		i.ReplicaSet == other.ReplicaSet &&
+		i.AssignedAt.Equal(other.AssignedAt) &&
+		i.ReadyAt.Equal(other.ReadyAt) &&
+		i.CPUUsageMilli == other.CPUUsageMilli &&
+		i.MemoryUsageMiB == other.MemoryUsageMiB
 }

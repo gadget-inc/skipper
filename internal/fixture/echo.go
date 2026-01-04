@@ -8,7 +8,7 @@ import (
 	"github.com/go-json-experiment/json"
 )
 
-func NewEchoFunction() function.Function {
+func NewEchoFunction() *function.Function {
 	fn := NewFunction()
 	fn.Deployment = "echo"
 	return fn
