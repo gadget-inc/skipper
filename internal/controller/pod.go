@@ -159,15 +159,12 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 
 	var wg sync.WaitGroup
 	for fn, instances := range fnInstances {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if _, err := ctrl.supervisor(fn).converge(ctx, instances); err != nil {
 				log.Error(ctx, "failed to scale function to desired instances", key.Error.Slog(err))
 			}
-		}()
+		})
 	}
-
 	wg.Wait()
 
 	return nil
