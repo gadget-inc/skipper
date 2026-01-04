@@ -30,3 +30,10 @@ func (h *Heartbeat) Equal(other *Heartbeat) bool {
 		h.Timestamp.Equal(other.Timestamp) &&
 		h.InFlightRequests == other.InFlightRequests
 }
+
+func (h *Heartbeat) GetInFlightRequests() int {
+	if h == nil {
+		return 0
+	}
+	return h.InFlightRequests
+}
