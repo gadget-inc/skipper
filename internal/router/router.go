@@ -128,38 +128,33 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		r.heartbeats.Compute(fn.Hash(), func(heartbeat *function.Heartbeat, _ bool) (*function.Heartbeat, xsync.ComputeOp) {
-			if heartbeat == nil {
-				heartbeat = &function.Heartbeat{}
-			}
-			heartbeat.Function = fn
-			heartbeat.Timestamp = time.Now()
-			return heartbeat, xsync.UpdateOp
+			return &function.Heartbeat{
+				Function:         fn,
+				Timestamp:        time.Now(),
+				InFlightRequests: heartbeat.GetInFlightRequests(),
+			}, xsync.UpdateOp
 		})
 		return nil
 	})
 
 	// increment the in-flight requests for this function
 	r.heartbeats.Compute(fn.Hash(), func(heartbeat *function.Heartbeat, _ bool) (*function.Heartbeat, xsync.ComputeOp) {
-		if heartbeat == nil {
-			heartbeat = &function.Heartbeat{}
-		}
-		heartbeat.Function = fn
-		heartbeat.Timestamp = time.Now()
-		heartbeat.InFlightRequests++
 		requestsInFlight.WithLabelValues(fn.Deployment).Inc()
-		return heartbeat, xsync.UpdateOp
+		return &function.Heartbeat{
+			Function:         fn,
+			Timestamp:        time.Now(),
+			InFlightRequests: heartbeat.GetInFlightRequests() + 1,
+		}, xsync.UpdateOp
 	})
 
 	// decrement the in-flight requests for this function when the request is complete
 	defer r.heartbeats.Compute(fn.Hash(), func(heartbeat *function.Heartbeat, _ bool) (*function.Heartbeat, xsync.ComputeOp) {
-		if heartbeat == nil {
-			heartbeat = &function.Heartbeat{}
-		}
-		heartbeat.Function = fn
-		heartbeat.Timestamp = time.Now()
-		heartbeat.InFlightRequests--
 		requestsInFlight.WithLabelValues(fn.Deployment).Dec()
-		return heartbeat, xsync.UpdateOp
+		return &function.Heartbeat{
+			Function:         fn,
+			Timestamp:        time.Now(),
+			InFlightRequests: heartbeat.GetInFlightRequests() - 1,
+		}, xsync.UpdateOp
 	})
 
 	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(ctx, fn)))
