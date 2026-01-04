@@ -362,12 +362,8 @@ func TestConvergeNamespace(t *testing.T) {
 				// seed kubernetes with an assigned pod that needs to be terminated
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 
-				// add a bunch of controller pods so that we're unlikely to be responsible for the assigned pod
-				for i := range 10 {
-					ctrlPod := fixture.NewControllerPod()
-					ctrlPod.Status.PodIP = "127.0.0." + strconv.Itoa(i+2)
-					state.fakeKubernetes.Tracker().Add(ctrlPod)
-				}
+				// set the controller pod IP to 0.0.0.0 so that we're not responsible for the assigned pod
+				state.ctrl.config.PodIP = "0.0.0.0"
 			},
 			check: func(t *testing.T, state *testState) {
 				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})

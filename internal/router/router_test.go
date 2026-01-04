@@ -381,7 +381,7 @@ func TestHeartbeats(t *testing.T) {
 	assert.Assert(t, rw.Code == http.StatusOK)
 	assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
 
-	heartbeat, ok := router.heartbeats.Load(fn)
+	heartbeat, ok := router.heartbeats.Load(fn.Hash())
 	assert.Assert(t, ok)
 	assert.Assert(t, heartbeat.Function == fn)
 	assert.Assert(t, heartbeat.Timestamp.After(testStartTime))

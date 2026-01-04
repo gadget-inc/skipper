@@ -58,7 +58,12 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 		podNameToMetric[metric.Name] = metric
 	}
 
-	fnInstances := make(map[function.Function][]*function.Instance)
+	type fnInstances struct {
+		fn        function.Function
+		instances []*function.Instance
+	}
+
+	hashInstances := make(map[function.Hash]*fnInstances)
 	terminatedStaleInstances := make(map[string]int32)
 
 	for _, pod := range pods {
@@ -80,8 +85,8 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 			continue
 		}
 
-		if _, ok := fnInstances[instance.Function]; !ok {
-			fnInstances[instance.Function] = nil // ensure the function is in the map so that we loop over all the functions in the next step
+		if _, ok := hashInstances[instance.Hash()]; !ok {
+			hashInstances[instance.Hash()] = &fnInstances{fn: instance.Function} // ensure the function is in the map so that we loop over all the functions in the next step
 		}
 
 		// FIXME: this is true if the instance was assigned 3 minutes ago and it fails its readiness probe
@@ -113,7 +118,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 
 		if replicaSet.Status.Replicas > 0 {
 			// instance is running on a replica set that has replicas, so it isn't stale
-			fnInstances[instance.Function] = append(fnInstances[instance.Function], instance)
+			hashInstances[instance.Hash()].instances = append(hashInstances[instance.Hash()].instances, instance)
 			continue
 		}
 
@@ -158,9 +163,9 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 	}
 
 	var wg sync.WaitGroup
-	for fn, instances := range fnInstances {
+	for _, fnInstances := range hashInstances {
 		wg.Go(func() {
-			if _, err := ctrl.supervisor(fn).converge(ctx, instances); err != nil {
+			if _, err := ctrl.supervisor(fnInstances.fn).converge(ctx, fnInstances.instances); err != nil {
 				log.Error(ctx, "failed to scale function to desired instances", key.Error.Slog(err))
 			}
 		})
