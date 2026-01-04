@@ -30,7 +30,7 @@ func TestHealthz(t *testing.T) {
 
 func TestHandleInstance(t *testing.T) {
 	type testState struct {
-		fn             function.Function
+		fn             *function.Function
 		headers        map[string]string
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
@@ -95,7 +95,7 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == state.fn)
+				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
@@ -109,7 +109,7 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == state.fn)
+				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
@@ -126,7 +126,7 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == state.fn)
+				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 			},
 		},
@@ -151,7 +151,7 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == state.fn)
+				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 
 				// ensure we didn't receive the earliest assigned at instance
@@ -186,7 +186,7 @@ func TestHandleInstance(t *testing.T) {
 
 				var instance *function.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
-				assert.Assert(t, instance.Function == state.fn)
+				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
 
 				// ensure we still have the 2 ready instances because we didn't scale down to 1
@@ -233,7 +233,7 @@ func TestHandleHeartbeat(t *testing.T) {
 	type testState struct {
 		mcc        *fixture.MockControllerClient
 		ctrl       *Controller
-		heartbeats []function.Heartbeat
+		heartbeats []*function.Heartbeat
 	}
 
 	testCases := []struct {
@@ -244,7 +244,7 @@ func TestHandleHeartbeat(t *testing.T) {
 		{
 			name: "receiving one heartbeat",
 			setup: func(t *testing.T, state *testState) {
-				state.heartbeats = []function.Heartbeat{
+				state.heartbeats = []*function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
@@ -263,7 +263,7 @@ func TestHandleHeartbeat(t *testing.T) {
 		{
 			name: "receiving multiple heartbeats",
 			setup: func(t *testing.T, state *testState) {
-				state.heartbeats = []function.Heartbeat{
+				state.heartbeats = []*function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
@@ -290,10 +290,10 @@ func TestHandleHeartbeat(t *testing.T) {
 				fn := fixture.NewFunction()
 				heartbeatTimestamp := time.Now()
 				supervisor := state.ctrl.supervisor(fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, function.Heartbeat{Function: fn, Timestamp: heartbeatTimestamp})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: fn, Timestamp: heartbeatTimestamp})
 
 				// send an old heartbeat
-				state.heartbeats = []function.Heartbeat{
+				state.heartbeats = []*function.Heartbeat{
 					{Function: fn, Timestamp: heartbeatTimestamp.Add(-time.Hour)},
 				}
 			},
@@ -315,13 +315,13 @@ func TestHandleHeartbeat(t *testing.T) {
 				state.ctrl.ring.Add(fixture.ControllerIP2)
 
 				// send multiple heartbeats for different functions
-				state.heartbeats = []function.Heartbeat{
+				state.heartbeats = []*function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 
 				// ensure the controller sends the heartbeats to the other controllers
-				state.mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+				state.mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
 					// ensure the controller forwards the same heartbeats to the other controllers
 					assert.DeepEqual(t, heartbeats, state.heartbeats)
 					// ensure the controller forwards the list of controllers that have received heartbeats
@@ -340,9 +340,9 @@ func TestHandleHeartbeat(t *testing.T) {
 				// seed the supervisor with an expired heartbeat from a different router
 				fn := fixture.NewFunction()
 				supervisor := state.ctrl.supervisor(fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP2, function.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(state.ctrl.config.HeartbeatTimeout + time.Second))})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP2, &function.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(state.ctrl.config.HeartbeatTimeout + time.Second))})
 
-				state.heartbeats = []function.Heartbeat{
+				state.heartbeats = []*function.Heartbeat{
 					{Function: fn, Timestamp: time.Now()},
 				}
 			},

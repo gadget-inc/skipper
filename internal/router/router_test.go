@@ -37,7 +37,7 @@ func TestGetInstanceDuration(t *testing.T) {
 	sentError := false
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+	mockControllerClient.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 		if !sentError {
 			time.Sleep(10 * time.Millisecond)
 			sentError = true
@@ -88,7 +88,7 @@ func TestMethods(t *testing.T) {
 			fn := fixture.NewFunction()
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					assert.Assert(t, tc.method == req.Method)
 				}), nil
@@ -126,7 +126,7 @@ func TestMethods(t *testing.T) {
 
 func TestHeaders(t *testing.T) {
 	type testState struct {
-		fn      function.Function
+		fn      *function.Function
 		req     *http.Request
 		headers http.Header
 	}
@@ -177,7 +177,7 @@ func TestHeaders(t *testing.T) {
 			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, "/", nil)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
 					state.headers = req.Header
@@ -229,7 +229,7 @@ func TestHeaders(t *testing.T) {
 
 func TestBody(t *testing.T) {
 	type testState struct {
-		fn           function.Function
+		fn           *function.Function
 		contentType  string
 		body         io.Reader
 		receivedBody string
@@ -282,7 +282,7 @@ func TestBody(t *testing.T) {
 			tc.setup(t, state)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
 					assert.NilError(t, err)
@@ -343,14 +343,14 @@ func TestHeartbeats(t *testing.T) {
 	defer close(done)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
 			<-done
 		}), nil
 	})
-	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []function.Heartbeat, forwardedFor ...string) error {
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
 		if len(heartbeats) == 0 {
 			// ignore the initial heartbeats
 			return nil
@@ -361,7 +361,7 @@ func TestHeartbeats(t *testing.T) {
 		assert.Assert(t, len(forwardedFor) == 0)
 
 		heartbeat := heartbeats[0]
-		assert.Assert(t, heartbeat.Function == fn)
+		assert.Assert(t, heartbeat.Function.Equal(fn))
 		assert.Assert(t, heartbeat.Timestamp.After(testStartTime))
 		if heartbeat.InFlightRequests > 0 {
 			once.Do(func() {
@@ -383,14 +383,14 @@ func TestHeartbeats(t *testing.T) {
 
 	heartbeat, ok := router.heartbeats.Load(fn.Hash())
 	assert.Assert(t, ok)
-	assert.Assert(t, heartbeat.Function == fn)
+	assert.Assert(t, heartbeat.Function.Equal(fn))
 	assert.Assert(t, heartbeat.Timestamp.After(testStartTime))
 	assert.Assert(t, heartbeat.InFlightRequests == 0) // ensure the number of in-flight requests is 0 now that the request is complete
 }
 
 func TestRetries(t *testing.T) {
 	type testState struct {
-		fn            function.Function
+		fn            *function.Function
 		rw            *httptest.ResponseRecorder
 		maxAttempts   int
 		instanceErrs  []error
@@ -475,7 +475,7 @@ func TestRetries(t *testing.T) {
 
 			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
 				if len(state.instanceErrs) > 0 && instanceErrsIndex < len(state.instanceErrs) {
 					instanceErrsIndex++
 					return nil, state.instanceErrs[instanceErrsIndex-1]

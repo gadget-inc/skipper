@@ -26,26 +26,26 @@ import (
 // instance counts.
 type Supervisor struct {
 	mu                  sync.Mutex
-	fn                  function.Function
+	fn                  *function.Function
 	ctrl                *Controller
-	routerHeartbeats    *xsync.Map[string, function.Heartbeat]
+	routerHeartbeats    *xsync.Map[string, *function.Heartbeat]
 	stabilizationWindow []Recommendation
 }
 
 // heartbeat updates the heartbeat for a specific router if it's newer
 // than the existing one, and garbage collects any expired router
 // heartbeats.
-func (s *Supervisor) heartbeat(routerIP string, heartbeat function.Heartbeat) {
+func (s *Supervisor) heartbeat(routerIP string, heartbeat *function.Heartbeat) {
 	// update the heartbeat for the router if it's newer than the existing one
-	s.routerHeartbeats.Compute(routerIP, func(existing function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
-		if heartbeat.Timestamp.After(existing.Timestamp) {
+	s.routerHeartbeats.Compute(routerIP, func(existing *function.Heartbeat, _ bool) (*function.Heartbeat, xsync.ComputeOp) {
+		if existing == nil || heartbeat.Timestamp.After(existing.Timestamp) {
 			return heartbeat, xsync.UpdateOp
 		}
 		return existing, xsync.CancelOp
 	})
 
 	// garbage collect expired router heartbeats
-	s.routerHeartbeats.Range(func(routerIP string, heartbeat function.Heartbeat) bool {
+	s.routerHeartbeats.Range(func(routerIP string, heartbeat *function.Heartbeat) bool {
 		if time.Since(heartbeat.Timestamp) > s.ctrl.config.HeartbeatTimeout {
 			s.routerHeartbeats.Delete(routerIP)
 		}
@@ -56,11 +56,12 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat function.Heartbeat) {
 // combinedHeartbeat aggregates heartbeats from all routers for this
 // function, summing in-flight requests and using the most recent
 // timestamp from either router heartbeats or instance assignments.
-func (s *Supervisor) combinedHeartbeat(instances []*function.Instance) function.Heartbeat {
-	var heartbeat function.Heartbeat
-	heartbeat.Function = s.fn
+func (s *Supervisor) combinedHeartbeat(instances []*function.Instance) *function.Heartbeat {
+	heartbeat := &function.Heartbeat{
+		Function: s.fn,
+	}
 
-	s.routerHeartbeats.Range(func(_ string, routerHeartbeat function.Heartbeat) bool {
+	s.routerHeartbeats.Range(func(_ string, routerHeartbeat *function.Heartbeat) bool {
 		heartbeat.InFlightRequests += routerHeartbeat.InFlightRequests
 		if heartbeat.Timestamp.Before(routerHeartbeat.Timestamp) {
 			heartbeat.Timestamp = routerHeartbeat.Timestamp
@@ -383,7 +384,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat function.Heartbeat, instances []*function.Instance) ScalingDecision {
+func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *function.Heartbeat, instances []*function.Instance) ScalingDecision {
 	if time.Since(heartbeat.Timestamp) >= cfg.HeartbeatTimeout {
 		return ScalingDecision{
 			DesiredInstances:          0,
@@ -425,7 +426,9 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat funct
 	}
 
 	// Apply min/max clamping
-	clampedValue := min(max(maxDesiredInstances, heartbeat.Function.Scale.MinInstances), heartbeat.Function.Scale.MaxInstances)
+	minInstances := heartbeat.Function.Scale.MinInstances
+	maxInstances := heartbeat.Function.Scale.MaxInstances
+	clampedValue := min(max(maxDesiredInstances, minInstances), maxInstances)
 
 	return ScalingDecision{
 		DesiredInstances:          clampedValue,

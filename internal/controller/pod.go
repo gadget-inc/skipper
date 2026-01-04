@@ -59,7 +59,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 	}
 
 	type fnInstances struct {
-		fn        function.Function
+		fn        *function.Function
 		instances []*function.Instance
 	}
 
@@ -175,7 +175,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 	return nil
 }
 
-func (ctrl *Controller) assignPod(ctx context.Context, fn function.Function) (instance *function.Instance, err error) {
+func (ctrl *Controller) assignPod(ctx context.Context, fn *function.Function) (instance *function.Instance, err error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
@@ -285,7 +285,7 @@ GET_UNASSIGNED_POD:
 	return
 }
 
-func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Function) (*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *function.Function) (*v1.Pod, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
@@ -305,7 +305,7 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn function.Functi
 	})
 }
 
-func (ctrl *Controller) getUnassignedPods(fn function.Function) ([]*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPods(fn *function.Function) ([]*v1.Pod, error) {
 	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
 	if err != nil {
 		return nil, err

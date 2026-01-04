@@ -16,14 +16,14 @@ type Function struct {
 	Deployment string `json:"deployment"`
 	Tenant     string `json:"tenant"`
 	Metadata   string `json:"metadata"`
-	Scale      Scale  `json:"scale"`
+	Scale      *Scale `json:"scale"`
 }
 
 // Hash is a unique identifier for a Function, suitable for use as a map key.
 type Hash = uint64
 
 // Hash returns a hash of all Function fields, suitable for use as a map key.
-func (f Function) Hash() Hash {
+func (f *Function) Hash() Hash {
 	var h maphash.Hash
 	h.SetSeed(hashSeed)
 	h.WriteString(f.Namespace)
@@ -47,13 +47,13 @@ func (f Function) Hash() Hash {
 	return h.Sum64()
 }
 
-func (f Function) RingKey() string {
+func (f *Function) RingKey() string {
 	return f.Namespace + f.Deployment + f.Tenant
 }
 
-var _ slog.LogValuer = Function{}
+var _ slog.LogValuer = (*Function)(nil)
 
-func (f Function) LogValue() slog.Value {
+func (f *Function) LogValue() slog.Value {
 	return slog.GroupValue(
 		key.Namespace.Slog(f.Namespace),
 		key.Deployment.Slog(f.Deployment),
@@ -61,4 +61,15 @@ func (f Function) LogValue() slog.Value {
 		key.Metadata.Slog(f.Metadata),
 		key.Scale.Slog(f.Scale),
 	)
+}
+
+func (f *Function) Equal(other *Function) bool {
+	if f == nil || other == nil {
+		return f == other
+	}
+	return f.Namespace == other.Namespace &&
+		f.Deployment == other.Deployment &&
+		f.Tenant == other.Tenant &&
+		f.Metadata == other.Metadata &&
+		f.Scale.Equal(other.Scale)
 }
