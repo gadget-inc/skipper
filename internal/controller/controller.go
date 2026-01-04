@@ -362,6 +362,9 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
 		}
+		if err := instance.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid function in pod annotation: %w", err)
+		}
 	} else {
 		return nil, errors.New("missing function annotation")
 	}

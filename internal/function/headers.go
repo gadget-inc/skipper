@@ -35,32 +35,8 @@ func FromHeader(req *http.Request) (*Function, error) {
 		return nil, fmt.Errorf("failed to unmarshal %s header: %w", key.Function.Header, err)
 	}
 
-	if fn.Namespace == "" {
-		return nil, errors.New("missing namespace")
-	}
-	if fn.Deployment == "" {
-		return nil, errors.New("missing deployment")
-	}
-	if fn.Tenant == "" {
-		return nil, errors.New("missing tenant")
-	}
-	if fn.Scale == nil {
-		return nil, errors.New("missing scale")
-	}
-	if fn.Scale.MinInstances < 0 {
-		return nil, errors.New("min instances must be greater than or equal to 0")
-	}
-	if fn.Scale.MaxInstances < 0 {
-		return nil, errors.New("max instances must be greater than or equal to 0")
-	}
-	if fn.Scale.TargetCPUUsageMilli < 0 {
-		return nil, errors.New("target cpu usage must be greater than or equal to 0")
-	}
-	if fn.Scale.TargetMemoryUsageMiB < 0 {
-		return nil, errors.New("target memory usage must be greater than or equal to 0")
-	}
-	if fn.Scale.TargetInFlightRequests < 0 {
-		return nil, errors.New("target in flight requests must be greater than or equal to 0")
+	if err := fn.Validate(); err != nil {
+		return nil, err
 	}
 
 	return fn, nil

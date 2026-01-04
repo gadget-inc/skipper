@@ -2,6 +2,7 @@ package function
 
 import (
 	"encoding/binary"
+	"errors"
 	"hash/maphash"
 	"log/slog"
 
@@ -72,4 +73,35 @@ func (f *Function) Equal(other *Function) bool {
 		f.Tenant == other.Tenant &&
 		f.Metadata == other.Metadata &&
 		f.Scale.Equal(other.Scale)
+}
+
+func (f *Function) Validate() error {
+	if f.Namespace == "" {
+		return errors.New("missing namespace")
+	}
+	if f.Deployment == "" {
+		return errors.New("missing deployment")
+	}
+	if f.Tenant == "" {
+		return errors.New("missing tenant")
+	}
+	if f.Scale == nil {
+		return errors.New("missing scale")
+	}
+	if f.Scale.MinInstances < 0 {
+		return errors.New("min instances must be greater than or equal to 0")
+	}
+	if f.Scale.MaxInstances < 0 {
+		return errors.New("max instances must be greater than or equal to 0")
+	}
+	if f.Scale.TargetCPUUsageMilli < 0 {
+		return errors.New("target cpu usage must be greater than or equal to 0")
+	}
+	if f.Scale.TargetMemoryUsageMiB < 0 {
+		return errors.New("target memory usage must be greater than or equal to 0")
+	}
+	if f.Scale.TargetInFlightRequests < 0 {
+		return errors.New("target in flight requests must be greater than or equal to 0")
+	}
+	return nil
 }
