@@ -31,6 +31,69 @@ func TestHealthz(t *testing.T) {
 	assert.Assert(t, rw.Body.Len() == 0)
 }
 
+func TestBadRequest(t *testing.T) {
+	testCases := []struct {
+		name          string
+		setupHeader   func(*http.Request)
+		expectedError string
+	}{
+		{
+			name:          "missing function header",
+			setupHeader:   func(req *http.Request) {},
+			expectedError: "missing " + key.Function.Header,
+		},
+		{
+			name: "malformed json",
+			setupHeader: func(req *http.Request) {
+				req.Header.Set(key.Function.Header, "not valid json")
+			},
+			expectedError: "failed to unmarshal " + key.Function.Header + " header",
+		},
+		{
+			name: "missing namespace",
+			setupHeader: func(req *http.Request) {
+				req.Header.Set(key.Function.Header, `{"deployment":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+			},
+			expectedError: "missing namespace",
+		},
+		{
+			name: "missing deployment",
+			setupHeader: func(req *http.Request) {
+				req.Header.Set(key.Function.Header, `{"namespace":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+			},
+			expectedError: "missing deployment",
+		},
+		{
+			name: "missing tenant",
+			setupHeader: func(req *http.Request) {
+				req.Header.Set(key.Function.Header, `{"namespace":"test","deployment":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+			},
+			expectedError: "missing tenant",
+		},
+		{
+			name: "missing scale",
+			setupHeader: func(req *http.Request) {
+				req.Header.Set(key.Function.Header, `{"namespace":"test","deployment":"test","tenant":"test"}`)
+			},
+			expectedError: "missing scale",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			tc.setupHeader(req)
+
+			rw := httptest.NewRecorder()
+			router := New(testConfig(), fixture.NewMockControllerClient(t))
+			router.ServeHTTP(rw, req)
+
+			assert.Assert(t, rw.Code == http.StatusBadRequest)
+			assert.Assert(t, strings.Contains(rw.Body.String(), tc.expectedError), "expected %q to contain %q", rw.Body.String(), tc.expectedError)
+		})
+	}
+}
+
 func TestGetInstanceDuration(t *testing.T) {
 	fn := fixture.NewFunction()
 
@@ -164,6 +227,54 @@ func TestHeaders(t *testing.T) {
 				assert.DeepEqual(t, state.headers.Values("X-Custom-Header"), []string{"custom-value"})
 				assert.DeepEqual(t, state.headers.Values("X-Custom-Multi-Header"), []string{"multi-value-1", "multi-value-2"})
 				assert.Assert(t, len(state.headers) == 7)
+			},
+		},
+		{
+			name: "x-forwarded-for preserved",
+			setup: func(t *testing.T, state *testState) {
+				state.req.Header.Set("X-Forwarded-For", "203.0.113.50")
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.DeepEqual(t, state.headers.Values("X-Forwarded-For"), []string{"203.0.113.50"})
+			},
+		},
+		{
+			name: "x-forwarded-host preserved",
+			setup: func(t *testing.T, state *testState) {
+				state.req.Header.Set("X-Forwarded-Host", "original-host.example.com")
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.DeepEqual(t, state.headers.Values("X-Forwarded-Host"), []string{"original-host.example.com"})
+			},
+		},
+		{
+			name: "x-forwarded-proto preserved",
+			setup: func(t *testing.T, state *testState) {
+				state.req.Header.Set("X-Forwarded-Proto", "https")
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.DeepEqual(t, state.headers.Values("X-Forwarded-Proto"), []string{"https"})
+			},
+		},
+		{
+			name: "forwarded preserved",
+			setup: func(t *testing.T, state *testState) {
+				state.req.Header.Set("Forwarded", "for=192.0.2.60;host=example.com;proto=https")
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.DeepEqual(t, state.headers.Values("Forwarded"), []string{"for=192.0.2.60;host=example.com;proto=https"})
+			},
+		},
+		{
+			name: "ipv6 in forwarded header",
+			setup: func(t *testing.T, state *testState) {
+				state.req.Host = "example.com"
+				state.req.Header.Set("X-Forwarded-For", "2001:db8::1")
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.DeepEqual(t, state.headers.Values("X-Forwarded-For"), []string{"2001:db8::1"})
+				// IPv6 addresses should be enclosed in brackets in the Forwarded header
+				assert.Assert(t, strings.Contains(state.headers.Get("Forwarded"), `for="[2001:db8::1]"`))
 			},
 		},
 	}
@@ -546,4 +657,231 @@ func (r *noReadAfterClose) Read(p []byte) (n int, err error) {
 func (r *noReadAfterClose) Close() error {
 	r.closed = true
 	return r.ReadCloser.Close()
+}
+
+func TestInstanceExclusion(t *testing.T) {
+	type testState struct {
+		fn                            *function.Function
+		rw                            *httptest.ResponseRecorder
+		router                        *Router
+		mcc                           *fixture.MockControllerClient
+		excludedInstanceNamesReceived [][]string
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
+	}{
+		{
+			name: "dial error excludes instance",
+			setup: func(t *testing.T, state *testState) {
+				failingInstance := &function.Instance{
+					Function: state.fn,
+					Name:     "failing-instance",
+					Addr:     "127.0.0.1:59999", // non-existent address
+				}
+				successInstance := fixture.NewInstance(t, state.fn, func(rw http.ResponseWriter, req *http.Request) {
+					rw.WriteHeader(http.StatusOK)
+					rw.Write([]byte("success"))
+				})
+
+				callCount := 0
+				state.mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+					state.excludedInstanceNamesReceived = append(state.excludedInstanceNamesReceived, excludeInstanceNames)
+					callCount++
+					if callCount == 1 {
+						return failingInstance, nil
+					}
+					return successInstance, nil
+				})
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.String() == "success")
+				assert.Assert(t, len(state.excludedInstanceNamesReceived) == 2)
+				assert.Assert(t, len(state.excludedInstanceNamesReceived[0]) == 0)
+				assert.DeepEqual(t, state.excludedInstanceNamesReceived[1], []string{"failing-instance"})
+			},
+		},
+		{
+			name: "non-dial error does not exclude instance",
+			setup: func(t *testing.T, state *testState) {
+				instance := fixture.NewInstance(t, state.fn, func(rw http.ResponseWriter, req *http.Request) {
+					rw.WriteHeader(http.StatusOK)
+					rw.Write([]byte("success"))
+				})
+
+				callCount := 0
+				state.mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+					state.excludedInstanceNamesReceived = append(state.excludedInstanceNamesReceived, excludeInstanceNames)
+					callCount++
+					return instance, nil
+				})
+
+				originalTransport := state.router.roundTripper
+				state.router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+					if callCount == 1 {
+						// Simulate a read error (not a dial error)
+						return nil, &net.OpError{Op: "read", Err: errors.New("connection reset")}
+					}
+					return originalTransport.RoundTrip(req)
+				})
+			},
+			check: func(t *testing.T, state *testState) {
+				// Non-dial errors should not add to exclusion list
+				assert.Assert(t, state.rw.Code == http.StatusBadGateway) // Error is not retried
+				assert.Assert(t, len(state.excludedInstanceNamesReceived) == 1)
+				assert.Assert(t, len(state.excludedInstanceNamesReceived[0]) == 0)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.MaxRoundTripAttempts = 3
+			mcc := fixture.NewMockControllerClient(t)
+
+			state := &testState{
+				fn:     fixture.NewFunction(),
+				rw:     httptest.NewRecorder(),
+				router: New(cfg, mcc),
+				mcc:    mcc,
+			}
+
+			tc.setup(t, state)
+
+			req := fixture.NewFunctionRequest(t, state.fn, http.MethodGet, "/", nil)
+			state.router.ServeHTTP(state.rw, req)
+
+			tc.check(t, state)
+		})
+	}
+}
+
+func TestContextCancellation(t *testing.T) {
+	testCases := []struct {
+		name        string
+		expectedErr error
+	}{
+		{
+			name:        "context canceled",
+			expectedErr: context.Canceled,
+		},
+		{
+			name:        "context deadline exceeded",
+			expectedErr: context.DeadlineExceeded,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fn := fixture.NewFunction()
+
+			var ctx context.Context
+			var cancel context.CancelFunc
+
+			if tc.expectedErr == context.DeadlineExceeded {
+				// Use a very short timeout that will expire during backoff
+				ctx, cancel = context.WithTimeout(t.Context(), 50*time.Millisecond)
+			} else {
+				ctx, cancel = context.WithCancel(t.Context())
+			}
+			defer cancel()
+
+			mcc := fixture.NewMockControllerClient(t)
+			callCount := 0
+			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+				callCount++
+				if callCount == 1 {
+					// First call fails, triggering a retry with backoff
+					// Cancel immediately for the canceled test case
+					if tc.expectedErr == context.Canceled {
+						cancel()
+					}
+					return nil, errors.New("temporary error")
+				}
+				// This should never be called if context is cancelled during backoff
+				t.Error("Instance called after context should have been cancelled")
+				return nil, errors.New("should not reach here")
+			})
+
+			cfg := testConfig()
+			cfg.MaxRoundTripAttempts = 5
+			cfg.RoundTripRetryMinTimeout = 1 * time.Second  // Long enough so context cancels first
+			cfg.RoundTripRetryMaxTimeout = 10 * time.Second // Long enough so context cancels first
+			router := New(cfg, mcc)
+
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			fn.SetHeader(req)
+			// RoundTrip expects the function to be in context (normally set by ServeHTTP)
+			req = req.WithContext(function.With(ctx, fn))
+
+			_, err := router.RoundTrip(req)
+
+			assert.Assert(t, errors.Is(err, tc.expectedErr), "expected %v, got %v", tc.expectedErr, err)
+			assert.Assert(t, callCount == 1, "expected 1 call, got %d", callCount)
+		})
+	}
+}
+
+func TestCalculateBackoff(t *testing.T) {
+	testCases := []struct {
+		name       string
+		minTimeout time.Duration
+		maxTimeout time.Duration
+		attempt    int
+		checkMin   time.Duration
+		checkMax   time.Duration
+	}{
+		{
+			name:       "attempt 1 within bounds",
+			minTimeout: 100 * time.Millisecond,
+			maxTimeout: 5 * time.Second,
+			attempt:    1,
+			checkMin:   200 * time.Millisecond,
+			checkMax:   400 * time.Millisecond,
+		},
+		{
+			name:       "attempt 2 within bounds",
+			minTimeout: 100 * time.Millisecond,
+			maxTimeout: 5 * time.Second,
+			attempt:    2,
+			checkMin:   400 * time.Millisecond,
+			checkMax:   800 * time.Millisecond,
+		},
+		{
+			name:       "attempt 3 within bounds",
+			minTimeout: 100 * time.Millisecond,
+			maxTimeout: 5 * time.Second,
+			attempt:    3,
+			checkMin:   800 * time.Millisecond,
+			checkMax:   1600 * time.Millisecond,
+		},
+		{
+			name:       "capped at max timeout",
+			minTimeout: 100 * time.Millisecond,
+			maxTimeout: 500 * time.Millisecond,
+			attempt:    10,
+			checkMin:   500 * time.Millisecond,
+			checkMax:   500 * time.Millisecond,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.RoundTripRetryMinTimeout = tc.minTimeout
+			cfg.RoundTripRetryMaxTimeout = tc.maxTimeout
+			router := New(cfg, fixture.NewMockControllerClient(t))
+
+			// Run multiple times due to randomness
+			for range 100 {
+				backoff := router.calculateBackoff(tc.attempt)
+				assert.Assert(t, backoff >= tc.checkMin, "attempt %d: backoff %v < min %v", tc.attempt, backoff, tc.checkMin)
+				assert.Assert(t, backoff <= tc.checkMax, "attempt %d: backoff %v > max %v", tc.attempt, backoff, tc.checkMax)
+			}
+		})
+	}
 }

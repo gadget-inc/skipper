@@ -423,6 +423,45 @@ func TestConvergeNamespace(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "pod with invalid function annotation gets deleted",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create an assigned pod with invalid function annotation JSON
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Annotations[key.Function.Annotation] = "not valid json"
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			check: func(t *testing.T, state *testState) {
+				// ensure the pod with invalid function annotation was deleted
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+			},
+		},
+		{
+			name: "instance stuck in assigned state gets terminated",
+			setup: func(t *testing.T, state *testState) {
+				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: state.fn, Timestamp: time.Now()})
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create a pod that was assigned long ago but never became ready
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				stuckTime := time.Now().Add(-state.ctrl.config.FunctionAssignTimeout * 3) // well past the 2x threshold
+				pod.Annotations[key.AssignedAt.Annotation] = stuckTime.Format(time.RFC3339)
+				delete(pod.Annotations, key.ReadyAt.Annotation) // never became ready
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			check: func(t *testing.T, state *testState) {
+				// ensure the stuck instance was terminated
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -463,10 +502,11 @@ func TestAssignPod(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name  string
-		err   error
-		setup func(*testing.T, *testState)
-		check func(*testing.T, *testState)
+		name        string
+		err         error
+		errContains string // if set, checks that error contains this string instead of using errors.Is
+		setup       func(*testing.T, *testState)
+		check       func(*testing.T, *testState)
 	}{
 		{
 			// Basic assignment: an available pod exists and should be assigned to the function
@@ -596,6 +636,26 @@ func TestAssignPod(t *testing.T) {
 				ensurePodIsNotAssignedToFunction(t, pod)
 			},
 		},
+		{
+			// Assign endpoint returns error: pod's assign endpoint returns non-200 status
+			// The pod should be deleted and the error should be returned
+			name:        "deletes pod when assign endpoint returns error status",
+			errContains: "assign request failed",
+			setup: func(t *testing.T, state *testState) {
+				// create a pod that returns 500 from its assign endpoint
+				errorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("internal server error"))
+				})
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, errorHandler))
+			},
+			check: func(t *testing.T, state *testState) {
+				// ensure the pod was deleted because the assign request failed
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -621,13 +681,483 @@ func TestAssignPod(t *testing.T) {
 			assert.NilError(t, err)
 
 			state.instance, err = ctrl.assignPod(ctx, state.fn)
-			if tc.err != nil {
+			if tc.errContains != "" {
+				assert.ErrorContains(t, err, tc.errContains)
+			} else if tc.err != nil {
 				assert.ErrorIs(t, err, tc.err)
 			} else {
 				assert.NilError(t, err)
 			}
 
 			tc.check(t, state)
+		})
+	}
+}
+
+func TestIsPodRunning(t *testing.T) {
+	testCases := []struct {
+		name string
+		pod  *v1.Pod
+		want bool
+	}{
+		{
+			name: "running pod with IP and no deletion timestamp",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase: v1.PodRunning,
+					PodIP: "10.0.0.1",
+				},
+			},
+			want: true,
+		},
+		{
+			name: "pod not in running phase",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase: v1.PodPending,
+					PodIP: "10.0.0.1",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "running pod without IP",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase: v1.PodRunning,
+					PodIP: "",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "running pod with deletion timestamp",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					DeletionTimestamp: &metav1.Time{Time: time.Now()},
+				},
+				Status: v1.PodStatus{
+					Phase: v1.PodRunning,
+					PodIP: "10.0.0.1",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "failed pod",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase: v1.PodFailed,
+					PodIP: "10.0.0.1",
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isPodRunning(tc.pod)
+			assert.Assert(t, got == tc.want, "isPodRunning() = %v, want %v", got, tc.want)
+		})
+	}
+}
+
+func TestIsPodReady(t *testing.T) {
+	testCases := []struct {
+		name string
+		pod  *v1.Pod
+		want bool
+	}{
+		{
+			name: "ready running pod",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase: v1.PodRunning,
+					PodIP: "10.0.0.1",
+					Conditions: []v1.PodCondition{
+						{Type: v1.PodReady, Status: v1.ConditionTrue},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "ready condition false",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase: v1.PodRunning,
+					PodIP: "10.0.0.1",
+					Conditions: []v1.PodCondition{
+						{Type: v1.PodReady, Status: v1.ConditionFalse},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "no ready condition",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase: v1.PodRunning,
+					PodIP: "10.0.0.1",
+					Conditions: []v1.PodCondition{
+						{Type: v1.PodScheduled, Status: v1.ConditionTrue},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "ready condition true but pod not running",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase: v1.PodPending,
+					PodIP: "10.0.0.1",
+					Conditions: []v1.PodCondition{
+						{Type: v1.PodReady, Status: v1.ConditionTrue},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "ready condition true but pod being deleted",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					DeletionTimestamp: &metav1.Time{Time: time.Now()},
+				},
+				Status: v1.PodStatus{
+					Phase: v1.PodRunning,
+					PodIP: "10.0.0.1",
+					Conditions: []v1.PodCondition{
+						{Type: v1.PodReady, Status: v1.ConditionTrue},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "empty conditions",
+			pod: &v1.Pod{
+				Status: v1.PodStatus{
+					Phase:      v1.PodRunning,
+					PodIP:      "10.0.0.1",
+					Conditions: []v1.PodCondition{},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isPodReady(tc.pod)
+			assert.Assert(t, got == tc.want, "isPodReady() = %v, want %v", got, tc.want)
+		})
+	}
+}
+
+func TestPortFromPod(t *testing.T) {
+	testCases := []struct {
+		name     string
+		pod      *v1.Pod
+		wantPort string
+		wantErr  bool
+	}{
+		{
+			name: "port annotation matches named port",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						key.Port.Annotation: "http",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Ports: []v1.ContainerPort{
+								{Name: "metrics", ContainerPort: 9090},
+								{Name: "http", ContainerPort: 8080},
+							},
+						},
+					},
+				},
+			},
+			wantPort: "8080",
+		},
+		{
+			name: "port annotation is numeric - uses as-is",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						key.Port.Annotation: "3000",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Ports: []v1.ContainerPort{
+								{Name: "http", ContainerPort: 8080},
+							},
+						},
+					},
+				},
+			},
+			wantPort: "3000",
+		},
+		{
+			name: "port annotation doesn't match any port - uses annotation as-is",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						key.Port.Annotation: "nonexistent",
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Ports: []v1.ContainerPort{
+								{Name: "http", ContainerPort: 8080},
+							},
+						},
+					},
+				},
+			},
+			wantPort: "nonexistent",
+		},
+		{
+			name: "no port annotation - uses first container port",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{
+							Ports: []v1.ContainerPort{
+								{Name: "http", ContainerPort: 8080},
+								{Name: "metrics", ContainerPort: 9090},
+							},
+						},
+					},
+				},
+			},
+			wantPort: "8080",
+		},
+		{
+			name: "no port annotation and no container ports - error",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-pod",
+					Annotations: map[string]string{},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{Ports: []v1.ContainerPort{}},
+					},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			port, err := portFromPod(tc.pod)
+			if tc.wantErr {
+				assert.Assert(t, err != nil)
+			} else {
+				assert.NilError(t, err)
+				assert.Assert(t, port == tc.wantPort, "got %s, want %s", port, tc.wantPort)
+			}
+		})
+	}
+}
+
+func TestInstanceFromPod(t *testing.T) {
+	fn := fixture.NewFunction()
+	fnJSON, _ := json.Marshal(fn)
+
+	testCases := []struct {
+		name        string
+		pod         *v1.Pod
+		errContains string
+		check       func(*testing.T, *function.Instance)
+	}{
+		{
+			name: "valid pod with all annotations",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: fn.Namespace,
+					Labels: map[string]string{
+						key.Tenant.Label:     fn.Tenant,
+						key.Deployment.Label: fn.Deployment,
+					},
+					Annotations: map[string]string{
+						key.Function.Annotation:   string(fnJSON),
+						key.ReplicaSet.Annotation: "test-replicaset",
+						key.AssignedAt.Annotation: "2024-01-01T00:00:00Z",
+						key.ReadyAt.Annotation:    "2024-01-01T00:00:01Z",
+					},
+				},
+				Status: v1.PodStatus{
+					PodIP: "10.0.0.1",
+					Phase: v1.PodRunning,
+					Conditions: []v1.PodCondition{
+						{Type: v1.PodReady, Status: v1.ConditionTrue},
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{Ports: []v1.ContainerPort{{ContainerPort: 8080}}},
+					},
+				},
+			},
+			check: func(t *testing.T, instance *function.Instance) {
+				assert.Assert(t, instance.Name == "test-pod")
+				assert.Assert(t, instance.Addr == "10.0.0.1:8080")
+				assert.Assert(t, instance.ReplicaSet == "test-replicaset")
+				assert.Assert(t, instance.AssignedAt.Format(time.RFC3339) == "2024-01-01T00:00:00Z")
+				assert.Assert(t, instance.ReadyAt.Format(time.RFC3339) == "2024-01-01T00:00:01Z")
+			},
+		},
+		{
+			name:        "nil pod",
+			pod:         nil,
+			errContains: "pod is nil",
+		},
+		{
+			name: "missing function annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "test-pod",
+					Annotations: map[string]string{},
+				},
+			},
+			errContains: "missing function annotation",
+		},
+		{
+			name: "invalid function JSON",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Annotations: map[string]string{
+						key.Function.Annotation: "not valid json",
+					},
+				},
+			},
+			errContains: "failed to unmarshal function",
+		},
+		{
+			name: "invalid function - missing required fields",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Annotations: map[string]string{
+						key.Function.Annotation: `{"namespace":"","deployment":"","tenant":""}`,
+					},
+				},
+			},
+			errContains: "invalid function in pod annotation",
+		},
+		{
+			name: "missing replica set annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Annotations: map[string]string{
+						key.Function.Annotation: string(fnJSON),
+					},
+				},
+			},
+			errContains: "missing replica set annotation",
+		},
+		{
+			name: "invalid assigned at timestamp",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Annotations: map[string]string{
+						key.Function.Annotation:   string(fnJSON),
+						key.ReplicaSet.Annotation: "test-replicaset",
+						key.AssignedAt.Annotation: "not-a-timestamp",
+					},
+				},
+			},
+			errContains: "failed to parse assigned at annotation",
+		},
+		{
+			name: "invalid ready at timestamp",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Annotations: map[string]string{
+						key.Function.Annotation:   string(fnJSON),
+						key.ReplicaSet.Annotation: "test-replicaset",
+						key.AssignedAt.Annotation: "2024-01-01T00:00:00Z",
+						key.ReadyAt.Annotation:    "not-a-timestamp",
+					},
+				},
+				Status: v1.PodStatus{
+					PodIP: "10.0.0.1",
+					Phase: v1.PodRunning,
+					Conditions: []v1.PodCondition{
+						{Type: v1.PodReady, Status: v1.ConditionTrue},
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{Ports: []v1.ContainerPort{{ContainerPort: 8080}}},
+					},
+				},
+			},
+			errContains: "failed to parse ready at annotation",
+		},
+		{
+			name: "unready pod with ready annotation - ReadyAt should be zero",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-pod",
+					Annotations: map[string]string{
+						key.Function.Annotation:   string(fnJSON),
+						key.ReplicaSet.Annotation: "test-replicaset",
+						key.AssignedAt.Annotation: "2024-01-01T00:00:00Z",
+						key.ReadyAt.Annotation:    "2024-01-01T00:00:01Z",
+					},
+				},
+				Status: v1.PodStatus{
+					PodIP: "10.0.0.1",
+					Phase: v1.PodRunning,
+					Conditions: []v1.PodCondition{
+						{Type: v1.PodReady, Status: v1.ConditionFalse}, // Pod is NOT ready
+					},
+				},
+				Spec: v1.PodSpec{
+					Containers: []v1.Container{
+						{Ports: []v1.ContainerPort{{ContainerPort: 8080}}},
+					},
+				},
+			},
+			check: func(t *testing.T, instance *function.Instance) {
+				assert.Assert(t, instance.ReadyAt.IsZero(), "ReadyAt should be zero when pod is not ready")
+				assert.Assert(t, !instance.AssignedAt.IsZero(), "AssignedAt should still be set")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			instance, err := instanceFromPod(tc.pod)
+			if tc.errContains != "" {
+				assert.ErrorContains(t, err, tc.errContains)
+			} else {
+				assert.NilError(t, err)
+				if tc.check != nil {
+					tc.check(t, instance)
+				}
+			}
 		})
 	}
 }
