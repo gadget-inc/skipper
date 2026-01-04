@@ -54,7 +54,7 @@ var (
 type Router struct {
 	config       *Config
 	ctrl         controller.Client
-	heartbeats   *xsync.Map[function.Function, function.Heartbeat]
+	heartbeats   *xsync.Map[function.Hash, function.Heartbeat]
 	reverseProxy *httputil.ReverseProxy
 	roundTripper http.RoundTripper
 }
@@ -63,7 +63,7 @@ func New(cfg *Config, ctrl controller.Client) *Router {
 	r := &Router{
 		config:     cfg,
 		ctrl:       ctrl,
-		heartbeats: xsync.NewMap[function.Function, function.Heartbeat](),
+		heartbeats: xsync.NewMap[function.Hash, function.Heartbeat](),
 		roundTripper: otelhttp.NewTransport(&http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -92,12 +92,12 @@ func New(cfg *Config, ctrl controller.Client) *Router {
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		var heartbeats []function.Heartbeat
-		r.heartbeats.Range(func(fn function.Function, heartbeat function.Heartbeat) bool {
+		r.heartbeats.Range(func(fnHash function.Hash, heartbeat function.Heartbeat) bool {
 			if time.Since(heartbeat.Timestamp) > r.config.HeartbeatInterval*3 {
-				r.heartbeats.Delete(fn) // remove the heartbeat if it hasn't been updated in 3 intervals
+				r.heartbeats.Delete(fnHash) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
-				heartbeatsTotal.WithLabelValues(fn.Deployment).Inc()
+				heartbeatsTotal.WithLabelValues(heartbeat.Function.Deployment).Inc()
 			}
 			return true
 		})
@@ -127,7 +127,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
-		r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
+		r.heartbeats.Compute(fn.Hash(), func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
 			heartbeat.Function = fn
 			heartbeat.Timestamp = time.Now()
 			return heartbeat, xsync.UpdateOp
@@ -136,7 +136,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	})
 
 	// increment the in-flight requests for this function
-	r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
+	r.heartbeats.Compute(fn.Hash(), func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests++
@@ -145,7 +145,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	})
 
 	// decrement the in-flight requests for this function when the request is complete
-	defer r.heartbeats.Compute(fn, func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
+	defer r.heartbeats.Compute(fn.Hash(), func(heartbeat function.Heartbeat, _ bool) (function.Heartbeat, xsync.ComputeOp) {
 		heartbeat.Function = fn
 		heartbeat.Timestamp = time.Now()
 		heartbeat.InFlightRequests--

@@ -1,10 +1,15 @@
 package function
 
 import (
+	"encoding/binary"
+	"hash/maphash"
 	"log/slog"
 
 	"github.com/gadget-inc/skipper/internal/key"
 )
+
+// hashSeed is a fixed seed for deterministic hashing within a process.
+var hashSeed = maphash.MakeSeed()
 
 type Function struct {
 	Namespace  string `json:"namespace"`
@@ -12,6 +17,34 @@ type Function struct {
 	Tenant     string `json:"tenant"`
 	Metadata   string `json:"metadata"`
 	Scale      Scale  `json:"scale"`
+}
+
+// Hash is a unique identifier for a Function, suitable for use as a map key.
+type Hash = uint64
+
+// Hash returns a hash of all Function fields, suitable for use as a map key.
+func (f Function) Hash() Hash {
+	var h maphash.Hash
+	h.SetSeed(hashSeed)
+	h.WriteString(f.Namespace)
+	h.WriteByte(0) // null byte separator to prevent collisions (e.g., "ab"+"cd" vs "abc"+"d")
+	h.WriteString(f.Deployment)
+	h.WriteByte(0)
+	h.WriteString(f.Tenant)
+	h.WriteByte(0)
+	h.WriteString(f.Metadata)
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MinInstances))
+	h.Write(buf[:])
+	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MaxInstances))
+	h.Write(buf[:])
+	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetCPUUsageMilli))
+	h.Write(buf[:])
+	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetMemoryUsageMiB))
+	h.Write(buf[:])
+	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetInFlightRequests))
+	h.Write(buf[:])
+	return h.Sum64()
 }
 
 func (f Function) RingKey() string {

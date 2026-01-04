@@ -43,7 +43,7 @@ type Controller struct {
 	config            *Config
 	startedAt         time.Time
 	ring              *hashring.HashRing
-	supervisors       *xsync.Map[function.Function, *Supervisor]
+	supervisors       *xsync.Map[function.Hash, *Supervisor]
 	newClientFunc     NewClientFunc
 	controllerClients *xsync.Map[string, Client]
 	kubernetes        kubernetes.Interface
@@ -55,7 +55,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 	return &Controller{
 		config:            cfg,
 		ring:              hashring.New(hashring.WithWaitTime(cfg.HashRingWaitTime)),
-		supervisors:       xsync.NewMap[function.Function, *Supervisor](),
+		supervisors:       xsync.NewMap[function.Hash, *Supervisor](),
 		newClientFunc:     newClientFunc,
 		controllerClients: xsync.NewMap[string, Client](),
 		kubernetes:        kubernetes,
@@ -420,7 +420,7 @@ func portFromPod(pod *v1.Pod) (string, error) {
 }
 
 func (ctrl *Controller) supervisor(fn function.Function) *Supervisor {
-	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn, func() (*Supervisor, bool) {
+	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
 		return &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: xsync.NewMap[string, function.Heartbeat]()}, false
 	})
 	return supervisor

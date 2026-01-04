@@ -113,7 +113,7 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 
 		if scalingDecision.DesiredInstances == 0 {
 			// we're scaling to 0, so remove ourself from the supervisors map when we're done
-			defer s.ctrl.supervisors.Delete(s.fn)
+			defer s.ctrl.supervisors.Delete(s.fn.Hash())
 		} else {
 			// we're scaling down, but not to 0, so scale down to the max recommended instances within the stabilization window
 			// if we're already lower than the max recommended instances, then use the current number of instances (i.e. don't scale up)
