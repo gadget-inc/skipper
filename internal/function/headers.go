@@ -44,6 +44,9 @@ func FromHeader(req *http.Request) (*Function, error) {
 	if fn.Tenant == "" {
 		return nil, errors.New("missing tenant")
 	}
+	if fn.Scale == nil {
+		return nil, errors.New("missing scale")
+	}
 	if fn.Scale.MinInstances < 0 {
 		return nil, errors.New("min instances must be greater than or equal to 0")
 	}
