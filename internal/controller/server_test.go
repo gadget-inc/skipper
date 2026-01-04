@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ func TestHandleInstance(t *testing.T) {
 	type testState struct {
 		fn             *function.Function
 		headers        map[string]string
+		setFnHeader    bool
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 		rw             *httptest.ResponseRecorder
@@ -43,8 +45,30 @@ func TestHandleInstance(t *testing.T) {
 		check func(*testing.T, *testState)
 	}{
 		{
+			name: "missing function header",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = false
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadRequest)
+			},
+		},
+		{
+			name: "invalid function header",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = false
+				state.headers = map[string]string{
+					key.Function.Header: "not-valid-json",
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadRequest)
+			},
+		},
+		{
 			name: "filters by excluded instance names",
 			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
 				// add two ready instances
 				podA := fixture.NewAssignedPod(t, state.fn, nil)
 				podA.Name = state.fn.Deployment + "-a"
@@ -65,6 +89,7 @@ func TestHandleInstance(t *testing.T) {
 		{
 			name: "reverts to all instances when all instances on excluded list",
 			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
 				// add multiple ready instances
 				podA := fixture.NewAssignedPod(t, state.fn, nil)
 				podA.Name = state.fn.Deployment + "-a"
@@ -88,6 +113,7 @@ func TestHandleInstance(t *testing.T) {
 		{
 			name: "smoke",
 			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
@@ -102,6 +128,7 @@ func TestHandleInstance(t *testing.T) {
 		{
 			name: "unassigned with unassigned pod",
 			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
@@ -116,6 +143,7 @@ func TestHandleInstance(t *testing.T) {
 		{
 			name: "unassigned with eventual unassigned pod",
 			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
 				go func() {
 					time.Sleep(500 * time.Millisecond)
 					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
@@ -133,6 +161,7 @@ func TestHandleInstance(t *testing.T) {
 		{
 			name: "instances > max",
 			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
 				state.fn.Scale.MaxInstances = 1 // ensure we can only have one instance
 
 				// add max instances
@@ -161,6 +190,7 @@ func TestHandleInstance(t *testing.T) {
 		{
 			name: "no ready instances while scaling up race",
 			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
 				// grab supervisor lock
 				supervisor := state.ctrl.supervisor(state.fn)
 				supervisor.mu.Lock()
@@ -217,7 +247,189 @@ func TestHandleInstance(t *testing.T) {
 			assert.NilError(t, err)
 
 			req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/instance", nil)
-			state.fn.SetHeader(req)
+			if state.setFnHeader {
+				state.fn.SetHeader(req)
+			}
+			for header, value := range state.headers {
+				req.Header.Set(header, value)
+			}
+			state.rw = httptest.NewRecorder()
+			state.ctrl.Handler().ServeHTTP(state.rw, req)
+
+			tc.check(t, state)
+		})
+	}
+}
+
+func TestHandleScale(t *testing.T) {
+	type testState struct {
+		fn             *function.Function
+		headers        map[string]string
+		setFnHeader    bool
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+		rw             *httptest.ResponseRecorder
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
+	}{
+		{
+			name: "missing function header",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = false
+				state.headers = map[string]string{
+					key.DesiredInstances.Header: "1",
+					key.Reason.Header:           ScalingReasonUnknown,
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadRequest)
+			},
+		},
+		{
+			name: "invalid function header",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = false
+				state.headers = map[string]string{
+					key.Function.Header:         "not-valid-json",
+					key.DesiredInstances.Header: "1",
+					key.Reason.Header:           ScalingReasonUnknown,
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadRequest)
+			},
+		},
+		{
+			name: "missing desired instances header",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
+				state.headers = map[string]string{
+					key.Reason.Header: ScalingReasonUnknown,
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadRequest)
+			},
+		},
+		{
+			name: "invalid desired instances header",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
+				state.headers = map[string]string{
+					key.DesiredInstances.Header: "not-a-number",
+					key.Reason.Header:           ScalingReasonUnknown,
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadRequest)
+			},
+		},
+		{
+			name: "invalid scaling reason uses unknown",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
+				// add an assigned pod so scale succeeds
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.headers = map[string]string{
+					key.DesiredInstances.Header: "1",
+					key.Reason.Header:           "invalid-reason",
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				// should succeed since invalid reasons default to "unknown"
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+
+				var instances []*function.Instance
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instances))
+				assert.Assert(t, len(instances) == 1)
+			},
+		},
+		{
+			name: "smoke",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
+				// add an assigned pod
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.headers = map[string]string{
+					key.DesiredInstances.Header: "1",
+					key.Reason.Header:           ScalingReasonInFlightRequests,
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+
+				var instances []*function.Instance
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instances))
+				assert.Assert(t, len(instances) == 1)
+				assert.Assert(t, instances[0].Function.Equal(state.fn))
+			},
+		},
+		{
+			name: "scale up",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
+				// add one assigned pod and one available pod to scale up to
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.headers = map[string]string{
+					key.DesiredInstances.Header: "2",
+					key.Reason.Header:           ScalingReasonInFlightRequests,
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+
+				var instances []*function.Instance
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instances))
+				assert.Assert(t, len(instances) == 2)
+			},
+		},
+		{
+			name: "scale down",
+			setup: func(t *testing.T, state *testState) {
+				state.setFnHeader = true
+				// add two assigned pods
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.headers = map[string]string{
+					key.DesiredInstances.Header: "1",
+					key.Reason.Header:           ScalingReasonInFlightRequests,
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+
+				var instances []*function.Instance
+				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instances))
+				assert.Assert(t, len(instances) == 1)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/scale", nil)
+			if state.setFnHeader {
+				state.fn.SetHeader(req)
+			}
 			for header, value := range state.headers {
 				req.Header.Set(header, value)
 			}
@@ -231,9 +443,13 @@ func TestHandleInstance(t *testing.T) {
 
 func TestHandleHeartbeat(t *testing.T) {
 	type testState struct {
-		mcc        *fixture.MockControllerClient
-		ctrl       *Controller
-		heartbeats []*function.Heartbeat
+		mcc                *fixture.MockControllerClient
+		ctrl               *Controller
+		heartbeats         []*function.Heartbeat
+		rawBody            []byte
+		setRouterIP        bool
+		rw                 *httptest.ResponseRecorder
+		heartbeatForwarded atomic.Bool
 	}
 
 	testCases := []struct {
@@ -242,13 +458,51 @@ func TestHandleHeartbeat(t *testing.T) {
 		check func(*testing.T, *testState)
 	}{
 		{
-			name: "receiving one heartbeat",
+			name: "missing router IP header",
 			setup: func(t *testing.T, state *testState) {
+				state.setRouterIP = false
 				state.heartbeats = []*function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
 			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadRequest)
+			},
+		},
+		{
+			name: "invalid heartbeat body",
+			setup: func(t *testing.T, state *testState) {
+				state.setRouterIP = true
+				state.rawBody = []byte("not-valid-json")
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusBadRequest)
+			},
+		},
+		{
+			name: "empty heartbeats array",
+			setup: func(t *testing.T, state *testState) {
+				state.setRouterIP = true
+				state.heartbeats = []*function.Heartbeat{}
+			},
+			check: func(t *testing.T, state *testState) {
+				// should succeed with no heartbeats to process
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.Len() == 0)
+			},
+		},
+		{
+			name: "receiving one heartbeat",
+			setup: func(t *testing.T, state *testState) {
+				state.setRouterIP = true
+				state.heartbeats = []*function.Heartbeat{
+					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.Len() == 0)
+
 				// ensure the supervisor has added a heartbeat
 				sentHeartbeat := state.heartbeats[0]
 				supervisor := state.ctrl.supervisor(sentHeartbeat.Function)
@@ -263,12 +517,16 @@ func TestHandleHeartbeat(t *testing.T) {
 		{
 			name: "receiving multiple heartbeats",
 			setup: func(t *testing.T, state *testState) {
+				state.setRouterIP = true
 				state.heartbeats = []*function.Heartbeat{
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(), Timestamp: time.Now()},
 				}
 			},
 			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.Len() == 0)
+
 				// ensure the controller has added both supervisors
 				assert.Assert(t, state.ctrl.supervisors.Size() == len(state.heartbeats))
 				for _, sentHeartbeat := range state.heartbeats {
@@ -286,6 +544,7 @@ func TestHandleHeartbeat(t *testing.T) {
 		{
 			name: "keeps most recent",
 			setup: func(t *testing.T, state *testState) {
+				state.setRouterIP = true
 				// seed the supervisor with a recent heartbeat
 				fn := fixture.NewFunction()
 				heartbeatTimestamp := time.Now()
@@ -298,6 +557,9 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.Len() == 0)
+
 				sentHeartbeat := state.heartbeats[0]
 				keptHeartbeat, ok := state.ctrl.supervisor(sentHeartbeat.Function).routerHeartbeats.Load(fixture.RouterIP)
 
@@ -310,6 +572,7 @@ func TestHandleHeartbeat(t *testing.T) {
 		{
 			name: "forwards heartbeats",
 			setup: func(t *testing.T, state *testState) {
+				state.setRouterIP = true
 				// seed the ring with multiple controller IPs
 				state.ctrl.ring.Add(fixture.ControllerIP)
 				state.ctrl.ring.Add(fixture.ControllerIP2)
@@ -323,6 +586,7 @@ func TestHandleHeartbeat(t *testing.T) {
 				// ensure the controller sends the heartbeats to the other controllers
 				expectedHeartbeats := state.heartbeats
 				state.mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
+					state.heartbeatForwarded.Store(true)
 					// ensure the controller forwards the same heartbeats to the other controllers
 					assert.DeepEqual(t, heartbeats, expectedHeartbeats)
 					// ensure the controller forwards the list of controllers that have received heartbeats
@@ -331,13 +595,20 @@ func TestHandleHeartbeat(t *testing.T) {
 				})
 			},
 			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.Len() == 0)
+
 				// give the goroutine that forwards the heartbeats a chance to run
 				time.Sleep(10 * time.Millisecond)
+
+				// ensure the heartbeat callback was actually invoked
+				assert.Assert(t, state.heartbeatForwarded.Load(), "heartbeat forwarding callback was never invoked")
 			},
 		},
 		{
 			name: "deletes expired heartbeats",
 			setup: func(t *testing.T, state *testState) {
+				state.setRouterIP = true
 				// seed the supervisor with an expired heartbeat from a different router
 				fn := fixture.NewFunction()
 				supervisor := state.ctrl.supervisor(fn)
@@ -348,6 +619,9 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 			},
 			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.Len() == 0)
+
 				sentHeartbeat := state.heartbeats[0]
 				supervisor := state.ctrl.supervisor(sentHeartbeat.Function)
 
@@ -372,16 +646,21 @@ func TestHandleHeartbeat(t *testing.T) {
 
 			tc.setup(t, state)
 
-			heartbeatBytes, err := json.Marshal(state.heartbeats)
-			assert.NilError(t, err)
+			var body []byte
+			if state.rawBody != nil {
+				body = state.rawBody
+			} else {
+				var err error
+				body, err = json.Marshal(state.heartbeats)
+				assert.NilError(t, err)
+			}
 
-			req := httptest.NewRequest(http.MethodPost, "/heartbeat", bytes.NewReader(heartbeatBytes))
-			req.Header.Set(key.RouterIP.Header, fixture.RouterIP)
-			rw := httptest.NewRecorder()
-			state.ctrl.Handler().ServeHTTP(rw, req)
-
-			assert.Assert(t, rw.Code == http.StatusOK)
-			assert.Assert(t, rw.Body.Len() == 0)
+			req := httptest.NewRequest(http.MethodPost, "/heartbeat", bytes.NewReader(body))
+			if state.setRouterIP {
+				req.Header.Set(key.RouterIP.Header, fixture.RouterIP)
+			}
+			state.rw = httptest.NewRecorder()
+			state.ctrl.Handler().ServeHTTP(state.rw, req)
 
 			tc.check(t, state)
 		})

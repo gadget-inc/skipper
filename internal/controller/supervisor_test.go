@@ -633,3 +633,671 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		})
 	}
 }
+
+// TestHeartbeat tests the heartbeat update and garbage collection logic.
+// The heartbeat function updates router heartbeats when newer timestamps are received
+// and garbage collects expired heartbeats.
+func TestHeartbeat(t *testing.T) {
+	cfg := testConfig()
+	fn := fixture.NewFunction()
+
+	testCases := []struct {
+		name           string
+		existingRouter string
+		existingTime   time.Time
+		newRouter      string
+		newTime        time.Time
+		expectedCount  int
+		shouldUpdate   bool
+	}{
+		{
+			// New heartbeat from a router we haven't seen before
+			name:          "stores heartbeat from new router",
+			newRouter:     fixture.RouterIP,
+			newTime:       time.Now(),
+			expectedCount: 1,
+			shouldUpdate:  true,
+		},
+		{
+			// Newer heartbeat from an existing router updates the stored value
+			name:           "updates heartbeat when newer timestamp received",
+			existingRouter: fixture.RouterIP,
+			existingTime:   time.Now().Add(-time.Minute),
+			newRouter:      fixture.RouterIP,
+			newTime:        time.Now(),
+			expectedCount:  1,
+			shouldUpdate:   true,
+		},
+		{
+			// Older heartbeat from an existing router is ignored
+			name:           "ignores heartbeat when older timestamp received",
+			existingRouter: fixture.RouterIP,
+			existingTime:   time.Now(),
+			newRouter:      fixture.RouterIP,
+			newTime:        time.Now().Add(-time.Minute),
+			expectedCount:  1,
+			shouldUpdate:   false,
+		},
+		{
+			// Heartbeat from a different router is stored separately
+			name:           "stores heartbeat from different router",
+			existingRouter: fixture.RouterIP,
+			existingTime:   time.Now(),
+			newRouter:      fixture.RouterIP2,
+			newTime:        time.Now(),
+			expectedCount:  2,
+			shouldUpdate:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+			ctrl := New(cfg, nil, fakeKubernetes, nil)
+			supervisor := ctrl.supervisor(fn)
+
+			// Set up existing heartbeat if specified
+			if tc.existingRouter != "" {
+				supervisor.routerHeartbeats.Store(tc.existingRouter, &function.Heartbeat{
+					Function:         fn,
+					Timestamp:        tc.existingTime,
+					InFlightRequests: 10,
+				})
+			}
+
+			// Send new heartbeat
+			newHeartbeat := &function.Heartbeat{
+				Function:         fn,
+				Timestamp:        tc.newTime,
+				InFlightRequests: 20,
+			}
+			supervisor.heartbeat(tc.newRouter, newHeartbeat)
+
+			// Verify heartbeat count
+			count := 0
+			supervisor.routerHeartbeats.Range(func(_ string, _ *function.Heartbeat) bool {
+				count++
+				return true
+			})
+			assert.Equal(t, tc.expectedCount, count)
+
+			// Verify whether the heartbeat was updated
+			stored, ok := supervisor.routerHeartbeats.Load(tc.newRouter)
+			assert.Assert(t, ok)
+			if tc.shouldUpdate {
+				assert.Assert(t, stored.Timestamp.Equal(tc.newTime))
+				assert.Equal(t, 20, stored.InFlightRequests)
+			} else {
+				assert.Assert(t, stored.Timestamp.Equal(tc.existingTime))
+				assert.Equal(t, 10, stored.InFlightRequests)
+			}
+		})
+	}
+}
+
+// TestHeartbeatGarbageCollection tests that expired router heartbeats are garbage collected.
+func TestHeartbeatGarbageCollection(t *testing.T) {
+	cfg := testConfig()
+	cfg.HeartbeatTimeout = 30 * time.Second
+
+	fn := fixture.NewFunction()
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	supervisor := ctrl.supervisor(fn)
+
+	// Store an expired heartbeat
+	expiredTime := time.Now().Add(-cfg.HeartbeatTimeout - time.Second)
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+		Function:  fn,
+		Timestamp: expiredTime,
+	})
+
+	// Store a fresh heartbeat from a different router
+	freshTime := time.Now()
+	supervisor.routerHeartbeats.Store(fixture.RouterIP2, &function.Heartbeat{
+		Function:  fn,
+		Timestamp: freshTime,
+	})
+
+	// Trigger garbage collection by sending any heartbeat
+	supervisor.heartbeat("127.0.1.99", &function.Heartbeat{
+		Function:  fn,
+		Timestamp: time.Now(),
+	})
+
+	// Verify expired heartbeat was removed
+	_, expiredExists := supervisor.routerHeartbeats.Load(fixture.RouterIP)
+	assert.Assert(t, !expiredExists, "expired heartbeat should be garbage collected")
+
+	// Verify fresh heartbeat remains
+	_, freshExists := supervisor.routerHeartbeats.Load(fixture.RouterIP2)
+	assert.Assert(t, freshExists, "fresh heartbeat should remain")
+}
+
+// TestCombinedHeartbeat tests the aggregation of heartbeats from multiple routers.
+// The combinedHeartbeat function sums in-flight requests from all routers and uses
+// the most recent timestamp from either router heartbeats or instance assignments.
+func TestCombinedHeartbeat(t *testing.T) {
+	cfg := testConfig()
+	fn := fixture.NewFunction()
+
+	testCases := []struct {
+		name                     string
+		routerHeartbeats         map[string]*function.Heartbeat
+		instances                []*function.Instance
+		expectedInFlightRequests int
+		expectedTimestampSource  string // "router1", "router2", "instance"
+	}{
+		{
+			// Single router heartbeat
+			name: "single router heartbeat",
+			routerHeartbeats: map[string]*function.Heartbeat{
+				fixture.RouterIP: {
+					Function:         fn,
+					Timestamp:        time.Now(),
+					InFlightRequests: 10,
+				},
+			},
+			instances:                nil,
+			expectedInFlightRequests: 10,
+			expectedTimestampSource:  "router1",
+		},
+		{
+			// Multiple routers: sums in-flight requests
+			name: "sums in-flight requests from multiple routers",
+			routerHeartbeats: map[string]*function.Heartbeat{
+				fixture.RouterIP: {
+					Function:         fn,
+					Timestamp:        time.Now().Add(-time.Minute),
+					InFlightRequests: 10,
+				},
+				fixture.RouterIP2: {
+					Function:         fn,
+					Timestamp:        time.Now(),
+					InFlightRequests: 15,
+				},
+			},
+			instances:                nil,
+			expectedInFlightRequests: 25,
+			expectedTimestampSource:  "router2",
+		},
+		{
+			// Instance AssignedAt is newer than router heartbeats
+			name: "uses instance AssignedAt when newer than router heartbeats",
+			routerHeartbeats: map[string]*function.Heartbeat{
+				fixture.RouterIP: {
+					Function:         fn,
+					Timestamp:        time.Now().Add(-time.Minute),
+					InFlightRequests: 5,
+				},
+			},
+			instances: []*function.Instance{
+				{Function: fn, AssignedAt: time.Now()},
+			},
+			expectedInFlightRequests: 5,
+			expectedTimestampSource:  "instance",
+		},
+		{
+			// Router heartbeat is newer than instance AssignedAt
+			name: "uses router heartbeat timestamp when newer than instance",
+			routerHeartbeats: map[string]*function.Heartbeat{
+				fixture.RouterIP: {
+					Function:         fn,
+					Timestamp:        time.Now(),
+					InFlightRequests: 8,
+				},
+			},
+			instances: []*function.Instance{
+				{Function: fn, AssignedAt: time.Now().Add(-time.Minute)},
+			},
+			expectedInFlightRequests: 8,
+			expectedTimestampSource:  "router1",
+		},
+		{
+			// No heartbeats or instances: zero values
+			name:                     "returns zero values when no heartbeats",
+			routerHeartbeats:         nil,
+			instances:                nil,
+			expectedInFlightRequests: 0,
+			expectedTimestampSource:  "zero",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+			ctrl := New(cfg, nil, fakeKubernetes, nil)
+			supervisor := ctrl.supervisor(fn)
+
+			// Set up router heartbeats
+			var router1Time, router2Time time.Time
+			for routerIP, hb := range tc.routerHeartbeats {
+				supervisor.routerHeartbeats.Store(routerIP, hb)
+				switch routerIP {
+				case fixture.RouterIP:
+					router1Time = hb.Timestamp
+				case fixture.RouterIP2:
+					router2Time = hb.Timestamp
+				}
+			}
+
+			// Get instance timestamp if present
+			var instanceTime time.Time
+			if len(tc.instances) > 0 {
+				instanceTime = tc.instances[0].AssignedAt
+			}
+
+			combined := supervisor.combinedHeartbeat(tc.instances)
+
+			// Verify in-flight requests sum
+			assert.Equal(t, tc.expectedInFlightRequests, combined.InFlightRequests)
+
+			// Verify timestamp source
+			switch tc.expectedTimestampSource {
+			case "router1":
+				assert.Assert(t, combined.Timestamp.Equal(router1Time))
+			case "router2":
+				assert.Assert(t, combined.Timestamp.Equal(router2Time))
+			case "instance":
+				assert.Assert(t, combined.Timestamp.Equal(instanceTime))
+			case "zero":
+				assert.Assert(t, combined.Timestamp.IsZero())
+			}
+
+			// Verify function is set
+			assert.Assert(t, combined.Function == fn)
+		})
+	}
+}
+
+// TestGetReadyInstance tests the instance selection logic including filtering,
+// scaling up when no instances are available, and respecting max instances.
+func TestGetReadyInstance(t *testing.T) {
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		instance       *function.Instance
+	}
+
+	testCases := []struct {
+		name         string
+		excludeNames []string
+		setup        func(*testing.T, *testState)
+		check        func(*testing.T, *testState)
+		err          error
+	}{
+		{
+			// Returns a ready instance when available
+			name: "returns ready instance when available",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.instance != nil)
+				assert.Assert(t, state.instance.Function.Equal(state.fn))
+			},
+		},
+		{
+			// Scales up when no instances are available
+			name: "scales up when no instances available",
+			setup: func(t *testing.T, state *testState) {
+				// Add an available pod that can be assigned
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.instance != nil)
+			},
+		},
+		{
+			// Filters instances by excludeNames
+			name:         "filters instances by excludeNames",
+			excludeNames: []string{"excluded-pod"},
+			setup: func(t *testing.T, state *testState) {
+				// Add excluded pod
+				excludedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				excludedPod.Name = "excluded-pod"
+				state.fakeKubernetes.Tracker().Add(excludedPod)
+
+				// Add included pod
+				includedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				includedPod.Name = "included-pod"
+				state.fakeKubernetes.Tracker().Add(includedPod)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.instance != nil)
+				assert.Equal(t, "included-pod", state.instance.Name)
+			},
+		},
+		{
+			// Falls back to all instances when all would be excluded
+			name:         "falls back to all instances when all excluded",
+			excludeNames: []string{"pod-1", "pod-2"},
+			setup: func(t *testing.T, state *testState) {
+				// Add pods that would all be excluded
+				pod1 := fixture.NewAssignedPod(t, state.fn, nil)
+				pod1.Name = "pod-1"
+				state.fakeKubernetes.Tracker().Add(pod1)
+
+				pod2 := fixture.NewAssignedPod(t, state.fn, nil)
+				pod2.Name = "pod-2"
+				state.fakeKubernetes.Tracker().Add(pod2)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Should still return an instance (fallback behavior)
+				assert.Assert(t, state.instance != nil)
+				assert.Assert(t, state.instance.Name == "pod-1" || state.instance.Name == "pod-2")
+			},
+		},
+		{
+			// Limits instances to maxInstances when more are available
+			name: "limits instances to maxInstances",
+			setup: func(t *testing.T, state *testState) {
+				// Set max instances to 2
+				state.fn.Scale.MaxInstances = 2
+
+				// Add more pods than max instances
+				for i := range 5 {
+					pod := fixture.NewAssignedPod(t, state.fn, nil)
+					// Set AssignedAt to different times so newest are kept
+					pod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(time.Duration(i) * time.Second).UTC().Format(time.RFC3339)
+					state.fakeKubernetes.Tracker().Add(pod)
+				}
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.instance != nil)
+			},
+		},
+		{
+			// Times out when no pods available to scale up
+			name: "times out when no pods available",
+			setup: func(t *testing.T, state *testState) {
+				// No pods available
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.instance == nil)
+			},
+			err: context.DeadlineExceeded,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+
+			tc.setup(t, state)
+
+			ctrl := New(testConfig(), nil, state.fakeKubernetes, nil)
+			err := ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			state.instance, err = ctrl.supervisor(state.fn).getReadyInstance(ctx, tc.excludeNames)
+			if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+			} else {
+				assert.NilError(t, err)
+			}
+
+			tc.check(t, state)
+		})
+	}
+}
+
+// TestCalculateDesiredInstances tests the multi-metric scaling decision logic.
+// The function considers heartbeat timeout, in-flight requests, CPU, and memory metrics,
+// taking the max across all metrics and applying min/max clamping.
+func TestCalculateDesiredInstances(t *testing.T) {
+	cfg := testConfig()
+	cfg.HeartbeatTimeout = 30 * time.Second
+
+	// Instances must be ready past the initial readiness delay to be included in scaling decisions
+	readyAt := time.Now().Add(-cfg.HPAInitialReadinessDelay)
+
+	testCases := []struct {
+		name                     string
+		heartbeat                *function.Heartbeat
+		instances                []*function.Instance
+		expectedDesiredInstances int
+		expectedUnclampedDesired int
+		expectedReason           ScalingReason
+	}{
+		{
+			// Heartbeat timeout triggers scale to 0
+			name: "scales to zero on heartbeat timeout",
+			heartbeat: &function.Heartbeat{
+				Function: &function.Function{
+					Scale: &function.Scale{
+						MinInstances:           0,
+						MaxInstances:           5,
+						TargetInFlightRequests: 10,
+					},
+				},
+				Timestamp:        time.Now().Add(-cfg.HeartbeatTimeout - time.Second),
+				InFlightRequests: 5,
+			},
+			instances: []*function.Instance{
+				{ReadyAt: readyAt},
+			},
+			expectedDesiredInstances: 0,
+			expectedUnclampedDesired: 0,
+			expectedReason:           ScalingReasonHeartbeatTimeout,
+		},
+		{
+			// In-flight requests scaling: 25 requests / 10 target = 3 instances
+			name: "scales based on in-flight requests",
+			heartbeat: &function.Heartbeat{
+				Function: &function.Function{
+					Scale: &function.Scale{
+						MinInstances:           0,
+						MaxInstances:           10,
+						TargetInFlightRequests: 10,
+					},
+				},
+				Timestamp:        time.Now(),
+				InFlightRequests: 25,
+			},
+			instances: []*function.Instance{
+				{ReadyAt: readyAt},
+			},
+			expectedDesiredInstances: 3,
+			expectedUnclampedDesired: 3,
+			expectedReason:           ScalingReasonInFlightRequests,
+		},
+		{
+			// Multiple metrics: takes the max across all
+			// In-flight: 15 / 10 = 2
+			// CPU: avg 200m / 100m = 2
+			// Result: max(2, 2) = 2
+			name: "takes max across multiple metrics",
+			heartbeat: &function.Heartbeat{
+				Function: &function.Function{
+					Scale: &function.Scale{
+						MinInstances:           0,
+						MaxInstances:           10,
+						TargetInFlightRequests: 10,
+						TargetCPUUsageMilli:    100,
+					},
+				},
+				Timestamp:        time.Now(),
+				InFlightRequests: 15,
+			},
+			instances: []*function.Instance{
+				{
+					Function: &function.Function{
+						Scale: &function.Scale{TargetCPUUsageMilli: 100},
+					},
+					ReadyAt:       readyAt,
+					CPUUsageMilli: 200,
+				},
+			},
+			expectedDesiredInstances: 2,
+			expectedUnclampedDesired: 2,
+			expectedReason:           ScalingReasonInFlightRequests, // or CPU, both equal
+		},
+		{
+			// Max clamping: would scale to 10 but max is 5
+			name: "applies max instances clamping",
+			heartbeat: &function.Heartbeat{
+				Function: &function.Function{
+					Scale: &function.Scale{
+						MinInstances:           0,
+						MaxInstances:           5,
+						TargetInFlightRequests: 10,
+					},
+				},
+				Timestamp:        time.Now(),
+				InFlightRequests: 100,
+			},
+			instances: []*function.Instance{
+				{ReadyAt: readyAt},
+			},
+			expectedDesiredInstances: 5,
+			expectedUnclampedDesired: 10,
+			expectedReason:           ScalingReasonInFlightRequests,
+		},
+		{
+			// Min clamping: unclamped would be 1 (baseline without heartbeat timeout) but min is 2
+			name: "applies min instances clamping",
+			heartbeat: &function.Heartbeat{
+				Function: &function.Function{
+					Scale: &function.Scale{
+						MinInstances:           2,
+						MaxInstances:           10,
+						TargetInFlightRequests: 10,
+					},
+				},
+				Timestamp:        time.Now(),
+				InFlightRequests: 0,
+			},
+			instances: []*function.Instance{
+				{ReadyAt: readyAt},
+			},
+			expectedDesiredInstances: 2,
+			expectedUnclampedDesired: 1,
+			expectedReason:           "",
+		},
+		{
+			// No scaling metrics configured: maintains at least 1 instance
+			name: "maintains one instance when no scaling metrics configured",
+			heartbeat: &function.Heartbeat{
+				Function: &function.Function{
+					Scale: &function.Scale{
+						MinInstances: 0,
+						MaxInstances: 10,
+					},
+				},
+				Timestamp:        time.Now(),
+				InFlightRequests: 0,
+			},
+			instances: []*function.Instance{
+				{ReadyAt: readyAt},
+			},
+			expectedDesiredInstances: 1,
+			expectedUnclampedDesired: 1,
+			expectedReason:           "",
+		},
+		{
+			// CPU scaling dominates over in-flight requests
+			// In-flight: 5 / 10 = 1
+			// CPU: avg 300m / 100m = 3
+			// Result: max(1, 3) = 3
+			name: "CPU scaling dominates when higher",
+			heartbeat: &function.Heartbeat{
+				Function: &function.Function{
+					Scale: &function.Scale{
+						MinInstances:           0,
+						MaxInstances:           10,
+						TargetInFlightRequests: 10,
+						TargetCPUUsageMilli:    100,
+					},
+				},
+				Timestamp:        time.Now(),
+				InFlightRequests: 5,
+			},
+			instances: []*function.Instance{
+				{
+					Function: &function.Function{
+						Scale: &function.Scale{TargetCPUUsageMilli: 100},
+					},
+					ReadyAt:       readyAt,
+					CPUUsageMilli: 300,
+				},
+			},
+			expectedDesiredInstances: 3,
+			expectedUnclampedDesired: 3,
+			expectedReason:           ScalingReasonCPU,
+		},
+		{
+			// Memory scaling
+			name: "scales based on memory usage",
+			heartbeat: &function.Heartbeat{
+				Function: &function.Function{
+					Scale: &function.Scale{
+						MinInstances:         0,
+						MaxInstances:         10,
+						TargetMemoryUsageMiB: 100,
+					},
+				},
+				Timestamp: time.Now(),
+			},
+			instances: []*function.Instance{
+				{
+					Function: &function.Function{
+						Scale: &function.Scale{TargetMemoryUsageMiB: 100},
+					},
+					ReadyAt:        readyAt,
+					MemoryUsageMiB: 250,
+				},
+			},
+			expectedDesiredInstances: 3,
+			expectedUnclampedDesired: 3,
+			expectedReason:           ScalingReasonMemory,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
+
+			assert.Equal(t, tc.expectedDesiredInstances, decision.DesiredInstances)
+			assert.Equal(t, tc.expectedUnclampedDesired, decision.UnclampedDesiredInstances)
+			assert.Equal(t, tc.expectedReason, decision.Reason)
+		})
+	}
+}
+
+// TestIsValidScalingReason tests the scaling reason validation function.
+func TestIsValidScalingReason(t *testing.T) {
+	testCases := []struct {
+		reason   string
+		expected bool
+	}{
+		// Valid scaling reasons
+		{reason: ScalingReasonCPU, expected: true},
+		{reason: ScalingReasonHeartbeatTimeout, expected: true},
+		{reason: ScalingReasonInFlightRequests, expected: true},
+		{reason: ScalingReasonMemory, expected: true},
+		{reason: ScalingReasonNoReadyInstances, expected: true},
+		{reason: ScalingReasonUnknown, expected: true},
+
+		// Invalid scaling reasons
+		{reason: "", expected: false},
+		{reason: "invalid", expected: false},
+		{reason: "CPU", expected: false},  // case-sensitive
+		{reason: "cpu ", expected: false}, // trailing space
+		{reason: " cpu", expected: false}, // leading space
+		{reason: "random", expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.reason, func(t *testing.T) {
+			result := isValidScalingReason(tc.reason)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
