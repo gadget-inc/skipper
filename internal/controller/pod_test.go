@@ -16,6 +16,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	fakekubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
 
@@ -490,6 +491,7 @@ func TestConvergeNamespace(t *testing.T) {
 				state.ctrl.startedAt = time.Now().Add(-(state.ctrl.config.HPADownscaleStabilization + time.Second))
 			}
 
+			state.ctrl.refreshMetrics(ctx)
 			err = state.ctrl.convergeNamespace(ctx, state.fn.Namespace)
 			assert.NilError(t, err)
 			tc.check(t, state)
@@ -1009,6 +1011,7 @@ func TestPortFromPod(t *testing.T) {
 func TestInstanceFromPod(t *testing.T) {
 	t.Parallel()
 
+	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
 	fn := fixture.NewFunction(t)
 	fnJSON, _ := json.Marshal(fn)
 
@@ -1184,7 +1187,7 @@ func TestInstanceFromPod(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			instance, err := instanceFromPod(tc.pod)
+			instance, err := ctrl.instanceFromPod(tc.pod)
 			if tc.errContains != "" {
 				assert.ErrorContains(t, err, tc.errContains)
 			} else {
@@ -1195,6 +1198,93 @@ func TestInstanceFromPod(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRefreshMetrics(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	fakeKubernetesMetrics := fakekubernetesmetrics.NewSimpleClientset() //nolint:staticcheck // NewClientset isn't generated for this package
+	ctrl := New(testConfig(), nil, fakeKubernetes, fakeKubernetesMetrics)
+
+	// create multiple assigned pods
+	pod1 := fixture.NewAssignedPod(t, fn, nil)
+	pod2 := fixture.NewAssignedPod(t, fn, nil)
+	err := fakeKubernetes.Tracker().Add(pod1)
+	assert.NilError(t, err)
+	err = fakeKubernetes.Tracker().Add(pod2)
+	assert.NilError(t, err)
+
+	// add metrics for both pods
+	fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, pod1, "100m", "128Mi"))
+	fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, pod2, "200m", "256Mi"))
+
+	// start informers so the pod lister is populated
+	err = ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// verify cache is empty before refresh
+	assert.Assert(t, ctrl.podMetrics.Size() == 0, "cache should be empty before refresh")
+
+	// refresh metrics
+	ctrl.refreshMetrics(ctx)
+
+	// verify both metrics are in the cache
+	metric1, ok := ctrl.podMetrics.Load(fn.Namespace + "/" + pod1.Name)
+	assert.Assert(t, ok, "pod1 metrics should be in cache")
+	assert.Assert(t, metric1.Containers[0].Usage.Cpu().MilliValue() == 100)
+
+	metric2, ok := ctrl.podMetrics.Load(fn.Namespace + "/" + pod2.Name)
+	assert.Assert(t, ok, "pod2 metrics should be in cache")
+	assert.Assert(t, metric2.Containers[0].Usage.Cpu().MilliValue() == 200)
+}
+
+func TestRefreshMetricsGarbageCollection(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	fakeKubernetesMetrics := fakekubernetesmetrics.NewSimpleClientset() //nolint:staticcheck // NewClientset isn't generated for this package
+	ctrl := New(testConfig(), nil, fakeKubernetes, fakeKubernetesMetrics)
+
+	// create an assigned pod
+	assignedPod := fixture.NewAssignedPod(t, fn, nil)
+	err := fakeKubernetes.Tracker().Add(assignedPod)
+	assert.NilError(t, err)
+
+	// add metrics for the assigned pod
+	fakeKubernetesMetrics.Tracker().Create(fixture.NewPodMetrics(t, assignedPod, "100m", "128Mi"))
+
+	// start informers so the pod lister is populated
+	err = ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// seed a stale entry in the cache for a pod that doesn't exist
+	staleKey := fn.Namespace + "/nonexistent-pod"
+	ctrl.podMetrics.Store(staleKey, metricsv1beta1.PodMetrics{})
+
+	// verify both entries exist before refresh
+	_, staleExists := ctrl.podMetrics.Load(staleKey)
+	assert.Assert(t, staleExists, "stale entry should exist before refresh")
+
+	// refresh metrics - this should garbage collect the stale entry
+	ctrl.refreshMetrics(ctx)
+
+	// verify the stale entry was removed
+	_, staleExists = ctrl.podMetrics.Load(staleKey)
+	assert.Assert(t, !staleExists, "stale entry should be garbage collected")
+
+	// verify the valid entry for the existing pod is still there
+	validKey := fn.Namespace + "/" + assignedPod.Name
+	_, validExists := ctrl.podMetrics.Load(validKey)
+	assert.Assert(t, validExists, "valid entry should still exist after refresh")
 }
 
 func TestGetReadyInstances(t *testing.T) {
