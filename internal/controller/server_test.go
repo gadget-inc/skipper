@@ -321,9 +321,10 @@ func TestHandleHeartbeat(t *testing.T) {
 				}
 
 				// ensure the controller sends the heartbeats to the other controllers
+				expectedHeartbeats := state.heartbeats
 				state.mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
 					// ensure the controller forwards the same heartbeats to the other controllers
-					assert.DeepEqual(t, heartbeats, state.heartbeats)
+					assert.DeepEqual(t, heartbeats, expectedHeartbeats)
 					// ensure the controller forwards the list of controllers that have received heartbeats
 					assert.DeepEqual(t, forwardedFor, []string{fixture.ControllerIP, fixture.ControllerIP2})
 					return nil
