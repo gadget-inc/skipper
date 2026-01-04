@@ -631,3 +631,130 @@ func TestAssignPod(t *testing.T) {
 		})
 	}
 }
+
+func TestGetReadyInstances(t *testing.T) {
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		instances      []*function.Instance
+	}
+
+	testCases := []struct {
+		name  string
+		err   error
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
+	}{
+		{
+			name: "one",
+			setup: func(t *testing.T, state *testState) {
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1)
+			},
+		},
+		{
+			name: "many",
+			setup: func(t *testing.T, state *testState) {
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				assert.NilError(t, err)
+
+				err = state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 2)
+			},
+		},
+		{
+			name: "deleted",
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
+			},
+		},
+		{
+			name: "failed",
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Status.Phase = v1.PodFailed
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
+			},
+		},
+		{
+			name: "no pod IP",
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Status.PodIP = ""
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
+			},
+		},
+		{
+			name: "unready",
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
+			},
+		},
+		{
+			name: "different metadata",
+			setup: func(t *testing.T, state *testState) {
+				// create a pod with different metadata than state.fn
+				fn := *state.fn // copy the function
+				fn.Metadata = "different"
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, &fn, nil))
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+
+			tc.setup(t, state)
+
+			ctrl := New(testConfig(), nil, state.fakeKubernetes, nil)
+			err := ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			state.instances, err = ctrl.getReadyInstances(state.fn)
+			if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+			} else {
+				assert.NilError(t, err)
+			}
+
+			tc.check(t, state)
+		})
+	}
+}

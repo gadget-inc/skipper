@@ -5,9 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
-	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,13 +14,11 @@ import (
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
-	"github.com/go-json-experiment/json"
 	"github.com/puzpuzpuz/xsync/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	listerappsv1 "k8s.io/client-go/listers/apps/v1"
@@ -280,147 +275,6 @@ func (ctrl *Controller) watchErrorHandler(ctx context.Context, attrs ...slog.Att
 
 		log.Warn(ctx, "informer watch error", key.Error.Slog(err))
 	}
-}
-
-func (ctrl *Controller) getReadyInstances(fn *function.Function) ([]*function.Instance, error) {
-	instances, err := ctrl.getInstances(fn)
-	if err != nil {
-		return nil, err
-	}
-
-	// filter out instances that are unready
-	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
-}
-
-func (ctrl *Controller) getInstances(fn *function.Function) ([]*function.Instance, error) {
-	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
-		key.Tenant.Label:     fn.Tenant,
-		key.Deployment.Label: fn.Deployment,
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
-	}
-
-	instances := make([]*function.Instance, 0, len(assignedPods))
-	for _, pod := range assignedPods {
-		instance, err := instanceFromPod(pod)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get instance from pod: %w", err)
-		}
-
-		if !instance.Function.Equal(fn) {
-			// pod is assigned to a different function
-			continue
-		}
-
-		instances = append(instances, instance)
-	}
-
-	return instances, nil
-}
-
-func (ctrl *Controller) listPods(namespace string, selector labels.Selector) ([]*v1.Pod, error) {
-	podListerEntry, found := ctrl.namespaceListers[namespace]
-	if !found {
-		return nil, fmt.Errorf("managed pod lister not started for namespace %s", namespace)
-	}
-
-	listedPods, err := podListerEntry.podLister.List(selector)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list pods: %w", err)
-	}
-
-	// filter out pods that are not running
-	return slices.DeleteFunc(listedPods, func(pod *v1.Pod) bool { return !isPodRunning(pod) }), nil
-}
-
-func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
-	namespaceLister, found := ctrl.namespaceListers[pod.Namespace]
-	if !found {
-		log.Warn(ctx, "managed pod lister not started for namespace", key.Namespace.Slog(pod.Namespace))
-		return
-	}
-
-	err := namespaceLister.podIndexer.Update(pod)
-	if err != nil {
-		log.Warn(ctx, "failed to update pod cache", key.Error.Slog(err), key.Pod.Slog(pod))
-	}
-}
-
-func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
-	if pod == nil {
-		return nil, errors.New("pod is nil")
-	}
-
-	instance := &function.Instance{
-		Function: &function.Function{},
-		Name:     pod.Name,
-	}
-
-	if fnJson, ok := pod.Annotations[key.Function.Annotation]; ok {
-		err := json.Unmarshal([]byte(fnJson), instance.Function)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
-		}
-		if err := instance.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid function in pod annotation: %w", err)
-		}
-	} else {
-		return nil, errors.New("missing function annotation")
-	}
-
-	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Annotation]
-	if instance.ReplicaSet == "" {
-		return nil, errors.New("missing replica set annotation")
-	}
-
-	var err error
-	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Annotation])
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
-	}
-
-	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Annotation]; ok && isPodReady(pod) {
-		instance.ReadyAt, err = time.Parse(time.RFC3339, readyAtStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)
-		}
-	}
-
-	port, err := portFromPod(pod)
-	if err != nil {
-		return nil, err
-	}
-
-	instance.Addr = net.JoinHostPort(pod.Status.PodIP, port)
-
-	return instance, nil
-}
-
-func portFromPod(pod *v1.Pod) (string, error) {
-	port := pod.Annotations[key.Port.Annotation]
-	if port == "" {
-		// no port annotation, grab the first port from the first container
-		if len(pod.Spec.Containers) > 0 && len(pod.Spec.Containers[0].Ports) > 0 {
-			port = strconv.Itoa(int(pod.Spec.Containers[0].Ports[0].ContainerPort))
-		}
-	} else {
-		// assume the port annotation is a named port and try to find
-		// the actual port. if we don't find a matching named port,
-		// we'll use the port annotation as the actual port
-		for _, container := range pod.Spec.Containers {
-			for _, containerPort := range container.Ports {
-				if containerPort.Name == port {
-					port = strconv.Itoa(int(containerPort.ContainerPort))
-					break
-				}
-			}
-		}
-	}
-	if port == "" {
-		return "", fmt.Errorf("failed to get port for pod %s", pod.Name)
-	}
-	return port, nil
 }
 
 func (ctrl *Controller) supervisor(fn *function.Function) *Supervisor {
