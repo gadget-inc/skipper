@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 	"time"
 
@@ -18,11 +17,10 @@ const (
 	FunctionDeployment = "test"
 )
 
-func NewFunction() *function.Function {
-	tenantCounter.Add(1)
-
+func NewFunction(t *testing.T) *function.Function {
+	t.Helper()
 	return &function.Function{
-		Tenant:     "tenant-" + strconv.Itoa(int(tenantCounter.Load())),
+		Tenant:     "tenant-" + uuid.NewString()[:8],
 		Metadata:   uuid.NewString(),
 		Namespace:  FunctionNamespace,
 		Deployment: FunctionDeployment,
@@ -37,7 +35,8 @@ func NewFunction() *function.Function {
 }
 
 func NewFunctionRequest(t *testing.T, fn *function.Function, method string, path string, body io.Reader) *http.Request {
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	t.Cleanup(cancel)
 	req := httptest.NewRequestWithContext(ctx, method, path, body)
 	fn.SetHeader(req)
@@ -45,6 +44,7 @@ func NewFunctionRequest(t *testing.T, fn *function.Function, method string, path
 }
 
 func NewInstance(t *testing.T, fn *function.Function, handler http.HandlerFunc) *function.Instance {
+	t.Helper()
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
@@ -52,7 +52,7 @@ func NewInstance(t *testing.T, fn *function.Function, handler http.HandlerFunc) 
 		Function:   fn,
 		Name:       uuid.NewString(),
 		Addr:       testServer.Listener.Addr().String(),
-		ReplicaSet: fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load())),
+		ReplicaSet: CurrentReplicaSetName(fn),
 		AssignedAt: time.Now(),
 		ReadyAt:    time.Now(),
 	}

@@ -17,6 +17,8 @@ import (
 )
 
 func TestControllerInformer(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		ctrlPod        *v1.Pod
 		fakeKubernetes *fake.Clientset
@@ -155,6 +157,8 @@ func TestControllerInformer(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 
@@ -183,6 +187,8 @@ func TestControllerInformer(t *testing.T) {
 }
 
 func TestGetControllerClient(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name  string
 		check func(*testing.T, *Controller, *atomic.Int32)
@@ -222,6 +228,8 @@ func TestGetControllerClient(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			callCount := &atomic.Int32{}
 			ctrl := New(testConfig(), func(host string, port int) Client {
 				callCount.Add(1)
@@ -234,6 +242,8 @@ func TestGetControllerClient(t *testing.T) {
 }
 
 func TestWatchErrorHandler(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name string
 		err  error
@@ -266,6 +276,8 @@ func TestWatchErrorHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
 			handler := ctrl.watchErrorHandler(t.Context())
 
@@ -276,6 +288,8 @@ func TestWatchErrorHandler(t *testing.T) {
 }
 
 func TestSupervisor(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name  string
 		check func(*testing.T, *Controller)
@@ -283,7 +297,7 @@ func TestSupervisor(t *testing.T) {
 		{
 			name: "creates new supervisor for function",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewFunction()
+				fn := fixture.NewFunction(t)
 				supervisor := ctrl.supervisor(fn)
 				assert.Assert(t, supervisor != nil)
 				assert.Assert(t, supervisor.fn.Equal(fn))
@@ -292,7 +306,7 @@ func TestSupervisor(t *testing.T) {
 		{
 			name: "returns same supervisor for same function",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewFunction()
+				fn := fixture.NewFunction(t)
 				supervisor1 := ctrl.supervisor(fn)
 				supervisor2 := ctrl.supervisor(fn)
 
@@ -303,8 +317,8 @@ func TestSupervisor(t *testing.T) {
 		{
 			name: "creates different supervisors for different functions",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn1 := fixture.NewFunction()
-				fn2 := fixture.NewFunction()
+				fn1 := fixture.NewFunction(t)
+				fn2 := fixture.NewFunction(t)
 				fn2.Deployment = "other-deployment"
 
 				supervisor1 := ctrl.supervisor(fn1)
@@ -317,7 +331,7 @@ func TestSupervisor(t *testing.T) {
 		{
 			name: "supervisor has correct controller reference",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewFunction()
+				fn := fixture.NewFunction(t)
 				supervisor := ctrl.supervisor(fn)
 				assert.Assert(t, supervisor.ctrl == ctrl)
 			},
@@ -325,7 +339,7 @@ func TestSupervisor(t *testing.T) {
 		{
 			name: "supervisor has initialized routerHeartbeats map",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewFunction()
+				fn := fixture.NewFunction(t)
 				supervisor := ctrl.supervisor(fn)
 				assert.Assert(t, supervisor.routerHeartbeats != nil)
 
@@ -339,6 +353,8 @@ func TestSupervisor(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
 			tc.check(t, ctrl)
 		})

@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +12,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
+	"github.com/google/uuid"
+	"github.com/puzpuzpuz/xsync/v4"
 	"gotest.tools/v3/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -22,13 +23,13 @@ import (
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
-var (
-	podCounter        = new(atomic.Int64)
-	replicaSetCounter = new(atomic.Int64)
-	tenantCounter     = new(atomic.Int64)
-)
+// replicaSetNames tracks the current replicaset name per function (keyed by function hash).
+// This allows each function to have its own replicaset lineage without global counters.
+var replicaSetNames = xsync.NewMap[function.Hash, string]()
 
 func NewAvailablePod(t *testing.T, fn *function.Function, handler http.Handler) *v1.Pod {
+	t.Helper()
+
 	if handler == nil {
 		handler = defaultAvailablePodHandler(t, fn)
 	}
@@ -42,11 +43,9 @@ func NewAvailablePod(t *testing.T, fn *function.Function, handler http.Handler) 
 	port, err := strconv.Atoi(portStr)
 	assert.NilError(t, err)
 
-	podCounter.Add(1)
-
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + strconv.Itoa(int(podCounter.Load())),
+			Name:      fn.Deployment + "-" + uuid.NewString()[:8],
 			Namespace: fn.Namespace,
 			Labels: map[string]string{
 				key.Deployment.Label: fn.Deployment,
@@ -106,6 +105,8 @@ func defaultAvailablePodHandler(t *testing.T, fn *function.Function) http.Handle
 }
 
 func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *v1.Pod {
+	t.Helper()
+
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
@@ -118,11 +119,9 @@ func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *
 	fnJSON, err := json.Marshal(fn)
 	assert.NilError(t, err)
 
-	podCounter.Add(1)
-
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + strconv.Itoa(int(podCounter.Load())),
+			Name:      fn.Deployment + "-" + uuid.NewString()[:8],
 			Namespace: fn.Namespace,
 			Labels: map[string]string{
 				key.Deployment.Label: fn.Deployment,
@@ -161,11 +160,17 @@ func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *
 	}
 }
 
+// CurrentReplicaSetName returns the current replicaset name for the given function.
+// If no replicaset has been created yet for this function, it generates one.
 func CurrentReplicaSetName(fn *function.Function) string {
-	return fn.Deployment + "-replicaset-" + strconv.Itoa(int(replicaSetCounter.Load()))
+	name, _ := replicaSetNames.LoadOrCompute(fn.Hash(), func() (string, bool) {
+		return fn.Deployment + "-rs-" + uuid.NewString()[:8], false
+	})
+	return name
 }
 
 func CurrentReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
+	t.Helper()
 	return &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      CurrentReplicaSetName(fn),
@@ -181,8 +186,11 @@ func CurrentReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
 	}
 }
 
+// NewReplicaSet creates a new replicaset for the function, replacing any existing one.
 func NewReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
-	replicaSetCounter.Add(1)
+	t.Helper()
+	// Generate a new replicaset name for this function
+	replicaSetNames.Store(fn.Hash(), fn.Deployment+"-rs-"+uuid.NewString()[:8])
 	return CurrentReplicaSet(t, fn)
 }
 
@@ -195,6 +203,7 @@ func NewReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
 // making the pod metrics not show up in future
 // metricsClientset.MetricsV1beta1().PodMetricses() calls.
 func NewPodMetrics(t *testing.T, pod *v1.Pod, cpu, memory string) (schema.GroupVersionResource, *metricsv1beta1.PodMetrics, string, metav1.CreateOptions) {
+	t.Helper()
 	return metricsv1beta1.SchemeGroupVersion.WithResource("pods"),
 		&metricsv1beta1.PodMetrics{
 			ObjectMeta: metav1.ObjectMeta{

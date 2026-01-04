@@ -21,6 +21,8 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
+	t.Parallel()
+
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rw := httptest.NewRecorder()
 
@@ -32,6 +34,8 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestBadRequest(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name          string
 		setupHeader   func(*http.Request)
@@ -81,6 +85,7 @@ func TestBadRequest(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			tc.setupHeader(req)
 
@@ -95,7 +100,9 @@ func TestBadRequest(t *testing.T) {
 }
 
 func TestGetInstanceDuration(t *testing.T) {
-	fn := fixture.NewFunction()
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
 
 	sentError := false
 
@@ -133,6 +140,8 @@ func TestGetInstanceDuration(t *testing.T) {
 }
 
 func TestMethods(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		method string
 	}{
@@ -148,7 +157,8 @@ func TestMethods(t *testing.T) {
 	for _, tc := range testCases {
 		// unit tests
 		t.Run(tc.method, func(t *testing.T) {
-			fn := fixture.NewFunction()
+			t.Parallel()
+			fn := fixture.NewFunction(t)
 
 			mcc := fixture.NewMockControllerClient(t)
 			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
@@ -172,7 +182,7 @@ func TestMethods(t *testing.T) {
 				t.Skip("skipping integration test in short mode")
 			}
 
-			fn := fixture.NewEchoFunction()
+			fn := fixture.NewEchoFunction(t)
 			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterIntegrationURL, nil)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
@@ -188,6 +198,8 @@ func TestMethods(t *testing.T) {
 }
 
 func TestHeaders(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn      *function.Function
 		req     *http.Request
@@ -282,8 +294,10 @@ func TestHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			state := &testState{
-				fn: fixture.NewFunction(),
+				fn: fixture.NewFunction(t),
 			}
 			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, "/", nil)
 
@@ -314,7 +328,7 @@ func TestHeaders(t *testing.T) {
 			}
 
 			state := &testState{
-				fn: fixture.NewEchoFunction(),
+				fn: fixture.NewEchoFunction(t),
 			}
 			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, fixture.RouterIntegrationURL, nil)
 			state.req.Header.Set("User-Agent", "") // disable the default User-Agent header
@@ -339,6 +353,8 @@ func TestHeaders(t *testing.T) {
 }
 
 func TestBody(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn           *function.Function
 		contentType  string
@@ -386,8 +402,10 @@ func TestBody(t *testing.T) {
 	for _, tc := range testCases {
 		// unit tests
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			state := &testState{
-				fn: fixture.NewFunction(),
+				fn: fixture.NewFunction(t),
 			}
 
 			tc.setup(t, state)
@@ -420,7 +438,7 @@ func TestBody(t *testing.T) {
 			}
 
 			state := &testState{
-				fn: fixture.NewEchoFunction(),
+				fn: fixture.NewEchoFunction(t),
 			}
 
 			tc.setup(t, state)
@@ -444,11 +462,13 @@ func TestBody(t *testing.T) {
 }
 
 func TestHeartbeats(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	t.Cleanup(cancel)
+	defer cancel()
 
 	testStartTime := time.Now()
-	fn := fixture.NewFunction()
+	fn := fixture.NewFunction(t)
 	once := new(sync.Once)
 	done := make(chan struct{})
 	defer close(done)
@@ -500,6 +520,8 @@ func TestHeartbeats(t *testing.T) {
 }
 
 func TestRetries(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn            *function.Function
 		rw            *httptest.ResponseRecorder
@@ -573,8 +595,10 @@ func TestRetries(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			state := &testState{
-				fn: fixture.NewFunction(),
+				fn: fixture.NewFunction(t),
 				rw: httptest.NewRecorder(),
 			}
 
@@ -660,6 +684,8 @@ func (r *noReadAfterClose) Close() error {
 }
 
 func TestInstanceExclusion(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn                            *function.Function
 		rw                            *httptest.ResponseRecorder
@@ -744,7 +770,7 @@ func TestInstanceExclusion(t *testing.T) {
 			mcc := fixture.NewMockControllerClient(t)
 
 			state := &testState{
-				fn:     fixture.NewFunction(),
+				fn:     fixture.NewFunction(t),
 				rw:     httptest.NewRecorder(),
 				router: New(cfg, mcc),
 				mcc:    mcc,
@@ -761,6 +787,8 @@ func TestInstanceExclusion(t *testing.T) {
 }
 
 func TestContextCancellation(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name        string
 		expectedErr error
@@ -777,7 +805,9 @@ func TestContextCancellation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			fn := fixture.NewFunction()
+			t.Parallel()
+
+			fn := fixture.NewFunction(t)
 
 			var ctx context.Context
 			var cancel context.CancelFunc
@@ -827,6 +857,8 @@ func TestContextCancellation(t *testing.T) {
 }
 
 func TestCalculateBackoff(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name       string
 		minTimeout time.Duration
@@ -871,6 +903,8 @@ func TestCalculateBackoff(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			cfg := testConfig()
 			cfg.RoundTripRetryMinTimeout = tc.minTimeout
 			cfg.RoundTripRetryMaxTimeout = tc.maxTimeout

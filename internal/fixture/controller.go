@@ -2,6 +2,7 @@ package fixture
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 
 	"aidanwoods.dev/go-paseto"
@@ -17,7 +18,7 @@ type (
 	HeartbeatHandler func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error
 )
 
-var (
+const (
 	ControllerIP        = "127.0.2.1"
 	ControllerIP2       = "127.0.2.2"
 	ControllerNamespace = "skipper-test"
@@ -31,11 +32,11 @@ var (
 type MockControllerClient struct {
 	t                  *testing.T
 	instanceHandler    InstanceHandler
-	instanceWasCalled  bool
+	instanceWasCalled  atomic.Bool
 	scaleHandler       ScaleHandler
-	scaleWasCalled     bool
+	scaleWasCalled     atomic.Bool
 	heartbeatHandler   HeartbeatHandler
-	heartbeatWasCalled bool
+	heartbeatWasCalled atomic.Bool
 }
 
 // var _ controller.Client = &MockControllerClient{}
@@ -43,13 +44,13 @@ type MockControllerClient struct {
 func NewMockControllerClient(t *testing.T) *MockControllerClient {
 	mcc := &MockControllerClient{t: t}
 	t.Cleanup(func() {
-		if mcc.instanceHandler != nil && !mcc.instanceWasCalled {
+		if mcc.instanceHandler != nil && !mcc.instanceWasCalled.Load() {
 			t.Fatalf("mcc.Instance was mocked but never called")
 		}
-		if mcc.scaleHandler != nil && !mcc.scaleWasCalled {
+		if mcc.scaleHandler != nil && !mcc.scaleWasCalled.Load() {
 			t.Fatalf("mcc.Scale was mocked but never called")
 		}
-		if mcc.heartbeatHandler != nil && !mcc.heartbeatWasCalled {
+		if mcc.heartbeatHandler != nil && !mcc.heartbeatWasCalled.Load() {
 			t.Fatalf("mcc.Heartbeat was mocked but never called")
 		}
 	})
@@ -73,7 +74,7 @@ func (f *MockControllerClient) Instance(ctx context.Context, fn *function.Functi
 	if f.instanceHandler == nil {
 		f.t.Fatalf("mcc.Instance was called but not mocked")
 	}
-	f.instanceWasCalled = true
+	f.instanceWasCalled.Store(true)
 	return f.instanceHandler(ctx, fn, excludeInstanceNames...)
 }
 
@@ -82,7 +83,7 @@ func (f *MockControllerClient) Scale(ctx context.Context, fn *function.Function,
 	if f.scaleHandler == nil {
 		f.t.Fatalf("mcc.Scale was called but not mocked")
 	}
-	f.scaleWasCalled = true
+	f.scaleWasCalled.Store(true)
 	return f.scaleHandler(ctx, fn, desiredInstances, reason)
 }
 
@@ -91,7 +92,7 @@ func (f *MockControllerClient) Heartbeat(ctx context.Context, routerIP string, h
 	if f.heartbeatHandler == nil {
 		f.t.Fatalf("mcc.Heartbeat was called but not mocked")
 	}
-	f.heartbeatWasCalled = true
+	f.heartbeatWasCalled.Store(true)
 	return f.heartbeatHandler(ctx, routerIP, heartbeats, forwardedFor...)
 }
 
