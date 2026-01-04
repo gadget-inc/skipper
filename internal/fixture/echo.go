@@ -3,13 +3,15 @@ package fixture
 import (
 	"net/http"
 	"strings"
+	"testing"
 
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/go-json-experiment/json"
 )
 
-func NewEchoFunction() *function.Function {
-	fn := NewFunction()
+func NewEchoFunction(t *testing.T) *function.Function {
+	t.Helper()
+	fn := NewFunction(t)
 	fn.Deployment = "echo"
 	return fn
 }

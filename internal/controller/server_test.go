@@ -19,6 +19,8 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
+	t.Parallel()
+
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rw := httptest.NewRecorder()
 
@@ -30,6 +32,8 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestHandleInstance(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn             *function.Function
 		headers        map[string]string
@@ -232,11 +236,13 @@ func TestHandleInstance(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(),
+				fn:             fixture.NewFunction(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
@@ -262,6 +268,8 @@ func TestHandleInstance(t *testing.T) {
 }
 
 func TestHandleScale(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn             *function.Function
 		headers        map[string]string
@@ -412,11 +420,13 @@ func TestHandleScale(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(),
+				fn:             fixture.NewFunction(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
@@ -442,6 +452,8 @@ func TestHandleScale(t *testing.T) {
 }
 
 func TestHandleHeartbeat(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		mcc                *fixture.MockControllerClient
 		ctrl               *Controller
@@ -462,7 +474,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = false
 				state.heartbeats = []*function.Heartbeat{
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -496,7 +508,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = true
 				state.heartbeats = []*function.Heartbeat{
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -519,8 +531,8 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = true
 				state.heartbeats = []*function.Heartbeat{
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
+					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -546,7 +558,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = true
 				// seed the supervisor with a recent heartbeat
-				fn := fixture.NewFunction()
+				fn := fixture.NewFunction(t)
 				heartbeatTimestamp := time.Now()
 				supervisor := state.ctrl.supervisor(fn)
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: fn, Timestamp: heartbeatTimestamp})
@@ -579,8 +591,8 @@ func TestHandleHeartbeat(t *testing.T) {
 
 				// send multiple heartbeats for different functions
 				state.heartbeats = []*function.Heartbeat{
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
-					{Function: fixture.NewFunction(), Timestamp: time.Now()},
+					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
+					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 				}
 
 				// ensure the controller sends the heartbeats to the other controllers
@@ -610,7 +622,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = true
 				// seed the supervisor with an expired heartbeat from a different router
-				fn := fixture.NewFunction()
+				fn := fixture.NewFunction(t)
 				supervisor := state.ctrl.supervisor(fn)
 				supervisor.routerHeartbeats.Store(fixture.RouterIP2, &function.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(state.ctrl.config.HeartbeatTimeout + time.Second))})
 
@@ -639,6 +651,8 @@ func TestHandleHeartbeat(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			state := &testState{
 				mcc: fixture.NewMockControllerClient(t),
 			}

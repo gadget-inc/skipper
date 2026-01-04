@@ -46,6 +46,8 @@ func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
 }
 
 func TestConvergeNamespace(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn                    *function.Function
 		fakeKubernetes        *fake.Clientset
@@ -466,11 +468,13 @@ func TestConvergeNamespace(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 
 			state := &testState{
-				fn:                    fixture.NewFunction(),
+				fn:                    fixture.NewFunction(t),
 				fakeKubernetes:        fake.NewClientset(fixture.NewControllerPod()),
 				fakeKubernetesMetrics: fakekubernetesmetrics.NewSimpleClientset(), //nolint:staticcheck // NewClientset isn't generated for this package
 			}
@@ -494,6 +498,8 @@ func TestConvergeNamespace(t *testing.T) {
 }
 
 func TestAssignPod(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn             *function.Function
 		cfg            *Config
@@ -607,36 +613,6 @@ func TestAssignPod(t *testing.T) {
 			},
 		},
 		{
-			// Already assigned: pod already has a tenant label, should not be re-assigned
-			// The patch should fail because the pod is already assigned, retries until timeout
-			name: "rejects pod already assigned to another tenant",
-			err:  context.DeadlineExceeded,
-			setup: func(t *testing.T, state *testState) {
-				// make getAvailablePods return assigned pods (normally filtered out)
-				originalDoesNotHaveTenantSelector := doesNotHaveTenantSelector
-				t.Cleanup(func() {
-					doesNotHaveTenantSelector = originalDoesNotHaveTenantSelector
-				})
-				doesNotHaveTenantSelector = hasTenantSelector
-
-				// add a pod that already has a tenant label
-				pod := fixture.NewAvailablePod(t, state.fn, nil)
-				pod.Labels[key.Tenant.Label] = "other"
-				state.fakeKubernetes.Tracker().Add(pod)
-			},
-			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == 1)
-
-				// verify pod still has original tenant and wasn't re-assigned
-				pod := pods.Items[0]
-				assert.Assert(t, pod.Labels[key.Tenant.Label] == "other")
-				delete(pod.Labels, key.Tenant.Label)
-				ensurePodIsNotAssignedToFunction(t, pod)
-			},
-		},
-		{
 			// Assign endpoint returns error: pod's assign endpoint returns non-200 status
 			// The pod should be deleted and the error should be returned
 			name:        "deletes pod when assign endpoint returns error status",
@@ -660,11 +636,13 @@ func TestAssignPod(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(),
+				fn:             fixture.NewFunction(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -694,7 +672,50 @@ func TestAssignPod(t *testing.T) {
 	}
 }
 
+// TestAssignPodRejectsAlreadyAssigned is separate from TestAssignPod because it
+// modifies a global variable (doesNotHaveTenantSelector) and cannot run in parallel.
+func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
+	// make getAvailablePods return assigned pods (normally filtered out)
+	originalDoesNotHaveTenantSelector := doesNotHaveTenantSelector
+	t.Cleanup(func() {
+		doesNotHaveTenantSelector = originalDoesNotHaveTenantSelector
+	})
+	doesNotHaveTenantSelector = hasTenantSelector
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// add a pod that already has a tenant label
+	pod := fixture.NewAvailablePod(t, fn, nil)
+	pod.Labels[key.Tenant.Label] = "other"
+	fakeKubernetes.Tracker().Add(pod)
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	instance, err := ctrl.assignPod(ctx, fn)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Assert(t, instance == nil)
+
+	// verify pod still has original tenant and wasn't re-assigned
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+	assert.NilError(t, err)
+	assert.Assert(t, len(pods.Items) == 1)
+
+	resultPod := pods.Items[0]
+	assert.Assert(t, resultPod.Labels[key.Tenant.Label] == "other")
+	delete(resultPod.Labels, key.Tenant.Label)
+	ensurePodIsNotAssignedToFunction(t, resultPod)
+}
+
 func TestIsPodRunning(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name string
 		pod  *v1.Pod
@@ -757,6 +778,8 @@ func TestIsPodRunning(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := isPodRunning(tc.pod)
 			assert.Assert(t, got == tc.want, "isPodRunning() = %v, want %v", got, tc.want)
 		})
@@ -764,6 +787,8 @@ func TestIsPodRunning(t *testing.T) {
 }
 
 func TestIsPodReady(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name string
 		pod  *v1.Pod
@@ -852,6 +877,8 @@ func TestIsPodReady(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			got := isPodReady(tc.pod)
 			assert.Assert(t, got == tc.want, "isPodReady() = %v, want %v", got, tc.want)
 		})
@@ -859,6 +886,8 @@ func TestIsPodReady(t *testing.T) {
 }
 
 func TestPortFromPod(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name     string
 		pod      *v1.Pod
@@ -964,6 +993,8 @@ func TestPortFromPod(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			port, err := portFromPod(tc.pod)
 			if tc.wantErr {
 				assert.Assert(t, err != nil)
@@ -976,7 +1007,9 @@ func TestPortFromPod(t *testing.T) {
 }
 
 func TestInstanceFromPod(t *testing.T) {
-	fn := fixture.NewFunction()
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
 	fnJSON, _ := json.Marshal(fn)
 
 	testCases := []struct {
@@ -1149,6 +1182,8 @@ func TestInstanceFromPod(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			instance, err := instanceFromPod(tc.pod)
 			if tc.errContains != "" {
 				assert.ErrorContains(t, err, tc.errContains)
@@ -1163,6 +1198,8 @@ func TestInstanceFromPod(t *testing.T) {
 }
 
 func TestGetReadyInstances(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn             *function.Function
 		fakeKubernetes *fake.Clientset
@@ -1263,11 +1300,13 @@ func TestGetReadyInstances(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(),
+				fn:             fixture.NewFunction(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 

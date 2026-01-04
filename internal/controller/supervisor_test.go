@@ -16,6 +16,8 @@ import (
 )
 
 func TestScale(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn             *function.Function
 		fakeKubernetes *fake.Clientset
@@ -319,11 +321,13 @@ func TestScale(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(),
+				fn:             fixture.NewFunction(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -352,6 +356,8 @@ func TestScale(t *testing.T) {
 // controller when the current controller is not responsible for the function.
 // This happens in multi-controller deployments where functions are sharded across controllers.
 func TestScaleForwarding(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	t.Cleanup(cancel)
 
@@ -360,7 +366,7 @@ func TestScaleForwarding(t *testing.T) {
 	ctrlPod.Status.PodIP = "127.0.0.2"
 	fakeKubernetes := fake.NewClientset(ctrlPod)
 
-	fn := fixture.NewFunction()
+	fn := fixture.NewFunction(t)
 
 	// Set up mock client to handle forwarded scale request
 	mcc := fixture.NewMockControllerClient(t)
@@ -386,6 +392,8 @@ func TestScaleForwarding(t *testing.T) {
 // using FlagHPADownscaleStabilization, not FlagHeartbeatTimeout. These flags serve different
 // purposes and could be configured independently.
 func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	t.Cleanup(cancel)
 
@@ -396,7 +404,7 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	cfg.HeartbeatTimeout = 30 * time.Second
 	cfg.HPADownscaleStabilization = 90 * time.Second
 
-	fn := fixture.NewFunction()
+	fn := fixture.NewFunction(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Create 2 assigned pods
@@ -454,10 +462,12 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 // TestConvergeConcurrentAccess verifies that concurrent calls to
 // converge don't cause data races. Run with -race to detect issues.
 func TestConvergeConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewFunction()
+	fn := fixture.NewFunction(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Create assigned pods for the function
@@ -515,6 +525,8 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 // the desired number of instances based on resource utilization metrics.
 // The algorithm follows Kubernetes HPA behavior: desiredInstances = ceil(currentInstances * (currentUsage / targetUsage))
 func TestCalculateDesiredInstancesForMetric(t *testing.T) {
+	t.Parallel()
+
 	// Instances must be ready past the initial readiness delay to be included in scaling decisions
 	cfg := testConfig()
 	readyAt := time.Now().Add(-cfg.HPAInitialReadinessDelay)
@@ -615,6 +627,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Configure target usage for each instance
 			for _, pm := range tc.podMetrics {
 				if pm.Function == nil {
@@ -638,8 +652,10 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 // The heartbeat function updates router heartbeats when newer timestamps are received
 // and garbage collects expired heartbeats.
 func TestHeartbeat(t *testing.T) {
+	t.Parallel()
+
 	cfg := testConfig()
-	fn := fixture.NewFunction()
+	fn := fixture.NewFunction(t)
 
 	testCases := []struct {
 		name           string
@@ -692,6 +708,8 @@ func TestHeartbeat(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			ctrl := New(cfg, nil, fakeKubernetes, nil)
 			supervisor := ctrl.supervisor(fn)
@@ -737,10 +755,12 @@ func TestHeartbeat(t *testing.T) {
 
 // TestHeartbeatGarbageCollection tests that expired router heartbeats are garbage collected.
 func TestHeartbeatGarbageCollection(t *testing.T) {
+	t.Parallel()
+
 	cfg := testConfig()
 	cfg.HeartbeatTimeout = 30 * time.Second
 
-	fn := fixture.NewFunction()
+	fn := fixture.NewFunction(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
 	supervisor := ctrl.supervisor(fn)
@@ -778,8 +798,10 @@ func TestHeartbeatGarbageCollection(t *testing.T) {
 // The combinedHeartbeat function sums in-flight requests from all routers and uses
 // the most recent timestamp from either router heartbeats or instance assignments.
 func TestCombinedHeartbeat(t *testing.T) {
+	t.Parallel()
+
 	cfg := testConfig()
-	fn := fixture.NewFunction()
+	fn := fixture.NewFunction(t)
 
 	testCases := []struct {
 		name                     string
@@ -865,6 +887,8 @@ func TestCombinedHeartbeat(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			ctrl := New(cfg, nil, fakeKubernetes, nil)
 			supervisor := ctrl.supervisor(fn)
@@ -913,6 +937,8 @@ func TestCombinedHeartbeat(t *testing.T) {
 // TestGetReadyInstance tests the instance selection logic including filtering,
 // scaling up when no instances are available, and respecting max instances.
 func TestGetReadyInstance(t *testing.T) {
+	t.Parallel()
+
 	type testState struct {
 		fn             *function.Function
 		fakeKubernetes *fake.Clientset
@@ -1022,11 +1048,13 @@ func TestGetReadyInstance(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(),
+				fn:             fixture.NewFunction(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -1052,6 +1080,8 @@ func TestGetReadyInstance(t *testing.T) {
 // The function considers heartbeat timeout, in-flight requests, CPU, and memory metrics,
 // taking the max across all metrics and applying min/max clamping.
 func TestCalculateDesiredInstances(t *testing.T) {
+	t.Parallel()
+
 	cfg := testConfig()
 	cfg.HeartbeatTimeout = 30 * time.Second
 
@@ -1262,6 +1292,8 @@ func TestCalculateDesiredInstances(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
 
 			assert.Equal(t, tc.expectedDesiredInstances, decision.DesiredInstances)
@@ -1273,6 +1305,8 @@ func TestCalculateDesiredInstances(t *testing.T) {
 
 // TestIsValidScalingReason tests the scaling reason validation function.
 func TestIsValidScalingReason(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		reason   string
 		expected bool
@@ -1296,6 +1330,8 @@ func TestIsValidScalingReason(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.reason, func(t *testing.T) {
+			t.Parallel()
+
 			result := isValidScalingReason(tc.reason)
 			assert.Equal(t, tc.expected, result)
 		})
