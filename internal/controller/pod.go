@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,17 +49,6 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 		return fmt.Errorf("failed to get assigned pods: %w", err)
 	}
 
-	// TODO: paginate
-	metrics, err := ctrl.kubernetesMetrics.MetricsV1beta1().PodMetricses(namespace).List(ctx, metav1.ListOptions{LabelSelector: key.Tenant.Label})
-	if err != nil {
-		log.Error(ctx, "failed to get pod metrics", key.Error.Slog(err))
-	}
-
-	podNameToMetric := make(map[string]metricsv1beta1.PodMetrics, len(metrics.Items))
-	for _, metric := range metrics.Items {
-		podNameToMetric[metric.Name] = metric
-	}
-
 	type fnInstances struct {
 		fn        *function.Function
 		instances []*function.Instance
@@ -68,7 +58,7 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 	terminatedStaleInstances := make(map[string]int32)
 
 	for _, pod := range pods {
-		instance, err := instanceFromPod(pod)
+		instance, err := ctrl.instanceFromPod(pod)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance from pod", key.Error.Slog(err), key.Pod.Slog(pod))
 			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
@@ -98,17 +88,6 @@ func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string)
 				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
 			}
 			continue
-		}
-
-		if podMetric, exists := podNameToMetric[pod.Name]; exists {
-			for _, container := range podMetric.Containers {
-				if container.Usage.Cpu() != nil {
-					instance.CPUUsageMilli += int(container.Usage.Cpu().MilliValue())
-				}
-				if container.Usage.Memory() != nil {
-					instance.MemoryUsageMiB += int(container.Usage.Memory().Value() / 1024 / 1024) // convert to MiB
-				}
-			}
 		}
 
 		replicaSet, err := ctrl.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
@@ -282,7 +261,7 @@ GET_UNASSIGNED_POD:
 
 	ctrl.updatePodCache(ctx, assignedPod)
 
-	instance, err = instanceFromPod(assignedPod)
+	instance, err = ctrl.instanceFromPod(assignedPod)
 	return
 }
 
@@ -342,7 +321,7 @@ func (ctrl *Controller) getInstances(fn *function.Function) ([]*function.Instanc
 
 	instances := make([]*function.Instance, 0, len(assignedPods))
 	for _, pod := range assignedPods {
-		instance, err := instanceFromPod(pod)
+		instance, err := ctrl.instanceFromPod(pod)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get instance from pod: %w", err)
 		}
@@ -386,7 +365,47 @@ func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
 	}
 }
 
-func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
+func (ctrl *Controller) refreshMetrics(ctx context.Context) {
+	for _, namespace := range ctrl.config.FunctionNamespaces {
+		var continueToken string
+		for {
+			metrics, err := ctrl.kubernetesMetrics.
+				MetricsV1beta1().
+				PodMetricses(namespace).
+				List(ctx, metav1.ListOptions{
+					LabelSelector: key.Tenant.Label,
+					Limit:         100,
+					Continue:      continueToken,
+				})
+			if err != nil {
+				log.Error(ctx, "failed to get pod metrics", key.Error.Slog(err), key.Namespace.Slog(namespace))
+				break
+			}
+
+			for _, metric := range metrics.Items {
+				ctrl.podMetrics.Store(namespace+"/"+metric.Name, metric)
+			}
+
+			if metrics.Continue == "" {
+				break
+			}
+			continueToken = metrics.Continue
+		}
+	}
+
+	// garbage collect metrics for pods that no longer exist
+	ctrl.podMetrics.Range(func(key string, _ metricsv1beta1.PodMetrics) bool {
+		namespace, podName, _ := strings.Cut(key, "/")
+		if lister, ok := ctrl.namespaceListers[namespace]; ok {
+			if _, err := lister.podLister.Pods(namespace).Get(podName); err != nil {
+				ctrl.podMetrics.Delete(key)
+			}
+		}
+		return true
+	})
+}
+
+func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 	if pod == nil {
 		return nil, errors.New("pod is nil")
 	}
@@ -432,6 +451,17 @@ func instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
 	}
 
 	instance.Addr = net.JoinHostPort(pod.Status.PodIP, port)
+
+	if podMetric, ok := ctrl.podMetrics.Load(pod.Namespace + "/" + pod.Name); ok {
+		for _, container := range podMetric.Containers {
+			if container.Usage.Cpu() != nil {
+				instance.CPUUsageMilli += int(container.Usage.Cpu().MilliValue())
+			}
+			if container.Usage.Memory() != nil {
+				instance.MemoryUsageMiB += int(container.Usage.Memory().Value() / 1024 / 1024) // convert to MiB
+			}
+		}
+	}
 
 	return instance, nil
 }

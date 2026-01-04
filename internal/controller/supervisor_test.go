@@ -732,12 +732,7 @@ func TestHeartbeat(t *testing.T) {
 			supervisor.heartbeat(tc.newRouter, newHeartbeat)
 
 			// Verify heartbeat count
-			count := 0
-			supervisor.routerHeartbeats.Range(func(_ string, _ *function.Heartbeat) bool {
-				count++
-				return true
-			})
-			assert.Equal(t, tc.expectedCount, count)
+			assert.Equal(t, tc.expectedCount, supervisor.routerHeartbeats.Size())
 
 			// Verify whether the heartbeat was updated
 			stored, ok := supervisor.routerHeartbeats.Load(tc.newRouter)

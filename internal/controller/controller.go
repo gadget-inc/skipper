@@ -24,6 +24,7 @@ import (
 	listerappsv1 "k8s.io/client-go/listers/apps/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
+	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
@@ -44,6 +45,7 @@ type Controller struct {
 	kubernetes        kubernetes.Interface
 	kubernetesMetrics kubernetesmetrics.Interface
 	namespaceListers  map[string]namespaceLister
+	podMetrics        *xsync.Map[string, metricsv1beta1.PodMetrics] // keyed by "namespace/pod-name"
 }
 
 func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
@@ -56,6 +58,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 		kubernetes:        kubernetes,
 		kubernetesMetrics: kubernetesMetrics,
 		namespaceListers:  make(map[string]namespaceLister, len(cfg.FunctionNamespaces)),
+		podMetrics:        xsync.NewMap[string, metricsv1beta1.PodMetrics](),
 	}
 }
 
@@ -64,6 +67,17 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to start informers: %w", err)
 	}
+
+	go timer.Loop(ctx, ctrl.config.ScaleInterval, func(ctx context.Context) error {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(ctx, "panic in refreshMetrics", key.Error.Slog(fmt.Errorf("%v", r)))
+			}
+		}()
+
+		ctrl.refreshMetrics(ctx)
+		return nil
+	})
 
 	for _, namespace := range ctrl.config.FunctionNamespaces {
 		go timer.Loop(ctx, ctrl.config.ScaleInterval, func(ctx context.Context) error {
