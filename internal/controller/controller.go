@@ -100,11 +100,6 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 	return nil
 }
 
-func (ctrl *Controller) getControllerClient(ip string) Client {
-	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, ctrl.config.Port), false })
-	return controllerClient
-}
-
 func (ctrl *Controller) startInformers(ctx context.Context) error {
 	ctx, span := telemetry.Trace(ctx, "controller.start_informers")
 	defer span.End()
@@ -291,9 +286,7 @@ func (ctrl *Controller) watchErrorHandler(ctx context.Context, attrs ...slog.Att
 	}
 }
 
-func (ctrl *Controller) supervisor(fn *function.Function) *Supervisor {
-	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
-		return &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: xsync.NewMap[string, *function.Heartbeat]()}, false
-	})
-	return supervisor
+func (ctrl *Controller) getControllerClient(ip string) Client {
+	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, ctrl.config.Port), false })
+	return controllerClient
 }

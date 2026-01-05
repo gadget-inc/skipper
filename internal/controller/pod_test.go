@@ -1008,6 +1008,87 @@ func TestPortFromPod(t *testing.T) {
 	}
 }
 
+func TestFunctionFromPod(t *testing.T) {
+	t.Parallel()
+
+	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
+	fn := fixture.NewFunction(t)
+	fnJSON, _ := json.Marshal(fn)
+
+	testCases := []struct {
+		name        string
+		pod         *v1.Pod
+		errContains string
+		check       func(*testing.T, *function.Function)
+	}{
+		{
+			name: "valid pod with function annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						key.Function.Annotation: string(fnJSON),
+					},
+				},
+			},
+			check: func(t *testing.T, resultFn *function.Function) {
+				assert.Assert(t, resultFn.Equal(fn))
+			},
+		},
+		{
+			name:        "nil pod",
+			pod:         nil,
+			errContains: "pod is nil",
+		},
+		{
+			name: "missing function annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			errContains: "missing function annotation",
+		},
+		{
+			name: "invalid function JSON",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						key.Function.Annotation: "not valid json",
+					},
+				},
+			},
+			errContains: "failed to unmarshal function from pod annotation",
+		},
+		{
+			name: "invalid function - missing required fields",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						key.Function.Annotation: `{"namespace":"","deployment":"","tenant":""}`,
+					},
+				},
+			},
+			errContains: "invalid function in pod annotation",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			resultFn, err := ctrl.functionFromPod(tc.pod)
+			if tc.errContains != "" {
+				assert.ErrorContains(t, err, tc.errContains)
+			} else {
+				assert.NilError(t, err)
+				if tc.check != nil {
+					tc.check(t, resultFn)
+				}
+			}
+		})
+	}
+}
+
 func TestInstanceFromPod(t *testing.T) {
 	t.Parallel()
 

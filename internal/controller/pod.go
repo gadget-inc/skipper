@@ -405,26 +405,36 @@ func (ctrl *Controller) refreshMetrics(ctx context.Context) {
 	})
 }
 
-func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
+func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*function.Function, error) {
 	if pod == nil {
 		return nil, errors.New("pod is nil")
 	}
 
-	instance := &function.Instance{
-		Function: &function.Function{},
-		Name:     pod.Name,
+	fnJSON, ok := pod.Annotations[key.Function.Annotation]
+	if !ok {
+		return nil, errors.New("missing function annotation")
 	}
 
-	if fnJson, ok := pod.Annotations[key.Function.Annotation]; ok {
-		err := json.Unmarshal([]byte(fnJson), instance.Function)
-		if err != nil {
-			return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
-		}
-		if err := instance.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid function in pod annotation: %w", err)
-		}
-	} else {
-		return nil, errors.New("missing function annotation")
+	fn := &function.Function{}
+	if err := json.Unmarshal([]byte(fnJSON), fn); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
+	}
+	if err := fn.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid function in pod annotation: %w", err)
+	}
+
+	return fn, nil
+}
+
+func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
+	fn, err := ctrl.functionFromPod(pod)
+	if err != nil {
+		return nil, err
+	}
+
+	instance := &function.Instance{
+		Function: fn,
+		Name:     pod.Name,
 	}
 
 	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Annotation]
@@ -432,7 +442,6 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*function.Instance, error)
 		return nil, errors.New("missing replica set annotation")
 	}
 
-	var err error
 	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Annotation])
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)

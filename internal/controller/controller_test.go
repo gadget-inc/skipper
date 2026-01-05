@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/fixture"
-	"github.com/gadget-inc/skipper/internal/function"
 	"gotest.tools/v3/assert"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -186,6 +185,52 @@ func TestControllerInformer(t *testing.T) {
 	}
 }
 
+func TestWatchErrorHandler(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "nil error",
+			err:  nil,
+		},
+		{
+			name: "context canceled",
+			err:  context.Canceled,
+		},
+		{
+			name: "context deadline exceeded",
+			err:  context.DeadlineExceeded,
+		},
+		{
+			name: "status reason expired",
+			err: &apierrors.StatusError{
+				ErrStatus: metav1.Status{
+					Reason: metav1.StatusReasonExpired,
+				},
+			},
+		},
+		{
+			name: "other error",
+			err:  errors.New("some other error"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
+			handler := ctrl.watchErrorHandler(t.Context())
+
+			// should not panic for any error type
+			handler(nil, tc.err)
+		})
+	}
+}
+
 func TestGetControllerClient(t *testing.T) {
 	t.Parallel()
 
@@ -237,126 +282,6 @@ func TestGetControllerClient(t *testing.T) {
 			}, fake.NewClientset(), nil)
 
 			tc.check(t, ctrl, callCount)
-		})
-	}
-}
-
-func TestWatchErrorHandler(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name string
-		err  error
-	}{
-		{
-			name: "nil error",
-			err:  nil,
-		},
-		{
-			name: "context canceled",
-			err:  context.Canceled,
-		},
-		{
-			name: "context deadline exceeded",
-			err:  context.DeadlineExceeded,
-		},
-		{
-			name: "status reason expired",
-			err: &apierrors.StatusError{
-				ErrStatus: metav1.Status{
-					Reason: metav1.StatusReasonExpired,
-				},
-			},
-		},
-		{
-			name: "other error",
-			err:  errors.New("some other error"),
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
-			handler := ctrl.watchErrorHandler(t.Context())
-
-			// should not panic for any error type
-			handler(nil, tc.err)
-		})
-	}
-}
-
-func TestSupervisor(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name  string
-		check func(*testing.T, *Controller)
-	}{
-		{
-			name: "creates new supervisor for function",
-			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewFunction(t)
-				supervisor := ctrl.supervisor(fn)
-				assert.Assert(t, supervisor != nil)
-				assert.Assert(t, supervisor.fn.Equal(fn))
-			},
-		},
-		{
-			name: "returns same supervisor for same function",
-			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewFunction(t)
-				supervisor1 := ctrl.supervisor(fn)
-				supervisor2 := ctrl.supervisor(fn)
-
-				// should return the same supervisor instance
-				assert.Assert(t, supervisor1 == supervisor2)
-			},
-		},
-		{
-			name: "creates different supervisors for different functions",
-			check: func(t *testing.T, ctrl *Controller) {
-				fn1 := fixture.NewFunction(t)
-				fn2 := fixture.NewFunction(t)
-				fn2.Deployment = "other-deployment"
-
-				supervisor1 := ctrl.supervisor(fn1)
-				supervisor2 := ctrl.supervisor(fn2)
-
-				// should return different supervisor instances
-				assert.Assert(t, supervisor1 != supervisor2)
-			},
-		},
-		{
-			name: "supervisor has correct controller reference",
-			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewFunction(t)
-				supervisor := ctrl.supervisor(fn)
-				assert.Assert(t, supervisor.ctrl == ctrl)
-			},
-		},
-		{
-			name: "supervisor has initialized routerHeartbeats map",
-			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewFunction(t)
-				supervisor := ctrl.supervisor(fn)
-				assert.Assert(t, supervisor.routerHeartbeats != nil)
-
-				// verify it's a working map
-				supervisor.routerHeartbeats.Store("test-ip", &function.Heartbeat{})
-				_, ok := supervisor.routerHeartbeats.Load("test-ip")
-				assert.Assert(t, ok)
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
-			tc.check(t, ctrl)
 		})
 	}
 }

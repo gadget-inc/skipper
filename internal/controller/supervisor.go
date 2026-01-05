@@ -32,6 +32,14 @@ type Supervisor struct {
 	stabilizationWindow []Recommendation
 }
 
+// supervisor gets or creates a supervisor for the given function.
+func (ctrl *Controller) supervisor(fn *function.Function) *Supervisor {
+	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
+		return &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: xsync.NewMap[string, *function.Heartbeat]()}, false
+	})
+	return supervisor
+}
+
 // heartbeat updates the heartbeat for a specific router if it's newer
 // than the existing one, and garbage collects any expired router
 // heartbeats.
