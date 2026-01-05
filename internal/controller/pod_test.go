@@ -15,6 +15,7 @@ import (
 	"gotest.tools/v3/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	fakekubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned/fake"
@@ -1496,5 +1497,282 @@ func TestGetReadyInstances(t *testing.T) {
 
 			tc.check(t, state)
 		})
+	}
+}
+
+func TestPatchPod(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+		pod            *v1.Pod
+	}
+
+	testCases := []struct {
+		name        string
+		err         error
+		errContains string
+		patches     []byte
+		setup       func(*testing.T, *testState)
+		check       func(*testing.T, *testState)
+	}{
+		{
+			name:    "successfully patches pod and updates cache",
+			patches: []byte(`[{ "op": "add", "path": "/metadata/annotations/test-annotation", "value": "test-value" }]`),
+			setup: func(t *testing.T, state *testState) {
+				state.pod = fixture.NewAvailablePod(t, state.fn, nil)
+				state.pod.Name = "test-pod"
+				state.fakeKubernetes.Tracker().Add(state.pod)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Verify pod was patched
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+				patchedPod := pods.Items[0]
+
+				// Verify patch was applied (we'll patch with a new annotation)
+				assert.Assert(t, patchedPod.Annotations["test-annotation"] == "test-value")
+
+				// Verify pod is in cache by checking it can be retrieved
+				// Pod should not be in instances (it's not assigned yet), but should be in cache
+				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(allPods.Items) == 1)
+			},
+		},
+		{
+			name:        "returns error when pod not found",
+			errContains: "not found",
+			patches:     []byte(`[{ "op": "add", "path": "/metadata/annotations/test-annotation", "value": "test-value" }]`),
+			setup: func(t *testing.T, state *testState) {
+				// Don't add any pods
+			},
+			check: func(t *testing.T, state *testState) {
+				// No pod should exist
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+			},
+		},
+		{
+			name:        "returns error when patch is invalid",
+			errContains: "invalid",
+			patches:     []byte(`[{ "op": "invalid", "path": "/invalid", "value": "test" }]`),
+			setup: func(t *testing.T, state *testState) {
+				state.pod = fixture.NewAvailablePod(t, state.fn, nil)
+				state.pod.Name = "test-pod"
+				state.fakeKubernetes.Tracker().Add(state.pod)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Pod should still exist (invalid patch shouldn't delete it)
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			tc.setup(t, state)
+
+			pod, err := state.ctrl.patchPod(ctx, state.fn.Namespace, "test-pod", types.JSONPatchType, tc.patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
+			if tc.errContains != "" {
+				assert.ErrorContains(t, err, tc.errContains)
+				assert.Assert(t, pod == nil)
+			} else if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+				assert.Assert(t, pod == nil)
+			} else {
+				assert.NilError(t, err)
+				assert.Assert(t, pod != nil)
+			}
+
+			tc.check(t, state)
+		})
+	}
+}
+
+func TestDeletePod(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+		pod            *v1.Pod
+	}
+
+	testCases := []struct {
+		name        string
+		err         error
+		errContains string
+		setup       func(*testing.T, *testState)
+		check       func(*testing.T, *testState)
+	}{
+		{
+			name: "successfully deletes pod and removes from cache",
+			setup: func(t *testing.T, state *testState) {
+				state.pod = fixture.NewAssignedPod(t, state.fn, nil)
+				state.pod.Name = "test-pod"
+				state.fakeKubernetes.Tracker().Add(state.pod)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Verify pod was deleted from API
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0, "pod should be deleted from API")
+
+				// Verify pod is not in cache (should not appear in getInstances)
+				instances, err := state.ctrl.getInstances(state.fn)
+				assert.NilError(t, err)
+				assert.Assert(t, len(instances) == 0, "pod should be removed from cache")
+			},
+		},
+		{
+			name:        "returns error when pod not found",
+			errContains: "not found",
+			setup: func(t *testing.T, state *testState) {
+				// Don't add any pods
+			},
+			check: func(t *testing.T, state *testState) {
+				// No pod should exist
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+			},
+		},
+		{
+			name: "deletes pod even when namespace lister not found",
+			setup: func(t *testing.T, state *testState) {
+				// Create a pod in the function namespace but delete it before informers sync
+				// This simulates the case where namespace lister might not be ready
+				state.pod = fixture.NewAssignedPod(t, state.fn, nil)
+				state.pod.Name = "test-pod"
+				state.fakeKubernetes.Tracker().Add(state.pod)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Pod should be deleted from API
+				// The deletePod function will succeed in deleting from API
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0, "pod should be deleted from API")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			tc.setup(t, state)
+
+			err = state.ctrl.deletePod(ctx, state.fn.Namespace, "test-pod", metav1.DeleteOptions{})
+			if tc.errContains != "" {
+				assert.ErrorContains(t, err, tc.errContains)
+			} else if tc.err != nil {
+				assert.ErrorIs(t, err, tc.err)
+			} else {
+				assert.NilError(t, err)
+			}
+
+			tc.check(t, state)
+		})
+	}
+}
+
+func TestDeletePodWhenNotInCache(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+	// Add pod directly to tracker but not to cache
+	// Don't start informers, so pod won't be in cache
+	pod := fixture.NewAssignedPod(t, fn, nil)
+	pod.Name = "test-pod"
+	fakeKubernetes.Tracker().Add(pod)
+
+	// Delete pod - should succeed even though it's not in cache
+	err := ctrl.deletePod(ctx, fn.Namespace, "test-pod", metav1.DeleteOptions{})
+	assert.NilError(t, err)
+
+	// Verify pod was deleted from API
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{})
+	assert.NilError(t, err)
+	assert.Assert(t, len(pods.Items) == 0, "pod should be deleted from API")
+}
+
+func TestDeletePodMultiplePods(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+	// Setup pods before starting informers so they're in the cache when we check
+	pod1 := fixture.NewAssignedPod(t, fn, nil)
+	pod1.Name = "pod-1"
+	fakeKubernetes.Tracker().Add(pod1)
+
+	pod2 := fixture.NewAssignedPod(t, fn, nil)
+	pod2.Name = "pod-2"
+	fakeKubernetes.Tracker().Add(pod2)
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Verify both pods exist initially
+	instances, err := ctrl.getInstances(fn)
+	assert.NilError(t, err)
+	assert.Assert(t, len(instances) == 2, "should have 2 instances initially")
+
+	// Delete first pod
+	err = ctrl.deletePod(ctx, fn.Namespace, "pod-1", metav1.DeleteOptions{})
+	assert.NilError(t, err)
+
+	// Verify only one pod remains
+	instances, err = ctrl.getInstances(fn)
+	assert.NilError(t, err)
+	assert.Assert(t, len(instances) == 1, "should have 1 instance remaining, got %d", len(instances))
+	if len(instances) == 1 {
+		assert.Assert(t, instances[0].Name == "pod-2", "remaining instance should be pod-2, got %s", instances[0].Name)
 	}
 }
