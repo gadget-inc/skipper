@@ -296,8 +296,8 @@ func (ctrl *Controller) getUnassignedPods(fn *function.Function) ([]*v1.Pod, err
 	return slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) }), nil
 }
 
-func (ctrl *Controller) getReadyInstances(fn *function.Function) ([]*function.Instance, error) {
-	instances, err := ctrl.getInstances(fn)
+func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *function.Function) ([]*function.Instance, error) {
+	instances, err := ctrl.getInstances(ctx, fn)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func (ctrl *Controller) getReadyInstances(fn *function.Function) ([]*function.In
 	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
 }
 
-func (ctrl *Controller) getInstances(fn *function.Function) ([]*function.Instance, error) {
+func (ctrl *Controller) getInstances(ctx context.Context, fn *function.Function) ([]*function.Instance, error) {
 	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
@@ -319,7 +319,14 @@ func (ctrl *Controller) getInstances(fn *function.Function) ([]*function.Instanc
 	for _, pod := range assignedPods {
 		instance, err := ctrl.instanceFromPod(pod)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get instance from pod: %w", err)
+			// Pod failed validation (e.g., malformed timestamp annotation, missing replica set annotation).
+			// Delete it and continue processing other pods instead of blocking all scaling for this function.
+			log.Warn(ctx, "failed to get instance from pod, deleting invalid pod", key.Error.Slog(err), key.Pod.Slog(pod))
+			err = ctrl.deletePod(ctx, pod.Namespace, pod.Name, metav1.DeleteOptions{})
+			if err != nil {
+				log.Error(ctx, "failed to delete invalid pod", key.Error.Slog(err), key.Pod.Slog(pod))
+			}
+			continue
 		}
 
 		if !instance.Function.Equal(fn) {
