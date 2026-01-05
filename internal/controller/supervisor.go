@@ -150,7 +150,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 	}
 	defer s.mu.Unlock()
 
-	instances, err := s.ctrl.getInstances(s.fn)
+	instances, err := s.ctrl.getInstances(ctx, s.fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
@@ -247,7 +247,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 // up if necessary. If excludeNames is provided, those instances are
 // excluded from selection (unless all instances would be excluded).
 func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string) (*function.Instance, error) {
-	instances, err := s.ctrl.getReadyInstances(s.fn)
+	instances, err := s.ctrl.getReadyInstances(ctx, s.fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}

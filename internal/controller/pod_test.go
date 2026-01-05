@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -1369,6 +1370,281 @@ func TestRefreshMetricsGarbageCollection(t *testing.T) {
 	assert.Assert(t, validExists, "valid entry should still exist after refresh")
 }
 
+func TestGetInstances(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		instances      []*function.Instance
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
+	}{
+		{
+			name: "returns single valid instance",
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Name = "pod-1"
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1, "should have 1 instance")
+				assert.Equal(t, "pod-1", state.instances[0].Name)
+				assert.Assert(t, state.instances[0].Function.Equal(state.fn))
+			},
+		},
+		{
+			name: "returns multiple valid instances",
+			setup: func(t *testing.T, state *testState) {
+				pod1 := fixture.NewAssignedPod(t, state.fn, nil)
+				pod1.Name = "pod-1"
+				err := state.fakeKubernetes.Tracker().Add(pod1)
+				assert.NilError(t, err)
+
+				pod2 := fixture.NewAssignedPod(t, state.fn, nil)
+				pod2.Name = "pod-2"
+				err = state.fakeKubernetes.Tracker().Add(pod2)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 2, "should have 2 instances")
+				names := []string{state.instances[0].Name, state.instances[1].Name}
+				assert.Assert(t, slices.Contains(names, "pod-1"))
+				assert.Assert(t, slices.Contains(names, "pod-2"))
+			},
+		},
+		{
+			name: "returns empty list when no pods exist",
+			setup: func(t *testing.T, state *testState) {
+				// No pods added
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 0, "should have no instances")
+			},
+		},
+		{
+			name: "filters out pods with different function",
+			setup: func(t *testing.T, state *testState) {
+				// Add pod for the function
+				pod1 := fixture.NewAssignedPod(t, state.fn, nil)
+				pod1.Name = "pod-1"
+				err := state.fakeKubernetes.Tracker().Add(pod1)
+				assert.NilError(t, err)
+
+				// Add pod for different function (different metadata)
+				fn2 := *state.fn
+				fn2.Metadata = "different"
+				pod2 := fixture.NewAssignedPod(t, &fn2, nil)
+				pod2.Name = "pod-2"
+				err = state.fakeKubernetes.Tracker().Add(pod2)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1, "should have 1 instance for this function")
+				assert.Equal(t, "pod-1", state.instances[0].Name)
+			},
+		},
+		{
+			name: "includes unready instances",
+			setup: func(t *testing.T, state *testState) {
+				// Add ready pod
+				readyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				readyPod.Name = "ready-pod"
+				err := state.fakeKubernetes.Tracker().Add(readyPod)
+				assert.NilError(t, err)
+
+				// Add unready pod (no ReadyAt annotation)
+				unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				unreadyPod.Name = "unready-pod"
+				delete(unreadyPod.Annotations, key.ReadyAt.Annotation)
+				unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+				err = state.fakeKubernetes.Tracker().Add(unreadyPod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				// getInstances returns both ready and unready instances
+				assert.Assert(t, len(state.instances) == 2, "should have 2 instances (ready and unready)")
+				names := []string{state.instances[0].Name, state.instances[1].Name}
+				assert.Assert(t, slices.Contains(names, "ready-pod"))
+				assert.Assert(t, slices.Contains(names, "unready-pod"))
+				// Verify unready instance has zero ReadyAt
+				for _, inst := range state.instances {
+					if inst.Name == "unready-pod" {
+						assert.Assert(t, inst.ReadyAt.IsZero(), "unready instance should have zero ReadyAt")
+					}
+				}
+			},
+		},
+		{
+			name: "missing replica set annotation deletes pod and continues",
+			setup: func(t *testing.T, state *testState) {
+				// Create a pod with missing replica set annotation
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Name = "invalid-pod"
+				delete(pod.Annotations, key.ReplicaSet.Annotation)
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+
+				// Add a valid pod to ensure processing continues
+				validPod := fixture.NewAssignedPod(t, state.fn, nil)
+				validPod.Name = "valid-pod"
+				err = state.fakeKubernetes.Tracker().Add(validPod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Should return 1 valid instance, invalid pod should be deleted
+				assert.Assert(t, len(state.instances) == 1, "should have 1 valid instance")
+				assert.Equal(t, "valid-pod", state.instances[0].Name)
+
+				// Verify invalid pod was deleted
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1, "should have 1 pod remaining")
+				assert.Equal(t, "valid-pod", pods.Items[0].Name)
+			},
+		},
+		{
+			name: "malformed assigned at timestamp deletes pod and continues",
+			setup: func(t *testing.T, state *testState) {
+				// Create a pod with malformed assigned at timestamp
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Name = "invalid-pod"
+				pod.Annotations[key.AssignedAt.Annotation] = "not-a-valid-timestamp"
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+
+				// Add a valid pod to ensure processing continues
+				validPod := fixture.NewAssignedPod(t, state.fn, nil)
+				validPod.Name = "valid-pod"
+				err = state.fakeKubernetes.Tracker().Add(validPod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Should return 1 valid instance, invalid pod should be deleted
+				assert.Assert(t, len(state.instances) == 1, "should have 1 valid instance")
+				assert.Equal(t, "valid-pod", state.instances[0].Name)
+
+				// Verify invalid pod was deleted
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1, "should have 1 pod remaining")
+				assert.Equal(t, "valid-pod", pods.Items[0].Name)
+			},
+		},
+		{
+			name: "malformed ready at timestamp deletes pod and continues",
+			setup: func(t *testing.T, state *testState) {
+				// Create a pod with malformed ready at timestamp
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Name = "invalid-pod"
+				pod.Annotations[key.ReadyAt.Annotation] = "not-a-valid-timestamp"
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+
+				// Add a valid pod to ensure processing continues
+				validPod := fixture.NewAssignedPod(t, state.fn, nil)
+				validPod.Name = "valid-pod"
+				err = state.fakeKubernetes.Tracker().Add(validPod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Should return 1 valid instance, invalid pod should be deleted
+				assert.Assert(t, len(state.instances) == 1, "should have 1 valid instance")
+				assert.Equal(t, "valid-pod", state.instances[0].Name)
+
+				// Verify invalid pod was deleted
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1, "should have 1 pod remaining")
+				assert.Equal(t, "valid-pod", pods.Items[0].Name)
+			},
+		},
+		{
+			name: "multiple invalid pods are all deleted",
+			setup: func(t *testing.T, state *testState) {
+				// Add multiple invalid pods
+				invalidPod1 := fixture.NewAssignedPod(t, state.fn, nil)
+				invalidPod1.Name = "invalid-pod-1"
+				delete(invalidPod1.Annotations, key.ReplicaSet.Annotation)
+				err := state.fakeKubernetes.Tracker().Add(invalidPod1)
+				assert.NilError(t, err)
+
+				invalidPod2 := fixture.NewAssignedPod(t, state.fn, nil)
+				invalidPod2.Name = "invalid-pod-2"
+				invalidPod2.Annotations[key.AssignedAt.Annotation] = "invalid"
+				err = state.fakeKubernetes.Tracker().Add(invalidPod2)
+				assert.NilError(t, err)
+
+				// Add a valid pod
+				validPod := fixture.NewAssignedPod(t, state.fn, nil)
+				validPod.Name = "valid-pod"
+				err = state.fakeKubernetes.Tracker().Add(validPod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Should return 1 valid instance, all invalid pods should be deleted
+				assert.Assert(t, len(state.instances) == 1, "should have 1 valid instance")
+				assert.Equal(t, "valid-pod", state.instances[0].Name)
+
+				// Verify all invalid pods were deleted
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1, "should have 1 pod remaining")
+				assert.Equal(t, "valid-pod", pods.Items[0].Name)
+			},
+		},
+		{
+			name: "no error returned when invalid pods are deleted",
+			setup: func(t *testing.T, state *testState) {
+				// Create an invalid pod - should not cause getInstances to return an error
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				delete(pod.Annotations, key.ReplicaSet.Annotation)
+				err := state.fakeKubernetes.Tracker().Add(pod)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				// Should return no instances but no error
+				assert.Assert(t, len(state.instances) == 0, "should have no instances")
+				// Verify pod was deleted
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0, "invalid pod should be deleted")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+
+			tc.setup(t, state)
+
+			ctrl := New(testConfig(), nil, state.fakeKubernetes, nil)
+			err := ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			// Test getInstances directly (not getReadyInstances)
+			state.instances, err = ctrl.getInstances(ctx, state.fn)
+			assert.NilError(t, err, "getInstances should not return error when invalid pods are deleted")
+
+			tc.check(t, state)
+		})
+	}
+}
+
 func TestGetReadyInstances(t *testing.T) {
 	t.Parallel()
 
@@ -1488,7 +1764,7 @@ func TestGetReadyInstances(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			state.instances, err = ctrl.getReadyInstances(state.fn)
+			state.instances, err = ctrl.getReadyInstances(ctx, state.fn)
 			if tc.err != nil {
 				assert.ErrorIs(t, err, tc.err)
 			} else {
@@ -1641,7 +1917,7 @@ func TestDeletePod(t *testing.T) {
 				assert.Assert(t, len(pods.Items) == 0, "pod should be deleted from API")
 
 				// Verify pod is not in cache (should not appear in getInstances)
-				instances, err := state.ctrl.getInstances(state.fn)
+				instances, err := state.ctrl.getInstances(t.Context(), state.fn)
 				assert.NilError(t, err)
 				assert.Assert(t, len(instances) == 0, "pod should be removed from cache")
 			},
@@ -1760,7 +2036,7 @@ func TestDeletePodMultiplePods(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify both pods exist initially
-	instances, err := ctrl.getInstances(fn)
+	instances, err := ctrl.getInstances(ctx, fn)
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 2, "should have 2 instances initially")
 
@@ -1769,7 +2045,7 @@ func TestDeletePodMultiplePods(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify only one pod remains
-	instances, err = ctrl.getInstances(fn)
+	instances, err = ctrl.getInstances(ctx, fn)
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 1, "should have 1 instance remaining, got %d", len(instances))
 	if len(instances) == 1 {
