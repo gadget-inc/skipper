@@ -15,6 +15,80 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 )
 
+func TestSupervisor(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		check func(*testing.T, *Controller)
+	}{
+		{
+			name: "creates new supervisor for function",
+			check: func(t *testing.T, ctrl *Controller) {
+				fn := fixture.NewFunction(t)
+				supervisor := ctrl.supervisor(fn)
+				assert.Assert(t, supervisor != nil)
+				assert.Assert(t, supervisor.fn.Equal(fn))
+			},
+		},
+		{
+			name: "returns same supervisor for same function",
+			check: func(t *testing.T, ctrl *Controller) {
+				fn := fixture.NewFunction(t)
+				supervisor1 := ctrl.supervisor(fn)
+				supervisor2 := ctrl.supervisor(fn)
+
+				// should return the same supervisor instance
+				assert.Assert(t, supervisor1 == supervisor2)
+			},
+		},
+		{
+			name: "creates different supervisors for different functions",
+			check: func(t *testing.T, ctrl *Controller) {
+				fn1 := fixture.NewFunction(t)
+				fn2 := fixture.NewFunction(t)
+				fn2.Deployment = "other-deployment"
+
+				supervisor1 := ctrl.supervisor(fn1)
+				supervisor2 := ctrl.supervisor(fn2)
+
+				// should return different supervisor instances
+				assert.Assert(t, supervisor1 != supervisor2)
+			},
+		},
+		{
+			name: "supervisor has correct controller reference",
+			check: func(t *testing.T, ctrl *Controller) {
+				fn := fixture.NewFunction(t)
+				supervisor := ctrl.supervisor(fn)
+				assert.Assert(t, supervisor.ctrl == ctrl)
+			},
+		},
+		{
+			name: "supervisor has initialized routerHeartbeats map",
+			check: func(t *testing.T, ctrl *Controller) {
+				fn := fixture.NewFunction(t)
+				supervisor := ctrl.supervisor(fn)
+				assert.Assert(t, supervisor.routerHeartbeats != nil)
+
+				// verify it's a working map
+				supervisor.routerHeartbeats.Store("test-ip", &function.Heartbeat{})
+				_, ok := supervisor.routerHeartbeats.Load("test-ip")
+				assert.Assert(t, ok)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
+			tc.check(t, ctrl)
+		})
+	}
+}
+
 func TestScale(t *testing.T) {
 	t.Parallel()
 
