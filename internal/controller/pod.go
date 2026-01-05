@@ -197,7 +197,7 @@ GET_UNASSIGNED_POD:
 	]`)
 
 	var assignedPod *v1.Pod
-	assignedPod, err = ctrl.kubernetes.CoreV1().Pods(unassignedPod.Namespace).Patch(ctx, unassignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	assignedPod, err = ctrl.patchPod(ctx, unassignedPod.Namespace, unassignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		if apierrors.IsInvalid(err) || errors.Is(err, jsonpatch.ErrTestFailed) {
 			log.Warn(ctx, "failed to patch pod, retrying", key.Error.Slog(err), key.Pod.Slog(unassignedPod))
@@ -211,13 +211,11 @@ GET_UNASSIGNED_POD:
 	// delete the unassigned pod if the assign request fails
 	defer func() {
 		if err != nil {
-			if deleteErr := ctrl.kubernetes.CoreV1().Pods(unassignedPod.Namespace).Delete(ctx, unassignedPod.Name, metav1.DeleteOptions{}); deleteErr != nil {
+			if deleteErr := ctrl.deletePod(ctx, unassignedPod.Namespace, unassignedPod.Name, metav1.DeleteOptions{}); deleteErr != nil {
 				log.Error(ctx, "failed to delete pod after failed assign request", key.Error.Slog(deleteErr), key.Pod.Slog(unassignedPod))
 			}
 		}
 	}()
-
-	ctrl.updatePodCache(ctx, assignedPod)
 
 	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + ctrl.config.FunctionAssignPath
 	assignCtx, cancel := context.WithTimeout(ctx, ctrl.config.FunctionAssignTimeout)
@@ -254,12 +252,10 @@ GET_UNASSIGNED_POD:
 
 	// annotate the pod as ready
 	patches = []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + now.UTC().Format(time.RFC3339) + `" }]`)
-	assignedPod, err = ctrl.kubernetes.CoreV1().Pods(assignedPod.Namespace).Patch(ctx, assignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	assignedPod, err = ctrl.patchPod(ctx, assignedPod.Namespace, assignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 	if err != nil {
 		return nil, fmt.Errorf("failed to patch pod as ready: %w", err)
 	}
-
-	ctrl.updatePodCache(ctx, assignedPod)
 
 	instance, err = ctrl.instanceFromPod(assignedPod)
 	return
@@ -363,6 +359,51 @@ func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
 	if err != nil {
 		log.Warn(ctx, "failed to update pod cache", key.Error.Slog(err), key.Pod.Slog(pod))
 	}
+}
+
+// patchPod patches a pod via the Kubernetes API and updates the informer cache.
+func (ctrl *Controller) patchPod(ctx context.Context, namespace, name string, patchType types.PatchType, data []byte, opts metav1.PatchOptions) (*v1.Pod, error) {
+	pod, err := ctrl.kubernetes.CoreV1().Pods(namespace).Patch(ctx, name, patchType, data, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	ctrl.updatePodCache(ctx, pod)
+	return pod, nil
+}
+
+// deletePod deletes a pod via the Kubernetes API and removes it from the informer cache.
+func (ctrl *Controller) deletePod(ctx context.Context, namespace, name string, opts metav1.DeleteOptions) error {
+	err := ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, name, opts)
+	if err != nil {
+		return err
+	}
+
+	namespaceLister, found := ctrl.namespaceListers[namespace]
+	if !found {
+		log.Warn(ctx, "managed pod lister not started for namespace", key.Namespace.Slog(namespace))
+		return nil
+	}
+
+	// Get the pod from the cache to delete it
+	podObj, exists, err := namespaceLister.podIndexer.GetByKey(namespace + "/" + name)
+	if err != nil {
+		log.Warn(ctx, "failed to get pod from cache for deletion", key.Error.Slog(err), key.Namespace.Slog(namespace), slog.String("pod", name))
+		return nil
+	}
+
+	if exists {
+		err = namespaceLister.podIndexer.Delete(podObj)
+		if err != nil {
+			if pod, ok := podObj.(*v1.Pod); ok {
+				log.Warn(ctx, "failed to delete pod from cache", key.Error.Slog(err), key.Pod.Slog(pod))
+			} else {
+				log.Warn(ctx, "failed to delete pod from cache", key.Error.Slog(err), key.Namespace.Slog(namespace), slog.String("pod", name))
+			}
+		}
+	}
+
+	return nil
 }
 
 func (ctrl *Controller) refreshMetrics(ctx context.Context) {

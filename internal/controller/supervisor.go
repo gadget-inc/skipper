@@ -220,7 +220,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
-			err := s.ctrl.kubernetes.CoreV1().Pods(unreadyInstance.Namespace).Delete(ctx, unreadyInstance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.deletePod(ctx, unreadyInstance.Namespace, unreadyInstance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
@@ -232,7 +232,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 		// iterate over ready instances in reverse order, deleting the oldest ones first
 		for i := len(readyInstances) - 1; i >= decision.DesiredInstances; i-- {
 			instance := readyInstances[i]
-			err := s.ctrl.kubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
