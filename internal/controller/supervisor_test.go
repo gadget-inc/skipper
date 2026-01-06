@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"gotest.tools/v3/assert"
+	"gotest.tools/v3/poll"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
@@ -87,6 +90,137 @@ func TestSupervisor(t *testing.T) {
 			tc.check(t, ctrl)
 		})
 	}
+}
+
+func TestDiscoverSupervisors(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState)
+	}{
+		{
+			name: "discovers supervisor for assigned pod",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState) {
+				// ensure a supervisor was created for the function
+				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
+				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
+				assert.Assert(t, ok)
+				assert.Assert(t, supervisor.fn.Equal(state.fn))
+			},
+		},
+		{
+			name: "discovers multiple supervisors for different functions",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+
+				// create a second function with different tenant
+				fn2 := fixture.NewFunction(t)
+				fn2.Tenant = "tenant-2"
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn2))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn2, nil))
+			},
+			check: func(t *testing.T, state *testState) {
+				// ensure supervisors were created for both functions
+				assert.Assert(t, state.ctrl.supervisors.Size() == 2)
+			},
+		},
+		{
+			name: "creates supervisor even when not responsible",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+
+				// set the controller pod IP to 0.0.0.0 so that we're not responsible for the assigned pod
+				state.ctrl.config.PodIP = "0.0.0.0"
+			},
+			check: func(t *testing.T, state *testState) {
+				// ensure supervisor was created even though we're not responsible
+				// supervisors must exist to track scaling decisions
+				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
+				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
+				assert.Assert(t, ok)
+				assert.Assert(t, supervisor.fn.Equal(state.fn))
+			},
+		},
+		{
+			name: "pod with invalid function annotation gets deleted",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create an assigned pod with invalid function annotation JSON
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Annotations[key.Function.Annotation] = "not valid json"
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			check: func(t *testing.T, state *testState) {
+				// ensure the pod with invalid function annotation was deleted
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			err = state.ctrl.discoverSupervisors(ctx, state.fn.Namespace)
+			assert.NilError(t, err)
+			tc.check(t, state)
+		})
+	}
+}
+
+// TestDiscoverSupervisorsReturnsErrorWhenListPodsFails verifies that
+// discoverSupervisors returns an error when listPods fails (e.g., when
+// the namespace lister hasn't been started for the requested namespace).
+func TestDiscoverSupervisorsReturnsErrorWhenListPodsFails(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+	// Start informers for the normal namespace (skipper-test-fixtures)
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Call discoverSupervisors with a namespace that doesn't have an informer
+	err = ctrl.discoverSupervisors(ctx, "unknown-namespace")
+
+	// Should return an error because listPods will fail
+	assert.Assert(t, err != nil, "expected error when namespace lister not found")
+	assert.Assert(t, err.Error() != "", "error message should not be empty")
 }
 
 func TestScale(t *testing.T) {
@@ -460,6 +594,108 @@ func TestScaleForwarding(t *testing.T) {
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 1)
+}
+
+// TestSupervisorTracksScalingDecisionsWhenNotResponsible verifies that supervisors
+// track scaling decisions in the stabilization window even when the controller is
+// not responsible for the function. This is important because converge uses
+// previous scaling decisions to make the right choices, and when responsibility
+// changes, the new responsible controller needs access to historical decisions.
+func TestSupervisorTracksScalingDecisionsWhenNotResponsible(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	// Create a controller pod with a different IP so this controller won't be responsible
+	ctrlPod := fixture.NewControllerPod()
+	ctrlPod.Status.PodIP = "127.0.0.2"
+	fakeKubernetes := fake.NewClientset(ctrlPod)
+
+	fn := fixture.NewFunction(t)
+
+	// Set up mock client to handle forwarded scale requests
+	scaleCallCount := 0
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleScale(func(ctx context.Context, fn *function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
+		scaleCallCount++
+		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
+	})
+
+	cfg := testConfig()
+	cfg.HPADownscaleStabilization = 5 * time.Second
+	ctrl := New(cfg, func(host string, port int) Client { return mcc }, fakeKubernetes, nil)
+	ctrl.startedAt = time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second))
+
+	// Add pods so discoverSupervisors can find them
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Discover supervisors - should create supervisor even though we're not responsible
+	err = ctrl.discoverSupervisors(ctx, fn.Namespace)
+	assert.NilError(t, err)
+
+	// Verify supervisor was created
+	supervisor, ok := ctrl.supervisors.Load(fn.Hash())
+	assert.Assert(t, ok, "supervisor should exist even when not responsible")
+	assert.Assert(t, supervisor.fn.Equal(fn))
+
+	// Add a heartbeat so we don't scale to 0
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+		Function:         fn,
+		Timestamp:        time.Now(),
+		InFlightRequests: 10,
+	})
+
+	// Create instances for converge calls
+	instances := []*function.Instance{
+		fixture.NewInstance(t, fn, nil),
+		fixture.NewInstance(t, fn, nil),
+	}
+
+	// Call converge multiple times to build up the stabilization window
+	// Each call should add a recommendation to the stabilization window
+	for range 3 {
+		_, err = supervisor.converge(ctx, instances)
+		assert.NilError(t, err)
+		// Small delay to ensure different timestamps
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Verify the stabilization window has accumulated recommendations
+	supervisor.mu.Lock()
+	windowSize := len(supervisor.stabilizationWindow)
+	supervisor.mu.Unlock()
+	assert.Assert(t, windowSize >= 3, "stabilization window should have at least 3 recommendations, got %d", windowSize)
+
+	// Verify that scale requests were forwarded to the responsible controller
+	assert.Assert(t, scaleCallCount > 0, "scale requests should have been forwarded to responsible controller")
+
+	// Verify that when scaling down, the stabilization window is used
+	// Set up a scenario where we want to scale down
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+		Function:         fn,
+		Timestamp:        time.Now(),
+		InFlightRequests: 0, // low load should trigger scale down
+	})
+
+	// Call converge - it should use the max recommendation from the stabilization window
+	_, err = supervisor.converge(ctx, instances)
+	assert.NilError(t, err)
+
+	// Verify the stabilization window still contains historical recommendations
+	supervisor.mu.Lock()
+	windowSizeAfterScaleDown := len(supervisor.stabilizationWindow)
+	maxRec := slices.MaxFunc(supervisor.stabilizationWindow, func(a, b Recommendation) int {
+		return a.DesiredInstances - b.DesiredInstances
+	})
+	supervisor.mu.Unlock()
+
+	assert.Assert(t, windowSizeAfterScaleDown > 0, "stabilization window should retain recommendations after scale down")
+	assert.Assert(t, maxRec.DesiredInstances >= 1, "max recommendation should be at least 1")
 }
 
 // TestStabilizationWindowUsesCorrectFlag verifies that the stabilization window is pruned
@@ -1403,6 +1639,1215 @@ func TestIsValidScalingReason(t *testing.T) {
 
 			result := isValidScalingReason(tc.reason)
 			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestSupervisorLifecycle tests the Start/Stop lifecycle of the supervisor's
+// independent converge loop, including idempotency and context handling.
+func TestSupervisorLifecycle(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *Supervisor)
+		check func(*testing.T, *Supervisor)
+	}{
+		{
+			// Start(nil) should not start the loop - useful for tests
+			name: "Start with nil context does not start loop",
+			setup: func(t *testing.T, s *Supervisor) {
+				var nilCtx context.Context //nolint:staticcheck // intentionally testing nil context behavior
+				s.start(nilCtx)
+			},
+			check: func(t *testing.T, s *Supervisor) {
+				assert.Assert(t, s.ctx == nil, "ctx should be nil when Start called with nil")
+				assert.Assert(t, s.cancel == nil, "cancel should be nil when Start called with nil")
+			},
+		},
+		{
+			// Start(nil) followed by Start(ctx) should start the loop
+			// This verifies that nil doesn't consume the sync.Once
+			name: "Start with nil then valid context starts loop",
+			setup: func(t *testing.T, s *Supervisor) {
+				var nilCtx context.Context //nolint:staticcheck // intentionally testing nil context behavior
+				s.start(nilCtx)
+				s.start(t.Context()) // should work because nil didn't consume once
+			},
+			check: func(t *testing.T, s *Supervisor) {
+				assert.Assert(t, s.ctx != nil, "ctx should be set after Start with valid context")
+				assert.Assert(t, s.cancel != nil, "cancel should be set after Start with valid context")
+				assert.NilError(t, s.ctx.Err(), "ctx should not be cancelled")
+			},
+		},
+		{
+			// Start with a valid context should start the loop
+			name: "Start with valid context starts loop",
+			setup: func(t *testing.T, s *Supervisor) {
+				s.start(t.Context())
+			},
+			check: func(t *testing.T, s *Supervisor) {
+				assert.Assert(t, s.ctx != nil, "ctx should be set after Start")
+				assert.Assert(t, s.cancel != nil, "cancel should be set after Start")
+				assert.NilError(t, s.ctx.Err(), "ctx should not be cancelled")
+			},
+		},
+		{
+			// Start should be idempotent - multiple calls only start one loop
+			name: "Start is idempotent - multiple calls use same context",
+			setup: func(t *testing.T, s *Supervisor) {
+				ctx1 := context.Background()
+				ctx2 := context.Background()
+				s.start(ctx1)
+				firstCtx := s.ctx
+				s.start(ctx2) // second call should be ignored
+				assert.Assert(t, s.ctx == firstCtx, "ctx should not change on second Start call")
+			},
+			check: func(t *testing.T, s *Supervisor) {
+				assert.Assert(t, s.ctx != nil)
+			},
+		},
+		{
+			// Stop should cancel the loop's context
+			name: "Stop cancels the loop context",
+			setup: func(t *testing.T, s *Supervisor) {
+				s.start(t.Context())
+				s.stop()
+			},
+			check: func(t *testing.T, s *Supervisor) {
+				assert.ErrorIs(t, s.ctx.Err(), context.Canceled)
+			},
+		},
+		{
+			// Stop should be safe to call even if Start wasn't called
+			name: "Stop is safe without prior Start",
+			setup: func(t *testing.T, s *Supervisor) {
+				s.stop() // should not panic
+			},
+			check: func(t *testing.T, s *Supervisor) {
+				assert.Assert(t, s.ctx == nil, "ctx should remain nil")
+			},
+		},
+		{
+			// Stop should be safe to call multiple times
+			name: "Stop is safe to call multiple times",
+			setup: func(t *testing.T, s *Supervisor) {
+				s.start(t.Context())
+				s.stop()
+				s.stop() // should not panic
+			},
+			check: func(t *testing.T, s *Supervisor) {
+				assert.ErrorIs(t, s.ctx.Err(), context.Canceled)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fn := fixture.NewFunction(t)
+			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+			ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+			supervisor := &Supervisor{
+				fn:               fn,
+				ctrl:             ctrl,
+				routerHeartbeats: nil, // not needed for lifecycle tests
+			}
+
+			tc.setup(t, supervisor)
+			tc.check(t, supervisor)
+		})
+	}
+}
+
+// TestSupervisorLoopConvergesIndependently verifies that each supervisor's
+// loop runs converge on its own at the configured interval, independent
+// of other supervisors or the namespace-level discovery loop.
+func TestSupervisorLoopConvergesIndependently(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// Add an available pod that can be assigned
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+
+	// Use a short scale interval so the loop runs quickly
+	cfg := testConfig()
+	cfg.ScaleInterval = 50 * time.Millisecond
+	cfg.HeartbeatTimeout = 10 * time.Second // long enough to not timeout during test
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	ctrl.ctx = ctx // set context so supervisor loop starts
+	ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Get supervisor which will start its loop
+	supervisor := ctrl.supervisor(fn)
+
+	// Add a heartbeat so the function doesn't scale to 0
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+		Function:         fn,
+		Timestamp:        time.Now(),
+		InFlightRequests: 1, // request in flight should trigger scale to 1
+	})
+
+	// Wait for the loop to converge and assign a pod
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+			LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+		})
+		if err != nil {
+			return poll.Continue("failed to list pods: %v", err)
+		}
+		if len(pods.Items) > 0 {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for supervisor loop to assign a pod")
+	}, poll.WithDelay(100*time.Millisecond), poll.WithTimeout(5*time.Second))
+}
+
+// TestScaleToZeroStopsLoop verifies that when a function scales to 0
+// due to heartbeat timeout, the supervisor's loop is stopped and the
+// supervisor is removed from the controller's map.
+func TestScaleToZeroStopsLoop(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name              string
+		startWithInstance bool
+	}{
+		{
+			name:              "scales down from 1 instance",
+			startWithInstance: true,
+		},
+		{
+			// This case tests the bug fix where cleanup was only triggered
+			// when scaling down from >0 instances, causing supervisors to
+			// leak when already at 0 instances.
+			name:              "cleans up when already at 0 instances",
+			startWithInstance: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+
+			fn := fixture.NewFunction(t)
+			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+			if tc.startWithInstance {
+				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			}
+
+			cfg := testConfig()
+			cfg.ScaleInterval = 50 * time.Millisecond
+			cfg.HeartbeatTimeout = 100 * time.Millisecond
+
+			ctrl := New(cfg, nil, fakeKubernetes, nil)
+			ctrl.ctx = ctx
+			ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+
+			err := ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			supervisor := ctrl.supervisor(fn)
+
+			// Add an old heartbeat that will timeout
+			supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+				Function:  fn,
+				Timestamp: time.Now().Add(-cfg.HeartbeatTimeout - time.Second),
+			})
+
+			_, exists := ctrl.supervisors.Load(fn.Hash())
+			assert.Assert(t, exists, "supervisor should exist in map initially")
+
+			// Wait for heartbeat timeout to trigger scale-to-0 and supervisor removal
+			poll.WaitOn(t, func(t poll.LogT) poll.Result {
+				_, exists := ctrl.supervisors.Load(fn.Hash())
+				if !exists {
+					return poll.Success()
+				}
+				return poll.Continue("waiting for supervisor to be removed from map")
+			}, poll.WithDelay(100*time.Millisecond), poll.WithTimeout(5*time.Second))
+
+			assert.ErrorIs(t, supervisor.ctx.Err(), context.Canceled)
+		})
+	}
+}
+
+// TestCleanupStuckInstances tests that instances stuck in the assigned state
+// (never became ready) are properly terminated.
+func TestCleanupStuckInstances(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState, []*function.Instance)
+	}{
+		{
+			name: "terminates instance stuck in assigned state",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create a pod that was assigned long ago but never became ready
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				stuckTime := time.Now().Add(-state.ctrl.config.FunctionAssignTimeout * 3) // well past the 2x threshold
+				pod.Annotations[key.AssignedAt.Annotation] = stuckTime.Format(time.RFC3339)
+				delete(pod.Annotations, key.ReadyAt.Annotation) // never became ready
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// ensure the stuck instance was terminated
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+				assert.Assert(t, len(instances) == 0)
+			},
+		},
+		{
+			name: "does not terminate recently assigned unready instance",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create a pod that was assigned recently and isn't ready yet
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Annotations[key.AssignedAt.Annotation] = time.Now().Format(time.RFC3339)
+				delete(pod.Annotations, key.ReadyAt.Annotation) // not yet ready
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// ensure the instance was not terminated
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+				assert.Assert(t, len(instances) == 1)
+			},
+		},
+		{
+			name: "returns instances unchanged when controller not responsible",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create a pod that was assigned long ago but never became ready
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				stuckTime := time.Now().Add(-state.ctrl.config.FunctionAssignTimeout * 3)
+				pod.Annotations[key.AssignedAt.Annotation] = stuckTime.Format(time.RFC3339)
+				delete(pod.Annotations, key.ReadyAt.Annotation)
+				state.fakeKubernetes.Tracker().Add(pod)
+
+				// Make this controller not responsible by changing its pod IP
+				state.ctrl.config.PodIP = "0.0.0.0"
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// Instances should be returned unchanged
+				assert.Assert(t, len(instances) == 1)
+				// Pod should still exist (not terminated)
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			// Get instances and call cleanupStuckInstances via the supervisor
+			instances, err := state.ctrl.getInstances(ctx, state.fn)
+			assert.NilError(t, err)
+
+			supervisor := state.ctrl.supervisor(state.fn)
+			instances = supervisor.cleanupStuckInstances(ctx, instances)
+
+			tc.check(t, state, instances)
+		})
+	}
+}
+
+// TestReplaceStaleInstances tests that stale instances (on old replica sets)
+// are properly replaced with instances on new replica sets.
+func TestReplaceStaleInstances(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+	}
+
+	testCases := []struct {
+		name            string
+		setup           func(*testing.T, *testState)
+		beforeTerminate func(*testing.T, context.Context, *testState, []*function.Instance) // optional: runs between getInstances and replaceStaleInstances
+		check           func(*testing.T, *testState, []*function.Instance)
+	}{
+		{
+			name: "replaces stale instance on old replica set",
+			setup: func(t *testing.T, state *testState) {
+				// create an assigned pod on the old replica set
+				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+
+				// create a stale replica set (scaled to 0)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet.Status.Replicas = 0
+				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
+
+				// add a new replica set with an available pod
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// ensure the stale instance was replaced
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+				assert.Assert(t, len(instances) == 1)
+			},
+		},
+		{
+			// When controller is not responsible for the function, instances should be returned unchanged
+			name: "returns instances unchanged when controller not responsible",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+
+				// Make this controller not responsible by changing its pod IP
+				state.ctrl.config.PodIP = "0.0.0.0"
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// Instances should be returned unchanged
+				assert.Assert(t, len(instances) == 1)
+				// Pod should still exist (not terminated)
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+			},
+		},
+		{
+			// When replica set lookup fails, instance should be kept in the list
+			name: "keeps instance when replica set lookup fails",
+			setup: func(t *testing.T, state *testState) {
+				// Create an assigned pod that references a non-existent replica set
+				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				assignedPod.Annotations[key.ReplicaSet.Annotation] = "nonexistent-replicaset"
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+				// Don't add the replica set - this will cause lookup to fail
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// Instance should be kept since replica set lookup failed
+				assert.Assert(t, len(instances) == 1)
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+			},
+		},
+		{
+			// When no replacement pod is available, stale instance should be kept
+			name: "keeps stale instance when no replacement pod available",
+			setup: func(t *testing.T, state *testState) {
+				// Create an assigned pod on the old replica set
+				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+
+				// Create a stale replica set (scaled to 0)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet.Status.Replicas = 0
+				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
+
+				// Add a new replica set but NO available pods
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				// No available pod added - assignPod will fail
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// Stale instance should be kept because we couldn't assign a replacement
+				assert.Assert(t, len(instances) == 1)
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+			},
+		},
+		{
+			// When multiple stale instances exist, all should be replaced
+			name: "replaces multiple stale instances",
+			setup: func(t *testing.T, state *testState) {
+				// Create multiple assigned pods on the old replica set
+				for i := range 3 {
+					assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+					assignedPod.Name = fmt.Sprintf("stale-pod-%d", i)
+					state.fakeKubernetes.Tracker().Add(assignedPod)
+				}
+
+				// Create a stale replica set (scaled to 0)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet.Status.Replicas = 0
+				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
+
+				// Add a new replica set with multiple available pods
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				for i := range 3 {
+					availablePod := fixture.NewAvailablePod(t, state.fn, nil)
+					availablePod.Name = fmt.Sprintf("available-pod-%d", i)
+					state.fakeKubernetes.Tracker().Add(availablePod)
+				}
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// All 3 stale instances should be replaced with new ones
+				assert.Assert(t, len(instances) == 3)
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				// Should have 3 new assigned pods (stale ones deleted)
+				assert.Assert(t, len(pods.Items) == 3)
+			},
+		},
+		{
+			// When multiple stale instances exist at exactly maxInstances, all should still
+			// be replaced because we decrement totalInstances after each successful delete.
+			// Without the decrement, only the first stale instance would be replaced.
+			name: "replaces all stale instances when at maxInstances",
+			setup: func(t *testing.T, state *testState) {
+				// Set maxInstances to exactly the number of stale instances
+				state.fn.Scale.MaxInstances = 3
+
+				// Create 3 stale pods on the old replica set
+				for i := range 3 {
+					assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+					assignedPod.Name = fmt.Sprintf("stale-pod-%d", i)
+					state.fakeKubernetes.Tracker().Add(assignedPod)
+				}
+
+				// Create a stale replica set (scaled to 0)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet.Status.Replicas = 0
+				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
+
+				// Add a new replica set with available pods for replacement
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				for i := range 3 {
+					availablePod := fixture.NewAvailablePod(t, state.fn, nil)
+					availablePod.Name = fmt.Sprintf("available-pod-%d", i)
+					state.fakeKubernetes.Tracker().Add(availablePod)
+				}
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// All 3 stale instances should be replaced
+				assert.Assert(t, len(instances) == 3, "expected 3 instances, got %d", len(instances))
+
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.Tenant,
+				})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 3, "expected 3 pods, got %d", len(pods.Items))
+
+				// Verify all stale pods were deleted (none should remain)
+				for _, pod := range pods.Items {
+					for i := range 3 {
+						assert.Assert(t, pod.Name != fmt.Sprintf("stale-pod-%d", i),
+							"stale pod %d should have been deleted", i)
+					}
+				}
+			},
+		},
+		{
+			// Stale instance replacement should work even at max instances (temporarily exceeds limit)
+			name: "replaces stale instance even when at max instances",
+			setup: func(t *testing.T, state *testState) {
+				// Set max instances to 2
+				state.fn.Scale.MaxInstances = 2
+
+				// First, create the old (stale) replica set - this sets the "current" name
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSetName := staleReplicaSet.Name
+				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
+				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+				// Now create the new replica set - this changes the "current" name
+				newReplicaSet := fixture.NewReplicaSet(t, state.fn)
+				state.fakeKubernetes.Tracker().Add(newReplicaSet)
+
+				// Create a stale pod pointing to the old replica set
+				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod.Name = "stale-pod"
+				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				state.fakeKubernetes.Tracker().Add(stalePod)
+
+				// Create a fresh pod pointing to the new replica set (uses current name)
+				freshPod := fixture.NewAssignedPod(t, state.fn, nil)
+				freshPod.Name = "fresh-pod"
+				state.fakeKubernetes.Tracker().Add(freshPod)
+
+				// Add an available pod for replacement
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// Should have 2 instances (1 fresh kept + 1 replacement for stale)
+				assert.Assert(t, len(instances) == 2)
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				// Should have 2 pods: fresh-pod and the new replacement
+				assert.Assert(t, len(pods.Items) == 2)
+				// Verify stale pod was deleted
+				for _, pod := range pods.Items {
+					assert.Assert(t, pod.Name != "stale-pod", "stale pod should have been deleted")
+				}
+			},
+		},
+		{
+			// When stale instance deletion fails (e.g., pod already deleted), new instance should still be added
+			name: "adds new instance even when stale deletion fails",
+			setup: func(t *testing.T, state *testState) {
+				// First, create the old (stale) replica set
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSetName := staleReplicaSet.Name
+				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
+				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+				// Now create the new replica set
+				newReplicaSet := fixture.NewReplicaSet(t, state.fn)
+				state.fakeKubernetes.Tracker().Add(newReplicaSet)
+
+				// Create a stale pod pointing to the old replica set
+				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod.Name = "stale-pod"
+				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				state.fakeKubernetes.Tracker().Add(stalePod)
+
+				// Add an available pod for replacement
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			beforeTerminate: func(t *testing.T, ctx context.Context, state *testState, instances []*function.Instance) {
+				// Simulate deletion failure by deleting the stale pod before replaceStaleInstances tries to delete it
+				// This simulates a race condition or external deletion - when replaceStaleInstances tries to delete,
+				// it will get a NotFound error, but should still add the new instance
+				for _, instance := range instances {
+					if instance.Name == "stale-pod" {
+						err := state.fakeKubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+						assert.NilError(t, err)
+						break
+					}
+				}
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// Should have 1 instance (the replacement) even though stale deletion "failed" (pod already gone)
+				assert.Assert(t, len(instances) == 1, "expected 1 instance after replacement, got %d", len(instances))
+				// Verify the new instance is in the list (not the stale one)
+				assert.Assert(t, instances[0].Name != "stale-pod", "stale instance should not be in the result")
+				// Verify stale pod is gone
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				for _, pod := range pods.Items {
+					assert.Assert(t, pod.Name != "stale-pod", "stale pod should have been deleted")
+				}
+			},
+		},
+		{
+			// When at maxInstances+1 due to failed deletion, should not assign more replacements.
+			// This prevents unbounded pod creation when deletePod fails repeatedly.
+			name: "skips replacement when already at maxInstances+1",
+			setup: func(t *testing.T, state *testState) {
+				// Set max instances to 2
+				state.fn.Scale.MaxInstances = 2
+
+				// First, create the old (stale) replica set
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSetName := staleReplicaSet.Name
+				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
+				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+				// Now create the new replica set
+				newReplicaSet := fixture.NewReplicaSet(t, state.fn)
+				state.fakeKubernetes.Tracker().Add(newReplicaSet)
+
+				// Create a stale pod pointing to the old replica set (simulates failed deletion)
+				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod.Name = "stale-pod"
+				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				state.fakeKubernetes.Tracker().Add(stalePod)
+
+				// Create 2 fresh pods pointing to the new replica set (already at maxInstances+1 = 3 total)
+				for i := range 2 {
+					freshPod := fixture.NewAssignedPod(t, state.fn, nil)
+					freshPod.Name = fmt.Sprintf("fresh-pod-%d", i)
+					state.fakeKubernetes.Tracker().Add(freshPod)
+				}
+
+				// Add available pod that should NOT be used (we're already at maxInstances+1)
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// Should have 3 instances (1 stale kept + 2 fresh) - no new replacement
+				assert.Assert(t, len(instances) == 3, "expected 3 instances, got %d", len(instances))
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.Tenant,
+				})
+				assert.NilError(t, err)
+				// Should still have exactly 3 assigned pods (+ 1 available) - stale pod still exists
+				assert.Assert(t, len(pods.Items) == 3, "expected 3 assigned pods, got %d", len(pods.Items))
+				// Verify stale pod is still there (not deleted and not replaced yet)
+				foundStale := false
+				for _, pod := range pods.Items {
+					if pod.Name == "stale-pod" {
+						foundStale = true
+						break
+					}
+				}
+				assert.Assert(t, foundStale, "stale pod should still exist when at maxInstances+1")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			// Get instances and call replaceStaleInstances via the supervisor
+			instances, err := state.ctrl.getInstances(ctx, state.fn)
+			assert.NilError(t, err)
+
+			// Run optional beforeTerminate function (e.g., to simulate race conditions)
+			if tc.beforeTerminate != nil {
+				tc.beforeTerminate(t, ctx, state, instances)
+			}
+
+			supervisor := state.ctrl.supervisor(state.fn)
+			instances = supervisor.replaceStaleInstances(ctx, instances)
+
+			tc.check(t, state, instances)
+		})
+	}
+}
+
+// TestReplaceStaleInstancesNamespaceListerNotFound tests that when the namespace
+// lister is not found for a function's namespace, instances are returned unchanged.
+// This requires a separate test because we need to manually construct instances
+// rather than using getInstances (which also requires the namespace lister).
+func TestReplaceStaleInstancesNamespaceListerNotFound(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+	// Start informers for the normal namespace
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Create a supervisor for a function in a different namespace that doesn't have a lister
+	fnInUnknownNamespace := fixture.NewFunction(t)
+	fnInUnknownNamespace.Namespace = "unknown-namespace"
+	supervisor := ctrl.supervisor(fnInUnknownNamespace)
+
+	// Manually construct instances (can't use getInstances since no lister exists)
+	instances := []*function.Instance{
+		fixture.NewInstance(t, fn, nil),
+		fixture.NewInstance(t, fn, nil),
+	}
+
+	// Call replaceStaleInstances - should return instances unchanged
+	result := supervisor.replaceStaleInstances(ctx, instances)
+
+	// Verify instances are returned unchanged
+	assert.Assert(t, len(result) == 2)
+}
+
+// TestSupervisorLoopErrorHandling verifies that when errors occur in the loop
+// (getInstances or converge failures), the loop logs the error and continues
+// running (doesn't crash). The loop should eventually succeed once the error
+// condition is resolved.
+func TestSupervisorLoopErrorHandling(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *function.Function
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+		supervisor     *Supervisor
+	}
+
+	testCases := []struct {
+		name                           string
+		setupError                     func(*testing.T, context.Context, *testState, *Supervisor) // sets up error condition (supervisor is already created)
+		resolveError                   func(*testing.T, context.Context, *testState, *Supervisor) // resolves error condition
+		waitForErrors                  time.Duration                                              // how long to wait for errors to occur
+		startInformersBeforeSupervisor bool                                                       // whether to start informers before creating supervisor
+		skipRecoveryVerification       bool                                                       // whether to skip recovery verification (to avoid race conditions)
+	}{
+		{
+			name: "getInstances error",
+			setupError: func(t *testing.T, ctx context.Context, state *testState, supervisor *Supervisor) {
+				// Don't start informers - getInstances will fail because no namespace lister exists
+				// This simulates an error condition
+			},
+			resolveError:                   nil, // Skip recovery to avoid race condition with startInformers
+			waitForErrors:                  200 * time.Millisecond,
+			startInformersBeforeSupervisor: false,
+			skipRecoveryVerification:       true,
+		},
+		{
+			name: "converge error",
+			setupError: func(t *testing.T, ctx context.Context, state *testState, supervisor *Supervisor) {
+				// Add only a replica set, but NO available pods
+				// This will cause assignPod to fail within converge when trying to scale up
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// Add a heartbeat with high in-flight requests to trigger scale-up
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+					Function:         state.fn,
+					Timestamp:        time.Now(),
+					InFlightRequests: 10,
+				})
+			},
+			resolveError: func(t *testing.T, ctx context.Context, state *testState, supervisor *Supervisor) {
+				// Add an available pod and update heartbeat
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+					Function:         state.fn,
+					Timestamp:        time.Now(),
+					InFlightRequests: 1,
+				})
+			},
+			waitForErrors:                  300 * time.Millisecond,
+			startInformersBeforeSupervisor: true,
+			skipRecoveryVerification:       false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+
+			fn := fixture.NewFunction(t)
+			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+			// Use a short scale interval so the loop runs quickly
+			cfg := testConfig()
+			cfg.ScaleInterval = 50 * time.Millisecond
+			cfg.HeartbeatTimeout = 10 * time.Second
+
+			ctrl := New(cfg, nil, fakeKubernetes, nil)
+			// Don't set ctrl.startedAt - this prevents supervisor loops from starting
+			// until we've finished setup. Otherwise there's a race between the loop
+			// starting and setupError storing the heartbeat.
+
+			state := &testState{
+				fn:             fn,
+				fakeKubernetes: fakeKubernetes,
+				ctrl:           ctrl,
+			}
+
+			// Start informers if needed before creating supervisor
+			if tc.startInformersBeforeSupervisor {
+				err := ctrl.startInformers(ctx)
+				assert.NilError(t, err)
+			}
+
+			// Create supervisor (loop won't start yet because ctrl.startedAt is zero)
+			state.supervisor = ctrl.supervisor(fn)
+
+			// Set up error condition (supervisor is now available)
+			tc.setupError(t, ctx, state, state.supervisor)
+
+			// Add a heartbeat so the function won't scale to 0 when it eventually works
+			// (if not already set by setupError)
+			if state.supervisor.routerHeartbeats.Size() == 0 {
+				state.supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+					Function:         fn,
+					Timestamp:        time.Now(),
+					InFlightRequests: 1,
+				})
+			}
+
+			// Now start the supervisor loop
+			ctrl.ctx = ctx
+			ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+			state.supervisor.start(ctx)
+
+			// Wait for a few loop iterations to happen (they should fail and log errors)
+			time.Sleep(tc.waitForErrors)
+
+			// Verify the supervisor is still in the map (loop didn't crash and remove it)
+			_, exists := ctrl.supervisors.Load(fn.Hash())
+			assert.Assert(t, exists, "supervisor should still exist after errors")
+
+			// Resolve error condition (if provided)
+			if tc.resolveError != nil {
+				tc.resolveError(t, ctx, state, state.supervisor)
+			}
+
+			// Wait for the loop to eventually succeed (unless skipped to avoid race conditions)
+			if !tc.skipRecoveryVerification {
+				poll.WaitOn(t, func(t poll.LogT) poll.Result {
+					pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+						LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+					})
+					if err != nil {
+						return poll.Continue("failed to list pods: %v", err)
+					}
+					if len(pods.Items) > 0 {
+						return poll.Success()
+					}
+					return poll.Continue("waiting for supervisor loop to recover and assign a pod")
+				}, poll.WithDelay(100*time.Millisecond), poll.WithTimeout(5*time.Second))
+			}
+		})
+	}
+}
+
+// TestConvergeReplacesStaleInstancesAfterScaling verifies that stale instances
+// are replaced after scaling decisions are made. During scale-up, the function
+// first scales to the desired count, then replaces any remaining stale instances.
+func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.Scale.MaxInstances = 3
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	cfg := testConfig()
+	cfg.HeartbeatTimeout = 10 * time.Second
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+
+	// First, create the old (stale) replica set
+	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+	staleReplicaSetName := staleReplicaSet.Name
+	staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
+	fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+	// Now create the new replica set
+	newReplicaSet := fixture.NewReplicaSet(t, fn)
+	fakeKubernetes.Tracker().Add(newReplicaSet)
+
+	// Create 2 stale instances on the old replica set
+	stalePod1 := fixture.NewAssignedPod(t, fn, nil)
+	stalePod1.Name = "stale-pod-1"
+	stalePod1.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+	fakeKubernetes.Tracker().Add(stalePod1)
+
+	stalePod2 := fixture.NewAssignedPod(t, fn, nil)
+	stalePod2.Name = "stale-pod-2"
+	stalePod2.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+	fakeKubernetes.Tracker().Add(stalePod2)
+
+	// Add 3 available pods on the new replica set for replacements + scale up
+	for i := range 3 {
+		availablePod := fixture.NewAvailablePod(t, fn, nil)
+		availablePod.Name = fmt.Sprintf("available-pod-%d", i)
+		fakeKubernetes.Tracker().Add(availablePod)
+	}
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Get instances - should return the 2 stale instances
+	instances, err := ctrl.getInstances(ctx, fn)
+	assert.NilError(t, err)
+	assert.Assert(t, len(instances) == 2)
+
+	// Create supervisor and set up heartbeat requesting 3 instances
+	supervisor := ctrl.supervisor(fn)
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+		Function:         fn,
+		Timestamp:        time.Now(),
+		InFlightRequests: 150, // high load to trigger scale up to 3 (150/50 target = 3)
+	})
+
+	// Call converge directly - this should:
+	// 1. Scale up from 2 to 3 based on the heartbeat
+	// 2. Replace the 2 stale instances with fresh ones (since we're not scaling down)
+	resultInstances, err := supervisor.converge(ctx, instances)
+	assert.NilError(t, err)
+
+	// Should have 3 instances (2 replaced + 1 new)
+	assert.Assert(t, len(resultInstances) == 3, "expected 3 instances, got %d", len(resultInstances))
+
+	// Verify stale pods are gone and we have fresh pods
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(pods.Items) == 3, "expected 3 pods, got %d", len(pods.Items))
+
+	// Verify none of the pods are the stale ones
+	for _, pod := range pods.Items {
+		assert.Assert(t, pod.Name != "stale-pod-1" && pod.Name != "stale-pod-2",
+			"stale pod %s should have been replaced", pod.Name)
+		// Verify the pods are on the new replica set
+		assert.Assert(t, pod.Annotations[key.ReplicaSet.Annotation] != staleReplicaSetName,
+			"pod %s should be on new replica set", pod.Name)
+	}
+}
+
+// TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown verifies that stale
+// instances are NOT replaced during scale-down. This is an efficiency
+// optimization: since scale-down deletes oldest instances first (which are
+// typically stale), there's no need to create replacement pods that would
+// just be deleted anyway.
+func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.Scale.MaxInstances = 3
+	// Disable CPU/memory scaling to focus on in-flight requests for this test
+	fn.Scale.TargetCPUUsageMilli = 0
+	fn.Scale.TargetMemoryUsageMiB = 0
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	cfg := testConfig()
+	cfg.HeartbeatTimeout = 10 * time.Second
+	cfg.HPADownscaleStabilization = 1 * time.Second // Use short stabilization for test
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+
+	// First, create the old (stale) replica set
+	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+	staleReplicaSetName := staleReplicaSet.Name
+	staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
+	fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+	// Now create the new replica set
+	newReplicaSet := fixture.NewReplicaSet(t, fn)
+	fakeKubernetes.Tracker().Add(newReplicaSet)
+
+	// Create 3 instances: 2 stale + 1 fresh
+	// The stale pods are OLDER (assigned earlier) so they'll be deleted first during scale-down
+	stalePod1 := fixture.NewAssignedPod(t, fn, nil)
+	stalePod1.Name = "stale-pod-1"
+	stalePod1.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+	stalePod1.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-time.Hour).Format(time.RFC3339)
+	fakeKubernetes.Tracker().Add(stalePod1)
+
+	stalePod2 := fixture.NewAssignedPod(t, fn, nil)
+	stalePod2.Name = "stale-pod-2"
+	stalePod2.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+	stalePod2.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-30 * time.Minute).Format(time.RFC3339)
+	fakeKubernetes.Tracker().Add(stalePod2)
+
+	freshPod := fixture.NewAssignedPod(t, fn, nil)
+	freshPod.Name = "fresh-pod"
+	freshPod.Annotations[key.AssignedAt.Annotation] = time.Now().Format(time.RFC3339)
+	fakeKubernetes.Tracker().Add(freshPod)
+
+	// Add available pods that should NOT be used (we're scaling down, not up)
+	for i := range 3 {
+		availablePod := fixture.NewAvailablePod(t, fn, nil)
+		availablePod.Name = fmt.Sprintf("available-pod-%d", i)
+		fakeKubernetes.Tracker().Add(availablePod)
+	}
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Get instances - should return 3 instances
+	instances, err := ctrl.getInstances(ctx, fn)
+	assert.NilError(t, err)
+	assert.Assert(t, len(instances) == 3, "expected 3 instances initially, got %d", len(instances))
+
+	// Create supervisor and set up heartbeat requesting only 1 instance (scale down)
+	supervisor := ctrl.supervisor(fn)
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+		Function:         fn,
+		Timestamp:        time.Now(),
+		InFlightRequests: 10, // low load to trigger scale down to 1 (ceil(10/50) = 1)
+	})
+
+	// Verify the scaling decision would request 1 instance
+	heartbeat := supervisor.combinedHeartbeat(instances)
+	scalingDecision := calculateDesiredInstances(ctx, cfg, heartbeat, instances)
+	assert.Assert(t, scalingDecision.DesiredInstances == 1,
+		"expected scaling decision of 1 instance, got %d", scalingDecision.DesiredInstances)
+
+	// Call converge directly - this should:
+	// 1. Scale down from 3 to 1 (deleting oldest instances first, which are the stale ones)
+	// 2. NOT replace stale instances (we're scaling down, so it's wasteful)
+	resultInstances, err := supervisor.converge(ctx, instances)
+	assert.NilError(t, err)
+
+	// Should have 1 instance
+	assert.Assert(t, len(resultInstances) == 1, "expected 1 instance, got %d", len(resultInstances))
+
+	// Verify the remaining instance is the fresh one (newest, so not deleted)
+	assert.Assert(t, resultInstances[0].Name == "fresh-pod",
+		"expected fresh-pod to be kept, got %s", resultInstances[0].Name)
+
+	// Verify available pods were NOT used (no migrations happened)
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(pods.Items) == 1, "expected 1 pod, got %d", len(pods.Items))
+	assert.Assert(t, pods.Items[0].Name == "fresh-pod",
+		"expected fresh-pod to remain, got %s", pods.Items[0].Name)
+}
+
+// TestSupervisorStartup verifies that supervisors are started correctly
+// in various scenarios. With the current implementation, start() is called
+// on every supervisor() call, so supervisors are started idempotently
+// once ctrl.ctx is available.
+func TestSupervisorStartup(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		setup          func(*testing.T) (*Controller, *function.Function, context.Context)
+		getSupervisor  func(*testing.T, *Controller, *function.Function) *Supervisor
+		waitAfterStart time.Duration
+		check          func(*testing.T, *Supervisor)
+	}{
+		{
+			name: "supervisor started during discoverSupervisors",
+			setup: func(t *testing.T) (*Controller, *function.Function, context.Context) {
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				t.Cleanup(cancel)
+
+				fn := fixture.NewFunction(t)
+				assignedPod := fixture.NewAssignedPod(t, fn, nil)
+				replicaSet := fixture.CurrentReplicaSet(t, fn)
+
+				fakeKubernetes := fake.NewClientset(
+					fixture.NewControllerPod(),
+					assignedPod,
+					replicaSet,
+				)
+
+				ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+				return ctrl, fn, ctx
+			},
+			getSupervisor: func(t *testing.T, ctrl *Controller, fn *function.Function) *Supervisor {
+				supervisor, ok := ctrl.supervisors.Load(fn.Hash())
+				assert.Assert(t, ok, "supervisor should exist after discovery")
+				return supervisor
+			},
+			waitAfterStart: 100 * time.Millisecond,
+			check: func(t *testing.T, supervisor *Supervisor) {
+				assert.Assert(t, supervisor.ctx != nil, "supervisor loop should be started (ctx should not be nil)")
+				assert.Assert(t, supervisor.cancel != nil, "supervisor cancel should be set")
+				assert.NilError(t, supervisor.ctx.Err(), "supervisor context should not be cancelled")
+			},
+		},
+		{
+			name: "supervisor started on subsequent call after controller start",
+			setup: func(t *testing.T) (*Controller, *function.Function, context.Context) {
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				t.Cleanup(cancel)
+
+				fn := fixture.NewFunction(t)
+				fakeKubernetes := fake.NewClientset(
+					fixture.NewControllerPod(),
+				)
+
+				ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+				// Create supervisor before controller is started (ctrl.ctx is nil)
+				// The supervisor should be created but not started
+				supervisor := ctrl.supervisor(fn)
+				assert.Assert(t, supervisor != nil, "supervisor should be created")
+				assert.Assert(t, supervisor.ctx == nil, "supervisor should not be started when ctrl.ctx is nil")
+				assert.Assert(t, supervisor.cancel == nil, "supervisor cancel should not be set when not started")
+
+				return ctrl, fn, ctx
+			},
+			getSupervisor: func(t *testing.T, ctrl *Controller, fn *function.Function) *Supervisor {
+				// Call supervisor() again - should start it now
+				return ctrl.supervisor(fn)
+			},
+			waitAfterStart: 0,
+			check: func(t *testing.T, supervisor *Supervisor) {
+				assert.Assert(t, supervisor.ctx != nil, "supervisor loop should be started after controller start (ctx should not be nil)")
+				assert.Assert(t, supervisor.cancel != nil, "supervisor cancel should be set after start")
+				assert.NilError(t, supervisor.ctx.Err(), "supervisor context should not be cancelled")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl, fn, ctx := tc.setup(t)
+
+			// Start the controller. This will immediately trigger discoverSupervisors
+			// via timer.Loop (which executes its callback immediately).
+			err := ctrl.Start(ctx)
+			assert.NilError(t, err)
+
+			// Explicitly call supervisor() in the test thread to ensure supervisor.start()
+			// is called synchronously. This ensures:
+			// 1. The read of ctrl.ctx happens after Start() has completed (write happens before)
+			// 2. The writes to supervisor.ctx and supervisor.cancel complete before we check them
+			// This fixes the race condition without modifying production code.
+			_ = ctrl.supervisor(fn)
+
+			// Give the goroutine a moment to run discoverSupervisors if needed
+			if tc.waitAfterStart > 0 {
+				time.Sleep(tc.waitAfterStart)
+			}
+
+			// Get the supervisor for verification
+			supervisor := tc.getSupervisor(t, ctrl, fn)
+			tc.check(t, supervisor)
 		})
 	}
 }

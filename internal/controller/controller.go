@@ -37,6 +37,7 @@ type namespaceLister struct {
 
 type Controller struct {
 	config            *Config
+	ctx               context.Context
 	startedAt         time.Time
 	ring              *hashring.HashRing
 	supervisors       *xsync.Map[function.Hash, *Supervisor]
@@ -63,10 +64,14 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 }
 
 func (ctrl *Controller) Start(ctx context.Context) error {
+	ctrl.ctx = ctx
+
 	err := ctrl.startInformers(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start informers: %w", err)
 	}
+
+	ctrl.startedAt = time.Now()
 
 	go timer.Loop(ctx, ctrl.config.ScaleInterval, func(ctx context.Context) error {
 		defer func() {
@@ -83,19 +88,17 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 		go timer.Loop(ctx, ctrl.config.ScaleInterval, func(ctx context.Context) error {
 			defer func() {
 				if r := recover(); r != nil {
-					log.Error(ctx, "panic in scaleNamespace", key.Error.Slog(fmt.Errorf("%v", r)))
+					log.Error(ctx, "panic in discoverSupervisors", key.Error.Slog(fmt.Errorf("%v", r)))
 				}
 			}()
 
-			err := ctrl.convergeNamespace(ctx, namespace)
+			err := ctrl.discoverSupervisors(ctx, namespace)
 			if err != nil {
-				log.Error(ctx, "failed to scale namespace", key.Error.Slog(err), key.Namespace.Slog(namespace))
+				log.Error(ctx, "failed to discover supervisors", key.Error.Slog(err), key.Namespace.Slog(namespace))
 			}
 			return nil
 		})
 	}
-
-	ctrl.startedAt = time.Now()
 
 	return nil
 }
