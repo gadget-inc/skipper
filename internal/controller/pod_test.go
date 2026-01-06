@@ -14,6 +14,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
 	"gotest.tools/v3/assert"
+	"gotest.tools/v3/poll"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -1972,6 +1973,24 @@ func TestDeletePod(t *testing.T) {
 			assert.NilError(t, err)
 
 			tc.setup(t, state)
+
+			// If a pod was set up, wait for it to appear in the cache before deleting it.
+			// This ensures the pod is in cache when deletePod is called, preventing
+			// a race condition where the informer might process the ADD event after
+			// the DELETE event, causing the pod to reappear in cache.
+			if state.pod != nil {
+				poll.WaitOn(t, func(t poll.LogT) poll.Result {
+					instances, err := state.ctrl.getInstances(ctx, state.fn)
+					if err != nil {
+						return poll.Error(err)
+					}
+					if len(instances) == 0 {
+						return poll.Continue("pod not yet in cache")
+					}
+					// Found the pod in cache
+					return poll.Success()
+				}, poll.WithTimeout(2*time.Second), poll.WithDelay(50*time.Millisecond))
+			}
 
 			err = state.ctrl.deletePod(ctx, state.fn.Namespace, "test-pod", metav1.DeleteOptions{})
 			if tc.errContains != "" {
