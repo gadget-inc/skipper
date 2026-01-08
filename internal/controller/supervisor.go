@@ -95,7 +95,7 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 	defer span.End()
 
 	heartbeat := s.combinedHeartbeat(instances)
-	ctx = telemetry.With(ctx, key.Heartbeat.Attr(heartbeat))
+	ctx = telemetry.With(ctx, key.Function.Attr(s.fn), key.Heartbeat.Attr(heartbeat))
 
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
 
