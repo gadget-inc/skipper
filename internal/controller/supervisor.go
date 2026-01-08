@@ -197,6 +197,9 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.converge")
 	defer span.End()
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	// 1. Cleanup stuck instances (cheap, always run before scaling decisions)
 	instances = s.cleanupStuckInstances(ctx, instances)
 
@@ -206,7 +209,6 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
 
-	s.mu.Lock()
 	now := time.Now()
 	stabilizationCutoff := now.Add(-s.ctrl.config.HPADownscaleStabilization)
 	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{DesiredInstances: scalingDecision.DesiredInstances, Timestamp: now})
@@ -214,7 +216,6 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 		return r.Timestamp.Before(stabilizationCutoff)
 	})
 	maxRecommendation := slices.MaxFunc(s.stabilizationWindow, func(a, b Recommendation) int { return a.DesiredInstances - b.DesiredInstances })
-	s.mu.Unlock()
 
 	currentInstances := len(instances)
 	isScalingDown := scalingDecision.DesiredInstances < currentInstances || scalingDecision.DesiredInstances == 0
@@ -239,7 +240,7 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 	}
 
 	// 3. Execute scaling
-	instances, err := s.scale(ctx, scalingDecision)
+	instances, err := s.scaleWithoutLock(ctx, scalingDecision)
 	if err != nil {
 		return instances, err
 	}
@@ -261,16 +262,16 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 // function. For scale-down, it deletes unready instances first, then
 // oldest ready instances.
 func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*function.Instance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.scaleWithoutLock(ctx, decision)
+}
+
+// scaleWithoutLock is the internal implementation of scale that assumes
+// the caller already holds s.mu.
+func (s *Supervisor) scaleWithoutLock(ctx context.Context, decision ScalingDecision) ([]*function.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.scale")
 	defer span.End()
-
-	start := time.Now()
-	s.mu.Lock()
-	if time.Since(start) > 10*time.Millisecond {
-		_, span := telemetry.Trace(ctx, "controller.supervisor.scale.lock", trace.WithTimestamp(start))
-		span.End()
-	}
-	defer s.mu.Unlock()
 
 	instances, err := s.ctrl.getInstances(ctx, s.fn)
 	if err != nil {
