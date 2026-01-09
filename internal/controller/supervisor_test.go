@@ -596,12 +596,11 @@ func TestScaleForwarding(t *testing.T) {
 	assert.Assert(t, len(instances) == 1)
 }
 
-// TestSupervisorTracksScalingDecisionsWhenNotResponsible verifies that supervisors
-// track scaling decisions in the stabilization window even when the controller is
-// not responsible for the function. This is important because converge uses
-// previous scaling decisions to make the right choices, and when responsibility
-// changes, the new responsible controller needs access to historical decisions.
-func TestSupervisorTracksScalingDecisionsWhenNotResponsible(t *testing.T) {
+// TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible verifies that
+// converge tracks scaling recommendations in the stabilization window even when the
+// controller is not responsible, but does not modify any pods. This ensures historical
+// decisions are available when responsibility changes, without performing duplicate work.
+func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -613,14 +612,12 @@ func TestSupervisorTracksScalingDecisionsWhenNotResponsible(t *testing.T) {
 	fakeKubernetes := fake.NewClientset(ctrlPod)
 
 	fn := fixture.NewFunction(t)
+	// Disable resource scaling so in-flight requests drive the decision
+	fn.Scale.TargetCPUUsageMilli = 0
+	fn.Scale.TargetMemoryUsageMiB = 0
 
-	// Set up mock client to handle forwarded scale requests
-	scaleCallCount := 0
+	// Set up mock client (should not be called for Scale)
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn *function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
-		scaleCallCount++
-		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
-	})
 
 	cfg := testConfig()
 	cfg.HPADownscaleStabilization = 5 * time.Second
@@ -630,9 +627,17 @@ func TestSupervisorTracksScalingDecisionsWhenNotResponsible(t *testing.T) {
 	// Add pods so discoverSupervisors can find them
 	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
+
+	// Capture initial pod count to verify no scaling occurs
+	initialPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	})
+	assert.NilError(t, err)
+	initialPodCount := len(initialPods.Items)
 
 	// Discover supervisors - should create supervisor even though we're not responsible
 	err = ctrl.discoverSupervisors(ctx, fn.Namespace)
@@ -650,16 +655,10 @@ func TestSupervisorTracksScalingDecisionsWhenNotResponsible(t *testing.T) {
 		InFlightRequests: 10,
 	})
 
-	// Create instances for converge calls
-	instances := []*function.Instance{
-		fixture.NewInstance(t, fn, nil),
-		fixture.NewInstance(t, fn, nil),
-	}
-
 	// Call converge multiple times to build up the stabilization window
 	// Each call should add a recommendation to the stabilization window
 	for range 3 {
-		_, err = supervisor.converge(ctx, instances)
+		err = supervisor.converge(ctx)
 		assert.NilError(t, err)
 		// Small delay to ensure different timestamps
 		time.Sleep(10 * time.Millisecond)
@@ -671,9 +670,6 @@ func TestSupervisorTracksScalingDecisionsWhenNotResponsible(t *testing.T) {
 	supervisor.mu.Unlock()
 	assert.Assert(t, windowSize >= 3, "stabilization window should have at least 3 recommendations, got %d", windowSize)
 
-	// Verify that scale requests were forwarded to the responsible controller
-	assert.Assert(t, scaleCallCount > 0, "scale requests should have been forwarded to responsible controller")
-
 	// Verify that when scaling down, the stabilization window is used
 	// Set up a scenario where we want to scale down
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
@@ -683,7 +679,7 @@ func TestSupervisorTracksScalingDecisionsWhenNotResponsible(t *testing.T) {
 	})
 
 	// Call converge - it should use the max recommendation from the stabilization window
-	_, err = supervisor.converge(ctx, instances)
+	err = supervisor.converge(ctx)
 	assert.NilError(t, err)
 
 	// Verify the stabilization window still contains historical recommendations
@@ -696,6 +692,14 @@ func TestSupervisorTracksScalingDecisionsWhenNotResponsible(t *testing.T) {
 
 	assert.Assert(t, windowSizeAfterScaleDown > 0, "stabilization window should retain recommendations after scale down")
 	assert.Assert(t, maxRec.DesiredInstances >= 1, "max recommendation should be at least 1")
+
+	// Verify no pods were created or deleted - converge should exit early when not responsible
+	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(finalPods.Items) == initialPodCount,
+		"converge should not modify pods when not responsible: expected %d, got %d", initialPodCount, len(finalPods.Items))
 }
 
 // TestStabilizationWindowUsesCorrectFlag verifies that the stabilization window is pruned
@@ -744,15 +748,9 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 		Timestamp: time.Now(),
 	})
 
-	// Create instances slice matching the pods
-	instances := []*function.Instance{
-		fixture.NewInstance(t, fn, nil),
-		fixture.NewInstance(t, fn, nil),
-	}
-
 	// Call converge - it will calculate desired instances (should be 1 or 2 depending on metrics)
 	// The key is checking if the old recommendation (45s ago) was kept in the stabilization window
-	_, err = supervisor.converge(ctx, instances)
+	err = supervisor.converge(ctx)
 	assert.NilError(t, err)
 
 	// The stabilization window should still contain the old recommendation because
@@ -767,6 +765,146 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 		}
 	}
 	assert.Assert(t, foundOldRecommendation, "stabilization window should keep recommendations within FlagHPADownscaleStabilization period, but the 45s old recommendation was pruned (likely using FlagHeartbeatTimeout=30s instead)")
+}
+
+// TestConvergeSkipsScaleDownWhenControllerNewlyStarted verifies that a newly-started
+// controller does not scale down, even when the scaling decision says to. This prevents
+// aggressive scale-down before the controller has had time to gather recommendations
+// and receive heartbeats from all routers.
+func TestConvergeSkipsScaleDownWhenControllerNewlyStarted(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	// Disable resource scaling so in-flight requests drive the decision
+	fn.Scale.TargetCPUUsageMilli = 0
+	fn.Scale.TargetMemoryUsageMiB = 0
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// Create 2 assigned pods
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+
+	cfg := testConfig()
+	cfg.HPADownscaleStabilization = 5 * time.Minute // long stabilization period
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	// Controller just started - this is the key difference from other tests
+	ctrl.startedAt = time.Now()
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	supervisor := ctrl.supervisor(fn)
+
+	// Set heartbeat with zero in-flight requests - this would normally trigger scale-down
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+		Function:         fn,
+		Timestamp:        time.Now(),
+		InFlightRequests: 0,
+	})
+
+	// Get initial pod count
+	initialPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(initialPods.Items) == 2, "expected 2 initial pods")
+
+	// Call converge - it should skip scale-down because controller is newly started
+	err = supervisor.converge(ctx)
+	assert.NilError(t, err)
+
+	// Verify pods were NOT deleted (scale-down was skipped)
+	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(finalPods.Items) == 2,
+		"newly-started controller should not scale down: expected 2 pods, got %d", len(finalPods.Items))
+
+	// Verify the recommendation was still recorded in the stabilization window
+	supervisor.mu.Lock()
+	windowSize := len(supervisor.stabilizationWindow)
+	supervisor.mu.Unlock()
+	assert.Assert(t, windowSize >= 1, "stabilization window should have recorded the recommendation")
+}
+
+// TestConvergeUsesMaxRecommendationWhenScalingDown verifies that when scaling down
+// (not to zero), converge uses the maximum recommendation from the stabilization
+// window instead of the current decision. This prevents aggressive scale-down
+// when load has recently been high.
+func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	// Use in-flight requests for scaling decisions
+	fn.Scale.TargetInFlightRequests = 1
+	fn.Scale.TargetCPUUsageMilli = 0
+	fn.Scale.TargetMemoryUsageMiB = 0
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// Create 3 assigned pods
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+
+	cfg := testConfig()
+	cfg.HPADownscaleStabilization = 5 * time.Minute // long stabilization period
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	// Controller has been running long enough to allow scale-down
+	ctrl.startedAt = time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second))
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	supervisor := ctrl.supervisor(fn)
+
+	// Pre-populate stabilization window with a high recommendation (3 instances)
+	// This simulates recent high load
+	supervisor.stabilizationWindow = []Recommendation{
+		{DesiredInstances: 3, Timestamp: time.Now().Add(-10 * time.Second)},
+	}
+
+	// Set heartbeat with LOW in-flight requests - current decision would be 1 instance
+	// But stabilization window has max recommendation of 3
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+		Function:         fn,
+		Timestamp:        time.Now(),
+		InFlightRequests: 1, // with TargetInFlightRequests=1, this means desired=1
+	})
+
+	// Call converge - it should use max recommendation (3), not current decision (1)
+	err = supervisor.converge(ctx)
+	assert.NilError(t, err)
+
+	// Verify all 3 pods are still running (stabilized to max recommendation)
+	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(finalPods.Items) == 3,
+		"stabilization should prevent scale-down: expected 3 pods, got %d", len(finalPods.Items))
+
+	// Verify the new recommendation was added to stabilization window
+	supervisor.mu.Lock()
+	windowSize := len(supervisor.stabilizationWindow)
+	maxRec := slices.MaxFunc(supervisor.stabilizationWindow, func(a, b Recommendation) int {
+		return a.DesiredInstances - b.DesiredInstances
+	})
+	supervisor.mu.Unlock()
+	assert.Assert(t, windowSize >= 2, "stabilization window should have multiple recommendations")
+	assert.Assert(t, maxRec.DesiredInstances == 3, "max recommendation should still be 3")
 }
 
 // TestConvergeConcurrentAccess verifies that concurrent calls to
@@ -811,16 +949,12 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iterationsPerGoroutine {
-				instances := []*function.Instance{
-					fixture.NewInstance(t, fn, nil),
-					fixture.NewInstance(t, fn, nil),
-				}
 				// Update heartbeat timestamp to keep function alive
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
 					Function:  fn,
 					Timestamp: time.Now(),
 				})
-				_, _ = supervisor.converge(ctx, instances)
+				_ = supervisor.converge(ctx)
 			}
 		}()
 	}
@@ -1941,30 +2075,6 @@ func TestCleanupStuckInstances(t *testing.T) {
 				assert.Assert(t, len(instances) == 1)
 			},
 		},
-		{
-			name: "returns instances unchanged when controller not responsible",
-			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
-
-				// create a pod that was assigned long ago but never became ready
-				pod := fixture.NewAssignedPod(t, state.fn, nil)
-				stuckTime := time.Now().Add(-state.ctrl.config.FunctionAssignTimeout * 3)
-				pod.Annotations[key.AssignedAt.Annotation] = stuckTime.Format(time.RFC3339)
-				delete(pod.Annotations, key.ReadyAt.Annotation)
-				state.fakeKubernetes.Tracker().Add(pod)
-
-				// Make this controller not responsible by changing its pod IP
-				state.ctrl.config.PodIP = "0.0.0.0"
-			},
-			check: func(t *testing.T, state *testState, instances []*function.Instance) {
-				// Instances should be returned unchanged
-				assert.Assert(t, len(instances) == 1)
-				// Pod should still exist (not terminated)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == 1)
-			},
-		},
 	}
 
 	for _, tc := range testCases {
@@ -2036,25 +2146,6 @@ func TestReplaceStaleInstances(t *testing.T) {
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				assert.Assert(t, len(instances) == 1)
-			},
-		},
-		{
-			// When controller is not responsible for the function, instances should be returned unchanged
-			name: "returns instances unchanged when controller not responsible",
-			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
-
-				// Make this controller not responsible by changing its pod IP
-				state.ctrl.config.PodIP = "0.0.0.0"
-			},
-			check: func(t *testing.T, state *testState, instances []*function.Instance) {
-				// Instances should be returned unchanged
-				assert.Assert(t, len(instances) == 1)
-				// Pod should still exist (not terminated)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
-				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == 1)
 			},
 		},
 		{
@@ -2357,9 +2448,12 @@ func TestReplaceStaleInstances(t *testing.T) {
 			}
 
 			supervisor := state.ctrl.supervisor(state.fn)
-			instances = supervisor.replaceStaleInstances(ctx, instances)
+			supervisor.replaceStaleInstances(ctx, instances, len(instances))
 
-			tc.check(t, state, instances)
+			// Fetch fresh instances to check results
+			finalInstances, err := state.ctrl.getInstances(ctx, state.fn)
+			assert.NilError(t, err)
+			tc.check(t, state, finalInstances)
 		})
 	}
 }
@@ -2394,11 +2488,101 @@ func TestReplaceStaleInstancesNamespaceListerNotFound(t *testing.T) {
 		fixture.NewInstance(t, fn, nil),
 	}
 
-	// Call replaceStaleInstances - should return instances unchanged
-	result := supervisor.replaceStaleInstances(ctx, instances)
+	// Call replaceStaleInstances - should return void and do nothing
+	supervisor.replaceStaleInstances(ctx, instances, len(instances))
 
-	// Verify instances are returned unchanged
-	assert.Assert(t, len(result) == 2)
+	// Verify no pods were created in the unknown namespace
+	pods, err := fakeKubernetes.CoreV1().Pods("unknown-namespace").List(ctx, metav1.ListOptions{})
+	assert.NilError(t, err)
+	assert.Assert(t, len(pods.Items) == 0, "should not have created any pods")
+}
+
+// TestReplaceStaleInstancesCountsUnreadyInstances verifies that the maxInstances+1
+// check in replaceStaleInstances counts ALL instances (ready + unready), not just
+// the ready instances passed as a parameter. This is a regression test for a bug
+// where currentTotalInstances was initialized from len(instances), which only
+// included ready instances (since scaleLocal returns only ready instances).
+// The fix fetches fresh instances from the cluster to get the true total count.
+func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.Scale.MaxInstances = 2
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+	// Create the old (stale) replica set
+	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+	staleReplicaSetName := staleReplicaSet.Name
+	staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
+	fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+	// Create the new replica set
+	newReplicaSet := fixture.NewReplicaSet(t, fn)
+	fakeKubernetes.Tracker().Add(newReplicaSet)
+
+	// Create 1 stale ready pod on the old replica set
+	stalePod := fixture.NewAssignedPod(t, fn, nil)
+	stalePod.Name = "stale-ready-pod"
+	stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+	fakeKubernetes.Tracker().Add(stalePod)
+
+	// Create 2 unready pods (assigned but no ReadyAt annotation)
+	// These bring the total to 3 (maxInstances+1 = 3), but only 1 is ready
+	for i := range 2 {
+		unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+		unreadyPod.Name = fmt.Sprintf("unready-pod-%d", i)
+		delete(unreadyPod.Annotations, key.ReadyAt.Annotation) // make it unready
+		fakeKubernetes.Tracker().Add(unreadyPod)
+	}
+
+	// Add available pod that should NOT be used (we're already at maxInstances+1)
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Get ALL instances from cluster
+	allInstances, err := ctrl.getInstances(ctx, fn)
+	assert.NilError(t, err)
+	assert.Assert(t, len(allInstances) == 3, "expected 3 total instances, got %d", len(allInstances))
+
+	// Filter to only ready instances (simulating what scaleLocal returns)
+	var readyInstances []*function.Instance
+	for _, inst := range allInstances {
+		if !inst.ReadyAt.IsZero() {
+			readyInstances = append(readyInstances, inst)
+		}
+	}
+	assert.Assert(t, len(readyInstances) == 1, "expected 1 ready instance, got %d", len(readyInstances))
+
+	// Call replaceStaleInstances with only ready instances
+	// Before the fix: len(readyInstances)=1 < maxInstances+1=3, so it would try to replace
+	// After the fix: we explicitly pass 3 total, so it correctly skips replacement
+	supervisor := ctrl.supervisor(fn)
+	supervisor.replaceStaleInstances(ctx, readyInstances, len(allInstances))
+
+	// Verify instances in cluster haven't changed (stale one kept)
+	// Verify no new pods were assigned (total should still be 3 assigned + 1 available)
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(pods.Items) == 3, "expected 3 assigned pods (no new replacement), got %d", len(pods.Items))
+
+	// Verify the stale pod still exists
+	foundStale := false
+	for _, pod := range pods.Items {
+		if pod.Name == "stale-ready-pod" {
+			foundStale = true
+			break
+		}
+	}
+	assert.Assert(t, foundStale, "stale pod should still exist when unready instances push total to maxInstances+1")
 }
 
 // TestSupervisorLoopErrorHandling verifies that when errors occur in the loop
@@ -2613,11 +2797,8 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	// Call converge directly - this should:
 	// 1. Scale up from 2 to 3 based on the heartbeat
 	// 2. Replace the 2 stale instances with fresh ones (since we're not scaling down)
-	resultInstances, err := supervisor.converge(ctx, instances)
+	err = supervisor.converge(ctx)
 	assert.NilError(t, err)
-
-	// Should have 3 instances (2 replaced + 1 new)
-	assert.Assert(t, len(resultInstances) == 3, "expected 3 instances, got %d", len(resultInstances))
 
 	// Verify stale pods are gone and we have fresh pods
 	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
@@ -2722,22 +2903,19 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	// Call converge directly - this should:
 	// 1. Scale down from 3 to 1 (deleting oldest instances first, which are the stale ones)
 	// 2. NOT replace stale instances (we're scaling down, so it's wasteful)
-	resultInstances, err := supervisor.converge(ctx, instances)
+	err = supervisor.converge(ctx)
 	assert.NilError(t, err)
 
-	// Should have 1 instance
-	assert.Assert(t, len(resultInstances) == 1, "expected 1 instance, got %d", len(resultInstances))
-
-	// Verify the remaining instance is the fresh one (newest, so not deleted)
-	assert.Assert(t, resultInstances[0].Name == "fresh-pod",
-		"expected fresh-pod to be kept, got %s", resultInstances[0].Name)
-
-	// Verify available pods were NOT used (no migrations happened)
+	// Verify remaining instances in cluster
 	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
 	})
 	assert.NilError(t, err)
+
+	// Should have 1 instance
 	assert.Assert(t, len(pods.Items) == 1, "expected 1 pod, got %d", len(pods.Items))
+
+	// Verify the remaining instance is the fresh one (newest, so not deleted)
 	assert.Assert(t, pods.Items[0].Name == "fresh-pod",
 		"expected fresh-pod to remain, got %s", pods.Items[0].Name)
 }
