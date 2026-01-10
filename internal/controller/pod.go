@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"aidanwoods.dev/go-paseto"
@@ -22,9 +21,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/go-json-experiment/json"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/trace"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
-	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,121 +36,6 @@ var (
 	doesNotHaveTenantSelector = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.DoesNotExist, nil)))
 	otelHTTPClient            = &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 )
-
-func (ctrl *Controller) convergeNamespace(ctx context.Context, namespace string) error {
-	ctx, span := telemetry.TraceRoot(ctx, "controller.converge_namespace", trace.WithAttributes(key.Namespace.Otel(namespace)...))
-	defer span.End()
-
-	pods, err := ctrl.listPods(namespace, hasTenantSelector)
-	if err != nil {
-		return fmt.Errorf("failed to get assigned pods: %w", err)
-	}
-
-	type fnInstances struct {
-		fn        *function.Function
-		instances []*function.Instance
-	}
-
-	hashInstances := make(map[function.Hash]*fnInstances)
-	terminatedStaleInstances := make(map[string]int32)
-
-	for _, pod := range pods {
-		instance, err := ctrl.instanceFromPod(pod)
-		if err != nil {
-			log.Warn(ctx, "failed to get instance from pod", key.Error.Slog(err), key.Pod.Slog(pod))
-			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
-			if err != nil {
-				log.Error(ctx, "failed to terminate pod", key.Error.Slog(err), key.Pod.Slog(pod))
-			}
-			continue
-		}
-
-		ctx := log.With(ctx, key.Instance.Slog(instance))
-
-		responsibleIP := ctrl.ring.Get(instance)
-		if responsibleIP != ctrl.config.PodIP {
-			log.Trace(ctx, "skipping scaling for function, not assigned to this controller", key.ResponsibleIP.Slog(responsibleIP))
-			continue
-		}
-
-		if _, ok := hashInstances[instance.Hash()]; !ok {
-			hashInstances[instance.Hash()] = &fnInstances{fn: instance.Function} // ensure the function is in the map so that we loop over all the functions in the next step
-		}
-
-		// FIXME: this is true if the instance was assigned 3 minutes ago and it fails its readiness probe
-		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > ctrl.config.FunctionAssignTimeout*2 {
-			log.Warn(ctx, "terminating instance stuck in assigned state")
-			err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, pod.Name, metav1.DeleteOptions{})
-			if err != nil {
-				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
-			}
-			continue
-		}
-
-		replicaSet, err := ctrl.namespaceListers[namespace].replicaSetLister.ReplicaSets(namespace).Get(instance.ReplicaSet)
-		if err != nil {
-			log.Error(ctx, "failed to get replica set for instance", key.Error.Slog(err))
-			continue
-		}
-
-		if replicaSet.Status.Replicas > 0 {
-			// instance is running on a replica set that has replicas, so it isn't stale
-			hashInstances[instance.Hash()].instances = append(hashInstances[instance.Hash()].instances, instance)
-			continue
-		}
-
-		// this is a stale instance, find a replica set that has replicas
-		replicaSets, err := ctrl.namespaceListers[namespace].replicaSetLister.List(labels.SelectorFromSet(labels.Set{key.Deployment.Label: instance.Deployment}))
-		if err != nil {
-			log.Error(ctx, "failed to list replica sets", key.Error.Slog(err))
-			continue
-		}
-
-		var activeReplicaSet *appsv1.ReplicaSet
-		for _, replicaSet := range replicaSets {
-			if replicaSet.Status.Replicas > 0 {
-				activeReplicaSet = replicaSet
-				break
-			}
-		}
-
-		ctx = log.With(ctx, key.K8sReplicaSet.Slog(activeReplicaSet))
-
-		if activeReplicaSet != nil {
-			minAvailableReplicas := max(1, int32(float32(activeReplicaSet.Status.Replicas)/ctrl.config.AvailableReplicaDivisor))
-			availableReplicas := activeReplicaSet.Status.AvailableReplicas - terminatedStaleInstances[activeReplicaSet.Name]
-			if availableReplicas < minAvailableReplicas {
-				log.Info(ctx, "replica set does not have enough available replicas to terminate stale instance",
-					slog.Int("terminated_stale_instances", int(terminatedStaleInstances[activeReplicaSet.Name])),
-					slog.Int("min_available_replicas", int(minAvailableReplicas)),
-					slog.Int("available_replicas", int(availableReplicas)),
-				)
-				continue
-			}
-			terminatedStaleInstances[activeReplicaSet.Name]++
-		}
-
-		ctrl.supervisor(instance.Function).mu.Lock()
-		log.Info(ctx, "terminating stale instance")
-		err = ctrl.kubernetes.CoreV1().Pods(namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
-		if err != nil {
-			log.Error(ctx, "failed to terminate stale instance", key.Error.Slog(err))
-		}
-		ctrl.supervisor(instance.Function).mu.Unlock()
-	}
-
-	var wg sync.WaitGroup
-	for _, fnInstances := range hashInstances {
-		wg.Go(func() {
-			if _, err := ctrl.supervisor(fnInstances.fn).converge(ctx, fnInstances.instances); err != nil {
-				log.Error(ctx, "failed to scale function to desired instances", key.Error.Slog(err))
-			}
-		})
-	}
-	wg.Wait()
-
-	return nil
-}
 
 func (ctrl *Controller) assignPod(ctx context.Context, fn *function.Function) (instance *function.Instance, err error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")

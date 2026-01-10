@@ -14,6 +14,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/telemetry"
+	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -23,8 +24,12 @@ import (
 // Supervisor manages scaling decisions for a single function. It tracks
 // heartbeats from routers, maintains a stabilization window for
 // scale-down decisions, and coordinates with the controller to adjust
-// instance counts.
+// instance counts. Each Supervisor runs its own independent converge
+// loop so that functions don't block each other.
 type Supervisor struct {
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	once                sync.Once
 	mu                  sync.Mutex
 	fn                  *function.Function
 	ctrl                *Controller
@@ -32,12 +37,94 @@ type Supervisor struct {
 	stabilizationWindow []Recommendation
 }
 
-// supervisor gets or creates a supervisor for the given function.
+// supervisor returns the supervisor for the given function, creating it if necessary.
+// If the controller has been started (ctrl.ctx is set), the supervisor's loop will
+// be started automatically.
 func (ctrl *Controller) supervisor(fn *function.Function) *Supervisor {
 	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
 		return &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: xsync.NewMap[string, *function.Heartbeat]()}, false
 	})
+	supervisor.start(ctrl.ctx)
 	return supervisor
+}
+
+// discoverSupervisors discovers functions in the given namespace by listing
+// assigned pods and ensures supervisors exist for each unique function.
+// Supervisors are created even if this controller is not responsible for the
+// function, as they track scaling decisions that may be needed if responsibility
+// changes. Invalid pods (e.g., with malformed function annotations) are deleted.
+func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace string) error {
+	ctx, span := telemetry.TraceRoot(ctx, "controller.discover_supervisors", trace.WithAttributes(key.Namespace.Otel(namespace)...))
+	defer span.End()
+
+	pods, err := ctrl.listPods(namespace, hasTenantSelector)
+	if err != nil {
+		return fmt.Errorf("failed to get assigned pods: %w", err)
+	}
+
+	seenFunctions := make(map[function.Hash]bool)
+
+	for _, pod := range pods {
+		fn, err := ctrl.functionFromPod(pod)
+		if err != nil {
+			log.Warn(ctx, "failed to get function from pod", key.Error.Slog(err), key.Pod.Slog(pod))
+			err = ctrl.deletePod(ctx, pod.Namespace, pod.Name, metav1.DeleteOptions{})
+			if err != nil {
+				log.Error(ctx, "failed to terminate pod", key.Error.Slog(err), key.Pod.Slog(pod))
+			}
+			continue
+		}
+
+		if !seenFunctions[fn.Hash()] {
+			seenFunctions[fn.Hash()] = true
+			ctrl.supervisor(fn) // ensure supervisor exists; its loop handles scaling
+		}
+	}
+
+	return nil
+}
+
+// start begins the supervisor's independent converge loop. It is safe
+// to call multiple times; only the first call with a valid context will start the loop.
+// If ctx is nil, this is a no-op and does not consume the sync.Once.
+func (s *Supervisor) start(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	s.once.Do(func() {
+		s.ctx, s.cancel = context.WithCancel(ctx)
+		go s.loop()
+	})
+}
+
+// loop runs the converge loop at the configured interval until the
+// supervisor's context is cancelled. When the loop exits (either from
+// scale-to-0 or controller shutdown), it removes itself from the
+// supervisors map.
+func (s *Supervisor) loop() {
+	defer s.ctrl.supervisors.Delete(s.fn.Hash())
+
+	timer.Loop(s.ctx, s.ctrl.config.ScaleInterval, func(ctx context.Context) error {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(ctx, "panic in supervisor loop", key.Error.Slog(fmt.Errorf("%v", r)))
+			}
+		}()
+
+		if err := s.converge(ctx); err != nil {
+			log.Error(ctx, "failed to converge", key.Error.Slog(err))
+		}
+
+		return nil
+	})
+}
+
+// stop cancels the supervisor's converge loop context, causing the
+// loop to exit.
+func (s *Supervisor) stop() {
+	if s.cancel != nil {
+		s.cancel()
+	}
 }
 
 // heartbeat updates the heartbeat for a specific router if it's newer
@@ -86,43 +173,72 @@ func (s *Supervisor) combinedHeartbeat(instances []*function.Instance) *function
 	return heartbeat
 }
 
+// recordRecommendation adds a scaling recommendation to the stabilization window,
+// prunes expired entries, and returns the maximum recommendation within the window.
+func (s *Supervisor) recordRecommendation(desiredInstances int) Recommendation {
+	now := time.Now()
+	cutoff := now.Add(-s.ctrl.config.HPADownscaleStabilization)
+	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{
+		DesiredInstances: desiredInstances,
+		Timestamp:        now,
+	})
+	s.stabilizationWindow = slices.DeleteFunc(s.stabilizationWindow, func(r Recommendation) bool {
+		return r.Timestamp.Before(cutoff)
+	})
+	return slices.MaxFunc(s.stabilizationWindow, func(a, b Recommendation) int {
+		return a.DesiredInstances - b.DesiredInstances
+	})
+}
+
 // converge is the main scaling loop that calculates the desired number
 // of instances based on the combined heartbeat and current instances,
 // applies the stabilization window for scale-down decisions, and calls
 // scale to reconcile the actual instance count.
-func (s *Supervisor) converge(ctx context.Context, instances []*function.Instance) ([]*function.Instance, error) {
+//
+// The order of operations is designed for efficiency:
+//  1. Calculate scaling decision based on current instances
+//  2. Check responsibility - return early if not responsible (still tracks recommendations)
+//  3. Cleanup stuck instances (cheap - just deletes broken pods)
+//  4. Execute scaling (scale up or down as needed)
+//  5. Replace stale instances only when not scaling down
+//
+// During scale-down, stale instances are naturally deleted first since
+// scale() deletes oldest instances first and stale instances are
+// typically older (assigned before deployment).
+func (s *Supervisor) converge(ctx context.Context) error {
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.converge")
 	defer span.End()
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	instances, err := s.ctrl.getInstances(ctx, s.fn)
+	if err != nil {
+		return fmt.Errorf("failed to get instances: %w", err)
+	}
+
+	// 1. Calculate scaling decision
 	heartbeat := s.combinedHeartbeat(instances)
 	ctx = telemetry.With(ctx, key.Function.Attr(s.fn), key.Heartbeat.Attr(heartbeat))
 
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
-
-	s.mu.Lock()
-	now := time.Now()
-	stabilizationCutoff := now.Add(-s.ctrl.config.HPADownscaleStabilization)
-	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{DesiredInstances: scalingDecision.DesiredInstances, Timestamp: now})
-	s.stabilizationWindow = slices.DeleteFunc(s.stabilizationWindow, func(r Recommendation) bool {
-		return r.Timestamp.Before(stabilizationCutoff)
-	})
-	maxRecommendation := slices.MaxFunc(s.stabilizationWindow, func(a, b Recommendation) int { return a.DesiredInstances - b.DesiredInstances })
-	s.mu.Unlock()
+	maxRecommendation := s.recordRecommendation(scalingDecision.DesiredInstances)
 
 	currentInstances := len(instances)
-	if scalingDecision.DesiredInstances < currentInstances {
-		// we're scaling down
+	isScalingDown := scalingDecision.DesiredInstances < currentInstances || scalingDecision.DesiredInstances == 0
+
+	if isScalingDown {
 		if time.Since(s.ctrl.startedAt) < s.ctrl.config.HPADownscaleStabilization {
 			// the controller hasn't been running long enough to record
 			// recommendations or receive heartbeats, so don't scale
 			// anything down yet
 			log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", s.ctrl.startedAt))
-			return instances, nil
+			return nil
 		}
 
 		if scalingDecision.DesiredInstances == 0 {
-			// we're scaling to 0, so remove ourself from the supervisors map when we're done
-			defer s.ctrl.supervisors.Delete(s.fn.Hash())
+			// we're scaling to 0, so stop when we're done scaling
+			defer s.stop()
 		} else {
 			// we're scaling down, but not to 0, so scale down to the max recommended instances within the stabilization window
 			// if we're already lower than the max recommended instances, then use the current number of instances (i.e. don't scale up)
@@ -130,7 +246,30 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 		}
 	}
 
-	return s.scale(ctx, scalingDecision)
+	// 2. Check responsibility
+	responsibleIP := s.ctrl.ring.Get(s.fn)
+	if responsibleIP != s.ctrl.config.PodIP {
+		return nil
+	}
+
+	// 3. Cleanup stuck instances (cheap, run before scaling execution)
+	instances = s.cleanupStuckInstances(ctx, instances)
+
+	// 4. Execute scaling
+	ready, unready, err := s.scaleWithoutLock(ctx, instances, scalingDecision)
+	if err != nil {
+		return err
+	}
+
+	// 5. Replace stale instances only when not scaling down.
+	// During scale-down, stale instances are naturally deleted first
+	// (oldest instances deleted first, and stale instances are typically older).
+	// This avoids wasteful pod assignments when we're reducing capacity anyway.
+	if !isScalingDown {
+		s.replaceStaleInstances(ctx, ready, len(ready)+len(unready))
+	}
+
+	return nil
 }
 
 // scale executes the scaling decision by assigning new pods for
@@ -139,21 +278,30 @@ func (s *Supervisor) converge(ctx context.Context, instances []*function.Instanc
 // function. For scale-down, it deletes unready instances first, then
 // oldest ready instances.
 func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*function.Instance, error) {
-	ctx, span := telemetry.Trace(ctx, "controller.supervisor.scale")
-	defer span.End()
-
-	start := time.Now()
 	s.mu.Lock()
-	if time.Since(start) > 10*time.Millisecond {
-		_, span := telemetry.Trace(ctx, "controller.supervisor.scale.lock", trace.WithTimestamp(start))
-		span.End()
-	}
 	defer s.mu.Unlock()
+
+	responsibleIP := s.ctrl.ring.Get(s.fn)
+	if responsibleIP != s.ctrl.config.PodIP {
+		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Slog(responsibleIP))
+		return s.ctrl.getControllerClient(responsibleIP).Scale(ctx, s.fn, decision.DesiredInstances, decision.Reason)
+	}
 
 	instances, err := s.ctrl.getInstances(ctx, s.fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
+
+	ready, _, err := s.scaleWithoutLock(ctx, instances, decision)
+	return ready, err
+}
+
+// scaleWithoutLock is the internal implementation of scale that assumes
+// the caller already holds s.mu. It executes the scaling decision
+// without forwarding to another controller.
+func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function.Instance, decision ScalingDecision) ([]*function.Instance, []*function.Instance, error) {
+	ctx, span := telemetry.Trace(ctx, "controller.supervisor.scale")
+	defer span.End()
 
 	// split instances into ready and unready
 	var unreadyInstances []*function.Instance
@@ -181,13 +329,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 	if decision.DesiredInstances == len(readyInstances) && decision.DesiredInstances > len(unreadyInstances) {
 		// we already have the desired number of ready instances and we
 		// don't have extra unready instances, so there's nothing to do
-		return readyInstances, nil
-	}
-
-	responsibleIP := s.ctrl.ring.Get(s.fn)
-	if responsibleIP != s.ctrl.config.PodIP {
-		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Slog(responsibleIP))
-		return s.ctrl.getControllerClient(responsibleIP).Scale(ctx, s.fn, decision.DesiredInstances, decision.Reason)
+		return readyInstances, unreadyInstances, nil
 	}
 
 	if decision.DesiredInstances > len(readyInstances) {
@@ -195,7 +337,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 		if len(readyInstances)+len(unreadyInstances) >= s.fn.Scale.MaxInstances+1 {
 			// we have too many instances in total, so we can't scale up
 			log.Info(ctx, "skipping scale up because function has too many instances")
-			return readyInstances, nil
+			return readyInstances, unreadyInstances, nil
 		}
 
 		log.Info(ctx, "scaling function up")
@@ -204,7 +346,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 		for range decision.DesiredInstances - len(readyInstances) {
 			instance, err := s.ctrl.assignPod(ctx, s.fn)
 			if err != nil {
-				return nil, fmt.Errorf("failed to assign pod: %w", err)
+				return nil, nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
 			readyInstances = append(readyInstances, instance)
 		}
@@ -212,7 +354,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 		// we were asked to scale up to 1 instance because there were no
 		// ready instances at the time of the request, but now we have
 		// at least 1 ready instance, so there's nothing to do
-		return readyInstances, nil
+		return readyInstances, unreadyInstances, nil
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
@@ -222,9 +364,11 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 		for _, unreadyInstance := range unreadyInstances {
 			err := s.ctrl.deletePod(ctx, unreadyInstance.Namespace, unreadyInstance.Name, metav1.DeleteOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to delete pod: %w", err)
+				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
 		}
+		// all unready instances are deleted
+		unreadyInstances = nil
 
 		// sort ready instances by assigned at in descending order (newest first)
 		slices.SortFunc(readyInstances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
@@ -234,13 +378,106 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 			instance := readyInstances[i]
 			err := s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
-				return nil, fmt.Errorf("failed to delete pod: %w", err)
+				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
 			readyInstances = readyInstances[:i]
 		}
 	}
 
-	return readyInstances, nil
+	return readyInstances, unreadyInstances, nil
+}
+
+// cleanupStuckInstances terminates instances that are stuck in the
+// assigned state (not ready) for longer than FunctionAssignTimeout*2.
+// This is a cheap operation (just deletes) and should be called before
+// scaling execution to remove broken pods from consideration.
+func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*function.Instance) []*function.Instance {
+	return slices.DeleteFunc(instances, func(instance *function.Instance) bool {
+		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > s.ctrl.config.FunctionAssignTimeout*2 {
+			ctx := log.With(ctx, key.Instance.Slog(instance))
+			log.Warn(ctx, "terminating instance stuck in assigned state")
+			err := s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
+			if err != nil {
+				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
+			}
+			return true // Remove from slice
+		}
+		return false // Keep in slice
+	})
+}
+
+// replaceStaleInstances detects instances running on replica sets
+// that have been scaled to 0 (e.g., after a deployment update) and
+// replaces them. For each stale instance, it first assigns a new pod
+// from the active replica set (temporarily exceeding max instances if
+// needed), then terminates the stale instance. This guarantees
+// availability during deployment rollouts.
+//
+// This function should only be called when NOT scaling down, as
+// scale-down naturally deletes oldest instances first (which are
+// typically stale). Calling this during scale-down would create
+// wasteful pod assignments.
+//
+// To prevent unbounded pod creation when deletePod fails repeatedly,
+// this function will not assign new replacement pods if the total
+// instance count reaches or exceeds maxInstances+1. In this case, the
+// stale instance is kept and scale() will handle cleanup on subsequent
+// iterations.
+func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*function.Instance, currentTotalInstances int) {
+	namespaceLister, ok := s.ctrl.namespaceListers[s.fn.Namespace]
+	if !ok {
+		log.Warn(ctx, "namespace lister not found for function namespace", key.Namespace.Slog(s.fn.Namespace))
+		return
+	}
+
+	for _, instance := range instances {
+		replicaSet, err := namespaceLister.replicaSetLister.ReplicaSets(s.fn.Namespace).Get(instance.ReplicaSet)
+		if err != nil {
+			log.Warn(ctx, "failed to get replica set for instance", key.Error.Slog(err), key.Instance.Slog(instance))
+			continue
+		}
+
+		if replicaSet.Status.Replicas > 0 {
+			// Instance is on an active replica set, not stale
+			continue
+		}
+
+		// Instance is stale - scale up first to ensure a replacement, then terminate
+		ctx := log.With(ctx, key.Instance.Slog(instance))
+
+		// Check if we're already at maxInstances+1 to prevent unbounded pod creation.
+		// This can happen if a previous iteration assigned a replacement but failed
+		// to delete the stale pod. In this case, keep the stale instance and let
+		// scale() handle cleanup.
+		if currentTotalInstances >= s.fn.Scale.MaxInstances+1 {
+			log.Info(ctx, "skipping stale instance replacement, already at maxInstances+1")
+			continue
+		}
+
+		log.Info(ctx, "replacing stale instance")
+
+		// Assign a new pod from the active replica set (temporarily exceeding max instances)
+		_, err = s.ctrl.assignPod(ctx, s.fn)
+		if err != nil {
+			log.Error(ctx, "failed to assign replacement pod for stale instance", key.Error.Slog(err))
+			continue
+		}
+
+		// Increment the counter to account for the newly assigned pod. This ensures
+		// we don't exceed maxInstances+1 when processing multiple stale instances.
+		currentTotalInstances++
+
+		// Terminate the stale instance now that a replacement has been assigned
+		err = s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
+		if err != nil {
+			log.Error(ctx, "failed to terminate stale instance", key.Error.Slog(err))
+			// If deletion fails, currentTotalInstances remains incremented, preventing
+			// further replacements until the stale pod is cleaned up.
+		} else {
+			// Delete succeeded, decrement counter to allow more replacements in this loop
+			currentTotalInstances--
+		}
+	}
 }
 
 // getReadyInstance returns a ready instance for the function, scaling
