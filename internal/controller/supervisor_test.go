@@ -2462,46 +2462,42 @@ func TestReplaceStaleInstances(t *testing.T) {
 
 // TestReplaceStaleInstancesConcurrencyLimit verifies that the controller limits
 // concurrent stale instance replacements according to the configured limit.
+// The semaphore is shared across all supervisors, so this test runs multiple
+// supervisors concurrently to verify the limit is enforced globally.
 func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 	t.Parallel()
 
-	type testState struct {
-		fn             *function.Function
-		cfg            *Config
-		fakeKubernetes *fake.Clientset
-		ctrl           *Controller
-		maxConcurrent  int64 // observed max concurrent replacements
-	}
-
 	testCases := []struct {
-		name                  string
-		limit                 int
-		numStalePodsToReplace int
-		check                 func(*testing.T, *testState)
+		name         string
+		limit        int
+		numFunctions int
+		stalePerFunc int
+		wantMaxConc  int64 // expected max concurrent (should equal limit when there's enough contention)
+		wantMinConc  int64 // minimum expected concurrent (to verify we actually achieved concurrency)
 	}{
 		{
-			name:                  "limit of 1 allows only one concurrent replacement",
-			limit:                 1,
-			numStalePodsToReplace: 3,
-			check: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.maxConcurrent <= 1, "max concurrent should be <= 1, got %d", state.maxConcurrent)
-			},
+			name:         "limit of 1 allows only one concurrent replacement",
+			limit:        1,
+			numFunctions: 3,
+			stalePerFunc: 2,
+			wantMaxConc:  1,
+			wantMinConc:  1,
 		},
 		{
-			name:                  "limit of 2 allows two concurrent replacements",
-			limit:                 2,
-			numStalePodsToReplace: 4,
-			check: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.maxConcurrent <= 2, "max concurrent should be <= 2, got %d", state.maxConcurrent)
-			},
+			name:         "limit of 2 allows two concurrent replacements",
+			limit:        2,
+			numFunctions: 4,
+			stalePerFunc: 2,
+			wantMaxConc:  2,
+			wantMinConc:  2,
 		},
 		{
-			name:                  "limit of 3 allows three concurrent replacements",
-			limit:                 3,
-			numStalePodsToReplace: 6,
-			check: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.maxConcurrent <= 3, "max concurrent should be <= 3, got %d", state.maxConcurrent)
-			},
+			name:         "limit of 3 allows three concurrent replacements",
+			limit:        3,
+			numFunctions: 5,
+			stalePerFunc: 2,
+			wantMaxConc:  3,
+			wantMinConc:  3,
 		},
 	}
 
@@ -2509,7 +2505,7 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 
 			// Track concurrent replacements using atomic counter
@@ -2517,7 +2513,8 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 			var maxConcurrent int64
 			var mu sync.Mutex
 
-			// Create a slow handler that tracks concurrency
+			// Create a slow handler that tracks concurrency.
+			// The handler blocks long enough to ensure overlapping requests.
 			slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Increment counter when entering
 				current := atomic.AddInt64(&currentConcurrent, 1)
@@ -2529,8 +2526,8 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 				}
 				mu.Unlock()
 
-				// Sleep to keep the assignment active
-				time.Sleep(50 * time.Millisecond)
+				// Sleep to keep the assignment active and create contention
+				time.Sleep(100 * time.Millisecond)
 
 				// Decrement counter when exiting
 				atomic.AddInt64(&currentConcurrent, -1)
@@ -2538,53 +2535,82 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			state := &testState{
-				fn:             fixture.NewFunction(t),
-				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			// Create multiple functions, each with stale instances
+			functions := make([]*function.Function, tc.numFunctions)
+			staleReplicaSetNames := make([]string, tc.numFunctions)
+
+			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+			for i := range tc.numFunctions {
+				fn := fixture.NewFunction(t)
+				fn.Scale.MaxInstances = tc.stalePerFunc + 10 // ensure we don't hit max instances limit
+				functions[i] = fn
+
+				// Create stale replica set (scaled to 0)
+				staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+				staleReplicaSetNames[i] = staleReplicaSet.Name
+				staleReplicaSet.Status.Replicas = 0
+				fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+				// Create new replica set
+				fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, fn))
+
+				// Create stale assigned pods on old replica set
+				for j := range tc.stalePerFunc {
+					assignedPod := fixture.NewAssignedPod(t, fn, nil)
+					assignedPod.Name = fmt.Sprintf("stale-pod-%d-%d", i, j)
+					assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetNames[i]
+					fakeKubernetes.Tracker().Add(assignedPod)
+				}
+
+				// Create available pods with slow handler for replacements
+				for j := range tc.stalePerFunc {
+					availablePod := fixture.NewAvailablePod(t, fn, slowHandler)
+					availablePod.Name = fmt.Sprintf("available-pod-%d-%d", i, j)
+					fakeKubernetes.Tracker().Add(availablePod)
+				}
 			}
 
-			state.cfg = testConfig()
-			state.cfg.MaxConcurrentStaleReplacements = tc.limit
-			state.fn.Scale.MaxInstances = tc.numStalePodsToReplace + 10 // ensure we don't hit max instances limit
+			cfg := testConfig()
+			cfg.MaxConcurrentStaleReplacements = tc.limit
 
-			// Create stale replica set (scaled to 0)
-			staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
-			staleReplicaSetName := staleReplicaSet.Name
-			staleReplicaSet.Status.Replicas = 0
-			state.fakeKubernetes.Tracker().Add(staleReplicaSet)
+			ctrl := New(cfg, nil, fakeKubernetes, nil)
 
-			// Create new replica set
-			state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
-
-			// Create stale assigned pods on old replica set
-			for i := 0; i < tc.numStalePodsToReplace; i++ {
-				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
-				assignedPod.Name = fmt.Sprintf("stale-pod-%d", i)
-				assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
-				state.fakeKubernetes.Tracker().Add(assignedPod)
-			}
-
-			// Create available pods with slow handler for replacements
-			for i := 0; i < tc.numStalePodsToReplace; i++ {
-				availablePod := fixture.NewAvailablePod(t, state.fn, slowHandler)
-				availablePod.Name = fmt.Sprintf("available-pod-%d", i)
-				state.fakeKubernetes.Tracker().Add(availablePod)
-			}
-
-			state.ctrl = New(state.cfg, nil, state.fakeKubernetes, nil)
-
-			err := state.ctrl.startInformers(ctx)
+			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			// Get instances and call replaceStaleInstances
-			instances, err := state.ctrl.getInstances(ctx, state.fn)
-			assert.NilError(t, err)
+			// Run replaceStaleInstances concurrently for all functions.
+			// This simulates multiple supervisors (for different functions) running at the same time,
+			// which is the scenario the semaphore is designed to limit.
+			var wg sync.WaitGroup
+			wg.Add(tc.numFunctions)
 
-			supervisor := state.ctrl.supervisor(state.fn)
-			supervisor.replaceStaleInstances(ctx, instances, len(instances))
+			for i := range tc.numFunctions {
+				go func(fn *function.Function) {
+					defer wg.Done()
 
-			state.maxConcurrent = maxConcurrent
-			tc.check(t, state)
+					instances, err := ctrl.getInstances(ctx, fn)
+					if err != nil {
+						t.Errorf("getInstances failed: %v", err)
+						return
+					}
+
+					supervisor := ctrl.supervisor(fn)
+					supervisor.replaceStaleInstances(ctx, instances, len(instances))
+				}(functions[i])
+			}
+
+			wg.Wait()
+
+			// Verify concurrency was limited to the configured max
+			assert.Assert(t, maxConcurrent <= tc.wantMaxConc,
+				"max concurrent should be <= %d, got %d", tc.wantMaxConc, maxConcurrent)
+
+			// Verify we actually achieved some concurrency (test validity check).
+			// If maxConcurrent is always 1, the test isn't proving anything.
+			assert.Assert(t, maxConcurrent >= tc.wantMinConc,
+				"max concurrent should be >= %d (test validity: ensure concurrent execution), got %d",
+				tc.wantMinConc, maxConcurrent)
 		})
 	}
 }
