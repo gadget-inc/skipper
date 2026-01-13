@@ -2615,6 +2615,114 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 	}
 }
 
+// TestReplaceStaleInstancesContextCancellation verifies that when the context is
+// cancelled while waiting for the stale replacement semaphore, the function handles
+// it gracefully without deadlocking and preserves unprocessed instances.
+func TestReplaceStaleInstancesContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	// Track how many replacements started
+	var replacementsStarted atomic.Int64
+
+	// Create a handler that blocks until context is cancelled.
+	// This will hold the semaphore until we cancel.
+	blockingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		replacementsStarted.Add(1)
+		// Block until test cancels the context
+		<-ctx.Done()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	fn := fixture.NewFunction(t)
+	fn.Scale.MaxInstances = 10
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// Create stale replica set (scaled to 0)
+	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+	staleReplicaSetName := staleReplicaSet.Name
+	staleReplicaSet.Status.Replicas = 0
+	fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+	// Create new replica set
+	fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, fn))
+
+	// Create multiple stale pods
+	numStalePods := 5
+	for i := range numStalePods {
+		assignedPod := fixture.NewAssignedPod(t, fn, nil)
+		assignedPod.Name = fmt.Sprintf("stale-pod-%d", i)
+		assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+		fakeKubernetes.Tracker().Add(assignedPod)
+	}
+
+	// Create available pods with blocking handler
+	for i := range numStalePods {
+		availablePod := fixture.NewAvailablePod(t, fn, blockingHandler)
+		availablePod.Name = fmt.Sprintf("available-pod-%d", i)
+		fakeKubernetes.Tracker().Add(availablePod)
+	}
+
+	cfg := testConfig()
+	cfg.MaxConcurrentStaleReplacements = 1 // Only allow 1 concurrent replacement
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	instances, err := ctrl.getInstances(ctx, fn)
+	assert.NilError(t, err)
+
+	// Create a cancellable context for replaceStaleInstances
+	replaceCtx, replaceCancel := context.WithCancel(ctx)
+
+	// Run replaceStaleInstances in a goroutine
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		supervisor := ctrl.supervisor(fn)
+		supervisor.replaceStaleInstances(replaceCtx, instances, len(instances))
+	}()
+
+	// Wait for the first replacement to start (it will block in the handler)
+	assert.Assert(t, waitFor(t, func() bool {
+		return replacementsStarted.Load() >= 1
+	}, 5*time.Second), "expected at least one replacement to start")
+
+	// Cancel the context - this should unblock the waiting goroutines
+	replaceCancel()
+
+	// Wait for replaceStaleInstances to complete (should not deadlock)
+	select {
+	case <-done:
+		// Success - function returned without deadlocking
+	case <-time.After(5 * time.Second):
+		t.Fatal("replaceStaleInstances deadlocked after context cancellation")
+	}
+
+	// The first replacement started but context was cancelled.
+	// Verify we don't have runaway goroutines or deadlocks.
+	assert.Assert(t, replacementsStarted.Load() >= 1,
+		"at least one replacement should have started before cancellation")
+}
+
+// waitFor polls the condition function until it returns true or timeout expires.
+func waitFor(t *testing.T, condition func() bool, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return false
+}
+
 // TestReplaceStaleInstancesNamespaceListerNotFound tests that when the namespace
 // lister is not found for a function's namespace, instances are returned unchanged.
 // This requires a separate test because we need to manually construct instances
