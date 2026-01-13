@@ -454,10 +454,17 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*fun
 			continue
 		}
 
+		// Acquire semaphore to limit concurrent stale instance replacements
+		if err := s.ctrl.staleReplacementSem.Acquire(ctx, 1); err != nil {
+			log.Warn(ctx, "failed to acquire stale replacement semaphore", key.Error.Slog(err))
+			continue
+		}
+
 		log.Info(ctx, "replacing stale instance")
 
 		// Assign a new pod from the active replica set (temporarily exceeding max instances)
 		_, err = s.ctrl.assignPod(ctx, s.fn)
+		s.ctrl.staleReplacementSem.Release(1)
 		if err != nil {
 			log.Error(ctx, "failed to assign replacement pod for stale instance", key.Error.Slog(err))
 			continue

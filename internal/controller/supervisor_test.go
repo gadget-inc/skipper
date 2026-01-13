@@ -3,8 +3,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2454,6 +2456,135 @@ func TestReplaceStaleInstances(t *testing.T) {
 			finalInstances, err := state.ctrl.getInstances(ctx, state.fn)
 			assert.NilError(t, err)
 			tc.check(t, state, finalInstances)
+		})
+	}
+}
+
+// TestReplaceStaleInstancesConcurrencyLimit verifies that the controller limits
+// concurrent stale instance replacements according to the configured limit.
+func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *function.Function
+		cfg            *Config
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+		maxConcurrent  int64 // observed max concurrent replacements
+	}
+
+	testCases := []struct {
+		name                  string
+		limit                 int
+		numStalePodsToReplace int
+		check                 func(*testing.T, *testState)
+	}{
+		{
+			name:                  "limit of 1 allows only one concurrent replacement",
+			limit:                 1,
+			numStalePodsToReplace: 3,
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.maxConcurrent <= 1, "max concurrent should be <= 1, got %d", state.maxConcurrent)
+			},
+		},
+		{
+			name:                  "limit of 2 allows two concurrent replacements",
+			limit:                 2,
+			numStalePodsToReplace: 4,
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.maxConcurrent <= 2, "max concurrent should be <= 2, got %d", state.maxConcurrent)
+			},
+		},
+		{
+			name:                  "limit of 3 allows three concurrent replacements",
+			limit:                 3,
+			numStalePodsToReplace: 6,
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.maxConcurrent <= 3, "max concurrent should be <= 3, got %d", state.maxConcurrent)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+
+			// Track concurrent replacements using atomic counter
+			var currentConcurrent int64
+			var maxConcurrent int64
+			var mu sync.Mutex
+
+			// Create a slow handler that tracks concurrency
+			slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Increment counter when entering
+				current := atomic.AddInt64(&currentConcurrent, 1)
+
+				// Update max observed concurrency
+				mu.Lock()
+				if current > maxConcurrent {
+					maxConcurrent = current
+				}
+				mu.Unlock()
+
+				// Sleep to keep the assignment active
+				time.Sleep(50 * time.Millisecond)
+
+				// Decrement counter when exiting
+				atomic.AddInt64(&currentConcurrent, -1)
+
+				w.WriteHeader(http.StatusOK)
+			})
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+
+			state.cfg = testConfig()
+			state.cfg.MaxConcurrentStaleReplacements = tc.limit
+			state.fn.Scale.MaxInstances = tc.numStalePodsToReplace + 10 // ensure we don't hit max instances limit
+
+			// Create stale replica set (scaled to 0)
+			staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+			staleReplicaSetName := staleReplicaSet.Name
+			staleReplicaSet.Status.Replicas = 0
+			state.fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+			// Create new replica set
+			state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+
+			// Create stale assigned pods on old replica set
+			for i := 0; i < tc.numStalePodsToReplace; i++ {
+				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				assignedPod.Name = fmt.Sprintf("stale-pod-%d", i)
+				assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+			}
+
+			// Create available pods with slow handler for replacements
+			for i := 0; i < tc.numStalePodsToReplace; i++ {
+				availablePod := fixture.NewAvailablePod(t, state.fn, slowHandler)
+				availablePod.Name = fmt.Sprintf("available-pod-%d", i)
+				state.fakeKubernetes.Tracker().Add(availablePod)
+			}
+
+			state.ctrl = New(state.cfg, nil, state.fakeKubernetes, nil)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			// Get instances and call replaceStaleInstances
+			instances, err := state.ctrl.getInstances(ctx, state.fn)
+			assert.NilError(t, err)
+
+			supervisor := state.ctrl.supervisor(state.fn)
+			supervisor.replaceStaleInstances(ctx, instances, len(instances))
+
+			state.maxConcurrent = maxConcurrent
+			tc.check(t, state)
 		})
 	}
 }
