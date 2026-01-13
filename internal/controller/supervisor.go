@@ -462,11 +462,15 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*fun
 
 		log.Info(ctx, "replacing stale instance")
 
-		// Assign a new pod from the active replica set (temporarily exceeding max instances)
-		_, err = s.ctrl.assignPod(ctx, s.fn)
-		s.ctrl.staleReplacementSem.Release(1)
-		if err != nil {
-			log.Error(ctx, "failed to assign replacement pod for stale instance", key.Error.Slog(err))
+		// Assign a new pod from the active replica set (temporarily exceeding max instances).
+		// Use a closure with defer to ensure the semaphore is released even if assignPod panics.
+		var assignErr error
+		func() {
+			defer s.ctrl.staleReplacementSem.Release(1)
+			_, assignErr = s.ctrl.assignPod(ctx, s.fn)
+		}()
+		if assignErr != nil {
+			log.Error(ctx, "failed to assign replacement pod for stale instance", key.Error.Slog(assignErr))
 			continue
 		}
 
