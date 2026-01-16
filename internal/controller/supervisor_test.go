@@ -2689,9 +2689,12 @@ func TestReplaceStaleInstancesContextCancellation(t *testing.T) {
 	}()
 
 	// Wait for the first replacement to start (it will block in the handler)
-	assert.Assert(t, waitFor(t, func() bool {
-		return replacementsStarted.Load() >= 1
-	}, 5*time.Second), "expected at least one replacement to start")
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		if replacementsStarted.Load() >= 1 {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for at least one replacement to start")
+	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(5*time.Second))
 
 	// Cancel the context - this should unblock the waiting goroutines
 	replaceCancel()
@@ -2708,19 +2711,6 @@ func TestReplaceStaleInstancesContextCancellation(t *testing.T) {
 	// Verify we don't have runaway goroutines or deadlocks.
 	assert.Assert(t, replacementsStarted.Load() >= 1,
 		"at least one replacement should have started before cancellation")
-}
-
-// waitFor polls the condition function until it returns true or timeout expires.
-func waitFor(t *testing.T, condition func() bool, timeout time.Duration) bool {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if condition() {
-			return true
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	return false
 }
 
 // TestReplaceStaleInstancesNamespaceListerNotFound tests that when the namespace
