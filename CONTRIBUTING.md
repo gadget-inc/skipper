@@ -148,6 +148,19 @@ This script will:
 
 Use this when you want to start fresh or remove all traces of Skipper from your local Kubernetes cluster.
 
+## Building & Pushing Docker Images
+
+Docker images are built and pushed manually via GitHub Actions. To trigger a build:
+
+1. Go to the [Actions](../../actions) tab in GitHub.
+1. Select the **cd** workflow from the sidebar.
+1. Click **Run workflow** and confirm.
+
+This will run CI first, then build multi-architecture images (amd64 and arm64) and push them to Google Artifact Registry. Images are tagged with the short commit SHA (e.g., `sha-abc1234`).
+
+> [!NOTE]
+> CI runs automatically on every pull request and push to `main`. Docker builds do not run automatically — they must be triggered manually as described above.
+
 ## Contribution Workflow
 
 1. Create a new branch and make your changes.
