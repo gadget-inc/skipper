@@ -15,6 +15,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.39.0
 	go.opentelemetry.io/otel/sdk v1.39.0
 	go.opentelemetry.io/otel/trace v1.39.0
+	golang.org/x/sync v0.19.0
 	gopkg.in/evanphx/json-patch.v4 v4.13.0
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0

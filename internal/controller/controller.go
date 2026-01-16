@@ -15,6 +15,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/puzpuzpuz/xsync/v4"
+	"golang.org/x/sync/semaphore"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -36,30 +37,32 @@ type namespaceLister struct {
 }
 
 type Controller struct {
-	config            *Config
-	ctx               context.Context
-	startedAt         time.Time
-	ring              *hashring.HashRing
-	supervisors       *xsync.Map[function.Hash, *Supervisor]
-	newClientFunc     NewClientFunc
-	controllerClients *xsync.Map[string, Client]
-	kubernetes        kubernetes.Interface
-	kubernetesMetrics kubernetesmetrics.Interface
-	namespaceListers  map[string]namespaceLister
-	podMetrics        *xsync.Map[string, metricsv1beta1.PodMetrics] // keyed by "namespace/pod-name"
+	config              *Config
+	ctx                 context.Context
+	startedAt           time.Time
+	ring                *hashring.HashRing
+	supervisors         *xsync.Map[function.Hash, *Supervisor]
+	newClientFunc       NewClientFunc
+	controllerClients   *xsync.Map[string, Client]
+	kubernetes          kubernetes.Interface
+	kubernetesMetrics   kubernetesmetrics.Interface
+	namespaceListers    map[string]namespaceLister
+	podMetrics          *xsync.Map[string, metricsv1beta1.PodMetrics] // keyed by "namespace/pod-name"
+	staleReplacementSem *semaphore.Weighted
 }
 
 func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
 	return &Controller{
-		config:            cfg,
-		ring:              hashring.New(hashring.WithWaitTime(cfg.HashRingWaitTime)),
-		supervisors:       xsync.NewMap[function.Hash, *Supervisor](),
-		newClientFunc:     newClientFunc,
-		controllerClients: xsync.NewMap[string, Client](),
-		kubernetes:        kubernetes,
-		kubernetesMetrics: kubernetesMetrics,
-		namespaceListers:  make(map[string]namespaceLister, len(cfg.FunctionNamespaces)),
-		podMetrics:        xsync.NewMap[string, metricsv1beta1.PodMetrics](),
+		config:              cfg,
+		ring:                hashring.New(hashring.WithWaitTime(cfg.HashRingWaitTime)),
+		supervisors:         xsync.NewMap[function.Hash, *Supervisor](),
+		newClientFunc:       newClientFunc,
+		controllerClients:   xsync.NewMap[string, Client](),
+		kubernetes:          kubernetes,
+		kubernetesMetrics:   kubernetesMetrics,
+		namespaceListers:    make(map[string]namespaceLister, len(cfg.FunctionNamespaces)),
+		podMetrics:          xsync.NewMap[string, metricsv1beta1.PodMetrics](),
+		staleReplacementSem: semaphore.NewWeighted(int64(cfg.MaxConcurrentStaleReplacements)),
 	}
 }
 

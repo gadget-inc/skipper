@@ -3,8 +3,10 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2418,6 +2420,73 @@ func TestReplaceStaleInstances(t *testing.T) {
 				assert.Assert(t, foundStale, "stale pod should still exist when at maxInstances+1")
 			},
 		},
+		{
+			// When the stale replacement semaphore is at capacity, replaceStaleInstances
+			// should return immediately without processing any stale instances.
+			// This verifies the non-blocking TryAcquire behavior.
+			name: "defers replacement when semaphore at capacity",
+			setup: func(t *testing.T, state *testState) {
+				// First, create the old (stale) replica set
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSetName := staleReplicaSet.Name
+				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
+				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+				// Now create the new replica set
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+
+				// Create a stale pod pointing to the old replica set
+				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod.Name = "stale-pod"
+				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				state.fakeKubernetes.Tracker().Add(stalePod)
+
+				// Add an available pod for replacement (should NOT be used)
+				availablePod := fixture.NewAvailablePod(t, state.fn, nil)
+				availablePod.Name = "available-pod"
+				state.fakeKubernetes.Tracker().Add(availablePod)
+			},
+			beforeTerminate: func(t *testing.T, ctx context.Context, state *testState, instances []*function.Instance) {
+				// Pre-acquire all semaphore slots to simulate it being at capacity.
+				// This will cause TryAcquire to fail, and replaceStaleInstances should return immediately.
+				cfg := testConfig()
+				acquired := state.ctrl.staleReplacementSem.TryAcquire(int64(cfg.MaxConcurrentStaleReplacements))
+				assert.Assert(t, acquired, "should be able to acquire semaphore in test setup")
+				// Note: We intentionally don't release it - we want it held during replaceStaleInstances
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// List all pods (not just assigned ones) to verify state
+				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+
+				// Count assigned vs available pods
+				var assignedPods, availablePods int
+				var foundStale, foundAvailable bool
+				for _, pod := range allPods.Items {
+					if pod.Annotations[key.AssignedAt.Annotation] != "" {
+						assignedPods++
+						if pod.Name == "stale-pod" {
+							foundStale = true
+						}
+					} else {
+						availablePods++
+						if pod.Name == "available-pod" {
+							foundAvailable = true
+						}
+					}
+				}
+
+				// Should have 1 assigned pod (the stale one, not replaced)
+				assert.Assert(t, assignedPods == 1, "expected 1 assigned pod (stale not replaced), got %d", assignedPods)
+
+				// Verify the stale pod is still there
+				assert.Assert(t, foundStale, "stale pod should still exist when semaphore at capacity")
+
+				// Verify available pod was NOT consumed (still available)
+				assert.Assert(t, foundAvailable, "available pod should not have been assigned")
+				assert.Assert(t, availablePods >= 1, "should have at least 1 available pod")
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -2456,6 +2525,130 @@ func TestReplaceStaleInstances(t *testing.T) {
 			tc.check(t, state, finalInstances)
 		})
 	}
+}
+
+// TestReplaceStaleInstancesConcurrencyLimit verifies that the controller limits
+// concurrent stale instance replacements using a non-blocking semaphore.
+// When the semaphore is at capacity, replaceStaleInstances returns immediately
+// without blocking, deferring the replacement to a subsequent converge iteration.
+func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+
+	// Track concurrent replacements using atomic counter
+	var currentConcurrent int64
+	var maxConcurrent int64
+	var totalReplacements int64
+	var mu sync.Mutex
+
+	// Create a slow handler that tracks concurrency.
+	// The handler blocks long enough to ensure overlapping requests.
+	slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Increment counter when entering
+		current := atomic.AddInt64(&currentConcurrent, 1)
+		atomic.AddInt64(&totalReplacements, 1)
+
+		// Update max observed concurrency
+		mu.Lock()
+		if current > maxConcurrent {
+			maxConcurrent = current
+		}
+		mu.Unlock()
+
+		// Sleep to keep the assignment active and create contention
+		time.Sleep(50 * time.Millisecond)
+
+		// Decrement counter when exiting
+		atomic.AddInt64(&currentConcurrent, -1)
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	const numFunctions = 5
+	const stalePerFunc = 2
+	const limit = 2
+
+	// Create multiple functions, each with stale instances
+	functions := make([]*function.Function, numFunctions)
+	staleReplicaSetNames := make([]string, numFunctions)
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	for i := range numFunctions {
+		fn := fixture.NewFunction(t)
+		fn.Scale.MaxInstances = stalePerFunc + 10 // ensure we don't hit max instances limit
+		functions[i] = fn
+
+		// Create stale replica set (scaled to 0)
+		staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+		staleReplicaSetNames[i] = staleReplicaSet.Name
+		staleReplicaSet.Status.Replicas = 0
+		fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+		// Create new replica set
+		fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, fn))
+
+		// Create stale assigned pods on old replica set
+		for j := range stalePerFunc {
+			assignedPod := fixture.NewAssignedPod(t, fn, nil)
+			assignedPod.Name = fmt.Sprintf("stale-pod-%d-%d", i, j)
+			assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetNames[i]
+			fakeKubernetes.Tracker().Add(assignedPod)
+		}
+
+		// Create available pods with slow handler for replacements
+		for j := range stalePerFunc {
+			availablePod := fixture.NewAvailablePod(t, fn, slowHandler)
+			availablePod.Name = fmt.Sprintf("available-pod-%d-%d", i, j)
+			fakeKubernetes.Tracker().Add(availablePod)
+		}
+	}
+
+	cfg := testConfig()
+	cfg.MaxConcurrentStaleReplacements = limit
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Run replaceStaleInstances concurrently for all functions.
+	// With TryAcquire, supervisors that can't acquire the semaphore will return
+	// immediately, so not all stale instances will be replaced in a single call.
+	var wg sync.WaitGroup
+	wg.Add(numFunctions)
+
+	for i := range numFunctions {
+		go func(fn *function.Function) {
+			defer wg.Done()
+
+			instances, err := ctrl.getInstances(ctx, fn)
+			if err != nil {
+				t.Errorf("getInstances failed: %v", err)
+				return
+			}
+
+			supervisor := ctrl.supervisor(fn)
+			supervisor.replaceStaleInstances(ctx, instances, len(instances))
+		}(functions[i])
+	}
+
+	wg.Wait()
+
+	// Verify concurrency was limited to the configured max
+	assert.Assert(t, maxConcurrent <= int64(limit),
+		"max concurrent should be <= %d, got %d", limit, maxConcurrent)
+
+	// With non-blocking TryAcquire, not all replacements will complete in a single
+	// concurrent call. Some supervisors will return immediately when the semaphore
+	// is at capacity, deferring their work. Verify that some replacements happened
+	// but not necessarily all of them.
+	assert.Assert(t, totalReplacements >= 1,
+		"at least one replacement should have happened")
+	assert.Assert(t, totalReplacements <= int64(numFunctions*stalePerFunc),
+		"should not exceed total stale instances")
 }
 
 // TestReplaceStaleInstancesNamespaceListerNotFound tests that when the namespace
