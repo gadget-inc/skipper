@@ -2420,6 +2420,73 @@ func TestReplaceStaleInstances(t *testing.T) {
 				assert.Assert(t, foundStale, "stale pod should still exist when at maxInstances+1")
 			},
 		},
+		{
+			// When the stale replacement semaphore is at capacity, replaceStaleInstances
+			// should return immediately without processing any stale instances.
+			// This verifies the non-blocking TryAcquire behavior.
+			name: "defers replacement when semaphore at capacity",
+			setup: func(t *testing.T, state *testState) {
+				// First, create the old (stale) replica set
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSetName := staleReplicaSet.Name
+				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
+				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
+
+				// Now create the new replica set
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+
+				// Create a stale pod pointing to the old replica set
+				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod.Name = "stale-pod"
+				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				state.fakeKubernetes.Tracker().Add(stalePod)
+
+				// Add an available pod for replacement (should NOT be used)
+				availablePod := fixture.NewAvailablePod(t, state.fn, nil)
+				availablePod.Name = "available-pod"
+				state.fakeKubernetes.Tracker().Add(availablePod)
+			},
+			beforeTerminate: func(t *testing.T, ctx context.Context, state *testState, instances []*function.Instance) {
+				// Pre-acquire all semaphore slots to simulate it being at capacity.
+				// This will cause TryAcquire to fail, and replaceStaleInstances should return immediately.
+				cfg := testConfig()
+				acquired := state.ctrl.staleReplacementSem.TryAcquire(int64(cfg.MaxConcurrentStaleReplacements))
+				assert.Assert(t, acquired, "should be able to acquire semaphore in test setup")
+				// Note: We intentionally don't release it - we want it held during replaceStaleInstances
+			},
+			check: func(t *testing.T, state *testState, instances []*function.Instance) {
+				// List all pods (not just assigned ones) to verify state
+				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+
+				// Count assigned vs available pods
+				var assignedPods, availablePods int
+				var foundStale, foundAvailable bool
+				for _, pod := range allPods.Items {
+					if pod.Annotations[key.AssignedAt.Annotation] != "" {
+						assignedPods++
+						if pod.Name == "stale-pod" {
+							foundStale = true
+						}
+					} else {
+						availablePods++
+						if pod.Name == "available-pod" {
+							foundAvailable = true
+						}
+					}
+				}
+
+				// Should have 1 assigned pod (the stale one, not replaced)
+				assert.Assert(t, assignedPods == 1, "expected 1 assigned pod (stale not replaced), got %d", assignedPods)
+
+				// Verify the stale pod is still there
+				assert.Assert(t, foundStale, "stale pod should still exist when semaphore at capacity")
+
+				// Verify available pod was NOT consumed (still available)
+				assert.Assert(t, foundAvailable, "available pod should not have been assigned")
+				assert.Assert(t, availablePods >= 1, "should have at least 1 available pod")
+			},
+		},
 	}
 
 	for _, tc := range testCases {
