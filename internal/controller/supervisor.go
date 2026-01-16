@@ -454,10 +454,12 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*fun
 			continue
 		}
 
-		// Acquire semaphore to limit concurrent stale instance replacements
-		if err := s.ctrl.staleReplacementSem.Acquire(ctx, 1); err != nil {
-			log.Warn(ctx, "failed to acquire stale replacement semaphore", key.Error.Slog(err))
-			continue
+		// Try to acquire semaphore to limit concurrent stale instance replacements.
+		// Use TryAcquire to avoid blocking the supervisor's converge loop - stale
+		// replacement is not time-critical and will be retried on subsequent iterations.
+		if !s.ctrl.staleReplacementSem.TryAcquire(1) {
+			log.Debug(ctx, "stale replacement semaphore at capacity, deferring")
+			return
 		}
 
 		log.Info(ctx, "replacing stale instance")

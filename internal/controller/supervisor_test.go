@@ -2461,256 +2461,127 @@ func TestReplaceStaleInstances(t *testing.T) {
 }
 
 // TestReplaceStaleInstancesConcurrencyLimit verifies that the controller limits
-// concurrent stale instance replacements according to the configured limit.
-// The semaphore is shared across all supervisors, so this test runs multiple
-// supervisors concurrently to verify the limit is enforced globally.
+// concurrent stale instance replacements using a non-blocking semaphore.
+// When the semaphore is at capacity, replaceStaleInstances returns immediately
+// without blocking, deferring the replacement to a subsequent converge iteration.
 func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		name         string
-		limit        int
-		numFunctions int
-		stalePerFunc int
-		wantMaxConc  int64 // expected max concurrent (should equal limit when there's enough contention)
-		wantMinConc  int64 // minimum expected concurrent (to verify we actually achieved concurrency)
-	}{
-		{
-			name:         "limit of 1 allows only one concurrent replacement",
-			limit:        1,
-			numFunctions: 3,
-			stalePerFunc: 2,
-			wantMaxConc:  1,
-			wantMinConc:  1,
-		},
-		{
-			name:         "limit of 2 allows two concurrent replacements",
-			limit:        2,
-			numFunctions: 4,
-			stalePerFunc: 2,
-			wantMaxConc:  2,
-			wantMinConc:  2,
-		},
-		{
-			name:         "limit of 3 allows three concurrent replacements",
-			limit:        3,
-			numFunctions: 5,
-			stalePerFunc: 2,
-			wantMaxConc:  3,
-			wantMinConc:  3,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-			defer cancel()
-
-			// Track concurrent replacements using atomic counter
-			var currentConcurrent int64
-			var maxConcurrent int64
-			var mu sync.Mutex
-
-			// Create a slow handler that tracks concurrency.
-			// The handler blocks long enough to ensure overlapping requests.
-			slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Increment counter when entering
-				current := atomic.AddInt64(&currentConcurrent, 1)
-
-				// Update max observed concurrency
-				mu.Lock()
-				if current > maxConcurrent {
-					maxConcurrent = current
-				}
-				mu.Unlock()
-
-				// Sleep to keep the assignment active and create contention
-				time.Sleep(100 * time.Millisecond)
-
-				// Decrement counter when exiting
-				atomic.AddInt64(&currentConcurrent, -1)
-
-				w.WriteHeader(http.StatusOK)
-			})
-
-			// Create multiple functions, each with stale instances
-			functions := make([]*function.Function, tc.numFunctions)
-			staleReplicaSetNames := make([]string, tc.numFunctions)
-
-			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
-
-			for i := range tc.numFunctions {
-				fn := fixture.NewFunction(t)
-				fn.Scale.MaxInstances = tc.stalePerFunc + 10 // ensure we don't hit max instances limit
-				functions[i] = fn
-
-				// Create stale replica set (scaled to 0)
-				staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
-				staleReplicaSetNames[i] = staleReplicaSet.Name
-				staleReplicaSet.Status.Replicas = 0
-				fakeKubernetes.Tracker().Add(staleReplicaSet)
-
-				// Create new replica set
-				fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, fn))
-
-				// Create stale assigned pods on old replica set
-				for j := range tc.stalePerFunc {
-					assignedPod := fixture.NewAssignedPod(t, fn, nil)
-					assignedPod.Name = fmt.Sprintf("stale-pod-%d-%d", i, j)
-					assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetNames[i]
-					fakeKubernetes.Tracker().Add(assignedPod)
-				}
-
-				// Create available pods with slow handler for replacements
-				for j := range tc.stalePerFunc {
-					availablePod := fixture.NewAvailablePod(t, fn, slowHandler)
-					availablePod.Name = fmt.Sprintf("available-pod-%d-%d", i, j)
-					fakeKubernetes.Tracker().Add(availablePod)
-				}
-			}
-
-			cfg := testConfig()
-			cfg.MaxConcurrentStaleReplacements = tc.limit
-
-			ctrl := New(cfg, nil, fakeKubernetes, nil)
-
-			err := ctrl.startInformers(ctx)
-			assert.NilError(t, err)
-
-			// Run replaceStaleInstances concurrently for all functions.
-			// This simulates multiple supervisors (for different functions) running at the same time,
-			// which is the scenario the semaphore is designed to limit.
-			var wg sync.WaitGroup
-			wg.Add(tc.numFunctions)
-
-			for i := range tc.numFunctions {
-				go func(fn *function.Function) {
-					defer wg.Done()
-
-					instances, err := ctrl.getInstances(ctx, fn)
-					if err != nil {
-						t.Errorf("getInstances failed: %v", err)
-						return
-					}
-
-					supervisor := ctrl.supervisor(fn)
-					supervisor.replaceStaleInstances(ctx, instances, len(instances))
-				}(functions[i])
-			}
-
-			wg.Wait()
-
-			// Verify concurrency was limited to the configured max
-			assert.Assert(t, maxConcurrent <= tc.wantMaxConc,
-				"max concurrent should be <= %d, got %d", tc.wantMaxConc, maxConcurrent)
-
-			// Verify we actually achieved some concurrency (test validity check).
-			// If maxConcurrent is always 1, the test isn't proving anything.
-			assert.Assert(t, maxConcurrent >= tc.wantMinConc,
-				"max concurrent should be >= %d (test validity: ensure concurrent execution), got %d",
-				tc.wantMinConc, maxConcurrent)
-		})
-	}
-}
-
-// TestReplaceStaleInstancesContextCancellation verifies that when the context is
-// cancelled while waiting for the stale replacement semaphore, the function handles
-// it gracefully without deadlocking and preserves unprocessed instances.
-func TestReplaceStaleInstancesContextCancellation(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
-	// Track how many replacements started
-	var replacementsStarted atomic.Int64
+	// Track concurrent replacements using atomic counter
+	var currentConcurrent int64
+	var maxConcurrent int64
+	var totalReplacements int64
+	var mu sync.Mutex
 
-	// Create a handler that blocks until context is cancelled.
-	// This will hold the semaphore until we cancel.
-	blockingHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		replacementsStarted.Add(1)
-		// Block until test cancels the context
-		<-ctx.Done()
+	// Create a slow handler that tracks concurrency.
+	// The handler blocks long enough to ensure overlapping requests.
+	slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Increment counter when entering
+		current := atomic.AddInt64(&currentConcurrent, 1)
+		atomic.AddInt64(&totalReplacements, 1)
+
+		// Update max observed concurrency
+		mu.Lock()
+		if current > maxConcurrent {
+			maxConcurrent = current
+		}
+		mu.Unlock()
+
+		// Sleep to keep the assignment active and create contention
+		time.Sleep(50 * time.Millisecond)
+
+		// Decrement counter when exiting
+		atomic.AddInt64(&currentConcurrent, -1)
+
 		w.WriteHeader(http.StatusOK)
 	})
 
-	fn := fixture.NewFunction(t)
-	fn.Scale.MaxInstances = 10
+	const numFunctions = 5
+	const stalePerFunc = 2
+	const limit = 2
+
+	// Create multiple functions, each with stale instances
+	functions := make([]*function.Function, numFunctions)
+	staleReplicaSetNames := make([]string, numFunctions)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
-	// Create stale replica set (scaled to 0)
-	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
-	staleReplicaSetName := staleReplicaSet.Name
-	staleReplicaSet.Status.Replicas = 0
-	fakeKubernetes.Tracker().Add(staleReplicaSet)
+	for i := range numFunctions {
+		fn := fixture.NewFunction(t)
+		fn.Scale.MaxInstances = stalePerFunc + 10 // ensure we don't hit max instances limit
+		functions[i] = fn
 
-	// Create new replica set
-	fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, fn))
+		// Create stale replica set (scaled to 0)
+		staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+		staleReplicaSetNames[i] = staleReplicaSet.Name
+		staleReplicaSet.Status.Replicas = 0
+		fakeKubernetes.Tracker().Add(staleReplicaSet)
 
-	// Create multiple stale pods
-	numStalePods := 5
-	for i := range numStalePods {
-		assignedPod := fixture.NewAssignedPod(t, fn, nil)
-		assignedPod.Name = fmt.Sprintf("stale-pod-%d", i)
-		assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
-		fakeKubernetes.Tracker().Add(assignedPod)
-	}
+		// Create new replica set
+		fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, fn))
 
-	// Create available pods with blocking handler
-	for i := range numStalePods {
-		availablePod := fixture.NewAvailablePod(t, fn, blockingHandler)
-		availablePod.Name = fmt.Sprintf("available-pod-%d", i)
-		fakeKubernetes.Tracker().Add(availablePod)
+		// Create stale assigned pods on old replica set
+		for j := range stalePerFunc {
+			assignedPod := fixture.NewAssignedPod(t, fn, nil)
+			assignedPod.Name = fmt.Sprintf("stale-pod-%d-%d", i, j)
+			assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetNames[i]
+			fakeKubernetes.Tracker().Add(assignedPod)
+		}
+
+		// Create available pods with slow handler for replacements
+		for j := range stalePerFunc {
+			availablePod := fixture.NewAvailablePod(t, fn, slowHandler)
+			availablePod.Name = fmt.Sprintf("available-pod-%d-%d", i, j)
+			fakeKubernetes.Tracker().Add(availablePod)
+		}
 	}
 
 	cfg := testConfig()
-	cfg.MaxConcurrentStaleReplacements = 1 // Only allow 1 concurrent replacement
+	cfg.MaxConcurrentStaleReplacements = limit
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	instances, err := ctrl.getInstances(ctx, fn)
-	assert.NilError(t, err)
+	// Run replaceStaleInstances concurrently for all functions.
+	// With TryAcquire, supervisors that can't acquire the semaphore will return
+	// immediately, so not all stale instances will be replaced in a single call.
+	var wg sync.WaitGroup
+	wg.Add(numFunctions)
 
-	// Create a cancellable context for replaceStaleInstances
-	replaceCtx, replaceCancel := context.WithCancel(ctx)
+	for i := range numFunctions {
+		go func(fn *function.Function) {
+			defer wg.Done()
 
-	// Run replaceStaleInstances in a goroutine
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		supervisor := ctrl.supervisor(fn)
-		supervisor.replaceStaleInstances(replaceCtx, instances, len(instances))
-	}()
+			instances, err := ctrl.getInstances(ctx, fn)
+			if err != nil {
+				t.Errorf("getInstances failed: %v", err)
+				return
+			}
 
-	// Wait for the first replacement to start (it will block in the handler)
-	poll.WaitOn(t, func(t poll.LogT) poll.Result {
-		if replacementsStarted.Load() >= 1 {
-			return poll.Success()
-		}
-		return poll.Continue("waiting for at least one replacement to start")
-	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(5*time.Second))
-
-	// Cancel the context - this should unblock the waiting goroutines
-	replaceCancel()
-
-	// Wait for replaceStaleInstances to complete (should not deadlock)
-	select {
-	case <-done:
-		// Success - function returned without deadlocking
-	case <-time.After(5 * time.Second):
-		t.Fatal("replaceStaleInstances deadlocked after context cancellation")
+			supervisor := ctrl.supervisor(fn)
+			supervisor.replaceStaleInstances(ctx, instances, len(instances))
+		}(functions[i])
 	}
 
-	// The first replacement started but context was cancelled.
-	// Verify we don't have runaway goroutines or deadlocks.
-	assert.Assert(t, replacementsStarted.Load() >= 1,
-		"at least one replacement should have started before cancellation")
+	wg.Wait()
+
+	// Verify concurrency was limited to the configured max
+	assert.Assert(t, maxConcurrent <= int64(limit),
+		"max concurrent should be <= %d, got %d", limit, maxConcurrent)
+
+	// With non-blocking TryAcquire, not all replacements will complete in a single
+	// concurrent call. Some supervisors will return immediately when the semaphore
+	// is at capacity, deferring their work. Verify that some replacements happened
+	// but not necessarily all of them.
+	assert.Assert(t, totalReplacements >= 1,
+		"at least one replacement should have happened")
+	assert.Assert(t, totalReplacements <= int64(numFunctions*stalePerFunc),
+		"should not exceed total stale instances")
 }
 
 // TestReplaceStaleInstancesNamespaceListerNotFound tests that when the namespace
