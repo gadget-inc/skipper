@@ -1,9 +1,11 @@
 *.local.*
 .DS_Store
+.envrc.local
 .cursor/
 .direnv/
 .vscode/**
 !.vscode/settings.example.json
 !.vscode/extensions.json
 node_modules/
+scripts/local/
 tmp/
