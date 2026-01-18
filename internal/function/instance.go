@@ -32,14 +32,14 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		ReadyAt        time.Time `json:"ReadyAt"`
 		CPUUsageMilli  uint64    `json:"CPUUsageMilli"`
 		MemoryUsageMiB uint64    `json:"MemoryUsageMiB"`
-		// snake_case (new)
+		// snake_case (new) - use pointers for numerics to distinguish absent vs zero
 		NameSnake           string    `json:"name"`
 		AddrSnake           string    `json:"addr"`
 		ReplicaSetSnake     string    `json:"replica_set"`
 		AssignedAtSnake     time.Time `json:"assigned_at"`
 		ReadyAtSnake        time.Time `json:"ready_at"`
-		CPUUsageMilliSnake  uint64    `json:"cpu_usage_milli"`
-		MemoryUsageMiBSnake uint64    `json:"memory_usage_mib"`
+		CPUUsageMilliSnake  *uint64   `json:"cpu_usage_milli"`
+		MemoryUsageMiBSnake *uint64   `json:"memory_usage_mib"`
 	}
 
 	var alias instanceAlias
@@ -80,14 +80,14 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		i.ReadyAt = alias.ReadyAt
 	}
 
-	if alias.CPUUsageMilliSnake != 0 {
-		i.CPUUsageMilli = alias.CPUUsageMilliSnake
+	if alias.CPUUsageMilliSnake != nil {
+		i.CPUUsageMilli = *alias.CPUUsageMilliSnake
 	} else {
 		i.CPUUsageMilli = alias.CPUUsageMilli
 	}
 
-	if alias.MemoryUsageMiBSnake != 0 {
-		i.MemoryUsageMiB = alias.MemoryUsageMiBSnake
+	if alias.MemoryUsageMiBSnake != nil {
+		i.MemoryUsageMiB = *alias.MemoryUsageMiBSnake
 	} else {
 		i.MemoryUsageMiB = alias.MemoryUsageMiB
 	}

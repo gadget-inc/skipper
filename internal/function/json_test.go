@@ -157,3 +157,70 @@ func TestJSONUnmarshalSnakeCase(t *testing.T) {
 		assert.DeepEqual(t, metric, goldenScalingMetric)
 	})
 }
+
+// TestJSONUnmarshalSnakeCaseZeroValues verifies that zero values in snake_case fields
+// are correctly unmarshaled and not incorrectly treated as "absent".
+// The bug manifests when BOTH snake_case (with zero) AND PascalCase (with non-zero) are present.
+func TestJSONUnmarshalSnakeCaseZeroValues(t *testing.T) {
+	t.Run("ScalingMetric/ZeroValuePreferred", func(t *testing.T) {
+		// When both are present, snake_case (even if 0) should be preferred over PascalCase
+		mixedJSON := []byte(`{"name": "cpu", "Name": "WRONG", "value": 0, "Value": 999.0}`)
+
+		var metric ScalingMetric
+		err := json.Unmarshal(mixedJSON, &metric)
+		assert.NilError(t, err)
+		assert.Equal(t, metric.Name, "cpu")
+		assert.Equal(t, metric.Value, 0.0) // Should be 0, not 999.0
+	})
+
+	t.Run("ScalingDecision/ScaleToZeroPreferred", func(t *testing.T) {
+		// When both are present, snake_case (even if 0) should be preferred
+		mixedJSON := []byte(`{
+			"desired_instances": 0,
+			"DesiredInstances": 999,
+			"unclamped_desired_instances": 0,
+			"UnclampedDesiredInstances": 888,
+			"reason": "heartbeat_timeout",
+			"metrics": []
+		}`)
+
+		var decision ScalingDecision
+		err := json.Unmarshal(mixedJSON, &decision)
+		assert.NilError(t, err)
+		assert.Equal(t, decision.DesiredInstances, uint64(0))          // Should be 0, not 999
+		assert.Equal(t, decision.UnclampedDesiredInstances, uint64(0)) // Should be 0, not 888
+		assert.Equal(t, decision.Reason, ScalingReasonHeartbeatTimeout)
+	})
+
+	t.Run("Instance/IdleCPUAndMemoryPreferred", func(t *testing.T) {
+		// When both are present, snake_case (even if 0) should be preferred
+		mixedJSON := []byte(`{
+			"namespace": "skipper-production",
+			"deployment": "my-app",
+			"tenant": "tenant-123",
+			"metadata": "metadata-value",
+			"scale": {
+				"min_instances": 1,
+				"max_instances": 10,
+				"target_cpu_usage_milli": 500,
+				"target_memory_usage_mib": 256,
+				"target_in_flight_requests": 100
+			},
+			"name": "my-app-abc123",
+			"addr": "10.0.0.1:8080",
+			"replica_set": "my-app-5f4b8c",
+			"assigned_at": "2024-01-15T10:30:00Z",
+			"ready_at": "2024-01-15T10:30:05Z",
+			"cpu_usage_milli": 0,
+			"CPUUsageMilli": 999,
+			"memory_usage_mib": 0,
+			"MemoryUsageMiB": 888
+		}`)
+
+		var instance Instance
+		err := json.Unmarshal(mixedJSON, &instance)
+		assert.NilError(t, err)
+		assert.Equal(t, instance.CPUUsageMilli, uint64(0))  // Should be 0, not 999
+		assert.Equal(t, instance.MemoryUsageMiB, uint64(0)) // Should be 0, not 888
+	})
+}

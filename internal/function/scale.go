@@ -55,9 +55,9 @@ func (sd *ScalingDecision) UnmarshalJSON(data []byte) error {
 		UnclampedDesiredInstances uint64          `json:"UnclampedDesiredInstances"`
 		Reason                    ScalingReason   `json:"Reason"`
 		Metrics                   []ScalingMetric `json:"Metrics"`
-		// snake_case (new)
-		DesiredInstancesSnake          uint64          `json:"desired_instances"`
-		UnclampedDesiredInstancesSnake uint64          `json:"unclamped_desired_instances"`
+		// snake_case (new) - use pointers for numerics to distinguish absent vs zero
+		DesiredInstancesSnake          *uint64         `json:"desired_instances"`
+		UnclampedDesiredInstancesSnake *uint64         `json:"unclamped_desired_instances"`
 		ReasonSnake                    ScalingReason   `json:"reason"`
 		MetricsSnake                   []ScalingMetric `json:"metrics"`
 	}
@@ -68,14 +68,14 @@ func (sd *ScalingDecision) UnmarshalJSON(data []byte) error {
 	}
 
 	// Prefer snake_case if present, otherwise use PascalCase
-	if alias.DesiredInstancesSnake != 0 {
-		sd.DesiredInstances = alias.DesiredInstancesSnake
+	if alias.DesiredInstancesSnake != nil {
+		sd.DesiredInstances = *alias.DesiredInstancesSnake
 	} else {
 		sd.DesiredInstances = alias.DesiredInstances
 	}
 
-	if alias.UnclampedDesiredInstancesSnake != 0 {
-		sd.UnclampedDesiredInstances = alias.UnclampedDesiredInstancesSnake
+	if alias.UnclampedDesiredInstancesSnake != nil {
+		sd.UnclampedDesiredInstances = *alias.UnclampedDesiredInstancesSnake
 	} else {
 		sd.UnclampedDesiredInstances = alias.UnclampedDesiredInstances
 	}
@@ -152,9 +152,9 @@ func (sm *ScalingMetric) UnmarshalJSON(data []byte) error {
 		// PascalCase (legacy)
 		Name  string  `json:"Name"`
 		Value float64 `json:"Value"`
-		// snake_case (new)
-		NameSnake  string  `json:"name"`
-		ValueSnake float64 `json:"value"`
+		// snake_case (new) - use pointer to distinguish absent vs zero
+		NameSnake  string   `json:"name"`
+		ValueSnake *float64 `json:"value"`
 	}
 
 	var alias scalingMetricAlias
@@ -169,8 +169,8 @@ func (sm *ScalingMetric) UnmarshalJSON(data []byte) error {
 		sm.Name = alias.Name
 	}
 
-	if alias.ValueSnake != 0 {
-		sm.Value = alias.ValueSnake
+	if alias.ValueSnake != nil {
+		sm.Value = *alias.ValueSnake
 	} else {
 		sm.Value = alias.Value
 	}
