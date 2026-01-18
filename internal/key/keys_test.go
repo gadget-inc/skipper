@@ -31,7 +31,7 @@ func TestKeys(t *testing.T) {
 		key.CPUUsageMilli.Attr(fakeUint64),
 		key.Count.Attr(fakeInt),
 		key.Deployment.Attr(fakeString),
-		key.DesiredInstances.Attr(fakeInt),
+		key.DesiredInstances.Attr(fakeUint64),
 		key.Duration.Attr(fakeDuration),
 		key.Error.Attr(fakeError),
 		key.ExcludeInstanceNames.Attr(fakeStringSlice),
@@ -65,7 +65,7 @@ func TestKeys(t *testing.T) {
 		key.Tenant.Attr(fakeString),
 		key.Timestamp.Attr(fakeTime),
 		key.URL.Attr(fakeURL),
-		key.UnclampedDesiredInstances.Attr(fakeInt),
+		key.UnclampedDesiredInstances.Attr(fakeUint64),
 		key.UnreadyInstances.Attr(fakeInt),
 	}
 
@@ -182,8 +182,8 @@ var (
 	}
 
 	fakeScalingDecision = function.ScalingDecision{
-		DesiredInstances:          fakeInt,
-		UnclampedDesiredInstances: fakeInt,
+		DesiredInstances:          fakeUint64,
+		UnclampedDesiredInstances: fakeUint64,
 		Reason:                    function.ScalingReason(fakeString),
 		Metrics:                   []function.ScalingMetric{{Name: fakeString, Value: fakeFloat}},
 	}

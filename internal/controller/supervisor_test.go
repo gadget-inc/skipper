@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -236,7 +237,7 @@ func TestScale(t *testing.T) {
 
 	testCases := []struct {
 		name             string
-		desiredInstances int
+		desiredInstances uint64
 		err              error
 		setup            func(*testing.T, *testState)
 		check            func(*testing.T, *testState)
@@ -580,7 +581,7 @@ func TestScaleForwarding(t *testing.T) {
 
 	// Set up mock client to handle forwarded scale request
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn *function.Function, desiredInstances int, reason function.ScalingReason) ([]*function.Instance, error) {
+	mcc.HandleScale(func(ctx context.Context, fn *function.Function, desiredInstances uint64, reason function.ScalingReason) ([]*function.Instance, error) {
 		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
@@ -688,7 +689,7 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	supervisor.mu.Lock()
 	windowSizeAfterScaleDown := len(supervisor.stabilizationWindow)
 	maxRec := slices.MaxFunc(supervisor.stabilizationWindow, func(a, b Recommendation) int {
-		return a.DesiredInstances - b.DesiredInstances
+		return cmp.Compare(a.DesiredInstances, b.DesiredInstances)
 	})
 	supervisor.mu.Unlock()
 
@@ -978,7 +979,7 @@ func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
 	supervisor.mu.Lock()
 	windowSize := len(supervisor.stabilizationWindow)
 	maxRec := slices.MaxFunc(supervisor.stabilizationWindow, func(a, b Recommendation) int {
-		return a.DesiredInstances - b.DesiredInstances
+		return cmp.Compare(a.DesiredInstances, b.DesiredInstances)
 	})
 	supervisor.mu.Unlock()
 	assert.Assert(t, windowSize >= 2, "stabilization window should have multiple recommendations")
@@ -1609,8 +1610,8 @@ func TestCalculateDesiredInstances(t *testing.T) {
 		name                     string
 		heartbeat                *function.Heartbeat
 		instances                []*function.Instance
-		expectedDesiredInstances int
-		expectedUnclampedDesired int
+		expectedDesiredInstances uint64
+		expectedUnclampedDesired uint64
 		expectedReason           function.ScalingReason
 	}{
 		{

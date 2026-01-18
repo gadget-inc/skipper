@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -175,7 +176,7 @@ func (s *Supervisor) combinedHeartbeat(instances []*function.Instance) *function
 
 // recordRecommendation adds a scaling recommendation to the stabilization window,
 // prunes expired entries, and returns the maximum recommendation within the window.
-func (s *Supervisor) recordRecommendation(desiredInstances int) Recommendation {
+func (s *Supervisor) recordRecommendation(desiredInstances uint64) Recommendation {
 	now := time.Now()
 	cutoff := now.Add(-s.ctrl.config.HPADownscaleStabilization)
 	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{
@@ -186,7 +187,7 @@ func (s *Supervisor) recordRecommendation(desiredInstances int) Recommendation {
 		return r.Timestamp.Before(cutoff)
 	})
 	return slices.MaxFunc(s.stabilizationWindow, func(a, b Recommendation) int {
-		return a.DesiredInstances - b.DesiredInstances
+		return cmp.Compare(a.DesiredInstances, b.DesiredInstances)
 	})
 }
 
@@ -224,7 +225,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
 	maxRecommendation := s.recordRecommendation(scalingDecision.DesiredInstances)
 
-	currentInstances := len(instances)
+	currentInstances := uint64(len(instances))
 	isScalingDown := scalingDecision.DesiredInstances < currentInstances || scalingDecision.DesiredInstances == 0
 
 	if isScalingDown {
@@ -330,24 +331,27 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 		log.Info(ctx, "scaling decision was clamped")
 	}
 
-	if decision.DesiredInstances == len(readyInstances) && decision.DesiredInstances > len(unreadyInstances) {
+	readyCount := uint64(len(readyInstances))
+	unreadyCount := uint64(len(unreadyInstances))
+
+	if decision.DesiredInstances == readyCount && decision.DesiredInstances > unreadyCount {
 		// we already have the desired number of ready instances and we
 		// don't have extra unready instances, so there's nothing to do
 		return readyInstances, unreadyInstances, nil
 	}
 
-	if decision.DesiredInstances > len(readyInstances) {
+	if decision.DesiredInstances > readyCount {
 		// we need to scale up
-		if len(readyInstances)+len(unreadyInstances) >= int(s.fn.Scale.MaxInstances)+1 {
+		if readyCount+unreadyCount >= s.fn.Scale.MaxInstances+1 {
 			// we have too many instances in total, so we can't scale up
 			log.Info(ctx, "skipping scale up because function has too many instances")
 			return readyInstances, unreadyInstances, nil
 		}
 
 		log.Info(ctx, "scaling function up")
-		scaleUpsTotal.WithLabelValues(s.fn.Deployment).Add(float64(decision.DesiredInstances - len(readyInstances)))
+		scaleUpsTotal.WithLabelValues(s.fn.Deployment).Add(float64(decision.DesiredInstances - readyCount))
 
-		for range decision.DesiredInstances - len(readyInstances) {
+		for range decision.DesiredInstances - readyCount {
 			instance, err := s.ctrl.assignPod(ctx, s.fn)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to assign pod: %w", err)
@@ -362,7 +366,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
-		scaleDownsTotal.WithLabelValues(s.fn.Deployment).Add(float64(len(readyInstances) + len(unreadyInstances) - decision.DesiredInstances))
+		scaleDownsTotal.WithLabelValues(s.fn.Deployment).Add(float64(readyCount + unreadyCount - decision.DesiredInstances))
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
@@ -378,7 +382,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 		slices.SortFunc(readyInstances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
 
 		// iterate over ready instances in reverse order, deleting the oldest ones first
-		for i := len(readyInstances) - 1; i >= decision.DesiredInstances; i-- {
+		for i := len(readyInstances) - 1; i >= int(decision.DesiredInstances); i-- {
 			instance := readyInstances[i]
 			err := s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
@@ -549,7 +553,7 @@ const (
 
 // Recommendation represents a scaling recommendation at a point in time
 type Recommendation struct {
-	DesiredInstances int
+	DesiredInstances uint64
 	Timestamp        time.Time
 }
 
@@ -688,13 +692,13 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *func
 	}
 
 	// Apply min/max clamping
-	minInstances := int(heartbeat.Function.Scale.MinInstances)
-	maxInstances := int(heartbeat.Function.Scale.MaxInstances)
-	clampedValue := min(max(maxDesiredInstances, minInstances), maxInstances)
+	minInstances := heartbeat.Function.Scale.MinInstances
+	maxInstances := heartbeat.Function.Scale.MaxInstances
+	clampedValue := min(max(uint64(maxDesiredInstances), minInstances), maxInstances)
 
 	return function.ScalingDecision{
 		DesiredInstances:          clampedValue,
-		UnclampedDesiredInstances: maxDesiredInstances,
+		UnclampedDesiredInstances: uint64(maxDesiredInstances),
 		Reason:                    scalingReason,
 		Metrics:                   scalingMetrics,
 	}
