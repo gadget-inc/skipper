@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/go-json-experiment/json"
 )
 
 type Scale struct {
@@ -39,10 +40,59 @@ func (s *Scale) Equal(other *Scale) bool {
 
 // ScalingDecision contains the inputs and result of one scaling loop for one tenant
 type ScalingDecision struct {
-	DesiredInstances          uint64
-	UnclampedDesiredInstances uint64
-	Reason                    ScalingReason
-	Metrics                   []ScalingMetric
+	DesiredInstances          uint64          `json:"DesiredInstances"`
+	UnclampedDesiredInstances uint64          `json:"UnclampedDesiredInstances"`
+	Reason                    ScalingReason   `json:"Reason"`
+	Metrics                   []ScalingMetric `json:"Metrics"`
+}
+
+// UnmarshalJSON implements custom unmarshaling to accept both PascalCase (legacy)
+// and snake_case (new) field names for backward compatibility during migration.
+func (sd *ScalingDecision) UnmarshalJSON(data []byte) error {
+	type scalingDecisionAlias struct {
+		// PascalCase (legacy)
+		DesiredInstances          uint64          `json:"DesiredInstances"`
+		UnclampedDesiredInstances uint64          `json:"UnclampedDesiredInstances"`
+		Reason                    ScalingReason   `json:"Reason"`
+		Metrics                   []ScalingMetric `json:"Metrics"`
+		// snake_case (new) - use pointers for numerics to distinguish absent vs zero
+		DesiredInstancesSnake          *uint64         `json:"desired_instances"`
+		UnclampedDesiredInstancesSnake *uint64         `json:"unclamped_desired_instances"`
+		ReasonSnake                    ScalingReason   `json:"reason"`
+		MetricsSnake                   []ScalingMetric `json:"metrics"`
+	}
+
+	var alias scalingDecisionAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	// Prefer snake_case if present, otherwise use PascalCase
+	if alias.DesiredInstancesSnake != nil {
+		sd.DesiredInstances = *alias.DesiredInstancesSnake
+	} else {
+		sd.DesiredInstances = alias.DesiredInstances
+	}
+
+	if alias.UnclampedDesiredInstancesSnake != nil {
+		sd.UnclampedDesiredInstances = *alias.UnclampedDesiredInstancesSnake
+	} else {
+		sd.UnclampedDesiredInstances = alias.UnclampedDesiredInstances
+	}
+
+	if alias.ReasonSnake != "" {
+		sd.Reason = alias.ReasonSnake
+	} else {
+		sd.Reason = alias.Reason
+	}
+
+	if alias.MetricsSnake != nil {
+		sd.Metrics = alias.MetricsSnake
+	} else {
+		sd.Metrics = alias.Metrics
+	}
+
+	return nil
 }
 
 var _ slog.LogValuer = ScalingDecision{}
@@ -91,6 +141,39 @@ func IsValidScalingReason(reason string) bool {
 
 // ScalingMetric represents an unclamped metric value for a specific metric observed for scaling decisions
 type ScalingMetric struct {
-	Name  string
-	Value float64
+	Name  string  `json:"Name"`
+	Value float64 `json:"Value"`
+}
+
+// UnmarshalJSON implements custom unmarshaling to accept both PascalCase (legacy)
+// and snake_case (new) field names for backward compatibility during migration.
+func (sm *ScalingMetric) UnmarshalJSON(data []byte) error {
+	type scalingMetricAlias struct {
+		// PascalCase (legacy)
+		Name  string  `json:"Name"`
+		Value float64 `json:"Value"`
+		// snake_case (new) - use pointer to distinguish absent vs zero
+		NameSnake  string   `json:"name"`
+		ValueSnake *float64 `json:"value"`
+	}
+
+	var alias scalingMetricAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	// Prefer snake_case if present, otherwise use PascalCase
+	if alias.NameSnake != "" {
+		sm.Name = alias.NameSnake
+	} else {
+		sm.Name = alias.Name
+	}
+
+	if alias.ValueSnake != nil {
+		sm.Value = *alias.ValueSnake
+	} else {
+		sm.Value = alias.Value
+	}
+
+	return nil
 }
