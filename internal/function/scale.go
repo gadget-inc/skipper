@@ -40,10 +40,10 @@ func (s *Scale) Equal(other *Scale) bool {
 
 // ScalingDecision contains the inputs and result of one scaling loop for one tenant
 type ScalingDecision struct {
-	DesiredInstances          uint64          `json:"DesiredInstances"`
-	UnclampedDesiredInstances uint64          `json:"UnclampedDesiredInstances"`
-	Reason                    ScalingReason   `json:"Reason"`
-	Metrics                   []ScalingMetric `json:"Metrics"`
+	DesiredInstances          uint64          `json:"desired_instances"`
+	UnclampedDesiredInstances uint64          `json:"unclamped_desired_instances"`
+	Reason                    ScalingReason   `json:"reason"`
+	Metrics                   []ScalingMetric `json:"metrics"`
 }
 
 // UnmarshalJSON implements custom unmarshaling to accept both PascalCase (legacy)
@@ -141,8 +141,8 @@ func IsValidScalingReason(reason string) bool {
 
 // ScalingMetric represents an unclamped metric value for a specific metric observed for scaling decisions
 type ScalingMetric struct {
-	Name  string  `json:"Name"`
-	Value float64 `json:"Value"`
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
 }
 
 // UnmarshalJSON implements custom unmarshaling to accept both PascalCase (legacy)

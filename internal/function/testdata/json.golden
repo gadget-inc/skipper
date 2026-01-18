@@ -41,13 +41,13 @@
 			"target_memory_usage_mib": 256,
 			"target_in_flight_requests": 100
 		},
-		"Name": "my-app-abc123",
-		"Addr": "10.0.0.1:8080",
-		"ReplicaSet": "my-app-5f4b8c",
-		"AssignedAt": "2024-01-15T10:30:00Z",
-		"ReadyAt": "2024-01-15T10:30:05Z",
-		"CPUUsageMilli": 250,
-		"MemoryUsageMiB": 128
+		"name": "my-app-abc123",
+		"addr": "10.0.0.1:8080",
+		"replica_set": "my-app-5f4b8c",
+		"assigned_at": "2024-01-15T10:30:00Z",
+		"ready_at": "2024-01-15T10:30:05Z",
+		"cpu_usage_milli": 250,
+		"memory_usage_mib": 128
 	},
 	"Scale": {
 		"min_instances": 1,
@@ -57,22 +57,22 @@
 		"target_in_flight_requests": 100
 	},
 	"ScalingDecision": {
-		"DesiredInstances": 3,
-		"UnclampedDesiredInstances": 5,
-		"Reason": "cpu",
-		"Metrics": [
+		"desired_instances": 3,
+		"unclamped_desired_instances": 5,
+		"reason": "cpu",
+		"metrics": [
 			{
-				"Name": "cpu",
-				"Value": 0.75
+				"name": "cpu",
+				"value": 0.75
 			},
 			{
-				"Name": "memory",
-				"Value": 0.5
+				"name": "memory",
+				"value": 0.5
 			}
 		]
 	},
 	"ScalingMetric": {
-		"Name": "in_flight_requests",
-		"Value": 1.5
+		"name": "in_flight_requests",
+		"value": 1.5
 	}
 }
