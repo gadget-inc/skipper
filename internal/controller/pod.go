@@ -394,10 +394,10 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*function.Instance, error)
 	if podMetric, ok := ctrl.podMetrics.Load(pod.Namespace + "/" + pod.Name); ok {
 		for _, container := range podMetric.Containers {
 			if container.Usage.Cpu() != nil {
-				instance.CPUUsageMilli += int(container.Usage.Cpu().MilliValue())
+				instance.CPUUsageMilli += uint64(container.Usage.Cpu().MilliValue())
 			}
 			if container.Usage.Memory() != nil {
-				instance.MemoryUsageMiB += int(container.Usage.Memory().Value() / 1024 / 1024) // convert to MiB
+				instance.MemoryUsageMiB += uint64(container.Usage.Memory().Value() / 1024 / 1024) // convert to MiB
 			}
 		}
 	}

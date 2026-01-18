@@ -359,14 +359,14 @@ func TestScale(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				fn := state.instances[0].Function
-				assert.Assert(t, len(state.instances) == fn.Scale.MaxInstances)
+				assert.Assert(t, len(state.instances) == int(fn.Scale.MaxInstances))
 
 				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+1)
+				assert.Assert(t, len(pods.Items) == int(fn.Scale.MaxInstances)+1)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
-				assert.Assert(t, readyCount == fn.Scale.MaxInstances)
+				assert.Assert(t, readyCount == int(fn.Scale.MaxInstances))
 				assert.Assert(t, unreadyCount == 1) // unready instance preserved
 			},
 		},
@@ -378,7 +378,7 @@ func TestScale(t *testing.T) {
 				assert.Assert(t, state.fn.Scale.MaxInstances == 5)
 
 				// add max + 1 unready instances (exceeds total instance limit)
-				for range state.fn.Scale.MaxInstances + 1 {
+				for range int(state.fn.Scale.MaxInstances) + 1 {
 					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
@@ -405,7 +405,7 @@ func TestScale(t *testing.T) {
 				}
 
 				// add max + 1 unready instances
-				for range state.fn.Scale.MaxInstances + 1 {
+				for range int(state.fn.Scale.MaxInstances) + 1 {
 					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
@@ -418,11 +418,11 @@ func TestScale(t *testing.T) {
 				fn := state.instances[0].Function
 				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+3)
+				assert.Assert(t, len(pods.Items) == int(fn.Scale.MaxInstances)+3)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
 				assert.Assert(t, readyCount == 2)
-				assert.Assert(t, unreadyCount == fn.Scale.MaxInstances+1) // unready preserved during scale up
+				assert.Assert(t, unreadyCount == int(fn.Scale.MaxInstances)+1) // unready preserved during scale up
 			},
 		},
 		{
@@ -431,7 +431,7 @@ func TestScale(t *testing.T) {
 			desiredInstances: 0,
 			setup: func(t *testing.T, state *testState) {
 				// add max + 1 unready instances
-				for range state.fn.Scale.MaxInstances + 1 {
+				for range int(state.fn.Scale.MaxInstances) + 1 {
 					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
@@ -492,11 +492,11 @@ func TestScale(t *testing.T) {
 				fn := state.instances[0].Function
 				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == fn.Scale.MaxInstances+1)
+				assert.Assert(t, len(pods.Items) == int(fn.Scale.MaxInstances)+1)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
 				assert.Assert(t, readyCount == 1)
-				assert.Assert(t, unreadyCount == fn.Scale.MaxInstances) // unready preserved
+				assert.Assert(t, unreadyCount == int(fn.Scale.MaxInstances)) // unready preserved
 			},
 		},
 		{
@@ -1057,7 +1057,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		name              string
 		metricName        Metric
 		podMetrics        []*function.Instance
-		targetUsage       int
+		targetUsage       uint64
 		expectedInstances int
 	}{
 		// ==================== Basic scaling decisions ====================
@@ -1261,10 +1261,10 @@ func TestHeartbeat(t *testing.T) {
 			assert.Assert(t, ok)
 			if tc.shouldUpdate {
 				assert.Assert(t, stored.Timestamp.Equal(tc.newTime))
-				assert.Equal(t, 20, stored.InFlightRequests)
+				assert.Equal(t, uint64(20), stored.InFlightRequests)
 			} else {
 				assert.Assert(t, stored.Timestamp.Equal(tc.existingTime))
-				assert.Equal(t, 10, stored.InFlightRequests)
+				assert.Equal(t, uint64(10), stored.InFlightRequests)
 			}
 		})
 	}
@@ -1324,7 +1324,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 		name                     string
 		routerHeartbeats         map[string]*function.Heartbeat
 		instances                []*function.Instance
-		expectedInFlightRequests int
+		expectedInFlightRequests uint64
 		expectedTimestampSource  string // "router1", "router2", "instance"
 	}{
 		{

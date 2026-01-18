@@ -10,7 +10,7 @@ import (
 type Heartbeat struct {
 	Function         *Function `json:"function"`
 	Timestamp        time.Time `json:"timestamp"`
-	InFlightRequests int       `json:"in_flight_requests"`
+	InFlightRequests uint64    `json:"in_flight_requests"`
 }
 
 var _ slog.LogValuer = (*Heartbeat)(nil)
@@ -31,7 +31,7 @@ func (h *Heartbeat) Equal(other *Heartbeat) bool {
 		h.InFlightRequests == other.InFlightRequests
 }
 
-func (h *Heartbeat) GetInFlightRequests() int {
+func (h *Heartbeat) GetInFlightRequests() uint64 {
 	if h == nil {
 		return 0
 	}

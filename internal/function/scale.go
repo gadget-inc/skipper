@@ -7,11 +7,11 @@ import (
 )
 
 type Scale struct {
-	MinInstances           int `json:"min_instances"`
-	MaxInstances           int `json:"max_instances"`
-	TargetCPUUsageMilli    int `json:"target_cpu_usage_milli"`
-	TargetMemoryUsageMiB   int `json:"target_memory_usage_mib"`
-	TargetInFlightRequests int `json:"target_in_flight_requests"`
+	MinInstances           uint64 `json:"min_instances"`
+	MaxInstances           uint64 `json:"max_instances"`
+	TargetCPUUsageMilli    uint64 `json:"target_cpu_usage_milli"`
+	TargetMemoryUsageMiB   uint64 `json:"target_memory_usage_mib"`
+	TargetInFlightRequests uint64 `json:"target_in_flight_requests"`
 }
 
 var _ slog.LogValuer = (*Scale)(nil)

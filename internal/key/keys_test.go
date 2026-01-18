@@ -29,7 +29,7 @@ func TestKeys(t *testing.T) {
 		key.Addr.Attr(fakeString),
 		key.AssignedAt.Attr(fakeTime),
 		key.Attempt.Attr(fakeInt),
-		key.CPUUsageMilli.Attr(fakeInt),
+		key.CPUUsageMilli.Attr(fakeUint64),
 		key.Count.Attr(fakeInt),
 		key.Deployment.Attr(fakeString),
 		key.DesiredInstances.Attr(fakeInt),
@@ -39,14 +39,14 @@ func TestKeys(t *testing.T) {
 		key.Function.Attr(fakeFunction),
 		key.GetInstanceDurationMs.Attr(fakeDuration),
 		key.Heartbeat.Attr(fakeHeartbeat),
-		key.InFlightRequests.Attr(fakeInt),
+		key.InFlightRequests.Attr(fakeUint64),
 		key.Instance.Attr(fakeInstance),
 		key.K8sReplicaSet.Attr(fakeReplicaSet),
 		key.Labels.Attr(fakeStringMap),
-		key.MaxInstances.Attr(fakeInt),
-		key.MemoryUsageMiB.Attr(fakeInt),
+		key.MaxInstances.Attr(fakeUint64),
+		key.MemoryUsageMiB.Attr(fakeUint64),
 		key.Metadata.Attr(fakeString),
-		key.MinInstances.Attr(fakeInt),
+		key.MinInstances.Attr(fakeUint64),
 		key.Name.Attr(fakeString),
 		key.Namespace.Attr(fakeString),
 		key.Pod.Attr(fakePod),
@@ -60,9 +60,9 @@ func TestKeys(t *testing.T) {
 		key.RouterIP.Attr(fakeString),
 		key.Scale.Attr(fakeScale),
 		key.ScalingDecision.Attr(fakeScalingDecision),
-		key.TargetCPUUsageMilli.Attr(fakeInt),
-		key.TargetInFlightRequests.Attr(fakeInt),
-		key.TargetMemoryUsageMiB.Attr(fakeInt),
+		key.TargetCPUUsageMilli.Attr(fakeUint64),
+		key.TargetInFlightRequests.Attr(fakeUint64),
+		key.TargetMemoryUsageMiB.Attr(fakeUint64),
 		key.Tenant.Attr(fakeString),
 		key.Timestamp.Attr(fakeTime),
 		key.URL.Attr(fakeURL),
@@ -141,6 +141,7 @@ func sortMapKeys(m map[string]any) map[string]any {
 var (
 	fakeString      = "test"
 	fakeInt         = 42
+	fakeUint64      = uint64(42)
 	fakeFloat       = 1.5
 	fakeTime        = time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	fakeDuration    = 100 * time.Millisecond
@@ -149,11 +150,11 @@ var (
 	fakeStringMap   = map[string]string{"key": "value"}
 
 	fakeScale = &function.Scale{
-		MinInstances:           fakeInt,
-		MaxInstances:           fakeInt,
-		TargetCPUUsageMilli:    fakeInt,
-		TargetMemoryUsageMiB:   fakeInt,
-		TargetInFlightRequests: fakeInt,
+		MinInstances:           fakeUint64,
+		MaxInstances:           fakeUint64,
+		TargetCPUUsageMilli:    fakeUint64,
+		TargetMemoryUsageMiB:   fakeUint64,
+		TargetInFlightRequests: fakeUint64,
 	}
 
 	fakeFunction = &function.Function{
@@ -167,7 +168,7 @@ var (
 	fakeHeartbeat = &function.Heartbeat{
 		Function:         fakeFunction,
 		Timestamp:        fakeTime,
-		InFlightRequests: fakeInt,
+		InFlightRequests: fakeUint64,
 	}
 
 	fakeInstance = &function.Instance{
@@ -177,8 +178,8 @@ var (
 		ReplicaSet:     fakeString,
 		AssignedAt:     fakeTime,
 		ReadyAt:        fakeTime,
-		CPUUsageMilli:  fakeInt,
-		MemoryUsageMiB: fakeInt,
+		CPUUsageMilli:  fakeUint64,
+		MemoryUsageMiB: fakeUint64,
 	}
 
 	fakeScalingDecision = controller.ScalingDecision{
