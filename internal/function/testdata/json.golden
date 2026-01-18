@@ -30,16 +30,18 @@
 		"in_flight_requests": 42
 	},
 	"Instance": {
-		"namespace": "skipper-production",
-		"deployment": "my-app",
-		"tenant": "tenant-123",
-		"metadata": "metadata-value",
-		"scale": {
-			"min_instances": 1,
-			"max_instances": 10,
-			"target_cpu_usage_milli": 500,
-			"target_memory_usage_mib": 256,
-			"target_in_flight_requests": 100
+		"function": {
+			"namespace": "skipper-production",
+			"deployment": "my-app",
+			"tenant": "tenant-123",
+			"metadata": "metadata-value",
+			"scale": {
+				"min_instances": 1,
+				"max_instances": 10,
+				"target_cpu_usage_milli": 500,
+				"target_memory_usage_mib": 256,
+				"target_in_flight_requests": 100
+			}
 		},
 		"name": "my-app-abc123",
 		"addr": "10.0.0.1:8080",
