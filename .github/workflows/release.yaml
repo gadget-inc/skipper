@@ -1,13 +1,10 @@
-name: cd
+name: release
 
 on:
   workflow_dispatch:
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yaml
   build:
-    needs: ci
     strategy:
       matrix:
         platform: [amd64, arm64]

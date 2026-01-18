@@ -153,10 +153,10 @@ Use this when you want to start fresh or remove all traces of Skipper from your 
 Docker images are built and pushed manually via GitHub Actions. To trigger a build:
 
 1. Go to the [Actions](../../actions) tab in GitHub.
-1. Select the **cd** workflow from the sidebar.
+1. Select the **release** workflow from the sidebar.
 1. Click **Run workflow** and confirm.
 
-This will run CI first, then build multi-architecture images (amd64 and arm64) and push them to Google Artifact Registry. Images are tagged with the short commit SHA (e.g., `sha-abc1234`).
+This will build multi-architecture images (amd64 and arm64) and push them to Google Artifact Registry. Images are tagged with the short commit SHA (e.g., `sha-abc1234`).
 
 > [!NOTE]
 > CI runs automatically on every pull request and push to `main`. Docker builds do not run automatically — they must be triggered manually as described above.
