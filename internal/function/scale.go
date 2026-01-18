@@ -36,3 +36,61 @@ func (s *Scale) Equal(other *Scale) bool {
 		s.TargetMemoryUsageMiB == other.TargetMemoryUsageMiB &&
 		s.TargetInFlightRequests == other.TargetInFlightRequests
 }
+
+// ScalingDecision contains the inputs and result of one scaling loop for one tenant
+type ScalingDecision struct {
+	DesiredInstances          int
+	UnclampedDesiredInstances int
+	Reason                    ScalingReason
+	Metrics                   []ScalingMetric
+}
+
+var _ slog.LogValuer = ScalingDecision{}
+
+// LogValue implements slog.LogValuer for structured logging.
+func (sd ScalingDecision) LogValue() slog.Value {
+	var metricAttrs []slog.Attr
+	for _, metric := range sd.Metrics {
+		metricAttrs = append(metricAttrs, slog.Float64(metric.Name, metric.Value))
+	}
+
+	return slog.GroupValue(
+		key.DesiredInstances.Slog(sd.DesiredInstances),
+		key.UnclampedDesiredInstances.Slog(sd.UnclampedDesiredInstances),
+		key.Reason.Slog(string(sd.Reason)),
+		slog.GroupAttrs("metrics", metricAttrs...),
+	)
+}
+
+// ScalingReason represents the reason for a scaling decision.
+type ScalingReason string
+
+const (
+	ScalingReasonCPU              ScalingReason = "cpu"
+	ScalingReasonHeartbeatTimeout ScalingReason = "heartbeat_timeout"
+	ScalingReasonInFlightRequests ScalingReason = "in_flight_requests"
+	ScalingReasonMemory           ScalingReason = "memory"
+	ScalingReasonNoReadyInstances ScalingReason = "no ready instances"
+	ScalingReasonUnknown          ScalingReason = "unknown"
+)
+
+// IsValidScalingReason returns true if the given string is a known scaling reason.
+func IsValidScalingReason(reason string) bool {
+	switch ScalingReason(reason) {
+	case ScalingReasonCPU,
+		ScalingReasonHeartbeatTimeout,
+		ScalingReasonInFlightRequests,
+		ScalingReasonMemory,
+		ScalingReasonNoReadyInstances,
+		ScalingReasonUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// ScalingMetric represents an unclamped metric value for a specific metric observed for scaling decisions
+type ScalingMetric struct {
+	Name  string
+	Value float64
+}
