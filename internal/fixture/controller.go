@@ -6,16 +6,16 @@ import (
 	"testing"
 
 	"aidanwoods.dev/go-paseto"
-	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 )
 
 type (
-	InstanceHandler  func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error)
-	ScaleHandler     func(ctx context.Context, fn *function.Function, desiredInstances uint64, reason function.ScalingReason) ([]*function.Instance, error)
-	HeartbeatHandler func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error
+	InstanceHandler  func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error)
+	ScaleHandler     func(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScalingReason) ([]*skipper.Instance, error)
+	HeartbeatHandler func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
 )
 
 const (
@@ -70,7 +70,7 @@ func (f *MockControllerClient) HandleHeartbeat(h HeartbeatHandler) {
 }
 
 // Instance implements controller.Client.
-func (f *MockControllerClient) Instance(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (instance *function.Instance, err error) {
+func (f *MockControllerClient) Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error) {
 	if f.instanceHandler == nil {
 		f.t.Fatalf("mcc.Instance was called but not mocked")
 	}
@@ -79,7 +79,7 @@ func (f *MockControllerClient) Instance(ctx context.Context, fn *function.Functi
 }
 
 // Scale implements controller.Client.
-func (f *MockControllerClient) Scale(ctx context.Context, fn *function.Function, desiredInstances uint64, reason function.ScalingReason) ([]*function.Instance, error) {
+func (f *MockControllerClient) Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScalingReason) ([]*skipper.Instance, error) {
 	if f.scaleHandler == nil {
 		f.t.Fatalf("mcc.Scale was called but not mocked")
 	}
@@ -88,7 +88,7 @@ func (f *MockControllerClient) Scale(ctx context.Context, fn *function.Function,
 }
 
 // Heartbeat implements controller.Client.
-func (f *MockControllerClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
+func (f *MockControllerClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
 	if f.heartbeatHandler == nil {
 		f.t.Fatalf("mcc.Heartbeat was called but not mocked")
 	}

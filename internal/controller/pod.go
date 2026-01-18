@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"aidanwoods.dev/go-paseto"
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/go-json-experiment/json"
@@ -37,7 +37,7 @@ var (
 	otelHTTPClient            = &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 )
 
-func (ctrl *Controller) assignPod(ctx context.Context, fn *function.Function) (instance *function.Instance, err error) {
+func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Function) (instance *skipper.Instance, err error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
@@ -143,7 +143,7 @@ GET_UNASSIGNED_POD:
 	return
 }
 
-func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *function.Function) (*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Function) (*v1.Pod, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
@@ -163,7 +163,7 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *function.Funct
 	})
 }
 
-func (ctrl *Controller) getUnassignedPods(fn *function.Function) ([]*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPods(fn *skipper.Function) ([]*v1.Pod, error) {
 	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
 	if err != nil {
 		return nil, err
@@ -178,17 +178,17 @@ func (ctrl *Controller) getUnassignedPods(fn *function.Function) ([]*v1.Pod, err
 	return slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) }), nil
 }
 
-func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *function.Function) ([]*function.Instance, error) {
+func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
 	instances, err := ctrl.getInstances(ctx, fn)
 	if err != nil {
 		return nil, err
 	}
 
 	// filter out instances that are unready
-	return slices.DeleteFunc(instances, func(instance *function.Instance) bool { return instance.ReadyAt.IsZero() }), nil
+	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool { return instance.ReadyAt.IsZero() }), nil
 }
 
-func (ctrl *Controller) getInstances(ctx context.Context, fn *function.Function) ([]*function.Instance, error) {
+func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
 	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
 		key.Tenant.Label:     fn.Tenant,
 		key.Deployment.Label: fn.Deployment,
@@ -197,12 +197,12 @@ func (ctrl *Controller) getInstances(ctx context.Context, fn *function.Function)
 		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
 	}
 
-	instances := make([]*function.Instance, 0, len(assignedPods))
+	instances := make([]*skipper.Instance, 0, len(assignedPods))
 	for _, pod := range assignedPods {
 		instance, err := ctrl.instanceFromPod(pod)
 		if err != nil {
 			// Pod failed validation (e.g., malformed timestamp annotation, missing replica set annotation).
-			// Delete it and continue processing other pods instead of blocking all scaling for this function.
+			// Delete it and continue processing other pods instead of blocking all scaling for this skipper.
 			log.Warn(ctx, "failed to get instance from pod, deleting invalid pod", key.Error.Slog(err), key.Pod.Slog(pod))
 			err = ctrl.deletePod(ctx, pod.Namespace, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
@@ -335,7 +335,7 @@ func (ctrl *Controller) refreshMetrics(ctx context.Context) {
 	})
 }
 
-func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*function.Function, error) {
+func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*skipper.Function, error) {
 	if pod == nil {
 		return nil, errors.New("pod is nil")
 	}
@@ -345,7 +345,7 @@ func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*function.Function, error)
 		return nil, errors.New("missing function annotation")
 	}
 
-	fn := &function.Function{}
+	fn := &skipper.Function{}
 	if err := json.Unmarshal([]byte(fnJSON), fn); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
 	}
@@ -356,13 +356,13 @@ func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*function.Function, error)
 	return fn, nil
 }
 
-func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*function.Instance, error) {
+func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) {
 	fn, err := ctrl.functionFromPod(pod)
 	if err != nil {
 		return nil, err
 	}
 
-	instance := &function.Instance{
+	instance := &skipper.Instance{
 		Function: fn,
 		Name:     pod.Name,
 	}

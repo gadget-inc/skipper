@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -22,7 +22,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Supervisor manages scaling decisions for a single function. It tracks
+// Supervisor manages scaling decisions for a single skipper. It tracks
 // heartbeats from routers, maintains a stabilization window for
 // scale-down decisions, and coordinates with the controller to adjust
 // instance counts. Each Supervisor runs its own independent converge
@@ -32,25 +32,25 @@ type Supervisor struct {
 	cancel              context.CancelFunc
 	once                sync.Once
 	mu                  sync.Mutex
-	fn                  *function.Function
+	fn                  *skipper.Function
 	ctrl                *Controller
-	routerHeartbeats    *xsync.Map[string, *function.Heartbeat]
+	routerHeartbeats    *xsync.Map[string, *skipper.Heartbeat]
 	stabilizationWindow []Recommendation
 }
 
 // supervisor returns the supervisor for the given function, creating it if necessary.
 // If the controller has been started (ctrl.ctx is set), the supervisor's loop will
 // be started automatically.
-func (ctrl *Controller) supervisor(fn *function.Function) *Supervisor {
+func (ctrl *Controller) supervisor(fn *skipper.Function) *Supervisor {
 	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
-		return &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: xsync.NewMap[string, *function.Heartbeat]()}, false
+		return &Supervisor{fn: fn, ctrl: ctrl, routerHeartbeats: xsync.NewMap[string, *skipper.Heartbeat]()}, false
 	})
 	supervisor.start(ctrl.ctx)
 	return supervisor
 }
 
 // discoverSupervisors discovers functions in the given namespace by listing
-// assigned pods and ensures supervisors exist for each unique function.
+// assigned pods and ensures supervisors exist for each unique skipper.
 // Supervisors are created even if this controller is not responsible for the
 // function, as they track scaling decisions that may be needed if responsibility
 // changes. Invalid pods (e.g., with malformed function annotations) are deleted.
@@ -63,7 +63,7 @@ func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace strin
 		return fmt.Errorf("failed to get assigned pods: %w", err)
 	}
 
-	seenFunctions := make(map[function.Hash]bool)
+	seenFunctions := make(map[skipper.FunctionHash]bool)
 
 	for _, pod := range pods {
 		fn, err := ctrl.functionFromPod(pod)
@@ -131,9 +131,9 @@ func (s *Supervisor) stop() {
 // heartbeat updates the heartbeat for a specific router if it's newer
 // than the existing one, and garbage collects any expired router
 // heartbeats.
-func (s *Supervisor) heartbeat(routerIP string, heartbeat *function.Heartbeat) {
+func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 	// update the heartbeat for the router if it's newer than the existing one
-	s.routerHeartbeats.Compute(routerIP, func(existing *function.Heartbeat, _ bool) (*function.Heartbeat, xsync.ComputeOp) {
+	s.routerHeartbeats.Compute(routerIP, func(existing *skipper.Heartbeat, _ bool) (*skipper.Heartbeat, xsync.ComputeOp) {
 		if existing == nil || heartbeat.Timestamp.After(existing.Timestamp) {
 			return heartbeat, xsync.UpdateOp
 		}
@@ -141,7 +141,7 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *function.Heartbeat) {
 	})
 
 	// garbage collect expired router heartbeats
-	s.routerHeartbeats.Range(func(routerIP string, heartbeat *function.Heartbeat) bool {
+	s.routerHeartbeats.Range(func(routerIP string, heartbeat *skipper.Heartbeat) bool {
 		if time.Since(heartbeat.Timestamp) > s.ctrl.config.HeartbeatTimeout {
 			s.routerHeartbeats.Delete(routerIP)
 		}
@@ -152,12 +152,12 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *function.Heartbeat) {
 // combinedHeartbeat aggregates heartbeats from all routers for this
 // function, summing in-flight requests and using the most recent
 // timestamp from either router heartbeats or instance assignments.
-func (s *Supervisor) combinedHeartbeat(instances []*function.Instance) *function.Heartbeat {
-	heartbeat := &function.Heartbeat{
+func (s *Supervisor) combinedHeartbeat(instances []*skipper.Instance) *skipper.Heartbeat {
+	heartbeat := &skipper.Heartbeat{
 		Function: s.fn,
 	}
 
-	s.routerHeartbeats.Range(func(_ string, routerHeartbeat *function.Heartbeat) bool {
+	s.routerHeartbeats.Range(func(_ string, routerHeartbeat *skipper.Heartbeat) bool {
 		heartbeat.InFlightRequests += routerHeartbeat.InFlightRequests
 		if heartbeat.Timestamp.Before(routerHeartbeat.Timestamp) {
 			heartbeat.Timestamp = routerHeartbeat.Timestamp
@@ -280,9 +280,9 @@ func (s *Supervisor) converge(ctx context.Context) error {
 // scale executes the scaling decision by assigning new pods for
 // scale-up or deleting pods for scale-down. It forwards requests to the
 // responsible controller if this controller is not responsible for the
-// function. For scale-down, it deletes unready instances first, then
+// skipper. For scale-down, it deletes unready instances first, then
 // oldest ready instances.
-func (s *Supervisor) scale(ctx context.Context, decision function.ScalingDecision) ([]*function.Instance, error) {
+func (s *Supervisor) scale(ctx context.Context, decision skipper.ScalingDecision) ([]*skipper.Instance, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -304,13 +304,13 @@ func (s *Supervisor) scale(ctx context.Context, decision function.ScalingDecisio
 // scaleWithoutLock is the internal implementation of scale that assumes
 // the caller already holds s.mu. It executes the scaling decision
 // without forwarding to another controller.
-func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function.Instance, decision function.ScalingDecision) ([]*function.Instance, []*function.Instance, error) {
+func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.Instance, decision skipper.ScalingDecision) ([]*skipper.Instance, []*skipper.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.scale")
 	defer span.End()
 
 	// split instances into ready and unready
-	var unreadyInstances []*function.Instance
-	readyInstances := slices.DeleteFunc(instances, func(instance *function.Instance) bool {
+	var unreadyInstances []*skipper.Instance
+	readyInstances := slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
 		if instance.ReadyAt.IsZero() {
 			unreadyInstances = append(unreadyInstances, instance)
 			return true
@@ -360,7 +360,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 			}
 			readyInstances = append(readyInstances, instance)
 		}
-	} else if decision.Reason == function.ScalingReasonNoReadyInstances {
+	} else if decision.Reason == skipper.ScalingReasonNoReadyInstances {
 		// we were asked to scale up to 1 instance because there were no
 		// ready instances at the time of the request, but now we have
 		// at least 1 ready instance, so there's nothing to do
@@ -380,7 +380,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 		unreadyInstances = nil
 
 		// sort ready instances by assigned at in descending order (newest first)
-		slices.SortFunc(readyInstances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+		slices.SortFunc(readyInstances, func(a, b *skipper.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
 
 		// delete oldest ready instances (they're at the end after sorting newest-first)
 		for toDelete := ready - desired; toDelete > 0; toDelete-- {
@@ -400,8 +400,8 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 // assigned state (not ready) for longer than FunctionAssignTimeout*2.
 // This is a cheap operation (just deletes) and should be called before
 // scaling execution to remove broken pods from consideration.
-func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*function.Instance) []*function.Instance {
-	return slices.DeleteFunc(instances, func(instance *function.Instance) bool {
+func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*skipper.Instance) []*skipper.Instance {
+	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
 		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > s.ctrl.config.FunctionAssignTimeout*2 {
 			ctx := log.With(ctx, key.Instance.Slog(instance))
 			log.Warn(ctx, "terminating instance stuck in assigned state")
@@ -432,7 +432,7 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*fun
 // instance count reaches or exceeds maxInstances+1. In this case, the
 // stale instance is kept and scale() will handle cleanup on subsequent
 // iterations.
-func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*function.Instance, currentTotalInstances int) {
+func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*skipper.Instance, currentTotalInstances int) {
 	namespaceLister, ok := s.ctrl.namespaceListers[s.fn.Namespace]
 	if !ok {
 		log.Warn(ctx, "namespace lister not found for function namespace", key.Namespace.Slog(s.fn.Namespace))
@@ -505,7 +505,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*fun
 // getReadyInstance returns a ready instance for the function, scaling
 // up if necessary. If excludeNames is provided, those instances are
 // excluded from selection (unless all instances would be excluded).
-func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string) (*function.Instance, error) {
+func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string) (*skipper.Instance, error) {
 	instances, err := s.ctrl.getReadyInstances(ctx, s.fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
@@ -514,10 +514,10 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
 
 	for len(instances) == 0 {
-		if instances, err = s.scale(ctx, function.ScalingDecision{
+		if instances, err = s.scale(ctx, skipper.ScalingDecision{
 			DesiredInstances:          1,
 			UnclampedDesiredInstances: 1,
-			Reason:                    function.ScalingReasonNoReadyInstances,
+			Reason:                    skipper.ScalingReasonNoReadyInstances,
 		}); err != nil {
 			return nil, fmt.Errorf("failed to scale function: %w", err)
 		}
@@ -525,13 +525,13 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 
 	if len(instances) > int(s.fn.Scale.MaxInstances) {
 		// sort instances by assigned at in descending order (newest first)
-		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+		slices.SortFunc(instances, func(a, b *skipper.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
 		// keep the newest instances up to the max instances allowed for the function
 		instances = instances[:s.fn.Scale.MaxInstances]
 	}
 
 	if len(excludeNames) > 0 {
-		filtered := slices.DeleteFunc(slices.Clone(instances), func(inst *function.Instance) bool {
+		filtered := slices.DeleteFunc(slices.Clone(instances), func(inst *skipper.Instance) bool {
 			return slices.Contains(excludeNames, inst.Name)
 		})
 		if len(filtered) > 0 {
@@ -559,10 +559,10 @@ type Recommendation struct {
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric Metric, instances []*function.Instance) (int, float64) {
+func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric Metric, instances []*skipper.Instance) (int, float64) {
 	currentInstances := len(instances)
-	var instancesWithMetrics []*function.Instance
-	var instancesWithoutMetrics []*function.Instance
+	var instancesWithMetrics []*skipper.Instance
+	var instancesWithoutMetrics []*skipper.Instance
 
 	for _, instance := range instances {
 		var usage uint64
@@ -651,44 +651,44 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *function.Heartbeat, instances []*function.Instance) function.ScalingDecision {
+func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) skipper.ScalingDecision {
 	if time.Since(heartbeat.Timestamp) >= cfg.HeartbeatTimeout {
-		return function.ScalingDecision{
+		return skipper.ScalingDecision{
 			DesiredInstances:          0,
 			UnclampedDesiredInstances: 0,
-			Reason:                    function.ScalingReasonHeartbeatTimeout,
+			Reason:                    skipper.ScalingReasonHeartbeatTimeout,
 		}
 	}
 
 	maxDesiredInstances := 1 // we only scale to 0 from a heartbeat timeout, so we start at 1
-	var scalingReason function.ScalingReason
-	var scalingMetrics []function.ScalingMetric
+	var scalingReason skipper.ScalingReason
+	var scalingMetrics []skipper.ScalingMetric
 
 	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
 		desiredInstances := int(math.Ceil(float64(heartbeat.InFlightRequests) / float64(heartbeat.Function.Scale.TargetInFlightRequests)))
 		averageUsage := float64(heartbeat.InFlightRequests) / float64(len(instances))
-		scalingMetrics = append(scalingMetrics, function.ScalingMetric{Name: "in_flight_requests", Value: averageUsage})
+		scalingMetrics = append(scalingMetrics, skipper.ScalingMetric{Name: "in_flight_requests", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = function.ScalingReasonInFlightRequests
+			scalingReason = skipper.ScalingReasonInFlightRequests
 		}
 	}
 
 	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricCPU, instances)
-		scalingMetrics = append(scalingMetrics, function.ScalingMetric{Name: "cpu", Value: averageUsage})
+		scalingMetrics = append(scalingMetrics, skipper.ScalingMetric{Name: "cpu", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = function.ScalingReasonCPU
+			scalingReason = skipper.ScalingReasonCPU
 		}
 	}
 
 	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricMemory, instances)
-		scalingMetrics = append(scalingMetrics, function.ScalingMetric{Name: "memory", Value: averageUsage})
+		scalingMetrics = append(scalingMetrics, skipper.ScalingMetric{Name: "memory", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = function.ScalingReasonMemory
+			scalingReason = skipper.ScalingReasonMemory
 		}
 	}
 
@@ -697,7 +697,7 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *func
 	maxInstances := heartbeat.Function.Scale.MaxInstances
 	clampedValue := min(max(uint64(maxDesiredInstances), minInstances), maxInstances)
 
-	return function.ScalingDecision{
+	return skipper.ScalingDecision{
 		DesiredInstances:          clampedValue,
 		UnclampedDesiredInstances: uint64(maxDesiredInstances),
 		Reason:                    scalingReason,

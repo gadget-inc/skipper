@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"aidanwoods.dev/go-paseto"
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -25,9 +25,9 @@ import (
 
 // replicaSetNames tracks the current replicaset name per function (keyed by function hash).
 // This allows each function to have its own replicaset lineage without global counters.
-var replicaSetNames = xsync.NewMap[function.Hash, string]()
+var replicaSetNames = xsync.NewMap[skipper.FunctionHash, string]()
 
-func NewAvailablePod(t *testing.T, fn *function.Function, handler http.Handler) *v1.Pod {
+func NewAvailablePod(t *testing.T, fn *skipper.Function, handler http.Handler) *v1.Pod {
 	t.Helper()
 
 	if handler == nil {
@@ -86,12 +86,12 @@ func NewAvailablePod(t *testing.T, fn *function.Function, handler http.Handler) 
 	}
 }
 
-func defaultAvailablePodHandler(t *testing.T, fn *function.Function) http.HandlerFunc {
+func defaultAvailablePodHandler(t *testing.T, fn *skipper.Function) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		assert.Assert(t, req.Method == http.MethodPost)
 		assert.Assert(t, req.URL.Path == "/__skipper/assign")
 
-		assignedFn, err := function.FromHeader(req)
+		assignedFn, err := skipper.FunctionFromHeader(req)
 		assert.NilError(t, err)
 		assert.Assert(t, assignedFn.Equal(fn))
 
@@ -104,7 +104,7 @@ func defaultAvailablePodHandler(t *testing.T, fn *function.Function) http.Handle
 	}
 }
 
-func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *v1.Pod {
+func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v1.Pod {
 	t.Helper()
 
 	testServer := httptest.NewServer(handler)
@@ -160,16 +160,16 @@ func NewAssignedPod(t *testing.T, fn *function.Function, handler http.Handler) *
 	}
 }
 
-// CurrentReplicaSetName returns the current replicaset name for the given function.
+// CurrentReplicaSetName returns the current replicaset name for the given skipper.
 // If no replicaset has been created yet for this function, it generates one.
-func CurrentReplicaSetName(fn *function.Function) string {
+func CurrentReplicaSetName(fn *skipper.Function) string {
 	name, _ := replicaSetNames.LoadOrCompute(fn.Hash(), func() (string, bool) {
 		return fn.Deployment + "-rs-" + uuid.NewString()[:8], false
 	})
 	return name
 }
 
-func CurrentReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
+func CurrentReplicaSet(t *testing.T, fn *skipper.Function) *appsv1.ReplicaSet {
 	t.Helper()
 	return &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -187,7 +187,7 @@ func CurrentReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
 }
 
 // NewReplicaSet creates a new replicaset for the function, replacing any existing one.
-func NewReplicaSet(t *testing.T, fn *function.Function) *appsv1.ReplicaSet {
+func NewReplicaSet(t *testing.T, fn *skipper.Function) *appsv1.ReplicaSet {
 	t.Helper()
 	// Generate a new replicaset name for this function
 	replicaSetNames.Store(fn.Hash(), fn.Deployment+"-rs-"+uuid.NewString()[:8])
