@@ -243,7 +243,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
-	function.RemoveHeader(pr.Out)
+	delete(pr.Out.Header, key.Function.Header)
 
 	pr.Out.Host = pr.In.Host
 

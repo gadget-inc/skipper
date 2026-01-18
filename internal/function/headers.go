@@ -9,10 +9,6 @@ import (
 	"github.com/go-json-experiment/json"
 )
 
-func RemoveHeader(r *http.Request) {
-	delete(r.Header, key.Function.Header)
-}
-
 func (f *Function) SetHeader(r *http.Request) {
 	fnJSON, err := json.Marshal(f)
 	if err != nil {
