@@ -5,17 +5,94 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/go-json-experiment/json"
 )
 
 type Instance struct {
 	*Function
-	Name           string    // pod name
-	Addr           string    // pod ip : pod port
-	ReplicaSet     string    // replica set name
-	AssignedAt     time.Time // time the instance was assigned to the pod
-	ReadyAt        time.Time // time the instance was ready to receive traffic
-	CPUUsageMilli  uint64    // cpu usage in millicores
-	MemoryUsageMiB uint64    // memory usage in MiB
+	Name           string    `json:"Name"`           // pod name
+	Addr           string    `json:"Addr"`           // pod ip : pod port
+	ReplicaSet     string    `json:"ReplicaSet"`     // replica set name
+	AssignedAt     time.Time `json:"AssignedAt"`     // time the instance was assigned to the pod
+	ReadyAt        time.Time `json:"ReadyAt"`        // time the instance was ready to receive traffic
+	CPUUsageMilli  uint64    `json:"CPUUsageMilli"`  // cpu usage in millicores
+	MemoryUsageMiB uint64    `json:"MemoryUsageMiB"` // memory usage in MiB
+}
+
+// UnmarshalJSON implements custom unmarshaling to accept both PascalCase (legacy)
+// and snake_case (new) field names for backward compatibility during migration.
+func (i *Instance) UnmarshalJSON(data []byte) error {
+	type instanceAlias struct {
+		*Function
+		// PascalCase (legacy)
+		Name           string    `json:"Name"`
+		Addr           string    `json:"Addr"`
+		ReplicaSet     string    `json:"ReplicaSet"`
+		AssignedAt     time.Time `json:"AssignedAt"`
+		ReadyAt        time.Time `json:"ReadyAt"`
+		CPUUsageMilli  uint64    `json:"CPUUsageMilli"`
+		MemoryUsageMiB uint64    `json:"MemoryUsageMiB"`
+		// snake_case (new)
+		NameSnake           string    `json:"name"`
+		AddrSnake           string    `json:"addr"`
+		ReplicaSetSnake     string    `json:"replica_set"`
+		AssignedAtSnake     time.Time `json:"assigned_at"`
+		ReadyAtSnake        time.Time `json:"ready_at"`
+		CPUUsageMilliSnake  uint64    `json:"cpu_usage_milli"`
+		MemoryUsageMiBSnake uint64    `json:"memory_usage_mib"`
+	}
+
+	var alias instanceAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+
+	i.Function = alias.Function
+
+	// Prefer snake_case if present, otherwise use PascalCase
+	if alias.NameSnake != "" {
+		i.Name = alias.NameSnake
+	} else {
+		i.Name = alias.Name
+	}
+
+	if alias.AddrSnake != "" {
+		i.Addr = alias.AddrSnake
+	} else {
+		i.Addr = alias.Addr
+	}
+
+	if alias.ReplicaSetSnake != "" {
+		i.ReplicaSet = alias.ReplicaSetSnake
+	} else {
+		i.ReplicaSet = alias.ReplicaSet
+	}
+
+	if !alias.AssignedAtSnake.IsZero() {
+		i.AssignedAt = alias.AssignedAtSnake
+	} else {
+		i.AssignedAt = alias.AssignedAt
+	}
+
+	if !alias.ReadyAtSnake.IsZero() {
+		i.ReadyAt = alias.ReadyAtSnake
+	} else {
+		i.ReadyAt = alias.ReadyAt
+	}
+
+	if alias.CPUUsageMilliSnake != 0 {
+		i.CPUUsageMilli = alias.CPUUsageMilliSnake
+	} else {
+		i.CPUUsageMilli = alias.CPUUsageMilli
+	}
+
+	if alias.MemoryUsageMiBSnake != 0 {
+		i.MemoryUsageMiB = alias.MemoryUsageMiBSnake
+	} else {
+		i.MemoryUsageMiB = alias.MemoryUsageMiB
+	}
+
+	return nil
 }
 
 var _ slog.LogValuer = (*Instance)(nil)
