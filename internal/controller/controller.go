@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/hashring"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/puzpuzpuz/xsync/v4"
@@ -41,7 +41,7 @@ type Controller struct {
 	ctx                 context.Context
 	startedAt           time.Time
 	ring                *hashring.HashRing
-	supervisors         *xsync.Map[function.Hash, *Supervisor]
+	supervisors         *xsync.Map[skipper.FunctionHash, *Supervisor]
 	newClientFunc       NewClientFunc
 	controllerClients   *xsync.Map[string, Client]
 	kubernetes          kubernetes.Interface
@@ -55,7 +55,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 	return &Controller{
 		config:              cfg,
 		ring:                hashring.New(hashring.WithWaitTime(cfg.HashRingWaitTime)),
-		supervisors:         xsync.NewMap[function.Hash, *Supervisor](),
+		supervisors:         xsync.NewMap[skipper.FunctionHash, *Supervisor](),
 		newClientFunc:       newClientFunc,
 		controllerClients:   xsync.NewMap[string, Client](),
 		kubernetes:          kubernetes,

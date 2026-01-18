@@ -17,9 +17,9 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/controller"
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,7 +54,7 @@ var (
 type Router struct {
 	config       *Config
 	ctrl         controller.Client
-	heartbeats   *xsync.Map[function.Hash, *function.Heartbeat]
+	heartbeats   *xsync.Map[skipper.FunctionHash, *skipper.Heartbeat]
 	reverseProxy *httputil.ReverseProxy
 	roundTripper http.RoundTripper
 }
@@ -63,7 +63,7 @@ func New(cfg *Config, ctrl controller.Client) *Router {
 	r := &Router{
 		config:     cfg,
 		ctrl:       ctrl,
-		heartbeats: xsync.NewMap[function.Hash, *function.Heartbeat](),
+		heartbeats: xsync.NewMap[skipper.FunctionHash, *skipper.Heartbeat](),
 		roundTripper: otelhttp.NewTransport(&http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -91,8 +91,8 @@ func New(cfg *Config, ctrl controller.Client) *Router {
 
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
-		var heartbeats []*function.Heartbeat
-		r.heartbeats.Range(func(fnHash function.Hash, heartbeat *function.Heartbeat) bool {
+		var heartbeats []*skipper.Heartbeat
+		r.heartbeats.Range(func(fnHash skipper.FunctionHash, heartbeat *skipper.Heartbeat) bool {
 			if time.Since(heartbeat.Timestamp) > r.config.HeartbeatInterval*3 {
 				r.heartbeats.Delete(fnHash) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
@@ -111,7 +111,7 @@ func (r *Router) Start(ctx context.Context) {
 }
 
 func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	fn, err := function.FromHeader(req)
+	fn, err := skipper.FunctionFromHeader(req)
 	if err != nil {
 		if req.Method == http.MethodGet && req.URL.Path == "/healthz" {
 			rw.WriteHeader(http.StatusOK)
@@ -127,8 +127,8 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
-		r.heartbeats.Compute(fn.Hash(), func(heartbeat *function.Heartbeat, _ bool) (*function.Heartbeat, xsync.ComputeOp) {
-			return &function.Heartbeat{
+		r.heartbeats.Compute(fn.Hash(), func(heartbeat *skipper.Heartbeat, _ bool) (*skipper.Heartbeat, xsync.ComputeOp) {
+			return &skipper.Heartbeat{
 				Function:         fn,
 				Timestamp:        time.Now(),
 				InFlightRequests: heartbeat.GetInFlightRequests(),
@@ -138,9 +138,9 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	})
 
 	// increment the in-flight requests for this function
-	r.heartbeats.Compute(fn.Hash(), func(heartbeat *function.Heartbeat, _ bool) (*function.Heartbeat, xsync.ComputeOp) {
+	r.heartbeats.Compute(fn.Hash(), func(heartbeat *skipper.Heartbeat, _ bool) (*skipper.Heartbeat, xsync.ComputeOp) {
 		requestsInFlight.WithLabelValues(fn.Deployment).Inc()
-		return &function.Heartbeat{
+		return &skipper.Heartbeat{
 			Function:         fn,
 			Timestamp:        time.Now(),
 			InFlightRequests: heartbeat.GetInFlightRequests() + 1,
@@ -148,9 +148,9 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	})
 
 	// decrement the in-flight requests for this function when the request is complete
-	defer r.heartbeats.Compute(fn.Hash(), func(heartbeat *function.Heartbeat, _ bool) (*function.Heartbeat, xsync.ComputeOp) {
+	defer r.heartbeats.Compute(fn.Hash(), func(heartbeat *skipper.Heartbeat, _ bool) (*skipper.Heartbeat, xsync.ComputeOp) {
 		requestsInFlight.WithLabelValues(fn.Deployment).Dec()
-		return &function.Heartbeat{
+		return &skipper.Heartbeat{
 			Function:         fn,
 			Timestamp:        time.Now(),
 			InFlightRequests: heartbeat.GetInFlightRequests() - 1,

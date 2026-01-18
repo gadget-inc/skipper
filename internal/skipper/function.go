@@ -1,12 +1,15 @@
-package function
+package skipper
 
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"hash/maphash"
 	"log/slog"
+	"net/http"
 
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/go-json-experiment/json"
 )
 
 // hashSeed is a fixed seed for deterministic hashing within a process.
@@ -20,11 +23,11 @@ type Function struct {
 	Scale      *Scale `json:"scale"`
 }
 
-// Hash is a unique identifier for a Function, suitable for use as a map key.
-type Hash = uint64
+// FunctionHash is a unique identifier for a Function, suitable for use as a map key.
+type FunctionHash = uint64
 
 // Hash returns a hash of all Function fields, suitable for use as a map key.
-func (f *Function) Hash() Hash {
+func (f *Function) Hash() FunctionHash {
 	var h maphash.Hash
 	h.SetSeed(hashSeed)
 	h.WriteString(f.Namespace)
@@ -89,4 +92,33 @@ func (f *Function) Validate() error {
 		return errors.New("missing scale")
 	}
 	return nil
+}
+
+func (f *Function) SetHeader(r *http.Request) {
+	fnJSON, err := json.Marshal(f)
+	if err != nil {
+		// this should never happen
+		panic(fmt.Errorf("failed to marshal function: %w", err))
+	}
+	r.Header[key.Function.Header] = []string{string(fnJSON)}
+}
+
+func FunctionFromHeader(req *http.Request) (*Function, error) {
+	fn := &Function{}
+
+	header, ok := req.Header[key.Function.Header]
+	if !ok || len(header) == 0 {
+		return nil, errors.New("missing " + key.Function.Header)
+	}
+
+	err := json.Unmarshal([]byte(header[0]), fn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal %s header: %w", key.Function.Header, err)
+	}
+
+	if err := fn.Validate(); err != nil {
+		return nil, err
+	}
+
+	return fn, nil
 }

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
@@ -42,7 +42,7 @@ func (ctrl *Controller) handleHealthz(rw http.ResponseWriter, req *http.Request)
 
 func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	fn, err := function.FromHeader(req)
+	fn, err := skipper.FunctionFromHeader(req)
 	if err != nil {
 		log.Error(ctx, "failed to get function from header", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
@@ -72,7 +72,7 @@ func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request
 
 func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
-	fn, err := function.FromHeader(req)
+	fn, err := skipper.FunctionFromHeader(req)
 	if err != nil {
 		log.Error(ctx, "failed to get function from header", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
@@ -89,14 +89,14 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	reason := req.Header.Get(key.Reason.Header)
-	if !function.IsValidScalingReason(reason) {
+	if !skipper.IsValidScalingReason(reason) {
 		log.Warn(ctx, "invalid scaling reason, using unknown", key.Reason.Slog(reason))
-		reason = string(function.ScalingReasonUnknown)
+		reason = string(skipper.ScalingReasonUnknown)
 	}
 
-	instances, err := ctrl.supervisor(fn).scale(ctx, function.ScalingDecision{
+	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScalingDecision{
 		DesiredInstances: desiredInstances,
-		Reason:           function.ScalingReason(reason),
+		Reason:           skipper.ScalingReason(reason),
 	})
 	if err != nil {
 		log.Error(ctx, "failed to scale function", key.Error.Slog(err))
@@ -119,7 +119,7 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 		return
 	}
 
-	var heartbeats []*function.Heartbeat
+	var heartbeats []*skipper.Heartbeat
 	if err := json.UnmarshalRead(req.Body, &heartbeats); err != nil {
 		log.Error(req.Context(), "failed to decode heartbeats", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)

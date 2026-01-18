@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/fixture"
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"gotest.tools/v3/assert"
 )
 
@@ -107,7 +107,7 @@ func TestGetInstanceDuration(t *testing.T) {
 	sentError := false
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+	mockControllerClient.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		if !sentError {
 			time.Sleep(10 * time.Millisecond)
 			sentError = true
@@ -161,7 +161,7 @@ func TestMethods(t *testing.T) {
 			fn := fixture.NewFunction(t)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					assert.Assert(t, tc.method == req.Method)
 				}), nil
@@ -201,7 +201,7 @@ func TestHeaders(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn      *function.Function
+		fn      *skipper.Function
 		req     *http.Request
 		headers http.Header
 	}
@@ -302,7 +302,7 @@ func TestHeaders(t *testing.T) {
 			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, "/", nil)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
 					state.headers = req.Header
@@ -356,7 +356,7 @@ func TestBody(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn           *function.Function
+		fn           *skipper.Function
 		contentType  string
 		body         io.Reader
 		receivedBody string
@@ -411,7 +411,7 @@ func TestBody(t *testing.T) {
 			tc.setup(t, state)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
 					assert.NilError(t, err)
@@ -474,14 +474,14 @@ func TestHeartbeats(t *testing.T) {
 	defer close(done)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.Tenant))
 			<-done
 		}), nil
 	})
-	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
 		if len(heartbeats) == 0 {
 			// ignore the initial heartbeats
 			return nil
@@ -523,7 +523,7 @@ func TestRetries(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn            *function.Function
+		fn            *skipper.Function
 		rw            *httptest.ResponseRecorder
 		maxAttempts   int
 		instanceErrs  []error
@@ -610,7 +610,7 @@ func TestRetries(t *testing.T) {
 
 			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				if len(state.instanceErrs) > 0 && instanceErrsIndex < len(state.instanceErrs) {
 					instanceErrsIndex++
 					return nil, state.instanceErrs[instanceErrsIndex-1]
@@ -687,7 +687,7 @@ func TestInstanceExclusion(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn                            *function.Function
+		fn                            *skipper.Function
 		rw                            *httptest.ResponseRecorder
 		router                        *Router
 		mcc                           *fixture.MockControllerClient
@@ -702,7 +702,7 @@ func TestInstanceExclusion(t *testing.T) {
 		{
 			name: "dial error excludes instance",
 			setup: func(t *testing.T, state *testState) {
-				failingInstance := &function.Instance{
+				failingInstance := &skipper.Instance{
 					Function: state.fn,
 					Name:     "failing-instance",
 					Addr:     "127.0.0.1:59999", // non-existent address
@@ -713,7 +713,7 @@ func TestInstanceExclusion(t *testing.T) {
 				})
 
 				callCount := 0
-				state.mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+				state.mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 					state.excludedInstanceNamesReceived = append(state.excludedInstanceNamesReceived, excludeInstanceNames)
 					callCount++
 					if callCount == 1 {
@@ -739,7 +739,7 @@ func TestInstanceExclusion(t *testing.T) {
 				})
 
 				callCount := 0
-				state.mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+				state.mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 					state.excludedInstanceNamesReceived = append(state.excludedInstanceNamesReceived, excludeInstanceNames)
 					callCount++
 					return instance, nil
@@ -822,7 +822,7 @@ func TestContextCancellation(t *testing.T) {
 
 			mcc := fixture.NewMockControllerClient(t)
 			callCount := 0
-			mcc.HandleInstance(func(ctx context.Context, fn *function.Function, excludeInstanceNames ...string) (*function.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				callCount++
 				if callCount == 1 {
 					// First call fails, triggering a retry with backoff

@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"gotest.tools/v3/golden"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -148,7 +148,7 @@ var (
 	fakeStringSlice = []string{"a", "b"}
 	fakeStringMap   = map[string]string{"key": "value"}
 
-	fakeScale = &function.Scale{
+	fakeScale = &skipper.Scale{
 		MinInstances:           fakeUint64,
 		MaxInstances:           fakeUint64,
 		TargetCPUUsageMilli:    fakeUint64,
@@ -156,7 +156,7 @@ var (
 		TargetInFlightRequests: fakeUint64,
 	}
 
-	fakeFunction = &function.Function{
+	fakeFunction = &skipper.Function{
 		Namespace:  fakeString,
 		Deployment: fakeString,
 		Tenant:     fakeString,
@@ -164,13 +164,13 @@ var (
 		Scale:      fakeScale,
 	}
 
-	fakeHeartbeat = &function.Heartbeat{
+	fakeHeartbeat = &skipper.Heartbeat{
 		Function:         fakeFunction,
 		Timestamp:        fakeTime,
 		InFlightRequests: fakeUint64,
 	}
 
-	fakeInstance = &function.Instance{
+	fakeInstance = &skipper.Instance{
 		Function:       fakeFunction,
 		Name:           fakeString,
 		Addr:           fakeString,
@@ -181,11 +181,11 @@ var (
 		MemoryUsageMiB: fakeUint64,
 	}
 
-	fakeScalingDecision = function.ScalingDecision{
+	fakeScalingDecision = skipper.ScalingDecision{
 		DesiredInstances:          fakeUint64,
 		UnclampedDesiredInstances: fakeUint64,
-		Reason:                    function.ScalingReason(fakeString),
-		Metrics:                   []function.ScalingMetric{{Name: fakeString, Value: fakeFloat}},
+		Reason:                    skipper.ScalingReason(fakeString),
+		Metrics:                   []skipper.ScalingMetric{{Name: fakeString, Value: fakeFloat}},
 	}
 
 	fakePod = &v1.Pod{

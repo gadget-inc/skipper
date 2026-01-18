@@ -5,8 +5,8 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/config"
 	"github.com/gadget-inc/skipper/internal/fixture"
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/go-json-experiment/json"
 	"gotest.tools/v3/assert"
 	v1 "k8s.io/api/core/v1"
@@ -21,7 +21,7 @@ func testConfig() *Config {
 	return cfg
 }
 
-func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn *function.Function) {
+func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn *skipper.Function) {
 	fnJSON, err := json.Marshal(fn)
 	assert.NilError(t, err)
 

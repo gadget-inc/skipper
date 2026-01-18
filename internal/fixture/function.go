@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/google/uuid"
 )
 
@@ -17,14 +17,14 @@ const (
 	FunctionDeployment = "test"
 )
 
-func NewFunction(t *testing.T) *function.Function {
+func NewFunction(t *testing.T) *skipper.Function {
 	t.Helper()
-	return &function.Function{
+	return &skipper.Function{
 		Tenant:     "tenant-" + uuid.NewString()[:8],
 		Metadata:   uuid.NewString(),
 		Namespace:  FunctionNamespace,
 		Deployment: FunctionDeployment,
-		Scale: &function.Scale{
+		Scale: &skipper.Scale{
 			MinInstances:           0,
 			MaxInstances:           5,
 			TargetCPUUsageMilli:    100,
@@ -34,7 +34,7 @@ func NewFunction(t *testing.T) *function.Function {
 	}
 }
 
-func NewFunctionRequest(t *testing.T, fn *function.Function, method string, path string, body io.Reader) *http.Request {
+func NewFunctionRequest(t *testing.T, fn *skipper.Function, method string, path string, body io.Reader) *http.Request {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	t.Cleanup(cancel)
@@ -43,12 +43,12 @@ func NewFunctionRequest(t *testing.T, fn *function.Function, method string, path
 	return req
 }
 
-func NewInstance(t *testing.T, fn *function.Function, handler http.HandlerFunc) *function.Instance {
+func NewInstance(t *testing.T, fn *skipper.Function, handler http.HandlerFunc) *skipper.Instance {
 	t.Helper()
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
-	return &function.Instance{
+	return &skipper.Instance{
 		Function:   fn,
 		Name:       uuid.NewString(),
 		Addr:       testServer.Listener.Addr().String(),

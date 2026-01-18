@@ -1,4 +1,4 @@
-package function
+package skipper
 
 import (
 	"testing"

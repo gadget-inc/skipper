@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/fixture"
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/go-json-experiment/json"
 	"gotest.tools/v3/assert"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,7 +35,7 @@ func TestHandleInstance(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *function.Function
+		fn             *skipper.Function
 		headers        map[string]string
 		setFnHeader    bool
 		fakeKubernetes *fake.Clientset
@@ -84,7 +84,7 @@ func TestHandleInstance(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				var instance *function.Instance
+				var instance *skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				// ensure we did not receive the excluded one
 				assert.Assert(t, instance.Name == state.fn.Deployment+"-b")
@@ -108,7 +108,7 @@ func TestHandleInstance(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				var instance *function.Instance
+				var instance *skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				// should return one of the instances since we revert to unfiltered list
 				assert.Assert(t, instance.Name == state.fn.Deployment+"-a" || instance.Name == state.fn.Deployment+"-b" || instance.Name == state.fn.Deployment+"-c")
@@ -123,7 +123,7 @@ func TestHandleInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instance *function.Instance
+				var instance *skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
@@ -138,7 +138,7 @@ func TestHandleInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instance *function.Instance
+				var instance *skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
@@ -156,7 +156,7 @@ func TestHandleInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instance *function.Instance
+				var instance *skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
@@ -182,7 +182,7 @@ func TestHandleInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instance *function.Instance
+				var instance *skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
@@ -218,7 +218,7 @@ func TestHandleInstance(t *testing.T) {
 				// ensure we received an instance
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instance *function.Instance
+				var instance *skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instance))
 				assert.Assert(t, instance.Function.Equal(state.fn))
 				assert.Assert(t, !instance.ReadyAt.IsZero())
@@ -271,7 +271,7 @@ func TestHandleScale(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *function.Function
+		fn             *skipper.Function
 		headers        map[string]string
 		setFnHeader    bool
 		fakeKubernetes *fake.Clientset
@@ -290,7 +290,7 @@ func TestHandleScale(t *testing.T) {
 				state.setFnHeader = false
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "1",
-					key.Reason.Header:           string(function.ScalingReasonUnknown),
+					key.Reason.Header:           string(skipper.ScalingReasonUnknown),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -304,7 +304,7 @@ func TestHandleScale(t *testing.T) {
 				state.headers = map[string]string{
 					key.Function.Header:         "not-valid-json",
 					key.DesiredInstances.Header: "1",
-					key.Reason.Header:           string(function.ScalingReasonUnknown),
+					key.Reason.Header:           string(skipper.ScalingReasonUnknown),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -316,7 +316,7 @@ func TestHandleScale(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.setFnHeader = true
 				state.headers = map[string]string{
-					key.Reason.Header: string(function.ScalingReasonUnknown),
+					key.Reason.Header: string(skipper.ScalingReasonUnknown),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -329,7 +329,7 @@ func TestHandleScale(t *testing.T) {
 				state.setFnHeader = true
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "not-a-number",
-					key.Reason.Header:           string(function.ScalingReasonUnknown),
+					key.Reason.Header:           string(skipper.ScalingReasonUnknown),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -351,7 +351,7 @@ func TestHandleScale(t *testing.T) {
 				// should succeed since invalid reasons default to "unknown"
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instances []*function.Instance
+				var instances []*skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instances))
 				assert.Assert(t, len(instances) == 1)
 			},
@@ -364,13 +364,13 @@ func TestHandleScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "1",
-					key.Reason.Header:           string(function.ScalingReasonInFlightRequests),
+					key.Reason.Header:           string(skipper.ScalingReasonInFlightRequests),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instances []*function.Instance
+				var instances []*skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instances))
 				assert.Assert(t, len(instances) == 1)
 				assert.Assert(t, instances[0].Function.Equal(state.fn))
@@ -385,13 +385,13 @@ func TestHandleScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "2",
-					key.Reason.Header:           string(function.ScalingReasonInFlightRequests),
+					key.Reason.Header:           string(skipper.ScalingReasonInFlightRequests),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instances []*function.Instance
+				var instances []*skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instances))
 				assert.Assert(t, len(instances) == 2)
 			},
@@ -405,13 +405,13 @@ func TestHandleScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "1",
-					key.Reason.Header:           string(function.ScalingReasonInFlightRequests),
+					key.Reason.Header:           string(skipper.ScalingReasonInFlightRequests),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
 
-				var instances []*function.Instance
+				var instances []*skipper.Instance
 				assert.NilError(t, json.Unmarshal(state.rw.Body.Bytes(), &instances))
 				assert.Assert(t, len(instances) == 1)
 			},
@@ -457,7 +457,7 @@ func TestHandleHeartbeat(t *testing.T) {
 	type testState struct {
 		mcc                *fixture.MockControllerClient
 		ctrl               *Controller
-		heartbeats         []*function.Heartbeat
+		heartbeats         []*skipper.Heartbeat
 		rawBody            []byte
 		setRouterIP        bool
 		rw                 *httptest.ResponseRecorder
@@ -473,7 +473,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			name: "missing router IP header",
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = false
-				state.heartbeats = []*function.Heartbeat{
+				state.heartbeats = []*skipper.Heartbeat{
 					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 				}
 			},
@@ -495,7 +495,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			name: "empty heartbeats array",
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = true
-				state.heartbeats = []*function.Heartbeat{}
+				state.heartbeats = []*skipper.Heartbeat{}
 			},
 			check: func(t *testing.T, state *testState) {
 				// should succeed with no heartbeats to process
@@ -507,7 +507,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			name: "receiving one heartbeat",
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = true
-				state.heartbeats = []*function.Heartbeat{
+				state.heartbeats = []*skipper.Heartbeat{
 					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 				}
 			},
@@ -530,7 +530,7 @@ func TestHandleHeartbeat(t *testing.T) {
 			name: "receiving multiple heartbeats",
 			setup: func(t *testing.T, state *testState) {
 				state.setRouterIP = true
-				state.heartbeats = []*function.Heartbeat{
+				state.heartbeats = []*skipper.Heartbeat{
 					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 				}
@@ -561,10 +561,10 @@ func TestHandleHeartbeat(t *testing.T) {
 				fn := fixture.NewFunction(t)
 				heartbeatTimestamp := time.Now()
 				supervisor := state.ctrl.supervisor(fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{Function: fn, Timestamp: heartbeatTimestamp})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{Function: fn, Timestamp: heartbeatTimestamp})
 
 				// send an old heartbeat
-				state.heartbeats = []*function.Heartbeat{
+				state.heartbeats = []*skipper.Heartbeat{
 					{Function: fn, Timestamp: heartbeatTimestamp.Add(-time.Hour)},
 				}
 			},
@@ -590,14 +590,14 @@ func TestHandleHeartbeat(t *testing.T) {
 				state.ctrl.ring.Add(fixture.ControllerIP2)
 
 				// send multiple heartbeats for different functions
-				state.heartbeats = []*function.Heartbeat{
+				state.heartbeats = []*skipper.Heartbeat{
 					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 					{Function: fixture.NewFunction(t), Timestamp: time.Now()},
 				}
 
 				// ensure the controller sends the heartbeats to the other controllers
 				expectedHeartbeats := state.heartbeats
-				state.mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*function.Heartbeat, forwardedFor ...string) error {
+				state.mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
 					state.heartbeatForwarded.Store(true)
 					// ensure the controller forwards the same heartbeats to the other controllers
 					assert.DeepEqual(t, heartbeats, expectedHeartbeats)
@@ -624,9 +624,9 @@ func TestHandleHeartbeat(t *testing.T) {
 				// seed the supervisor with an expired heartbeat from a different router
 				fn := fixture.NewFunction(t)
 				supervisor := state.ctrl.supervisor(fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP2, &function.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(state.ctrl.config.HeartbeatTimeout + time.Second))})
+				supervisor.routerHeartbeats.Store(fixture.RouterIP2, &skipper.Heartbeat{Function: fn, Timestamp: time.Now().Add(-(state.ctrl.config.HeartbeatTimeout + time.Second))})
 
-				state.heartbeats = []*function.Heartbeat{
+				state.heartbeats = []*skipper.Heartbeat{
 					{Function: fn, Timestamp: time.Now()},
 				}
 			},

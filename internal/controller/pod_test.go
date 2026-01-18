@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/fixture"
-	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/go-json-experiment/json"
 	"gotest.tools/v3/assert"
 	"gotest.tools/v3/poll"
@@ -22,7 +22,7 @@ import (
 	fakekubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
 
-func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, pod v1.Pod) {
+func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod v1.Pod) {
 	assert.Assert(t, instance.Function.Deployment == pod.Labels[key.Deployment.Label])
 	assert.Assert(t, instance.Function.Tenant == pod.Labels[key.Tenant.Label])
 
@@ -52,10 +52,10 @@ func TestAssignPod(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *function.Function
+		fn             *skipper.Function
 		cfg            *Config
 		fakeKubernetes *fake.Clientset
-		instance       *function.Instance
+		instance       *skipper.Instance
 	}
 
 	testCases := []struct {
@@ -568,7 +568,7 @@ func TestFunctionFromPod(t *testing.T) {
 		name        string
 		pod         *v1.Pod
 		errContains string
-		check       func(*testing.T, *function.Function)
+		check       func(*testing.T, *skipper.Function)
 	}{
 		{
 			name: "valid pod with function annotation",
@@ -579,7 +579,7 @@ func TestFunctionFromPod(t *testing.T) {
 					},
 				},
 			},
-			check: func(t *testing.T, resultFn *function.Function) {
+			check: func(t *testing.T, resultFn *skipper.Function) {
 				assert.Assert(t, resultFn.Equal(fn))
 			},
 		},
@@ -649,7 +649,7 @@ func TestInstanceFromPod(t *testing.T) {
 		name        string
 		pod         *v1.Pod
 		errContains string
-		check       func(*testing.T, *function.Instance)
+		check       func(*testing.T, *skipper.Instance)
 	}{
 		{
 			name: "valid pod with all annotations",
@@ -681,7 +681,7 @@ func TestInstanceFromPod(t *testing.T) {
 					},
 				},
 			},
-			check: func(t *testing.T, instance *function.Instance) {
+			check: func(t *testing.T, instance *skipper.Instance) {
 				assert.Assert(t, instance.Name == "test-pod")
 				assert.Assert(t, instance.Addr == "10.0.0.1:8080")
 				assert.Assert(t, instance.ReplicaSet == "test-replicaset")
@@ -806,7 +806,7 @@ func TestInstanceFromPod(t *testing.T) {
 					},
 				},
 			},
-			check: func(t *testing.T, instance *function.Instance) {
+			check: func(t *testing.T, instance *skipper.Instance) {
 				assert.Assert(t, instance.ReadyAt.IsZero(), "ReadyAt should be zero when pod is not ready")
 				assert.Assert(t, !instance.AssignedAt.IsZero(), "AssignedAt should still be set")
 			},
@@ -921,9 +921,9 @@ func TestGetInstances(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *function.Function
+		fn             *skipper.Function
 		fakeKubernetes *fake.Clientset
-		instances      []*function.Instance
+		instances      []*skipper.Instance
 	}
 
 	testCases := []struct {
@@ -1196,9 +1196,9 @@ func TestGetReadyInstances(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *function.Function
+		fn             *skipper.Function
 		fakeKubernetes *fake.Clientset
-		instances      []*function.Instance
+		instances      []*skipper.Instance
 	}
 
 	testCases := []struct {
@@ -1327,7 +1327,7 @@ func TestPatchPod(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *function.Function
+		fn             *skipper.Function
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 		pod            *v1.Pod
@@ -1437,7 +1437,7 @@ func TestDeletePod(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *function.Function
+		fn             *skipper.Function
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 		pod            *v1.Pod

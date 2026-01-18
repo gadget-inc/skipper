@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gadget-inc/skipper/internal/function"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/go-json-experiment/json"
 )
 
-func NewEchoFunction(t *testing.T) *function.Function {
+func NewEchoFunction(t *testing.T) *skipper.Function {
 	t.Helper()
 	fn := NewFunction(t)
 	fn.Deployment = "echo"
