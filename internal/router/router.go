@@ -157,11 +157,11 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}, xsync.UpdateOp
 	})
 
-	r.reverseProxy.ServeHTTP(rw, req.WithContext(function.With(ctx, fn)))
+	r.reverseProxy.ServeHTTP(rw, req.WithContext(withFunction(ctx, fn)))
 }
 
 func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
-	fn, err := function.From(req.Context())
+	fn, err := functionFromContext(req.Context())
 	if err != nil {
 		return nil, err
 	}
