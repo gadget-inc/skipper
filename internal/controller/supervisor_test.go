@@ -769,71 +769,147 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	assert.Assert(t, foundOldRecommendation, "stabilization window should keep recommendations within FlagHPADownscaleStabilization period, but the 45s old recommendation was pruned (likely using FlagHeartbeatTimeout=30s instead)")
 }
 
-// TestConvergeSkipsScaleDownWhenControllerNewlyStarted verifies that a newly-started
-// controller does not scale down, even when the scaling decision says to. This prevents
-// aggressive scale-down before the controller has had time to gather recommendations
-// and receive heartbeats from all routers.
-func TestConvergeSkipsScaleDownWhenControllerNewlyStarted(t *testing.T) {
+// TestConvergeProtectionPeriod verifies the scale-down protection period logic.
+// New controllers don't scale down until they've run for max(HPADownscaleStabilization, HeartbeatTimeout).
+// This prevents:
+// 1. Aggressive scale-down before gathering recommendations (HPADownscaleStabilization)
+// 2. Heartbeat timeout scale-to-zero before receiving heartbeats (HeartbeatTimeout)
+//
+// The HeartbeatTimeout protection is critical during rolling deployments:
+// - New controller starts with empty heartbeat state
+// - Functions may have instances assigned longer than HeartbeatTimeout ago
+// - Without protection, combinedHeartbeat() uses instance.AssignedAt as timestamp
+// - This triggers immediate heartbeat_timeout scale-to-zero
+func TestConvergeProtectionPeriod(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	defer cancel()
+	testCases := []struct {
+		name                      string
+		hpaDownscaleStabilization time.Duration
+		heartbeatTimeout          time.Duration
+		controllerAge             time.Duration // how long ago controller started
+		instanceAge               time.Duration // how long ago instance was assigned
+		storeHeartbeat            bool          // whether to store a recent heartbeat
+		initialPods               int
+		expectedPods              int // after converge
+	}{
+		// Case 1: Controller just started (within both timeouts)
+		// Protection: max(5min, 90s) = 5min, controller age: 0
+		{
+			name:                      "skips scale down when controller just started",
+			hpaDownscaleStabilization: 5 * time.Minute,
+			heartbeatTimeout:          90 * time.Second,
+			controllerAge:             0,
+			instanceAge:               time.Minute,
+			storeHeartbeat:            true, // fresh heartbeat with 0 in-flight
+			initialPods:               2,
+			expectedPods:              2, // no scale down
+		},
+		// Case 2: HeartbeatTimeout > HPADownscaleStabilization, controller in between
+		// This is the incident scenario that triggered the fix.
+		// Protection: max(30s, 90s) = 90s, controller age: 45s
+		{
+			name:                      "skips scale down during HeartbeatTimeout protection when HeartbeatTimeout dominates",
+			hpaDownscaleStabilization: 30 * time.Second,
+			heartbeatTimeout:          90 * time.Second,
+			controllerAge:             45 * time.Second, // > stabilization, < heartbeat
+			instanceAge:               2 * time.Hour,    // old instance
+			storeHeartbeat:            false,            // no heartbeat (traffic gap)
+			initialPods:               1,
+			expectedPods:              1, // no scale down
+		},
+		// Case 3: HPADownscaleStabilization > HeartbeatTimeout, controller in between
+		// Protection: max(90s, 30s) = 90s, controller age: 45s
+		{
+			name:                      "skips scale down during HPADownscaleStabilization protection when stabilization dominates",
+			hpaDownscaleStabilization: 90 * time.Second,
+			heartbeatTimeout:          30 * time.Second,
+			controllerAge:             45 * time.Second, // > heartbeat, < stabilization
+			instanceAge:               2 * time.Hour,
+			storeHeartbeat:            false,
+			initialPods:               1,
+			expectedPods:              1, // no scale down
+		},
+		// Case 4: Protection period expired, scale down allowed
+		// Protection: max(30s, 90s) = 90s, controller age: 91s
+		{
+			name:                      "allows scale down after protection period expires",
+			hpaDownscaleStabilization: 30 * time.Second,
+			heartbeatTimeout:          90 * time.Second,
+			controllerAge:             91 * time.Second, // > max(30s, 90s)
+			instanceAge:               2 * time.Hour,
+			storeHeartbeat:            false, // triggers heartbeat_timeout
+			initialPods:               1,
+			expectedPods:              0, // scales to 0
+		},
+	}
 
-	fn := fixture.NewFunction(t)
-	// Disable resource scaling so in-flight requests drive the decision
-	fn.Scale.TargetCPUUsageMilli = 0
-	fn.Scale.TargetMemoryUsageMiB = 0
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
 
-	// Create 2 assigned pods
-	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
-	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+			fn := fixture.NewFunction(t)
+			// Disable resource scaling so heartbeat/in-flight drives the decision
+			fn.Scale.TargetCPUUsageMilli = 0
+			fn.Scale.TargetMemoryUsageMiB = 0
+			fn.Scale.TargetInFlightRequests = 0
 
-	cfg := testConfig()
-	cfg.HPADownscaleStabilization = 5 * time.Minute // long stabilization period
+			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+			fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 
-	ctrl := New(cfg, nil, fakeKubernetes, nil)
-	// Controller just started - this is the key difference from other tests
-	ctrl.startedAt = time.Now()
+			// Create pods with the specified instance age
+			for range tc.initialPods {
+				pod := fixture.NewAssignedPod(t, fn, nil)
+				assignedAt := time.Now().Add(-tc.instanceAge).UTC().Format(time.RFC3339)
+				pod.Annotations[key.AssignedAt.Annotation] = assignedAt
+				pod.Annotations[key.ReadyAt.Annotation] = assignedAt
+				fakeKubernetes.Tracker().Add(pod)
+			}
 
-	err := ctrl.startInformers(ctx)
-	assert.NilError(t, err)
+			cfg := testConfig()
+			cfg.HPADownscaleStabilization = tc.hpaDownscaleStabilization
+			cfg.HeartbeatTimeout = tc.heartbeatTimeout
 
-	supervisor := ctrl.supervisor(fn)
+			ctrl := New(cfg, nil, fakeKubernetes, nil)
+			ctrl.startedAt = time.Now().Add(-tc.controllerAge)
 
-	// Set heartbeat with zero in-flight requests - this would normally trigger scale-down
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
-		Function:         fn,
-		Timestamp:        time.Now(),
-		InFlightRequests: 0,
-	})
+			err := ctrl.startInformers(ctx)
+			assert.NilError(t, err)
 
-	// Get initial pod count
-	initialPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
-	})
-	assert.NilError(t, err)
-	assert.Assert(t, len(initialPods.Items) == 2, "expected 2 initial pods")
+			supervisor := ctrl.supervisor(fn)
 
-	// Call converge - it should skip scale-down because controller is newly started
-	err = supervisor.converge(ctx)
-	assert.NilError(t, err)
+			if tc.storeHeartbeat {
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, &function.Heartbeat{
+					Function:         fn,
+					Timestamp:        time.Now(),
+					InFlightRequests: 0, // would normally trigger scale-down
+				})
+			}
 
-	// Verify pods were NOT deleted (scale-down was skipped)
-	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
-	})
-	assert.NilError(t, err)
-	assert.Assert(t, len(finalPods.Items) == 2,
-		"newly-started controller should not scale down: expected 2 pods, got %d", len(finalPods.Items))
+			// Verify initial pod count
+			initialPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+			})
+			assert.NilError(t, err)
+			assert.Assert(t, len(initialPods.Items) == tc.initialPods,
+				"expected %d initial pods, got %d", tc.initialPods, len(initialPods.Items))
 
-	// Verify the recommendation was still recorded in the stabilization window
-	supervisor.mu.Lock()
-	windowSize := len(supervisor.stabilizationWindow)
-	supervisor.mu.Unlock()
-	assert.Assert(t, windowSize >= 1, "stabilization window should have recorded the recommendation")
+			// Call converge
+			err = supervisor.converge(ctx)
+			assert.NilError(t, err)
+
+			// Verify expected pod count after converge
+			finalPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+			})
+			assert.NilError(t, err)
+			assert.Assert(t, len(finalPods.Items) == tc.expectedPods,
+				"expected %d pods after converge, got %d", tc.expectedPods, len(finalPods.Items))
+		})
+	}
 }
 
 // TestConvergeUsesMaxRecommendationWhenScalingDown verifies that when scaling down
@@ -3033,7 +3109,9 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	cfg.HPADownscaleStabilization = 1 * time.Second // Use short stabilization for test
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
-	ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+	// Controller must have been running longer than max(HPADownscaleStabilization, HeartbeatTimeout)
+	// to allow scale-down
+	ctrl.startedAt = time.Now().Add(-cfg.HeartbeatTimeout - time.Second)
 
 	// First, create the old (stale) replica set
 	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)

@@ -228,10 +228,14 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	isScalingDown := scalingDecision.DesiredInstances < currentInstances || scalingDecision.DesiredInstances == 0
 
 	if isScalingDown {
-		if time.Since(s.ctrl.startedAt) < s.ctrl.config.HPADownscaleStabilization {
-			// the controller hasn't been running long enough to record
-			// recommendations or receive heartbeats, so don't scale
-			// anything down yet
+		// Use the maximum of HPADownscaleStabilization and HeartbeatTimeout as the protection period.
+		// This ensures new controllers don't scale down until they've had enough time to:
+		// 1. Record recommendations for the stabilization window (HPADownscaleStabilization)
+		// 2. Receive heartbeats from routers (HeartbeatTimeout) - without this, functions with
+		//    instances assigned longer than HeartbeatTimeout ago would immediately trigger
+		//    heartbeat_timeout scale-to-zero when a new controller starts with empty heartbeat state
+		protectionPeriod := max(s.ctrl.config.HPADownscaleStabilization, s.ctrl.config.HeartbeatTimeout)
+		if time.Since(s.ctrl.startedAt) < protectionPeriod {
 			log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", s.ctrl.startedAt))
 			return nil
 		}
