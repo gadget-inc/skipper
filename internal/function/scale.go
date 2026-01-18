@@ -39,8 +39,8 @@ func (s *Scale) Equal(other *Scale) bool {
 
 // ScalingDecision contains the inputs and result of one scaling loop for one tenant
 type ScalingDecision struct {
-	DesiredInstances          int
-	UnclampedDesiredInstances int
+	DesiredInstances          uint64
+	UnclampedDesiredInstances uint64
 	Reason                    ScalingReason
 	Metrics                   []ScalingMetric
 }

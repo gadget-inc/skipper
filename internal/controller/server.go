@@ -81,7 +81,7 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 
 	ctx = telemetry.With(ctx, key.Function.Attr(fn))
 
-	desiredInstances, err := strconv.Atoi(req.Header.Get(key.DesiredInstances.Header))
+	desiredInstances, err := strconv.ParseUint(req.Header.Get(key.DesiredInstances.Header), 10, 64)
 	if err != nil {
 		log.Error(ctx, "failed to get desired instances from header", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
