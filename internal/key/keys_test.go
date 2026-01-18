@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gadget-inc/skipper/internal/controller"
 	"github.com/gadget-inc/skipper/internal/function"
 	"github.com/gadget-inc/skipper/internal/key"
 	"gotest.tools/v3/golden"
@@ -182,11 +181,11 @@ var (
 		MemoryUsageMiB: fakeUint64,
 	}
 
-	fakeScalingDecision = controller.ScalingDecision{
+	fakeScalingDecision = function.ScalingDecision{
 		DesiredInstances:          fakeInt,
 		UnclampedDesiredInstances: fakeInt,
-		Reason:                    fakeString,
-		Metrics:                   []controller.ScalingMetric{{Name: fakeString, Value: fakeFloat}},
+		Reason:                    function.ScalingReason(fakeString),
+		Metrics:                   []function.ScalingMetric{{Name: fakeString, Value: fakeFloat}},
 	}
 
 	fakePod = &v1.Pod{

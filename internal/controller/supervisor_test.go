@@ -547,7 +547,7 @@ func TestScale(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, ScalingDecision{
+			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, function.ScalingDecision{
 				DesiredInstances: tc.desiredInstances,
 				Reason:           "test",
 			})
@@ -580,7 +580,7 @@ func TestScaleForwarding(t *testing.T) {
 
 	// Set up mock client to handle forwarded scale request
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn *function.Function, desiredInstances int, reason string) ([]*function.Instance, error) {
+	mcc.HandleScale(func(ctx context.Context, fn *function.Function, desiredInstances int, reason function.ScalingReason) ([]*function.Instance, error) {
 		return []*function.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
@@ -590,7 +590,7 @@ func TestScaleForwarding(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Scale should succeed via forwarding to mock client
-	instances, err := ctrl.supervisor(fn).scale(ctx, ScalingDecision{
+	instances, err := ctrl.supervisor(fn).scale(ctx, function.ScalingDecision{
 		DesiredInstances: 1,
 		Reason:           "test",
 	})
@@ -1611,7 +1611,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 		instances                []*function.Instance
 		expectedDesiredInstances int
 		expectedUnclampedDesired int
-		expectedReason           ScalingReason
+		expectedReason           function.ScalingReason
 	}{
 		{
 			// Heartbeat timeout triggers scale to 0
@@ -1632,7 +1632,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 0,
 			expectedUnclampedDesired: 0,
-			expectedReason:           ScalingReasonHeartbeatTimeout,
+			expectedReason:           function.ScalingReasonHeartbeatTimeout,
 		},
 		{
 			// In-flight requests scaling: 25 requests / 10 target = 3 instances
@@ -1653,7 +1653,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           ScalingReasonInFlightRequests,
+			expectedReason:           function.ScalingReasonInFlightRequests,
 		},
 		{
 			// Multiple metrics: takes the max across all
@@ -1684,7 +1684,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 2,
 			expectedUnclampedDesired: 2,
-			expectedReason:           ScalingReasonInFlightRequests, // or CPU, both equal
+			expectedReason:           function.ScalingReasonInFlightRequests, // or CPU, both equal
 		},
 		{
 			// Max clamping: would scale to 10 but max is 5
@@ -1705,7 +1705,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 5,
 			expectedUnclampedDesired: 10,
-			expectedReason:           ScalingReasonInFlightRequests,
+			expectedReason:           function.ScalingReasonInFlightRequests,
 		},
 		{
 			// Min clamping: unclamped would be 1 (baseline without heartbeat timeout) but min is 2
@@ -1777,7 +1777,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           ScalingReasonCPU,
+			expectedReason:           function.ScalingReasonCPU,
 		},
 		{
 			// Memory scaling
@@ -1803,7 +1803,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           ScalingReasonMemory,
+			expectedReason:           function.ScalingReasonMemory,
 		},
 	}
 
@@ -1829,12 +1829,12 @@ func TestIsValidScalingReason(t *testing.T) {
 		expected bool
 	}{
 		// Valid scaling reasons
-		{reason: ScalingReasonCPU, expected: true},
-		{reason: ScalingReasonHeartbeatTimeout, expected: true},
-		{reason: ScalingReasonInFlightRequests, expected: true},
-		{reason: ScalingReasonMemory, expected: true},
-		{reason: ScalingReasonNoReadyInstances, expected: true},
-		{reason: ScalingReasonUnknown, expected: true},
+		{reason: string(function.ScalingReasonCPU), expected: true},
+		{reason: string(function.ScalingReasonHeartbeatTimeout), expected: true},
+		{reason: string(function.ScalingReasonInFlightRequests), expected: true},
+		{reason: string(function.ScalingReasonMemory), expected: true},
+		{reason: string(function.ScalingReasonNoReadyInstances), expected: true},
+		{reason: string(function.ScalingReasonUnknown), expected: true},
 
 		// Invalid scaling reasons
 		{reason: "", expected: false},
@@ -1849,7 +1849,7 @@ func TestIsValidScalingReason(t *testing.T) {
 		t.Run(tc.reason, func(t *testing.T) {
 			t.Parallel()
 
-			result := isValidScalingReason(tc.reason)
+			result := function.IsValidScalingReason(tc.reason)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

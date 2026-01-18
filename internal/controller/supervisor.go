@@ -281,7 +281,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 // responsible controller if this controller is not responsible for the
 // function. For scale-down, it deletes unready instances first, then
 // oldest ready instances.
-func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*function.Instance, error) {
+func (s *Supervisor) scale(ctx context.Context, decision function.ScalingDecision) ([]*function.Instance, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -303,7 +303,7 @@ func (s *Supervisor) scale(ctx context.Context, decision ScalingDecision) ([]*fu
 // scaleWithoutLock is the internal implementation of scale that assumes
 // the caller already holds s.mu. It executes the scaling decision
 // without forwarding to another controller.
-func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function.Instance, decision ScalingDecision) ([]*function.Instance, []*function.Instance, error) {
+func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function.Instance, decision function.ScalingDecision) ([]*function.Instance, []*function.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.scale")
 	defer span.End()
 
@@ -354,7 +354,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 			}
 			readyInstances = append(readyInstances, instance)
 		}
-	} else if decision.Reason == ScalingReasonNoReadyInstances {
+	} else if decision.Reason == function.ScalingReasonNoReadyInstances {
 		// we were asked to scale up to 1 instance because there were no
 		// ready instances at the time of the request, but now we have
 		// at least 1 ready instance, so there's nothing to do
@@ -509,10 +509,10 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
 
 	for len(instances) == 0 {
-		if instances, err = s.scale(ctx, ScalingDecision{
+		if instances, err = s.scale(ctx, function.ScalingDecision{
 			DesiredInstances:          1,
 			UnclampedDesiredInstances: 1,
-			Reason:                    ScalingReasonNoReadyInstances,
+			Reason:                    function.ScalingReasonNoReadyInstances,
 		}); err != nil {
 			return nil, fmt.Errorf("failed to scale function: %w", err)
 		}
@@ -646,44 +646,44 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *function.Heartbeat, instances []*function.Instance) ScalingDecision {
+func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *function.Heartbeat, instances []*function.Instance) function.ScalingDecision {
 	if time.Since(heartbeat.Timestamp) >= cfg.HeartbeatTimeout {
-		return ScalingDecision{
+		return function.ScalingDecision{
 			DesiredInstances:          0,
 			UnclampedDesiredInstances: 0,
-			Reason:                    ScalingReasonHeartbeatTimeout,
+			Reason:                    function.ScalingReasonHeartbeatTimeout,
 		}
 	}
 
 	maxDesiredInstances := 1 // we only scale to 0 from a heartbeat timeout, so we start at 1
-	var scalingReason ScalingReason
-	var scalingMetrics []ScalingMetric
+	var scalingReason function.ScalingReason
+	var scalingMetrics []function.ScalingMetric
 
 	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
 		desiredInstances := int(math.Ceil(float64(heartbeat.InFlightRequests) / float64(heartbeat.Function.Scale.TargetInFlightRequests)))
 		averageUsage := float64(heartbeat.InFlightRequests) / float64(len(instances))
-		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "in_flight_requests", Value: averageUsage})
+		scalingMetrics = append(scalingMetrics, function.ScalingMetric{Name: "in_flight_requests", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = ScalingReasonInFlightRequests
+			scalingReason = function.ScalingReasonInFlightRequests
 		}
 	}
 
 	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricCPU, instances)
-		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "cpu", Value: averageUsage})
+		scalingMetrics = append(scalingMetrics, function.ScalingMetric{Name: "cpu", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = ScalingReasonCPU
+			scalingReason = function.ScalingReasonCPU
 		}
 	}
 
 	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricMemory, instances)
-		scalingMetrics = append(scalingMetrics, ScalingMetric{Name: "memory", Value: averageUsage})
+		scalingMetrics = append(scalingMetrics, function.ScalingMetric{Name: "memory", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = ScalingReasonMemory
+			scalingReason = function.ScalingReasonMemory
 		}
 	}
 
@@ -692,69 +692,10 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *func
 	maxInstances := int(heartbeat.Function.Scale.MaxInstances)
 	clampedValue := min(max(maxDesiredInstances, minInstances), maxInstances)
 
-	return ScalingDecision{
+	return function.ScalingDecision{
 		DesiredInstances:          clampedValue,
 		UnclampedDesiredInstances: maxDesiredInstances,
 		Reason:                    scalingReason,
 		Metrics:                   scalingMetrics,
 	}
-}
-
-// ScalingDecision contains the inputs and result of one scaling loop for one tenant
-type ScalingDecision struct {
-	DesiredInstances          int
-	UnclampedDesiredInstances int
-	Reason                    ScalingReason
-	Metrics                   []ScalingMetric
-}
-
-var _ slog.LogValuer = ScalingDecision{}
-
-// LogValue implements slog.LogValuer for structured logging.
-func (sd ScalingDecision) LogValue() slog.Value {
-	var metricAttrs []slog.Attr
-	for _, metric := range sd.Metrics {
-		metricAttrs = append(metricAttrs, slog.Float64(metric.Name, metric.Value))
-	}
-
-	return slog.GroupValue(
-		key.DesiredInstances.Slog(sd.DesiredInstances),
-		key.UnclampedDesiredInstances.Slog(sd.UnclampedDesiredInstances),
-		key.Reason.Slog(sd.Reason),
-		slog.GroupAttrs("metrics", metricAttrs...),
-	)
-}
-
-// ScalingReason represents the reason for a scaling decision.
-// TODO: make this a type definition instead of a type alias so its more typesafe
-type ScalingReason = string
-
-const (
-	ScalingReasonCPU              ScalingReason = "cpu"
-	ScalingReasonHeartbeatTimeout ScalingReason = "heartbeat_timeout"
-	ScalingReasonInFlightRequests ScalingReason = "in_flight_requests"
-	ScalingReasonMemory           ScalingReason = "memory"
-	ScalingReasonNoReadyInstances ScalingReason = "no ready instances"
-	ScalingReasonUnknown          ScalingReason = "unknown"
-)
-
-// isValidScalingReason returns true if the given string is a known scaling reason.
-func isValidScalingReason(reason string) bool {
-	switch reason {
-	case ScalingReasonCPU,
-		ScalingReasonHeartbeatTimeout,
-		ScalingReasonInFlightRequests,
-		ScalingReasonMemory,
-		ScalingReasonNoReadyInstances,
-		ScalingReasonUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// ScalingMetric represents an unclamped metric value for a specific metric observed for scaling decisions
-type ScalingMetric struct {
-	Name  string
-	Value float64
 }
