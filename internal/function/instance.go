@@ -10,13 +10,13 @@ import (
 
 type Instance struct {
 	*Function
-	Name           string    `json:"Name"`           // pod name
-	Addr           string    `json:"Addr"`           // pod ip : pod port
-	ReplicaSet     string    `json:"ReplicaSet"`     // replica set name
-	AssignedAt     time.Time `json:"AssignedAt"`     // time the instance was assigned to the pod
-	ReadyAt        time.Time `json:"ReadyAt"`        // time the instance was ready to receive traffic
-	CPUUsageMilli  uint64    `json:"CPUUsageMilli"`  // cpu usage in millicores
-	MemoryUsageMiB uint64    `json:"MemoryUsageMiB"` // memory usage in MiB
+	Name           string    `json:"name"`             // pod name
+	Addr           string    `json:"addr"`             // pod ip : pod port
+	ReplicaSet     string    `json:"replica_set"`      // replica set name
+	AssignedAt     time.Time `json:"assigned_at"`      // time the instance was assigned to the pod
+	ReadyAt        time.Time `json:"ready_at"`         // time the instance was ready to receive traffic
+	CPUUsageMilli  uint64    `json:"cpu_usage_milli"`  // cpu usage in millicores
+	MemoryUsageMiB uint64    `json:"memory_usage_mib"` // memory usage in MiB
 }
 
 // UnmarshalJSON implements custom unmarshaling to accept both PascalCase (legacy)
