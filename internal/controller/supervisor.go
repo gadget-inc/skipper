@@ -331,27 +331,29 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 		log.Info(ctx, "scaling decision was clamped")
 	}
 
-	readyCount := uint64(len(readyInstances))
-	unreadyCount := uint64(len(unreadyInstances))
+	ready := uint64(len(readyInstances))
+	unready := uint64(len(unreadyInstances))
+	desired := decision.DesiredInstances
+	total := ready + unready
 
-	if decision.DesiredInstances == readyCount && decision.DesiredInstances > unreadyCount {
+	if desired == ready && desired > unready {
 		// we already have the desired number of ready instances and we
 		// don't have extra unready instances, so there's nothing to do
 		return readyInstances, unreadyInstances, nil
 	}
 
-	if decision.DesiredInstances > readyCount {
+	if desired > ready {
 		// we need to scale up
-		if readyCount+unreadyCount >= s.fn.Scale.MaxInstances+1 {
+		if total >= s.fn.Scale.MaxInstances+1 {
 			// we have too many instances in total, so we can't scale up
 			log.Info(ctx, "skipping scale up because function has too many instances")
 			return readyInstances, unreadyInstances, nil
 		}
 
 		log.Info(ctx, "scaling function up")
-		scaleUpsTotal.WithLabelValues(s.fn.Deployment).Add(float64(decision.DesiredInstances - readyCount))
+		scaleUpsTotal.WithLabelValues(s.fn.Deployment).Add(float64(desired - ready))
 
-		for range decision.DesiredInstances - readyCount {
+		for range desired - ready {
 			instance, err := s.ctrl.assignPod(ctx, s.fn)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to assign pod: %w", err)
@@ -366,7 +368,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
-		scaleDownsTotal.WithLabelValues(s.fn.Deployment).Add(float64(readyCount + unreadyCount - decision.DesiredInstances))
+		scaleDownsTotal.WithLabelValues(s.fn.Deployment).Add(float64(total - desired))
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
@@ -375,20 +377,19 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
 		}
-		// all unready instances are deleted
 		unreadyInstances = nil
 
 		// sort ready instances by assigned at in descending order (newest first)
 		slices.SortFunc(readyInstances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
 
-		// iterate over ready instances in reverse order, deleting the oldest ones first
-		for i := len(readyInstances) - 1; i >= int(decision.DesiredInstances); i-- {
-			instance := readyInstances[i]
+		// delete oldest ready instances (they're at the end after sorting newest-first)
+		for toDelete := ready - desired; toDelete > 0; toDelete-- {
+			instance := readyInstances[len(readyInstances)-1]
 			err := s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
-			readyInstances = readyInstances[:i]
+			readyInstances = readyInstances[:len(readyInstances)-1]
 		}
 	}
 
