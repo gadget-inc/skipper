@@ -23,8 +23,8 @@ import (
 )
 
 func ensureInstanceIsAssignedToPod(t *testing.T, instance *function.Instance, pod v1.Pod) {
-	assert.Assert(t, instance.Deployment == pod.Labels[key.Deployment.Label])
-	assert.Assert(t, instance.Tenant == pod.Labels[key.Tenant.Label])
+	assert.Assert(t, instance.Function.Deployment == pod.Labels[key.Deployment.Label])
+	assert.Assert(t, instance.Function.Tenant == pod.Labels[key.Tenant.Label])
 
 	fnJSON, err := json.Marshal(instance.Function)
 	assert.NilError(t, err)
@@ -72,7 +72,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Function.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
@@ -99,7 +99,7 @@ func TestAssignPod(t *testing.T) {
 				}()
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Function.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
@@ -142,7 +142,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Function.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
@@ -157,7 +157,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Function.Namespace).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])

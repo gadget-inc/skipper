@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/go-json-experiment/json"
 )
 
 type Instance struct {
-	*Function
+	Function       *Function `json:",inline"`
 	Name           string    `json:"name"`             // pod name
 	Addr           string    `json:"addr"`             // pod ip : pod port
 	ReplicaSet     string    `json:"replica_set"`      // replica set name
@@ -44,4 +45,57 @@ func (i *Instance) Equal(other *Instance) bool {
 		i.ReadyAt.Equal(other.ReadyAt) &&
 		i.CPUUsageMilli == other.CPUUsageMilli &&
 		i.MemoryUsageMiB == other.MemoryUsageMiB
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling that accepts both:
+// - Inline format: Function fields at root level (legacy)
+// - Nested format: Function in a "function" field (new)
+func (i *Instance) UnmarshalJSON(data []byte) error {
+	// Helper struct that accepts both formats
+	type instanceFields struct {
+		Name           string    `json:"name"`
+		Addr           string    `json:"addr"`
+		ReplicaSet     string    `json:"replica_set"`
+		AssignedAt     time.Time `json:"assigned_at"`
+		ReadyAt        time.Time `json:"ready_at"`
+		CPUUsageMilli  uint64    `json:"cpu_usage_milli"`
+		MemoryUsageMiB uint64    `json:"memory_usage_mib"`
+		// Nested function field (new format)
+		Function *Function `json:"function"`
+		// Inline function fields (legacy format)
+		Namespace  string `json:"namespace"`
+		Deployment string `json:"deployment"`
+		Tenant     string `json:"tenant"`
+		Metadata   string `json:"metadata"`
+		Scale      *Scale `json:"scale"`
+	}
+
+	var aux instanceFields
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	i.Name = aux.Name
+	i.Addr = aux.Addr
+	i.ReplicaSet = aux.ReplicaSet
+	i.AssignedAt = aux.AssignedAt
+	i.ReadyAt = aux.ReadyAt
+	i.CPUUsageMilli = aux.CPUUsageMilli
+	i.MemoryUsageMiB = aux.MemoryUsageMiB
+
+	if aux.Function != nil {
+		// Nested format: use the function field directly
+		i.Function = aux.Function
+	} else {
+		// Inline format: construct Function from inline fields
+		i.Function = &Function{
+			Namespace:  aux.Namespace,
+			Deployment: aux.Deployment,
+			Tenant:     aux.Tenant,
+			Metadata:   aux.Metadata,
+			Scale:      aux.Scale,
+		}
+	}
+
+	return nil
 }

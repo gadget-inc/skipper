@@ -268,7 +268,7 @@ func TestScale(t *testing.T) {
 
 				// verify 4 pods remain unassigned
 				instance := state.instances[0]
-				pods, err := state.fakeKubernetes.CoreV1().Pods(instance.Namespace).List(t.Context(), metav1.ListOptions{
+				pods, err := state.fakeKubernetes.CoreV1().Pods(instance.Function.Namespace).List(t.Context(), metav1.ListOptions{
 					LabelSelector: doesNotHaveTenantSelector.String(),
 				})
 				assert.NilError(t, err)
@@ -1159,9 +1159,9 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				}
 				switch tc.metricName {
 				case MetricCPU:
-					pm.Scale.TargetCPUUsageMilli = tc.targetUsage
+					pm.Function.Scale.TargetCPUUsageMilli = tc.targetUsage
 				case MetricMemory:
-					pm.Scale.TargetMemoryUsageMiB = tc.targetUsage
+					pm.Function.Scale.TargetMemoryUsageMiB = tc.targetUsage
 				}
 			}
 
@@ -2424,7 +2424,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// it will get a NotFound error, but should still add the new instance
 				for _, instance := range instances {
 					if instance.Name == "stale-pod" {
-						err := state.fakeKubernetes.CoreV1().Pods(instance.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+						err := state.fakeKubernetes.CoreV1().Pods(instance.Function.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
 						assert.NilError(t, err)
 						break
 					}
