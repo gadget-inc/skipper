@@ -372,7 +372,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
-			err := s.ctrl.deletePod(ctx, unreadyInstance.Namespace, unreadyInstance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.deletePod(ctx, unreadyInstance.Function.Namespace, unreadyInstance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
@@ -385,7 +385,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 		// delete oldest ready instances (they're at the end after sorting newest-first)
 		for toDelete := ready - desired; toDelete > 0; toDelete-- {
 			instance := readyInstances[len(readyInstances)-1]
-			err := s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.deletePod(ctx, instance.Function.Namespace, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
@@ -405,7 +405,7 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*fun
 		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > s.ctrl.config.FunctionAssignTimeout*2 {
 			ctx := log.With(ctx, key.Instance.Slog(instance))
 			log.Warn(ctx, "terminating instance stuck in assigned state")
-			err := s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.deletePod(ctx, instance.Function.Namespace, instance.Name, metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
 			}
@@ -490,7 +490,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*fun
 		currentTotalInstances++
 
 		// Terminate the stale instance now that a replacement has been assigned
-		err = s.ctrl.deletePod(ctx, instance.Namespace, instance.Name, metav1.DeleteOptions{})
+		err = s.ctrl.deletePod(ctx, instance.Function.Namespace, instance.Name, metav1.DeleteOptions{})
 		if err != nil {
 			log.Error(ctx, "failed to terminate stale instance", key.Error.Slog(err))
 			// If deletion fails, currentTotalInstances remains incremented, preventing
@@ -598,10 +598,10 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
 		case MetricCPU:
-			targetUsage = instance.Scale.TargetCPUUsageMilli
+			targetUsage = instance.Function.Scale.TargetCPUUsageMilli
 			totalUsage += instance.CPUUsageMilli
 		case MetricMemory:
-			targetUsage = instance.Scale.TargetMemoryUsageMiB
+			targetUsage = instance.Function.Scale.TargetMemoryUsageMiB
 			totalUsage += instance.MemoryUsageMiB
 		}
 	}

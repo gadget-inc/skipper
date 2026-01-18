@@ -99,3 +99,33 @@ func TestJSONUnmarshal(t *testing.T) {
 	assert.DeepEqual(t, result.ScalingDecision, goldenScalingDecision)
 	assert.DeepEqual(t, result.ScalingMetric, goldenScalingMetric)
 }
+
+func TestJSONUnmarshalInstanceNestedFunction(t *testing.T) {
+	nestedJSON := `{
+		"function": {
+			"namespace": "skipper-production",
+			"deployment": "my-app",
+			"tenant": "tenant-123",
+			"metadata": "metadata-value",
+			"scale": {
+				"min_instances": 1,
+				"max_instances": 10,
+				"target_cpu_usage_milli": 500,
+				"target_memory_usage_mib": 256,
+				"target_in_flight_requests": 100
+			}
+		},
+		"name": "my-app-abc123",
+		"addr": "10.0.0.1:8080",
+		"replica_set": "my-app-5f4b8c",
+		"assigned_at": "2024-01-15T10:30:00Z",
+		"ready_at": "2024-01-15T10:30:05Z",
+		"cpu_usage_milli": 250,
+		"memory_usage_mib": 128
+	}`
+
+	var instance Instance
+	err := json.Unmarshal([]byte(nestedJSON), &instance)
+	assert.NilError(t, err)
+	assert.DeepEqual(t, &instance, goldenInstance)
+}
