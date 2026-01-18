@@ -2,6 +2,11 @@ name: release
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build (commit SHA, branch, or tag). Defaults to the selected branch."
+        required: false
+        type: string
 
 jobs:
   build:
@@ -20,6 +25,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Set up environment
         uses: ./.github/actions/setup-environment
@@ -61,6 +68,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Set up environment
         uses: ./.github/actions/setup-environment

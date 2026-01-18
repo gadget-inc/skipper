@@ -154,7 +154,7 @@ Docker images are built and pushed manually via GitHub Actions. To trigger a bui
 
 1. Go to the [Actions](../../actions) tab in GitHub.
 1. Select the **release** workflow from the sidebar.
-1. Click **Run workflow** and confirm.
+1. Click **Run workflow**, optionally specify a git ref (commit SHA, branch, or tag), and confirm.
 
 This will build multi-architecture images (amd64 and arm64) and push them to Google Artifact Registry. Images are tagged with the short commit SHA (e.g., `sha-abc1234`).
 
