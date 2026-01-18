@@ -14,8 +14,8 @@ type Instance struct {
 	ReplicaSet     string    // replica set name
 	AssignedAt     time.Time // time the instance was assigned to the pod
 	ReadyAt        time.Time // time the instance was ready to receive traffic
-	CPUUsageMilli  int       // cpu usage in millicores
-	MemoryUsageMiB int       // memory usage in MiB
+	CPUUsageMilli  uint64    // cpu usage in millicores
+	MemoryUsageMiB uint64    // memory usage in MiB
 }
 
 var _ slog.LogValuer = (*Instance)(nil)

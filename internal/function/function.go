@@ -35,15 +35,15 @@ func (f *Function) Hash() Hash {
 	h.WriteByte(0)
 	h.WriteString(f.Metadata)
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MinInstances))
+	binary.LittleEndian.PutUint64(buf[:], f.Scale.MinInstances)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MaxInstances))
+	binary.LittleEndian.PutUint64(buf[:], f.Scale.MaxInstances)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetCPUUsageMilli))
+	binary.LittleEndian.PutUint64(buf[:], f.Scale.TargetCPUUsageMilli)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetMemoryUsageMiB))
+	binary.LittleEndian.PutUint64(buf[:], f.Scale.TargetMemoryUsageMiB)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetInFlightRequests))
+	binary.LittleEndian.PutUint64(buf[:], f.Scale.TargetInFlightRequests)
 	h.Write(buf[:])
 	return h.Sum64()
 }
@@ -87,21 +87,6 @@ func (f *Function) Validate() error {
 	}
 	if f.Scale == nil {
 		return errors.New("missing scale")
-	}
-	if f.Scale.MinInstances < 0 {
-		return errors.New("min instances must be greater than or equal to 0")
-	}
-	if f.Scale.MaxInstances < 0 {
-		return errors.New("max instances must be greater than or equal to 0")
-	}
-	if f.Scale.TargetCPUUsageMilli < 0 {
-		return errors.New("target cpu usage must be greater than or equal to 0")
-	}
-	if f.Scale.TargetMemoryUsageMiB < 0 {
-		return errors.New("target memory usage must be greater than or equal to 0")
-	}
-	if f.Scale.TargetInFlightRequests < 0 {
-		return errors.New("target in flight requests must be greater than or equal to 0")
 	}
 	return nil
 }

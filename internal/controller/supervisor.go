@@ -338,7 +338,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*function
 
 	if decision.DesiredInstances > len(readyInstances) {
 		// we need to scale up
-		if len(readyInstances)+len(unreadyInstances) >= s.fn.Scale.MaxInstances+1 {
+		if len(readyInstances)+len(unreadyInstances) >= int(s.fn.Scale.MaxInstances)+1 {
 			// we have too many instances in total, so we can't scale up
 			log.Info(ctx, "skipping scale up because function has too many instances")
 			return readyInstances, unreadyInstances, nil
@@ -453,7 +453,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*fun
 		// This can happen if a previous iteration assigned a replacement but failed
 		// to delete the stale pod. In this case, keep the stale instance and let
 		// scale() handle cleanup.
-		if currentTotalInstances >= s.fn.Scale.MaxInstances+1 {
+		if currentTotalInstances >= int(s.fn.Scale.MaxInstances)+1 {
 			log.Info(ctx, "skipping stale instance replacement, already at maxInstances+1")
 			continue
 		}
@@ -518,7 +518,7 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 		}
 	}
 
-	if len(instances) > s.fn.Scale.MaxInstances {
+	if len(instances) > int(s.fn.Scale.MaxInstances) {
 		// sort instances by assigned at in descending order (newest first)
 		slices.SortFunc(instances, func(a, b *function.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
 		// keep the newest instances up to the max instances allowed for the function
@@ -560,7 +560,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 	var instancesWithoutMetrics []*function.Instance
 
 	for _, instance := range instances {
-		var usage int
+		var usage uint64
 		switch metric {
 		case MetricCPU:
 			usage = instance.CPUUsageMilli
@@ -587,8 +587,8 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 		return currentInstances, 0
 	}
 
-	var targetUsage int
-	var totalUsage int
+	var targetUsage uint64
+	var totalUsage uint64
 	for _, instance := range instancesWithMetrics {
 		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
@@ -620,10 +620,10 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 		adjustedTotalUsage := totalUsage
 		if desiredInstances < currentInstances {
 			// we wanted to scale down, so we assume that instances without metrics are consuming 100% of the target usage
-			adjustedTotalUsage += len(instancesWithoutMetrics) * targetUsage
-		} else {
+			adjustedTotalUsage += uint64(len(instancesWithoutMetrics)) * targetUsage
+		} else { //nolint:staticcheck
 			// we wanted to scale up, so we assume that instances without metrics are consuming 0% of the target usage
-			adjustedTotalUsage += len(instancesWithoutMetrics) * 0
+			// so no adjustment is needed
 		}
 
 		adjustedAverageUsage := float64(adjustedTotalUsage) / float64(currentInstances)
@@ -688,8 +688,8 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *func
 	}
 
 	// Apply min/max clamping
-	minInstances := heartbeat.Function.Scale.MinInstances
-	maxInstances := heartbeat.Function.Scale.MaxInstances
+	minInstances := int(heartbeat.Function.Scale.MinInstances)
+	maxInstances := int(heartbeat.Function.Scale.MaxInstances)
 	clampedValue := min(max(maxDesiredInstances, minInstances), maxInstances)
 
 	return ScalingDecision{

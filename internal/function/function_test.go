@@ -65,27 +65,27 @@ func TestFromHeader(t *testing.T) {
 		{
 			name:    "negative min instances",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"min_instances":-1}}`,
-			wantErr: "min instances must be greater than or equal to 0",
+			wantErr: "cannot unmarshal JSON number -1 into Go uint64",
 		},
 		{
 			name:    "negative max instances",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"max_instances":-1}}`,
-			wantErr: "max instances must be greater than or equal to 0",
+			wantErr: "cannot unmarshal JSON number -1 into Go uint64",
 		},
 		{
 			name:    "negative target cpu usage",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_cpu_usage_milli":-1}}`,
-			wantErr: "target cpu usage must be greater than or equal to 0",
+			wantErr: "cannot unmarshal JSON number -1 into Go uint64",
 		},
 		{
 			name:    "negative target memory usage",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_memory_usage_mib":-1}}`,
-			wantErr: "target memory usage must be greater than or equal to 0",
+			wantErr: "cannot unmarshal JSON number -1 into Go uint64",
 		},
 		{
 			name:    "negative target in flight requests",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_in_flight_requests":-1}}`,
-			wantErr: "target in flight requests must be greater than or equal to 0",
+			wantErr: "cannot unmarshal JSON number -1 into Go uint64",
 		},
 		{
 			name:    "nil scale",
@@ -283,15 +283,15 @@ func hashStringsBuilder(f *Function) string {
 	b.WriteByte('/')
 	b.WriteString(f.Metadata)
 	b.WriteByte('/')
-	b.WriteString(strconv.Itoa(f.Scale.MinInstances))
+	b.WriteString(strconv.FormatUint(f.Scale.MinInstances, 10))
 	b.WriteByte('/')
-	b.WriteString(strconv.Itoa(f.Scale.MaxInstances))
+	b.WriteString(strconv.FormatUint(f.Scale.MaxInstances, 10))
 	b.WriteByte('/')
-	b.WriteString(strconv.Itoa(f.Scale.TargetCPUUsageMilli))
+	b.WriteString(strconv.FormatUint(f.Scale.TargetCPUUsageMilli, 10))
 	b.WriteByte('/')
-	b.WriteString(strconv.Itoa(f.Scale.TargetMemoryUsageMiB))
+	b.WriteString(strconv.FormatUint(f.Scale.TargetMemoryUsageMiB, 10))
 	b.WriteByte('/')
-	b.WriteString(strconv.Itoa(f.Scale.TargetInFlightRequests))
+	b.WriteString(strconv.FormatUint(f.Scale.TargetInFlightRequests, 10))
 	return b.String()
 }
 
