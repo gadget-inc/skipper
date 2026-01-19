@@ -3,7 +3,6 @@ package key_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"maps"
@@ -16,6 +15,8 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
+	"github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 	"gotest.tools/v3/golden"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -88,7 +89,7 @@ func TestKeys(t *testing.T) {
 		"otel": sortMapKeys(otelAttrs),
 	}
 
-	output, err := json.MarshalIndent(result, "", "  ")
+	output, err := json.Marshal(result, jsontext.Multiline(true), json.Deterministic(true))
 	if err != nil {
 		t.Fatalf("failed to marshal results: %v", err)
 	}
