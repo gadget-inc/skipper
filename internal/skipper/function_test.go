@@ -315,27 +315,27 @@ func TestFunctionFromHeader(t *testing.T) {
 		{
 			name:    "negative min instances",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"min_instances":-1}}`,
-			wantErr: "unmarshal JSON number -1 into Go uint64",
+			wantErr: "unmarshal JSON number into Go uint64",
 		},
 		{
 			name:    "negative max instances",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"max_instances":-1}}`,
-			wantErr: "unmarshal JSON number -1 into Go uint64",
+			wantErr: "unmarshal JSON number into Go uint64",
 		},
 		{
 			name:    "negative target cpu usage",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_cpu_usage_milli":-1}}`,
-			wantErr: "unmarshal JSON number -1 into Go uint64",
+			wantErr: "unmarshal JSON number into Go uint64",
 		},
 		{
 			name:    "negative target memory usage",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_memory_usage_mib":-1}}`,
-			wantErr: "unmarshal JSON number -1 into Go uint64",
+			wantErr: "unmarshal JSON number into Go uint64",
 		},
 		{
 			name:    "negative target in flight requests",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_in_flight_requests":-1}}`,
-			wantErr: "unmarshal JSON number -1 into Go uint64",
+			wantErr: "unmarshal JSON number into Go uint64",
 		},
 		{
 			name:    "nil scale",

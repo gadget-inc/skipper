@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/go-json-experiment/json"
 )
 
 type Scale struct {
@@ -37,6 +38,16 @@ func (s *Scale) Equal(other *Scale) bool {
 		s.TargetInFlightRequests == other.TargetInFlightRequests
 }
 
+// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
+func (s *Scale) UnmarshalJSON(data []byte) error {
+	type Alias Scale
+	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
+	if err := json.Unmarshal(data, (*Alias)(s)); err == nil {
+		return nil
+	}
+	return json.Unmarshal(data, (*Alias)(s), json.StringifyNumbers(true))
+}
+
 // ScalingDecision contains the inputs and result of one scaling loop for one tenant
 type ScalingDecision struct {
 	DesiredInstances          uint64          `json:"desired_instances"`
@@ -60,6 +71,16 @@ func (sd ScalingDecision) LogValue() slog.Value {
 		key.Reason.Slog(string(sd.Reason)),
 		slog.GroupAttrs("metrics", metricAttrs...),
 	)
+}
+
+// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
+func (sd *ScalingDecision) UnmarshalJSON(data []byte) error {
+	type Alias ScalingDecision
+	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
+	if err := json.Unmarshal(data, (*Alias)(sd)); err == nil {
+		return nil
+	}
+	return json.Unmarshal(data, (*Alias)(sd), json.StringifyNumbers(true))
 }
 
 // ScalingReason represents the reason for a scaling decision.
@@ -93,4 +114,14 @@ func IsValidScalingReason(reason string) bool {
 type ScalingMetric struct {
 	Name  string  `json:"name"`
 	Value float64 `json:"value"`
+}
+
+// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded numbers.
+func (sm *ScalingMetric) UnmarshalJSON(data []byte) error {
+	type Alias ScalingMetric
+	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
+	if err := json.Unmarshal(data, (*Alias)(sm)); err == nil {
+		return nil
+	}
+	return json.Unmarshal(data, (*Alias)(sm), json.StringifyNumbers(true))
 }

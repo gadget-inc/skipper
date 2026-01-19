@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/go-json-experiment/json"
 )
 
 type Heartbeat struct {
@@ -36,4 +37,14 @@ func (h *Heartbeat) GetInFlightRequests() uint64 {
 		return 0
 	}
 	return h.InFlightRequests
+}
+
+// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
+func (h *Heartbeat) UnmarshalJSON(data []byte) error {
+	type Alias Heartbeat
+	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
+	if err := json.Unmarshal(data, (*Alias)(h)); err == nil {
+		return nil
+	}
+	return json.Unmarshal(data, (*Alias)(h), json.StringifyNumbers(true))
 }
