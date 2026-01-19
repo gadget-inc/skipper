@@ -267,3 +267,41 @@ func TestScaleDecisionUnmarshalNewFormat(t *testing.T) {
 
 	assert.DeepEqual(t, decision, goldenScaleDecision)
 }
+
+func TestNormalizeScaleReason(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected ScaleReason
+	}{
+		// Old lowercase values
+		{name: "old cpu", input: "cpu", expected: ScaleReasonCPU},
+		{name: "old heartbeat_timeout", input: "heartbeat_timeout", expected: ScaleReasonHeartbeatTimeout},
+		{name: "old in_flight_requests", input: "in_flight_requests", expected: ScaleReasonInFlightRequests},
+		{name: "old memory", input: "memory", expected: ScaleReasonMemory},
+		{name: "old no ready instances", input: "no ready instances", expected: ScaleReasonNoReadyInstances},
+		{name: "old unknown", input: "unknown", expected: ScaleReasonUnknown},
+
+		// New UPPER_SNAKE_CASE values
+		{name: "new CPU", input: "CPU", expected: ScaleReasonCPU},
+		{name: "new HEARTBEAT_TIMEOUT", input: "HEARTBEAT_TIMEOUT", expected: ScaleReasonHeartbeatTimeout},
+		{name: "new IN_FLIGHT_REQUESTS", input: "IN_FLIGHT_REQUESTS", expected: ScaleReasonInFlightRequests},
+		{name: "new MEMORY", input: "MEMORY", expected: ScaleReasonMemory},
+		{name: "new NO_READY_INSTANCES", input: "NO_READY_INSTANCES", expected: ScaleReasonNoReadyInstances},
+		{name: "new UNKNOWN", input: "UNKNOWN", expected: ScaleReasonUnknown},
+
+		// Unknown values are preserved
+		{name: "unknown value", input: "custom_reason", expected: ScaleReason("custom_reason")},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := NormalizeScaleReason(tc.input)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}

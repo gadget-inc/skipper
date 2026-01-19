@@ -112,23 +112,7 @@ func (r *ScaleReason) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	// Normalize: accept both old lowercase and new UPPER_SNAKE_CASE
-	switch strings.ToUpper(strings.ReplaceAll(s, " ", "_")) {
-	case "CPU":
-		*r = ScaleReasonCPU
-	case "HEARTBEAT_TIMEOUT":
-		*r = ScaleReasonHeartbeatTimeout
-	case "IN_FLIGHT_REQUESTS":
-		*r = ScaleReasonInFlightRequests
-	case "MEMORY":
-		*r = ScaleReasonMemory
-	case "NO_READY_INSTANCES":
-		*r = ScaleReasonNoReadyInstances
-	case "UNKNOWN":
-		*r = ScaleReasonUnknown
-	default:
-		*r = ScaleReason(s) // preserve unknown values
-	}
+	*r = NormalizeScaleReason(s)
 	return nil
 }
 
@@ -142,6 +126,27 @@ func IsValidScaleReason(reason string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// NormalizeScaleReason normalizes a reason string to its canonical ScaleReason value.
+// Accepts both old lowercase and new UPPER_SNAKE_CASE values.
+func NormalizeScaleReason(reason string) ScaleReason {
+	switch strings.ToUpper(strings.ReplaceAll(reason, " ", "_")) {
+	case "CPU":
+		return ScaleReasonCPU
+	case "HEARTBEAT_TIMEOUT":
+		return ScaleReasonHeartbeatTimeout
+	case "IN_FLIGHT_REQUESTS":
+		return ScaleReasonInFlightRequests
+	case "MEMORY":
+		return ScaleReasonMemory
+	case "NO_READY_INSTANCES":
+		return ScaleReasonNoReadyInstances
+	case "UNKNOWN":
+		return ScaleReasonUnknown
+	default:
+		return ScaleReason(reason) // preserve unknown values
 	}
 }
 
