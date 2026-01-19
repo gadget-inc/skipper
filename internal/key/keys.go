@@ -39,7 +39,7 @@ var (
 	ResponsibleIP             = stringKey("responsible_ip")
 	RouterIP                  = stringKey("router_ip")
 	Scale                     = logValuerKey("scale")
-	ScalingDecision           = logValuerKey("scaling_decision")
+	ScaleDecision             = logValuerKey("scale_decision")
 	TargetCPUUsageMilli       = uint64Key("target_cpu_usage_milli")
 	TargetInFlightRequests    = uint64Key("target_in_flight_requests")
 	TargetMemoryUsageMiB      = uint64Key("target_memory_usage_mib")

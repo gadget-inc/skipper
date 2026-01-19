@@ -59,7 +59,7 @@ func TestKeys(t *testing.T) {
 		key.ResponsibleIP.Attr(fakeString),
 		key.RouterIP.Attr(fakeString),
 		key.Scale.Attr(fakeScale),
-		key.ScalingDecision.Attr(fakeScalingDecision),
+		key.ScaleDecision.Attr(fakeScaleDecision),
 		key.TargetCPUUsageMilli.Attr(fakeUint64),
 		key.TargetInFlightRequests.Attr(fakeUint64),
 		key.TargetMemoryUsageMiB.Attr(fakeUint64),
@@ -182,11 +182,11 @@ var (
 		MemoryUsageMiB: fakeUint64,
 	}
 
-	fakeScalingDecision = skipper.ScalingDecision{
+	fakeScaleDecision = skipper.ScaleDecision{
 		DesiredInstances:          fakeUint64,
 		UnclampedDesiredInstances: fakeUint64,
-		Reason:                    skipper.ScalingReason(fakeString),
-		Metrics:                   []skipper.ScalingMetric{{Name: fakeString, Value: fakeFloat}},
+		Reason:                    skipper.ScaleReason(fakeString),
+		Metrics:                   []skipper.ScaleMetric{{Name: fakeString, Value: fakeFloat}},
 	}
 
 	fakePod = &v1.Pod{

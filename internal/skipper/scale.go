@@ -2,6 +2,7 @@ package skipper
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
@@ -48,18 +49,18 @@ func (s *Scale) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, (*Alias)(s), json.StringifyNumbers(true))
 }
 
-// ScalingDecision contains the inputs and result of one scaling loop for one tenant
-type ScalingDecision struct {
-	DesiredInstances          uint64          `json:"desired_instances"`
-	UnclampedDesiredInstances uint64          `json:"unclamped_desired_instances"`
-	Reason                    ScalingReason   `json:"reason"`
-	Metrics                   []ScalingMetric `json:"metrics"`
+// ScaleDecision contains the inputs and result of one scaling loop for one tenant
+type ScaleDecision struct {
+	DesiredInstances          uint64        `json:"desired_instances"`
+	UnclampedDesiredInstances uint64        `json:"unclamped_desired_instances"`
+	Reason                    ScaleReason   `json:"reason"`
+	Metrics                   []ScaleMetric `json:"metrics"`
 }
 
-var _ slog.LogValuer = ScalingDecision{}
+var _ slog.LogValuer = ScaleDecision{}
 
 // LogValue implements slog.LogValuer for structured logging.
-func (sd ScalingDecision) LogValue() slog.Value {
+func (sd ScaleDecision) LogValue() slog.Value {
 	var metricAttrs []slog.Attr
 	for _, metric := range sd.Metrics {
 		metricAttrs = append(metricAttrs, slog.Float64(metric.Name, metric.Value))
@@ -74,8 +75,8 @@ func (sd ScalingDecision) LogValue() slog.Value {
 }
 
 // UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
-func (sd *ScalingDecision) UnmarshalJSON(data []byte) error {
-	type Alias ScalingDecision
+func (sd *ScaleDecision) UnmarshalJSON(data []byte) error {
+	type Alias ScaleDecision
 	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
 	if err := json.Unmarshal(data, (*Alias)(sd)); err == nil {
 		return nil
@@ -83,42 +84,76 @@ func (sd *ScalingDecision) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, (*Alias)(sd), json.StringifyNumbers(true))
 }
 
-// ScalingReason represents the reason for a scaling decision.
-type ScalingReason string
+// ScaleReason represents the reason for a scaling decision.
+type ScaleReason string
 
 const (
-	ScalingReasonCPU              ScalingReason = "cpu"
-	ScalingReasonHeartbeatTimeout ScalingReason = "heartbeat_timeout"
-	ScalingReasonInFlightRequests ScalingReason = "in_flight_requests"
-	ScalingReasonMemory           ScalingReason = "memory"
-	ScalingReasonNoReadyInstances ScalingReason = "no ready instances"
-	ScalingReasonUnknown          ScalingReason = "unknown"
+	// New UPPER_SNAKE_CASE values (protobuf style)
+	ScaleReasonCPU              ScaleReason = "CPU"
+	ScaleReasonHeartbeatTimeout ScaleReason = "HEARTBEAT_TIMEOUT"
+	ScaleReasonInFlightRequests ScaleReason = "IN_FLIGHT_REQUESTS"
+	ScaleReasonMemory           ScaleReason = "MEMORY"
+	ScaleReasonNoReadyInstances ScaleReason = "NO_READY_INSTANCES"
+	ScaleReasonUnknown          ScaleReason = "UNKNOWN"
+
+	// Deprecated: use ScaleReason* constants instead
+	ScalingReasonCPU              ScaleReason = "cpu"
+	ScalingReasonHeartbeatTimeout ScaleReason = "heartbeat_timeout"
+	ScalingReasonInFlightRequests ScaleReason = "in_flight_requests"
+	ScalingReasonMemory           ScaleReason = "memory"
+	ScalingReasonNoReadyInstances ScaleReason = "no ready instances"
+	ScalingReasonUnknown          ScaleReason = "unknown"
 )
 
-// IsValidScalingReason returns true if the given string is a known scaling reason.
-func IsValidScalingReason(reason string) bool {
-	switch ScalingReason(reason) {
-	case ScalingReasonCPU,
-		ScalingReasonHeartbeatTimeout,
-		ScalingReasonInFlightRequests,
-		ScalingReasonMemory,
-		ScalingReasonNoReadyInstances,
-		ScalingReasonUnknown:
+// UnmarshalJSON implements json.Unmarshaler, accepting both old lowercase
+// values and new UPPER_SNAKE_CASE values for backwards compatibility.
+func (r *ScaleReason) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	// Normalize: accept both old lowercase and new UPPER_SNAKE_CASE
+	switch strings.ToUpper(strings.ReplaceAll(s, " ", "_")) {
+	case "CPU":
+		*r = ScaleReasonCPU
+	case "HEARTBEAT_TIMEOUT":
+		*r = ScaleReasonHeartbeatTimeout
+	case "IN_FLIGHT_REQUESTS":
+		*r = ScaleReasonInFlightRequests
+	case "MEMORY":
+		*r = ScaleReasonMemory
+	case "NO_READY_INSTANCES":
+		*r = ScaleReasonNoReadyInstances
+	case "UNKNOWN":
+		*r = ScaleReasonUnknown
+	default:
+		*r = ScaleReason(s) // preserve unknown values
+	}
+	return nil
+}
+
+// IsValidScaleReason returns true if the given string is a known scale reason.
+// Accepts both old lowercase and new UPPER_SNAKE_CASE values.
+func IsValidScaleReason(reason string) bool {
+	// Normalize to UPPER_SNAKE_CASE for comparison
+	normalized := strings.ToUpper(strings.ReplaceAll(reason, " ", "_"))
+	switch normalized {
+	case "CPU", "HEARTBEAT_TIMEOUT", "IN_FLIGHT_REQUESTS", "MEMORY", "NO_READY_INSTANCES", "UNKNOWN":
 		return true
 	default:
 		return false
 	}
 }
 
-// ScalingMetric represents an unclamped metric value for a specific metric observed for scaling decisions
-type ScalingMetric struct {
+// ScaleMetric represents an unclamped metric value for a specific metric observed for scaling decisions
+type ScaleMetric struct {
 	Name  string  `json:"name"`
 	Value float64 `json:"value"`
 }
 
 // UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded numbers.
-func (sm *ScalingMetric) UnmarshalJSON(data []byte) error {
-	type Alias ScalingMetric
+func (sm *ScaleMetric) UnmarshalJSON(data []byte) error {
+	type Alias ScaleMetric
 	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
 	if err := json.Unmarshal(data, (*Alias)(sm)); err == nil {
 		return nil

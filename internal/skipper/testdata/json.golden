@@ -58,10 +58,10 @@
 		"target_memory_usage_mib": 256,
 		"target_in_flight_requests": 100
 	},
-	"ScalingDecision": {
+	"ScaleDecision": {
 		"desired_instances": 3,
 		"unclamped_desired_instances": 5,
-		"reason": "cpu",
+		"reason": "CPU",
 		"metrics": [
 			{
 				"name": "cpu",
@@ -73,7 +73,7 @@
 			}
 		]
 	},
-	"ScalingMetric": {
+	"ScaleMetric": {
 		"name": "in_flight_requests",
 		"value": 1.5
 	}

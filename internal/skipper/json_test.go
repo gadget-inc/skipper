@@ -46,39 +46,39 @@ var (
 		MemoryUsageMiB: 128,
 	}
 
-	goldenScalingDecision = ScalingDecision{
+	goldenScaleDecision = ScaleDecision{
 		DesiredInstances:          3,
 		UnclampedDesiredInstances: 5,
-		Reason:                    ScalingReasonCPU,
-		Metrics: []ScalingMetric{
+		Reason:                    ScaleReasonCPU,
+		Metrics: []ScaleMetric{
 			{Name: "cpu", Value: 0.75},
 			{Name: "memory", Value: 0.5},
 		},
 	}
 
-	goldenScalingMetric = ScalingMetric{
+	goldenScaleMetric = ScaleMetric{
 		Name:  "in_flight_requests",
 		Value: 1.5,
 	}
 )
 
 type goldenResult struct {
-	Function        *Function
-	Heartbeat       *Heartbeat
-	Instance        *Instance
-	Scale           *Scale
-	ScalingDecision ScalingDecision
-	ScalingMetric   ScalingMetric
+	Function      *Function
+	Heartbeat     *Heartbeat
+	Instance      *Instance
+	Scale         *Scale
+	ScaleDecision ScaleDecision
+	ScaleMetric   ScaleMetric
 }
 
 func TestJSONMarshal(t *testing.T) {
 	result := goldenResult{
-		Function:        goldenFunction,
-		Heartbeat:       goldenHeartbeat,
-		Instance:        goldenInstance,
-		Scale:           goldenScale,
-		ScalingDecision: goldenScalingDecision,
-		ScalingMetric:   goldenScalingMetric,
+		Function:      goldenFunction,
+		Heartbeat:     goldenHeartbeat,
+		Instance:      goldenInstance,
+		Scale:         goldenScale,
+		ScaleDecision: goldenScaleDecision,
+		ScaleMetric:   goldenScaleMetric,
 	}
 
 	output, err := json.Marshal(result, jsontext.Multiline(true))
@@ -96,8 +96,8 @@ func TestJSONUnmarshal(t *testing.T) {
 	assert.DeepEqual(t, result.Scale, goldenScale)
 	assert.DeepEqual(t, result.Heartbeat, goldenHeartbeat)
 	assert.DeepEqual(t, result.Instance, goldenInstance)
-	assert.DeepEqual(t, result.ScalingDecision, goldenScalingDecision)
-	assert.DeepEqual(t, result.ScalingMetric, goldenScalingMetric)
+	assert.DeepEqual(t, result.ScaleDecision, goldenScaleDecision)
+	assert.DeepEqual(t, result.ScaleMetric, goldenScaleMetric)
 }
 
 func TestJSONUnmarshalStringInts(t *testing.T) {
@@ -162,7 +162,7 @@ func TestJSONUnmarshalStringInts(t *testing.T) {
 			"target_memory_usage_mib": "256",
 			"target_in_flight_requests": "100"
 		},
-		"ScalingDecision": {
+		"ScaleDecision": {
 			"desired_instances": "3",
 			"unclamped_desired_instances": "5",
 			"reason": "cpu",
@@ -171,7 +171,7 @@ func TestJSONUnmarshalStringInts(t *testing.T) {
 				{"name": "memory", "value": "0.5"}
 			]
 		},
-		"ScalingMetric": {
+		"ScaleMetric": {
 			"name": "in_flight_requests",
 			"value": "1.5"
 		}
@@ -185,6 +185,85 @@ func TestJSONUnmarshalStringInts(t *testing.T) {
 	assert.DeepEqual(t, result.Scale, goldenScale)
 	assert.DeepEqual(t, result.Heartbeat, goldenHeartbeat)
 	assert.DeepEqual(t, result.Instance, goldenInstance)
-	assert.DeepEqual(t, result.ScalingDecision, goldenScalingDecision)
-	assert.DeepEqual(t, result.ScalingMetric, goldenScalingMetric)
+	assert.DeepEqual(t, result.ScaleDecision, goldenScaleDecision)
+	assert.DeepEqual(t, result.ScaleMetric, goldenScaleMetric)
+}
+
+func TestScaleReasonUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected ScaleReason
+	}{
+		// Old lowercase values
+		{name: "old cpu", input: `"cpu"`, expected: ScaleReasonCPU},
+		{name: "old heartbeat_timeout", input: `"heartbeat_timeout"`, expected: ScaleReasonHeartbeatTimeout},
+		{name: "old in_flight_requests", input: `"in_flight_requests"`, expected: ScaleReasonInFlightRequests},
+		{name: "old memory", input: `"memory"`, expected: ScaleReasonMemory},
+		{name: "old no ready instances", input: `"no ready instances"`, expected: ScaleReasonNoReadyInstances},
+		{name: "old unknown", input: `"unknown"`, expected: ScaleReasonUnknown},
+
+		// New UPPER_SNAKE_CASE values
+		{name: "new CPU", input: `"CPU"`, expected: ScaleReasonCPU},
+		{name: "new HEARTBEAT_TIMEOUT", input: `"HEARTBEAT_TIMEOUT"`, expected: ScaleReasonHeartbeatTimeout},
+		{name: "new IN_FLIGHT_REQUESTS", input: `"IN_FLIGHT_REQUESTS"`, expected: ScaleReasonInFlightRequests},
+		{name: "new MEMORY", input: `"MEMORY"`, expected: ScaleReasonMemory},
+		{name: "new NO_READY_INSTANCES", input: `"NO_READY_INSTANCES"`, expected: ScaleReasonNoReadyInstances},
+		{name: "new UNKNOWN", input: `"UNKNOWN"`, expected: ScaleReasonUnknown},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var reason ScaleReason
+			err := json.Unmarshal([]byte(tc.input), &reason)
+			assert.NilError(t, err)
+			assert.Equal(t, tc.expected, reason)
+		})
+	}
+}
+
+func TestScaleDecisionUnmarshalOldFormat(t *testing.T) {
+	t.Parallel()
+
+	// Old format with lowercase reason values
+	input := []byte(`{
+		"desired_instances": 3,
+		"unclamped_desired_instances": 5,
+		"reason": "cpu",
+		"metrics": [
+			{"name": "cpu", "value": 0.75},
+			{"name": "memory", "value": 0.5}
+		]
+	}`)
+
+	var decision ScaleDecision
+	err := json.Unmarshal(input, &decision)
+	assert.NilError(t, err)
+
+	assert.DeepEqual(t, decision, goldenScaleDecision)
+}
+
+func TestScaleDecisionUnmarshalNewFormat(t *testing.T) {
+	t.Parallel()
+
+	// New format with UPPER_SNAKE_CASE reason values
+	input := []byte(`{
+		"desired_instances": 3,
+		"unclamped_desired_instances": 5,
+		"reason": "CPU",
+		"metrics": [
+			{"name": "cpu", "value": 0.75},
+			{"name": "memory", "value": 0.5}
+		]
+	}`)
+
+	var decision ScaleDecision
+	err := json.Unmarshal(input, &decision)
+	assert.NilError(t, err)
+
+	assert.DeepEqual(t, decision, goldenScaleDecision)
 }

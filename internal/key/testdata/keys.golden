@@ -79,10 +79,10 @@
 		"scale.target_cpu_usage_milli": 42,
 		"scale.target_in_flight_requests": 42,
 		"scale.target_memory_usage_mib": 42,
-		"scaling_decision.desired_instances": 42,
-		"scaling_decision.metrics.test": 1.5,
-		"scaling_decision.reason": "test",
-		"scaling_decision.unclamped_desired_instances": 42,
+		"scale_decision.desired_instances": 42,
+		"scale_decision.metrics.test": 1.5,
+		"scale_decision.reason": "test",
+		"scale_decision.unclamped_desired_instances": 42,
 		"target_cpu_usage_milli": 42,
 		"target_in_flight_requests": 42,
 		"target_memory_usage_mib": 42,
@@ -203,7 +203,7 @@
 			"target_in_flight_requests": 42,
 			"target_memory_usage_mib": 42
 		},
-		"scaling_decision": {
+		"scale_decision": {
 			"desired_instances": 42,
 			"metrics": {
 				"test": 1.5
