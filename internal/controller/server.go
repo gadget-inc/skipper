@@ -89,14 +89,14 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	reason := req.Header.Get(key.Reason.Header)
-	if !skipper.IsValidScalingReason(reason) {
+	if !skipper.IsValidScaleReason(reason) {
 		log.Warn(ctx, "invalid scaling reason, using unknown", key.Reason.Slog(reason))
-		reason = string(skipper.ScalingReasonUnknown)
+		reason = string(skipper.ScaleReasonUnknown)
 	}
 
-	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScalingDecision{
+	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScaleDecision{
 		DesiredInstances: desiredInstances,
-		Reason:           skipper.ScalingReason(reason),
+		Reason:           skipper.NormalizeScaleReason(reason),
 	})
 	if err != nil {
 		log.Error(ctx, "failed to scale function", key.Error.Slog(err))

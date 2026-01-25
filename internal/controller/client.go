@@ -17,7 +17,7 @@ import (
 type Client interface {
 	Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error)
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
-	Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScalingReason) ([]*skipper.Instance, error)
+	Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScaleReason) ([]*skipper.Instance, error)
 }
 
 type NewClientFunc func(host string, port int) Client
@@ -99,7 +99,7 @@ func (c *httpClient) Heartbeat(ctx context.Context, routerIP string, heartbeats 
 	return nil
 }
 
-func (c *httpClient) Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScalingReason) ([]*skipper.Instance, error) {
+func (c *httpClient) Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/scale", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scale request: %w", err)

@@ -548,7 +548,7 @@ func TestScale(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, skipper.ScalingDecision{
+			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, skipper.ScaleDecision{
 				DesiredInstances: tc.desiredInstances,
 				Reason:           "test",
 			})
@@ -581,7 +581,7 @@ func TestScaleForwarding(t *testing.T) {
 
 	// Set up mock client to handle forwarded scale request
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScalingReason) ([]*skipper.Instance, error) {
+	mcc.HandleScale(func(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
 		return []*skipper.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
@@ -591,7 +591,7 @@ func TestScaleForwarding(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Scale should succeed via forwarding to mock client
-	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScalingDecision{
+	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScaleDecision{
 		DesiredInstances: 1,
 		Reason:           "test",
 	})
@@ -1612,7 +1612,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 		instances                []*skipper.Instance
 		expectedDesiredInstances uint64
 		expectedUnclampedDesired uint64
-		expectedReason           skipper.ScalingReason
+		expectedReason           skipper.ScaleReason
 	}{
 		{
 			// Heartbeat timeout triggers scale to 0
@@ -1633,7 +1633,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 0,
 			expectedUnclampedDesired: 0,
-			expectedReason:           skipper.ScalingReasonHeartbeatTimeout,
+			expectedReason:           skipper.ScaleReasonHeartbeatTimeout,
 		},
 		{
 			// In-flight requests scaling: 25 requests / 10 target = 3 instances
@@ -1654,7 +1654,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           skipper.ScalingReasonInFlightRequests,
+			expectedReason:           skipper.ScaleReasonInFlightRequests,
 		},
 		{
 			// Multiple metrics: takes the max across all
@@ -1685,7 +1685,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 2,
 			expectedUnclampedDesired: 2,
-			expectedReason:           skipper.ScalingReasonInFlightRequests, // or CPU, both equal
+			expectedReason:           skipper.ScaleReasonInFlightRequests, // or CPU, both equal
 		},
 		{
 			// Max clamping: would scale to 10 but max is 5
@@ -1706,7 +1706,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 5,
 			expectedUnclampedDesired: 10,
-			expectedReason:           skipper.ScalingReasonInFlightRequests,
+			expectedReason:           skipper.ScaleReasonInFlightRequests,
 		},
 		{
 			// Min clamping: unclamped would be 1 (baseline without heartbeat timeout) but min is 2
@@ -1778,7 +1778,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           skipper.ScalingReasonCPU,
+			expectedReason:           skipper.ScaleReasonCPU,
 		},
 		{
 			// Memory scaling
@@ -1804,7 +1804,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           skipper.ScalingReasonMemory,
+			expectedReason:           skipper.ScaleReasonMemory,
 		},
 	}
 
@@ -1821,26 +1821,33 @@ func TestCalculateDesiredInstances(t *testing.T) {
 	}
 }
 
-// TestIsValidScalingReason tests the scaling reason validation skipper.
-func TestIsValidScalingReason(t *testing.T) {
+// TestIsValidScaleReason tests the scale reason validation skipper.
+func TestIsValidScaleReason(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
 		reason   string
 		expected bool
 	}{
-		// Valid scaling reasons
-		{reason: string(skipper.ScalingReasonCPU), expected: true},
-		{reason: string(skipper.ScalingReasonHeartbeatTimeout), expected: true},
-		{reason: string(skipper.ScalingReasonInFlightRequests), expected: true},
-		{reason: string(skipper.ScalingReasonMemory), expected: true},
-		{reason: string(skipper.ScalingReasonNoReadyInstances), expected: true},
-		{reason: string(skipper.ScalingReasonUnknown), expected: true},
+		// Valid scaling reasons (old lowercase format)
+		{reason: "cpu", expected: true},
+		{reason: "heartbeat_timeout", expected: true},
+		{reason: "in_flight_requests", expected: true},
+		{reason: "memory", expected: true},
+		{reason: "no ready instances", expected: true},
+		{reason: "unknown", expected: true},
+
+		// Valid scaling reasons (new UPPER_SNAKE_CASE format)
+		{reason: "CPU", expected: true},
+		{reason: "HEARTBEAT_TIMEOUT", expected: true},
+		{reason: "IN_FLIGHT_REQUESTS", expected: true},
+		{reason: "MEMORY", expected: true},
+		{reason: "NO_READY_INSTANCES", expected: true},
+		{reason: "UNKNOWN", expected: true},
 
 		// Invalid scaling reasons
 		{reason: "", expected: false},
 		{reason: "invalid", expected: false},
-		{reason: "CPU", expected: false},  // case-sensitive
 		{reason: "cpu ", expected: false}, // trailing space
 		{reason: " cpu", expected: false}, // leading space
 		{reason: "random", expected: false},
@@ -1850,7 +1857,7 @@ func TestIsValidScalingReason(t *testing.T) {
 		t.Run(tc.reason, func(t *testing.T) {
 			t.Parallel()
 
-			result := skipper.IsValidScalingReason(tc.reason)
+			result := skipper.IsValidScaleReason(tc.reason)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

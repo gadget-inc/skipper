@@ -290,7 +290,7 @@ func TestHandleScale(t *testing.T) {
 				state.setFnHeader = false
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "1",
-					key.Reason.Header:           string(skipper.ScalingReasonUnknown),
+					key.Reason.Header:           string(skipper.ScaleReasonUnknown),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -304,7 +304,7 @@ func TestHandleScale(t *testing.T) {
 				state.headers = map[string]string{
 					key.Function.Header:         "not-valid-json",
 					key.DesiredInstances.Header: "1",
-					key.Reason.Header:           string(skipper.ScalingReasonUnknown),
+					key.Reason.Header:           string(skipper.ScaleReasonUnknown),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -316,7 +316,7 @@ func TestHandleScale(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.setFnHeader = true
 				state.headers = map[string]string{
-					key.Reason.Header: string(skipper.ScalingReasonUnknown),
+					key.Reason.Header: string(skipper.ScaleReasonUnknown),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -329,7 +329,7 @@ func TestHandleScale(t *testing.T) {
 				state.setFnHeader = true
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "not-a-number",
-					key.Reason.Header:           string(skipper.ScalingReasonUnknown),
+					key.Reason.Header:           string(skipper.ScaleReasonUnknown),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -364,7 +364,7 @@ func TestHandleScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "1",
-					key.Reason.Header:           string(skipper.ScalingReasonInFlightRequests),
+					key.Reason.Header:           string(skipper.ScaleReasonInFlightRequests),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -385,7 +385,7 @@ func TestHandleScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "2",
-					key.Reason.Header:           string(skipper.ScalingReasonInFlightRequests),
+					key.Reason.Header:           string(skipper.ScaleReasonInFlightRequests),
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -405,7 +405,7 @@ func TestHandleScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				state.headers = map[string]string{
 					key.DesiredInstances.Header: "1",
-					key.Reason.Header:           string(skipper.ScalingReasonInFlightRequests),
+					key.Reason.Header:           string(skipper.ScaleReasonInFlightRequests),
 				}
 			},
 			check: func(t *testing.T, state *testState) {

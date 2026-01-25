@@ -282,7 +282,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 // responsible controller if this controller is not responsible for the
 // skipper. For scale-down, it deletes unready instances first, then
 // oldest ready instances.
-func (s *Supervisor) scale(ctx context.Context, decision skipper.ScalingDecision) ([]*skipper.Instance, error) {
+func (s *Supervisor) scale(ctx context.Context, decision skipper.ScaleDecision) ([]*skipper.Instance, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -304,7 +304,7 @@ func (s *Supervisor) scale(ctx context.Context, decision skipper.ScalingDecision
 // scaleWithoutLock is the internal implementation of scale that assumes
 // the caller already holds s.mu. It executes the scaling decision
 // without forwarding to another controller.
-func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.Instance, decision skipper.ScalingDecision) ([]*skipper.Instance, []*skipper.Instance, error) {
+func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.Instance, decision skipper.ScaleDecision) ([]*skipper.Instance, []*skipper.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.scale")
 	defer span.End()
 
@@ -319,7 +319,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 	})
 
 	ctx = log.With(ctx,
-		key.ScalingDecision.Slog(decision),
+		key.ScaleDecision.Slog(decision),
 		key.ReadyInstances.Slog(len(readyInstances)),
 		key.UnreadyInstances.Slog(len(unreadyInstances)),
 	)
@@ -360,7 +360,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 			}
 			readyInstances = append(readyInstances, instance)
 		}
-	} else if decision.Reason == skipper.ScalingReasonNoReadyInstances {
+	} else if decision.Reason == skipper.ScaleReasonNoReadyInstances {
 		// we were asked to scale up to 1 instance because there were no
 		// ready instances at the time of the request, but now we have
 		// at least 1 ready instance, so there's nothing to do
@@ -514,10 +514,10 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
 
 	for len(instances) == 0 {
-		if instances, err = s.scale(ctx, skipper.ScalingDecision{
+		if instances, err = s.scale(ctx, skipper.ScaleDecision{
 			DesiredInstances:          1,
 			UnclampedDesiredInstances: 1,
-			Reason:                    skipper.ScalingReasonNoReadyInstances,
+			Reason:                    skipper.ScaleReasonNoReadyInstances,
 		}); err != nil {
 			return nil, fmt.Errorf("failed to scale function: %w", err)
 		}
@@ -651,44 +651,44 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) skipper.ScalingDecision {
+func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) skipper.ScaleDecision {
 	if time.Since(heartbeat.Timestamp) >= cfg.HeartbeatTimeout {
-		return skipper.ScalingDecision{
+		return skipper.ScaleDecision{
 			DesiredInstances:          0,
 			UnclampedDesiredInstances: 0,
-			Reason:                    skipper.ScalingReasonHeartbeatTimeout,
+			Reason:                    skipper.ScaleReasonHeartbeatTimeout,
 		}
 	}
 
 	maxDesiredInstances := 1 // we only scale to 0 from a heartbeat timeout, so we start at 1
-	var scalingReason skipper.ScalingReason
-	var scalingMetrics []skipper.ScalingMetric
+	var scaleReason skipper.ScaleReason
+	var scaleMetrics []skipper.ScaleMetric
 
 	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
 		desiredInstances := int(math.Ceil(float64(heartbeat.InFlightRequests) / float64(heartbeat.Function.Scale.TargetInFlightRequests)))
 		averageUsage := float64(heartbeat.InFlightRequests) / float64(len(instances))
-		scalingMetrics = append(scalingMetrics, skipper.ScalingMetric{Name: "in_flight_requests", Value: averageUsage})
+		scaleMetrics = append(scaleMetrics, skipper.ScaleMetric{Name: "in_flight_requests", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = skipper.ScalingReasonInFlightRequests
+			scaleReason = skipper.ScaleReasonInFlightRequests
 		}
 	}
 
 	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricCPU, instances)
-		scalingMetrics = append(scalingMetrics, skipper.ScalingMetric{Name: "cpu", Value: averageUsage})
+		scaleMetrics = append(scaleMetrics, skipper.ScaleMetric{Name: "cpu", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = skipper.ScalingReasonCPU
+			scaleReason = skipper.ScaleReasonCPU
 		}
 	}
 
 	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricMemory, instances)
-		scalingMetrics = append(scalingMetrics, skipper.ScalingMetric{Name: "memory", Value: averageUsage})
+		scaleMetrics = append(scaleMetrics, skipper.ScaleMetric{Name: "memory", Value: averageUsage})
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scalingReason = skipper.ScalingReasonMemory
+			scaleReason = skipper.ScaleReasonMemory
 		}
 	}
 
@@ -697,10 +697,10 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skip
 	maxInstances := heartbeat.Function.Scale.MaxInstances
 	clampedValue := min(max(uint64(maxDesiredInstances), minInstances), maxInstances)
 
-	return skipper.ScalingDecision{
+	return skipper.ScaleDecision{
 		DesiredInstances:          clampedValue,
 		UnclampedDesiredInstances: uint64(maxDesiredInstances),
-		Reason:                    scalingReason,
-		Metrics:                   scalingMetrics,
+		Reason:                    scaleReason,
+		Metrics:                   scaleMetrics,
 	}
 }
