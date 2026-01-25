@@ -99,3 +99,128 @@ func TestJSONUnmarshal(t *testing.T) {
 	assert.DeepEqual(t, result.ScaleDecision, goldenScaleDecision)
 	assert.DeepEqual(t, result.ScaleMetric, goldenScaleMetric)
 }
+
+func TestScaleReasonUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected ScaleReason
+	}{
+		// Non-prefixed values (current format)
+		{name: "CPU", input: `"CPU"`, expected: ScaleReasonCPU},
+		{name: "HEARTBEAT_TIMEOUT", input: `"HEARTBEAT_TIMEOUT"`, expected: ScaleReasonHeartbeatTimeout},
+		{name: "IN_FLIGHT_REQUESTS", input: `"IN_FLIGHT_REQUESTS"`, expected: ScaleReasonInFlightRequests},
+		{name: "MEMORY", input: `"MEMORY"`, expected: ScaleReasonMemory},
+		{name: "NO_READY_INSTANCES", input: `"NO_READY_INSTANCES"`, expected: ScaleReasonNoReadyInstances},
+		{name: "UNKNOWN", input: `"UNKNOWN"`, expected: ScaleReasonUnknown},
+
+		// Protobuf-prefixed values
+		{name: "prefixed CPU", input: `"SCALE_REASON_CPU"`, expected: ScaleReasonCPU},
+		{name: "prefixed HEARTBEAT_TIMEOUT", input: `"SCALE_REASON_HEARTBEAT_TIMEOUT"`, expected: ScaleReasonHeartbeatTimeout},
+		{name: "prefixed IN_FLIGHT_REQUESTS", input: `"SCALE_REASON_IN_FLIGHT_REQUESTS"`, expected: ScaleReasonInFlightRequests},
+		{name: "prefixed MEMORY", input: `"SCALE_REASON_MEMORY"`, expected: ScaleReasonMemory},
+		{name: "prefixed NO_READY_INSTANCES", input: `"SCALE_REASON_NO_READY_INSTANCES"`, expected: ScaleReasonNoReadyInstances},
+		{name: "prefixed UNKNOWN", input: `"SCALE_REASON_UNKNOWN"`, expected: ScaleReasonUnknown},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var reason ScaleReason
+			err := json.Unmarshal([]byte(tc.input), &reason)
+			assert.NilError(t, err)
+			assert.Equal(t, reason, tc.expected)
+		})
+	}
+}
+
+func TestScaleMetricUnmarshalNumber(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected ScaleMetric
+	}{
+		{
+			name:     "string value",
+			input:    `{"name": "cpu", "value": "0.75"}`,
+			expected: ScaleMetric{Name: "cpu", Value: 0.75},
+		},
+		{
+			name:     "number value",
+			input:    `{"name": "cpu", "value": 0.75}`,
+			expected: ScaleMetric{Name: "cpu", Value: 0.75},
+		},
+		{
+			name:     "integer number value",
+			input:    `{"name": "count", "value": 42}`,
+			expected: ScaleMetric{Name: "count", Value: 42},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var metric ScaleMetric
+			err := json.Unmarshal([]byte(tc.input), &metric)
+			assert.NilError(t, err)
+			assert.DeepEqual(t, metric, tc.expected)
+		})
+	}
+}
+
+func TestScaleDecisionUnmarshalProtobufFormat(t *testing.T) {
+	t.Parallel()
+
+	// Protobuf format: prefixed reason, number values
+	input := []byte(`{
+		"desired_instances": "3",
+		"unclamped_desired_instances": "5",
+		"reason": "SCALE_REASON_CPU",
+		"metrics": [
+			{"name": "cpu", "value": 0.75},
+			{"name": "memory", "value": 0.5}
+		]
+	}`)
+
+	var decision ScaleDecision
+	err := json.Unmarshal(input, &decision)
+	assert.NilError(t, err)
+
+	assert.DeepEqual(t, decision, goldenScaleDecision)
+}
+
+func TestNormalizeScaleReason(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		input    string
+		expected ScaleReason
+	}{
+		// Non-prefixed values
+		{name: "CPU", input: "CPU", expected: ScaleReasonCPU},
+		{name: "MEMORY", input: "MEMORY", expected: ScaleReasonMemory},
+
+		// Protobuf-prefixed values
+		{name: "prefixed CPU", input: "SCALE_REASON_CPU", expected: ScaleReasonCPU},
+		{name: "prefixed MEMORY", input: "SCALE_REASON_MEMORY", expected: ScaleReasonMemory},
+
+		// Unknown values are preserved
+		{name: "unknown value", input: "CUSTOM", expected: ScaleReason("CUSTOM")},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := NormalizeScaleReason(tc.input)
+			assert.Equal(t, result, tc.expected)
+		})
+	}
+}
