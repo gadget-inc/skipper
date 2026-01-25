@@ -2075,12 +2075,15 @@ func TestScaleToZeroStopsLoop(t *testing.T) {
 			cfg.HeartbeatTimeout = 100 * time.Millisecond
 
 			ctrl := New(cfg, nil, fakeKubernetes, nil)
-			ctrl.ctx = ctx
+			// Don't set ctrl.ctx yet - we need to store the heartbeat before the
+			// supervisor loop starts, otherwise converge() may see no heartbeats
+			// and immediately scale to 0, removing the supervisor from the map.
 			ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
 
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
+			// Create supervisor without starting its loop (ctrl.ctx is nil)
 			supervisor := ctrl.supervisor(fn)
 
 			// Add an old heartbeat that will timeout
@@ -2088,6 +2091,10 @@ func TestScaleToZeroStopsLoop(t *testing.T) {
 				Function:  fn,
 				Timestamp: time.Now().Add(-cfg.HeartbeatTimeout - time.Second),
 			})
+
+			// Now set context and start the supervisor loop
+			ctrl.ctx = ctx
+			supervisor.start(ctx)
 
 			_, exists := ctrl.supervisors.Load(fn.Hash())
 			assert.Assert(t, exists, "supervisor should exist in map initially")
