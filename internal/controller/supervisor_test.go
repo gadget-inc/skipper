@@ -1829,15 +1829,7 @@ func TestIsValidScaleReason(t *testing.T) {
 		reason   string
 		expected bool
 	}{
-		// Valid scaling reasons (old lowercase format)
-		{reason: "cpu", expected: true},
-		{reason: "heartbeat_timeout", expected: true},
-		{reason: "in_flight_requests", expected: true},
-		{reason: "memory", expected: true},
-		{reason: "no ready instances", expected: true},
-		{reason: "unknown", expected: true},
-
-		// Valid scaling reasons (new UPPER_SNAKE_CASE format)
+		// Valid scaling reasons (UPPER_SNAKE_CASE format)
 		{reason: "CPU", expected: true},
 		{reason: "HEARTBEAT_TIMEOUT", expected: true},
 		{reason: "IN_FLIGHT_REQUESTS", expected: true},
@@ -1845,11 +1837,19 @@ func TestIsValidScaleReason(t *testing.T) {
 		{reason: "NO_READY_INSTANCES", expected: true},
 		{reason: "UNKNOWN", expected: true},
 
+		// Invalid scaling reasons (old lowercase format no longer accepted)
+		{reason: "cpu", expected: false},
+		{reason: "heartbeat_timeout", expected: false},
+		{reason: "in_flight_requests", expected: false},
+		{reason: "memory", expected: false},
+		{reason: "no ready instances", expected: false},
+		{reason: "unknown", expected: false},
+
 		// Invalid scaling reasons
 		{reason: "", expected: false},
 		{reason: "invalid", expected: false},
-		{reason: "cpu ", expected: false}, // trailing space
-		{reason: " cpu", expected: false}, // leading space
+		{reason: "CPU ", expected: false}, // trailing space
+		{reason: " CPU", expected: false}, // leading space
 		{reason: "random", expected: false},
 	}
 
