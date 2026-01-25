@@ -47,12 +47,14 @@ func (i *Instance) Equal(other *Instance) bool {
 		i.MemoryUsageMiB == other.MemoryUsageMiB
 }
 
-// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
+// MarshalJSON implements json.Marshaler, encoding integers as strings for protobuf compatibility.
+func (i *Instance) MarshalJSON() ([]byte, error) {
+	type Alias Instance
+	return json.Marshal((*Alias)(i), json.StringifyNumbers(true))
+}
+
+// UnmarshalJSON implements json.Unmarshaler, expecting string-encoded integers.
 func (i *Instance) UnmarshalJSON(data []byte) error {
 	type Alias Instance
-	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
-	if err := json.Unmarshal(data, (*Alias)(i)); err == nil {
-		return nil
-	}
 	return json.Unmarshal(data, (*Alias)(i), json.StringifyNumbers(true))
 }

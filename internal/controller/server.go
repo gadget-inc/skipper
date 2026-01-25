@@ -96,7 +96,7 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 
 	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScaleDecision{
 		DesiredInstances: desiredInstances,
-		Reason:           skipper.NormalizeScaleReason(reason),
+		Reason:           skipper.ScaleReason(reason),
 	})
 	if err != nil {
 		log.Error(ctx, "failed to scale function", key.Error.Slog(err))

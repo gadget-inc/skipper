@@ -2,7 +2,6 @@ package skipper
 
 import (
 	"log/slog"
-	"strings"
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
@@ -39,13 +38,15 @@ func (s *Scale) Equal(other *Scale) bool {
 		s.TargetInFlightRequests == other.TargetInFlightRequests
 }
 
-// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
+// MarshalJSON implements json.Marshaler, encoding integers as strings for protobuf compatibility.
+func (s *Scale) MarshalJSON() ([]byte, error) {
+	type Alias Scale
+	return json.Marshal((*Alias)(s), json.StringifyNumbers(true))
+}
+
+// UnmarshalJSON implements json.Unmarshaler, expecting string-encoded integers.
 func (s *Scale) UnmarshalJSON(data []byte) error {
 	type Alias Scale
-	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
-	if err := json.Unmarshal(data, (*Alias)(s)); err == nil {
-		return nil
-	}
 	return json.Unmarshal(data, (*Alias)(s), json.StringifyNumbers(true))
 }
 
@@ -74,13 +75,15 @@ func (sd ScaleDecision) LogValue() slog.Value {
 	)
 }
 
-// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
+// MarshalJSON implements json.Marshaler, encoding integers as strings for protobuf compatibility.
+func (sd *ScaleDecision) MarshalJSON() ([]byte, error) {
+	type Alias ScaleDecision
+	return json.Marshal((*Alias)(sd), json.StringifyNumbers(true))
+}
+
+// UnmarshalJSON implements json.Unmarshaler, expecting string-encoded integers.
 func (sd *ScaleDecision) UnmarshalJSON(data []byte) error {
 	type Alias ScaleDecision
-	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
-	if err := json.Unmarshal(data, (*Alias)(sd)); err == nil {
-		return nil
-	}
 	return json.Unmarshal(data, (*Alias)(sd), json.StringifyNumbers(true))
 }
 
@@ -88,65 +91,21 @@ func (sd *ScaleDecision) UnmarshalJSON(data []byte) error {
 type ScaleReason string
 
 const (
-	// New UPPER_SNAKE_CASE values (protobuf style)
 	ScaleReasonCPU              ScaleReason = "CPU"
 	ScaleReasonHeartbeatTimeout ScaleReason = "HEARTBEAT_TIMEOUT"
 	ScaleReasonInFlightRequests ScaleReason = "IN_FLIGHT_REQUESTS"
 	ScaleReasonMemory           ScaleReason = "MEMORY"
 	ScaleReasonNoReadyInstances ScaleReason = "NO_READY_INSTANCES"
 	ScaleReasonUnknown          ScaleReason = "UNKNOWN"
-
-	// Deprecated: use ScaleReason* constants instead
-	ScalingReasonCPU              ScaleReason = "cpu"
-	ScalingReasonHeartbeatTimeout ScaleReason = "heartbeat_timeout"
-	ScalingReasonInFlightRequests ScaleReason = "in_flight_requests"
-	ScalingReasonMemory           ScaleReason = "memory"
-	ScalingReasonNoReadyInstances ScaleReason = "no ready instances"
-	ScalingReasonUnknown          ScaleReason = "unknown"
 )
 
-// UnmarshalJSON implements json.Unmarshaler, accepting both old lowercase
-// values and new UPPER_SNAKE_CASE values for backwards compatibility.
-func (r *ScaleReason) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	*r = NormalizeScaleReason(s)
-	return nil
-}
-
 // IsValidScaleReason returns true if the given string is a known scale reason.
-// Accepts both old lowercase and new UPPER_SNAKE_CASE values.
 func IsValidScaleReason(reason string) bool {
-	// Normalize to UPPER_SNAKE_CASE for comparison
-	normalized := strings.ToUpper(strings.ReplaceAll(reason, " ", "_"))
-	switch normalized {
+	switch reason {
 	case "CPU", "HEARTBEAT_TIMEOUT", "IN_FLIGHT_REQUESTS", "MEMORY", "NO_READY_INSTANCES", "UNKNOWN":
 		return true
 	default:
 		return false
-	}
-}
-
-// NormalizeScaleReason normalizes a reason string to its canonical ScaleReason value.
-// Accepts both old lowercase and new UPPER_SNAKE_CASE values.
-func NormalizeScaleReason(reason string) ScaleReason {
-	switch strings.ToUpper(strings.ReplaceAll(reason, " ", "_")) {
-	case "CPU":
-		return ScaleReasonCPU
-	case "HEARTBEAT_TIMEOUT":
-		return ScaleReasonHeartbeatTimeout
-	case "IN_FLIGHT_REQUESTS":
-		return ScaleReasonInFlightRequests
-	case "MEMORY":
-		return ScaleReasonMemory
-	case "NO_READY_INSTANCES":
-		return ScaleReasonNoReadyInstances
-	case "UNKNOWN":
-		return ScaleReasonUnknown
-	default:
-		return ScaleReason(reason) // preserve unknown values
 	}
 }
 
@@ -156,12 +115,14 @@ type ScaleMetric struct {
 	Value float64 `json:"value"`
 }
 
-// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded numbers.
+// MarshalJSON implements json.Marshaler, encoding numbers as strings for protobuf compatibility.
+func (sm *ScaleMetric) MarshalJSON() ([]byte, error) {
+	type Alias ScaleMetric
+	return json.Marshal((*Alias)(sm), json.StringifyNumbers(true))
+}
+
+// UnmarshalJSON implements json.Unmarshaler, expecting string-encoded numbers.
 func (sm *ScaleMetric) UnmarshalJSON(data []byte) error {
 	type Alias ScaleMetric
-	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
-	if err := json.Unmarshal(data, (*Alias)(sm)); err == nil {
-		return nil
-	}
 	return json.Unmarshal(data, (*Alias)(sm), json.StringifyNumbers(true))
 }

@@ -39,12 +39,14 @@ func (h *Heartbeat) GetInFlightRequests() uint64 {
 	return h.InFlightRequests
 }
 
-// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
+// MarshalJSON implements json.Marshaler, encoding integers as strings for protobuf compatibility.
+func (h *Heartbeat) MarshalJSON() ([]byte, error) {
+	type Alias Heartbeat
+	return json.Marshal((*Alias)(h), json.StringifyNumbers(true))
+}
+
+// UnmarshalJSON implements json.Unmarshaler, expecting string-encoded integers.
 func (h *Heartbeat) UnmarshalJSON(data []byte) error {
 	type Alias Heartbeat
-	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
-	if err := json.Unmarshal(data, (*Alias)(h)); err == nil {
-		return nil
-	}
 	return json.Unmarshal(data, (*Alias)(h), json.StringifyNumbers(true))
 }
