@@ -2,6 +2,7 @@ package skipper
 
 import (
 	"log/slog"
+	"strings"
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
@@ -99,9 +100,47 @@ const (
 	ScaleReasonUnknown          ScaleReason = "UNKNOWN"
 )
 
+// scaleReasonPrefix is the protobuf enum prefix for ScaleReason values.
+const scaleReasonPrefix = "SCALE_REASON_"
+
+// NormalizeScaleReason normalizes a reason string to its canonical ScaleReason value.
+// Accepts both protobuf-prefixed values (e.g., "SCALE_REASON_CPU") and
+// non-prefixed values (e.g., "CPU").
+func NormalizeScaleReason(reason string) ScaleReason {
+	switch strings.TrimPrefix(reason, scaleReasonPrefix) {
+	case "CPU":
+		return ScaleReasonCPU
+	case "HEARTBEAT_TIMEOUT":
+		return ScaleReasonHeartbeatTimeout
+	case "IN_FLIGHT_REQUESTS":
+		return ScaleReasonInFlightRequests
+	case "MEMORY":
+		return ScaleReasonMemory
+	case "NO_READY_INSTANCES":
+		return ScaleReasonNoReadyInstances
+	case "UNKNOWN":
+		return ScaleReasonUnknown
+	default:
+		return ScaleReason(reason)
+	}
+}
+
+// UnmarshalJSON implements json.Unmarshaler, accepting both protobuf-prefixed
+// values (e.g., "SCALE_REASON_CPU") and non-prefixed values (e.g., "CPU").
+func (r *ScaleReason) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	*r = NormalizeScaleReason(s)
+	return nil
+}
+
 // IsValidScaleReason returns true if the given string is a known scale reason.
+// Accepts both protobuf-prefixed values (e.g., "SCALE_REASON_CPU") and
+// non-prefixed values (e.g., "CPU").
 func IsValidScaleReason(reason string) bool {
-	switch reason {
+	switch strings.TrimPrefix(reason, scaleReasonPrefix) {
 	case "CPU", "HEARTBEAT_TIMEOUT", "IN_FLIGHT_REQUESTS", "MEMORY", "NO_READY_INSTANCES", "UNKNOWN":
 		return true
 	default:
@@ -121,8 +160,12 @@ func (sm *ScaleMetric) MarshalJSON() ([]byte, error) {
 	return json.Marshal((*Alias)(sm), json.StringifyNumbers(true))
 }
 
-// UnmarshalJSON implements json.Unmarshaler, expecting string-encoded numbers.
+// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded numbers.
 func (sm *ScaleMetric) UnmarshalJSON(data []byte) error {
 	type Alias ScaleMetric
+	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
+	if err := json.Unmarshal(data, (*Alias)(sm)); err == nil {
+		return nil
+	}
 	return json.Unmarshal(data, (*Alias)(sm), json.StringifyNumbers(true))
 }
