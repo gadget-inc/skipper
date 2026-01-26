@@ -12,7 +12,7 @@ import (
 func NewEchoFunction(t *testing.T) *skipper.Function {
 	t.Helper()
 	fn := NewFunction(t)
-	fn.Deployment = "echo"
+	fn.SetDeployment("echo")
 	return fn
 }
 

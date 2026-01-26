@@ -2,46 +2,20 @@ package skipper
 
 import (
 	"log/slog"
-	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
 )
-
-type Instance struct {
-	Function       *Function `json:"function"`
-	Name           string    `json:"name"`             // pod name
-	Addr           string    `json:"addr"`             // pod ip : pod port
-	ReplicaSet     string    `json:"replica_set"`      // replica set name
-	AssignedAt     time.Time `json:"assigned_at"`      // time the instance was assigned to the pod
-	ReadyAt        time.Time `json:"ready_at"`         // time the instance was ready to receive traffic
-	CPUUsageMilli  uint32    `json:"cpu_usage_milli"`  // cpu usage in millicores
-	MemoryUsageMiB uint32    `json:"memory_usage_mib"` // memory usage in MiB
-}
 
 var _ slog.LogValuer = (*Instance)(nil)
 
 func (instance *Instance) LogValue() slog.Value {
 	return slog.GroupValue(
-		key.Name.Slog(instance.Name),
-		key.Addr.Slog(instance.Addr),
-		key.ReplicaSet.Slog(instance.ReplicaSet),
-		key.AssignedAt.Slog(instance.AssignedAt),
-		key.ReadyAt.Slog(instance.ReadyAt),
-		key.CPUUsageMilli.Slog(instance.CPUUsageMilli),
-		key.MemoryUsageMiB.Slog(instance.MemoryUsageMiB),
+		key.Name.Slog(instance.GetName()),
+		key.Addr.Slog(instance.GetAddr()),
+		key.ReplicaSet.Slog(instance.GetReplicaSet()),
+		key.AssignedAt.Slog(instance.GetAssignedAt().AsTime()),
+		key.ReadyAt.Slog(instance.GetReadyAt().AsTime()),
+		key.CPUUsageMilli.Slog(instance.GetCpuUsageMilli()),
+		key.MemoryUsageMiB.Slog(instance.GetMemoryUsageMib()),
 	)
-}
-
-func (i *Instance) Equal(other *Instance) bool {
-	if i == nil || other == nil {
-		return i == other
-	}
-	return i.Function.Equal(other.Function) &&
-		i.Name == other.Name &&
-		i.Addr == other.Addr &&
-		i.ReplicaSet == other.ReplicaSet &&
-		i.AssignedAt.Equal(other.AssignedAt) &&
-		i.ReadyAt.Equal(other.ReadyAt) &&
-		i.CPUUsageMilli == other.CPUUsageMilli &&
-		i.MemoryUsageMiB == other.MemoryUsageMiB
 }

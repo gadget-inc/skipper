@@ -15,14 +15,6 @@ import (
 // hashSeed is a fixed seed for deterministic hashing within a process.
 var hashSeed = maphash.MakeSeed()
 
-type Function struct {
-	Namespace  string `json:"namespace"`
-	Deployment string `json:"deployment"`
-	Tenant     string `json:"tenant"`
-	Metadata   string `json:"metadata"`
-	Scale      *Scale `json:"scale"`
-}
-
 // FunctionHash is a unique identifier for a Function, suitable for use as a map key.
 type FunctionHash = uint64
 
@@ -30,65 +22,54 @@ type FunctionHash = uint64
 func (f *Function) Hash() FunctionHash {
 	var h maphash.Hash
 	h.SetSeed(hashSeed)
-	h.WriteString(f.Namespace)
+	h.WriteString(f.GetNamespace())
 	h.WriteByte(0) // null byte separator to prevent collisions (e.g., "ab"+"cd" vs "abc"+"d")
-	h.WriteString(f.Deployment)
+	h.WriteString(f.GetDeployment())
 	h.WriteByte(0)
-	h.WriteString(f.Tenant)
+	h.WriteString(f.GetTenant())
 	h.WriteByte(0)
-	h.WriteString(f.Metadata)
+	h.WriteString(f.GetMetadata())
 	var buf [4]byte
-	binary.LittleEndian.PutUint32(buf[:], f.Scale.MinInstances)
+	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetMinInstances())
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint32(buf[:], f.Scale.MaxInstances)
+	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetMaxInstances())
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetCPUUsageMilli)
+	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetTargetCpuUsageMilli())
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetMemoryUsageMiB)
+	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetTargetMemoryUsageMib())
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetInFlightRequests)
+	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetTargetInFlightRequests())
 	h.Write(buf[:])
 	return h.Sum64()
 }
 
 func (f *Function) RingKey() string {
-	return f.Namespace + f.Deployment + f.Tenant
+	return f.GetNamespace() + f.GetDeployment() + f.GetTenant()
 }
 
 var _ slog.LogValuer = (*Function)(nil)
 
 func (f *Function) LogValue() slog.Value {
 	return slog.GroupValue(
-		key.Namespace.Slog(f.Namespace),
-		key.Deployment.Slog(f.Deployment),
-		key.Tenant.Slog(f.Tenant),
-		key.Metadata.Slog(f.Metadata),
-		key.Scale.Slog(f.Scale),
+		key.Namespace.Slog(f.GetNamespace()),
+		key.Deployment.Slog(f.GetDeployment()),
+		key.Tenant.Slog(f.GetTenant()),
+		key.Metadata.Slog(f.GetMetadata()),
+		key.Scale.Slog(f.GetScale()),
 	)
 }
 
-func (f *Function) Equal(other *Function) bool {
-	if f == nil || other == nil {
-		return f == other
-	}
-	return f.Namespace == other.Namespace &&
-		f.Deployment == other.Deployment &&
-		f.Tenant == other.Tenant &&
-		f.Metadata == other.Metadata &&
-		f.Scale.Equal(other.Scale)
-}
-
 func (f *Function) Validate() error {
-	if f.Namespace == "" {
+	if f.GetNamespace() == "" {
 		return errors.New("missing namespace")
 	}
-	if f.Deployment == "" {
+	if f.GetDeployment() == "" {
 		return errors.New("missing deployment")
 	}
-	if f.Tenant == "" {
+	if f.GetTenant() == "" {
 		return errors.New("missing tenant")
 	}
-	if f.Scale == nil {
+	if f.GetScale() == nil {
 		return errors.New("missing scale")
 	}
 	return nil

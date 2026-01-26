@@ -6,6 +6,8 @@ import (
 
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/assert"
 	"gotest.tools/v3/golden"
 )
@@ -16,53 +18,53 @@ import (
 var (
 	goldenTime = time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
-	goldenScale = &Scale{
-		MinInstances:           1,
-		MaxInstances:           10,
-		TargetCPUUsageMilli:    500,
-		TargetMemoryUsageMiB:   256,
-		TargetInFlightRequests: 100,
-	}
+	goldenScale = Scale_builder{
+		MinInstances:           proto.Uint32(1),
+		MaxInstances:           proto.Uint32(10),
+		TargetCpuUsageMilli:    proto.Uint32(500),
+		TargetMemoryUsageMib:   proto.Uint32(256),
+		TargetInFlightRequests: proto.Uint32(100),
+	}.Build()
 
-	goldenFunction = &Function{
-		Namespace:  "skipper-production",
-		Deployment: "my-app",
-		Tenant:     "tenant-123",
-		Metadata:   "metadata-value",
+	goldenFunction = Function_builder{
+		Namespace:  proto.String("skipper-production"),
+		Deployment: proto.String("my-app"),
+		Tenant:     proto.String("tenant-123"),
+		Metadata:   proto.String("metadata-value"),
 		Scale:      goldenScale,
-	}
+	}.Build()
 
-	goldenHeartbeat = &Heartbeat{
+	goldenHeartbeat = Heartbeat_builder{
 		Function:         goldenFunction,
-		Timestamp:        goldenTime,
-		InFlightRequests: 42,
-	}
+		Timestamp:        timestamppb.New(goldenTime),
+		InFlightRequests: proto.Uint32(42),
+	}.Build()
 
-	goldenInstance = &Instance{
+	goldenInstance = Instance_builder{
 		Function:       goldenFunction,
-		Name:           "my-app-abc123",
-		Addr:           "10.0.0.1:8080",
-		ReplicaSet:     "my-app-5f4b8c",
-		AssignedAt:     goldenTime,
-		ReadyAt:        goldenTime.Add(5 * time.Second),
-		CPUUsageMilli:  250,
-		MemoryUsageMiB: 128,
-	}
+		Name:           proto.String("my-app-abc123"),
+		Addr:           proto.String("10.0.0.1:8080"),
+		ReplicaSet:     proto.String("my-app-5f4b8c"),
+		AssignedAt:     timestamppb.New(goldenTime),
+		ReadyAt:        timestamppb.New(goldenTime.Add(5 * time.Second)),
+		CpuUsageMilli:  proto.Uint32(250),
+		MemoryUsageMib: proto.Uint32(128),
+	}.Build()
 
-	goldenScaleDecision = ScaleDecision{
-		DesiredInstances:          3,
-		UnclampedDesiredInstances: 5,
-		Reason:                    ScaleReasonCPU,
-		Metrics: []ScaleMetric{
-			{Name: "cpu", Value: 0.75},
-			{Name: "memory", Value: 0.5},
+	goldenScaleDecision = ScaleDecision_builder{
+		DesiredInstances:          proto.Uint32(3),
+		UnclampedDesiredInstances: proto.Uint32(5),
+		Reason:                    ScaleReason_SCALE_REASON_CPU.Enum(),
+		Metrics: []*ScaleMetric{
+			ScaleMetric_builder{Name: proto.String("cpu"), Value: proto.Float64(0.75)}.Build(),
+			ScaleMetric_builder{Name: proto.String("memory"), Value: proto.Float64(0.5)}.Build(),
 		},
-	}
+	}.Build()
 
-	goldenScaleMetric = ScaleMetric{
-		Name:  "in_flight_requests",
-		Value: 1.5,
-	}
+	goldenScaleMetric = ScaleMetric_builder{
+		Name:  proto.String("in_flight_requests"),
+		Value: proto.Float64(1.5),
+	}.Build()
 )
 
 type goldenResult struct {
@@ -70,8 +72,8 @@ type goldenResult struct {
 	Heartbeat     *Heartbeat
 	Instance      *Instance
 	Scale         *Scale
-	ScaleDecision ScaleDecision
-	ScaleMetric   ScaleMetric
+	ScaleDecision *ScaleDecision
+	ScaleMetric   *ScaleMetric
 }
 
 func TestJSONMarshal(t *testing.T) {
@@ -95,100 +97,10 @@ func TestJSONUnmarshal(t *testing.T) {
 	err := json.Unmarshal(golden.Get(t, "json.golden"), &result)
 	assert.NilError(t, err)
 
-	assert.DeepEqual(t, result.Function, goldenFunction)
-	assert.DeepEqual(t, result.Scale, goldenScale)
-	assert.DeepEqual(t, result.Heartbeat, goldenHeartbeat)
-	assert.DeepEqual(t, result.Instance, goldenInstance)
-	assert.DeepEqual(t, result.ScaleDecision, goldenScaleDecision)
-	assert.DeepEqual(t, result.ScaleMetric, goldenScaleMetric)
-}
-
-func TestScaleReasonUnmarshal(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name     string
-		input    string
-		expected ScaleReason
-	}{
-		{name: "SCALE_REASON_CPU", input: `"SCALE_REASON_CPU"`, expected: ScaleReasonCPU},
-		{name: "SCALE_REASON_HEARTBEAT_TIMEOUT", input: `"SCALE_REASON_HEARTBEAT_TIMEOUT"`, expected: ScaleReasonHeartbeatTimeout},
-		{name: "SCALE_REASON_IN_FLIGHT_REQUESTS", input: `"SCALE_REASON_IN_FLIGHT_REQUESTS"`, expected: ScaleReasonInFlightRequests},
-		{name: "SCALE_REASON_MEMORY", input: `"SCALE_REASON_MEMORY"`, expected: ScaleReasonMemory},
-		{name: "SCALE_REASON_NO_READY_INSTANCES", input: `"SCALE_REASON_NO_READY_INSTANCES"`, expected: ScaleReasonNoReadyInstances},
-		{name: "SCALE_REASON_UNKNOWN", input: `"SCALE_REASON_UNKNOWN"`, expected: ScaleReasonUnknown},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var reason ScaleReason
-			err := json.Unmarshal([]byte(tc.input), &reason)
-			assert.NilError(t, err)
-			assert.Equal(t, reason, tc.expected)
-		})
-	}
-}
-
-func TestScaleMetricUnmarshal(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name     string
-		input    string
-		expected ScaleMetric
-	}{
-		{
-			name:     "number value",
-			input:    `{"name": "cpu", "value": 0.75}`,
-			expected: ScaleMetric{Name: "cpu", Value: 0.75},
-		},
-		{
-			name:     "integer number value",
-			input:    `{"name": "count", "value": 42}`,
-			expected: ScaleMetric{Name: "count", Value: 42},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var metric ScaleMetric
-			err := json.Unmarshal([]byte(tc.input), &metric)
-			assert.NilError(t, err)
-			assert.DeepEqual(t, metric, tc.expected)
-		})
-	}
-}
-
-func TestIsValidScaleReason(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{name: "SCALE_REASON_CPU", input: "SCALE_REASON_CPU", expected: true},
-		{name: "SCALE_REASON_HEARTBEAT_TIMEOUT", input: "SCALE_REASON_HEARTBEAT_TIMEOUT", expected: true},
-		{name: "SCALE_REASON_IN_FLIGHT_REQUESTS", input: "SCALE_REASON_IN_FLIGHT_REQUESTS", expected: true},
-		{name: "SCALE_REASON_MEMORY", input: "SCALE_REASON_MEMORY", expected: true},
-		{name: "SCALE_REASON_NO_READY_INSTANCES", input: "SCALE_REASON_NO_READY_INSTANCES", expected: true},
-		{name: "SCALE_REASON_UNKNOWN", input: "SCALE_REASON_UNKNOWN", expected: true},
-		{name: "invalid", input: "INVALID", expected: false},
-		{name: "empty", input: "", expected: false},
-		{name: "trailing space", input: "SCALE_REASON_CPU ", expected: false},
-		{name: "leading space", input: " SCALE_REASON_CPU", expected: false},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			result := IsValidScaleReason(tc.input)
-			assert.Equal(t, result, tc.expected)
-		})
-	}
+	assert.Assert(t, proto.Equal(result.Function, goldenFunction), "function mismatch")
+	assert.Assert(t, proto.Equal(result.Scale, goldenScale), "scale mismatch")
+	assert.Assert(t, proto.Equal(result.Heartbeat, goldenHeartbeat), "heartbeat mismatch")
+	assert.Assert(t, proto.Equal(result.Instance, goldenInstance), "instance mismatch")
+	assert.Assert(t, proto.Equal(result.ScaleDecision, goldenScaleDecision), "scale decision mismatch")
+	assert.Assert(t, proto.Equal(result.ScaleMetric, goldenScaleMetric), "scale metric mismatch")
 }

@@ -107,7 +107,7 @@ func (c *httpClient) Scale(ctx context.Context, fn *skipper.Function, desiredIns
 
 	fn.SetHeader(req)
 	req.Header[key.DesiredInstances.Header] = []string{strconv.FormatUint(uint64(desiredInstances), 10)}
-	req.Header[key.Reason.Header] = []string{string(reason)}
+	req.Header[key.Reason.Header] = []string{reason.String()}
 
 	res, err := c.Do(req)
 	if err != nil {

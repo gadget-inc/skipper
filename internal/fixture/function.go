@@ -10,6 +10,8 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -19,19 +21,19 @@ const (
 
 func NewFunction(t *testing.T) *skipper.Function {
 	t.Helper()
-	return &skipper.Function{
-		Tenant:     "tenant-" + uuid.NewString()[:8],
-		Metadata:   uuid.NewString(),
-		Namespace:  FunctionNamespace,
-		Deployment: FunctionDeployment,
-		Scale: &skipper.Scale{
-			MinInstances:           0,
-			MaxInstances:           5,
-			TargetCPUUsageMilli:    100,
-			TargetMemoryUsageMiB:   200,
-			TargetInFlightRequests: 50,
-		},
-	}
+	return skipper.Function_builder{
+		Tenant:     proto.String("tenant-" + uuid.NewString()[:8]),
+		Metadata:   proto.String(uuid.NewString()),
+		Namespace:  proto.String(FunctionNamespace),
+		Deployment: proto.String(FunctionDeployment),
+		Scale: skipper.Scale_builder{
+			MinInstances:           proto.Uint32(0),
+			MaxInstances:           proto.Uint32(5),
+			TargetCpuUsageMilli:    proto.Uint32(100),
+			TargetMemoryUsageMib:   proto.Uint32(200),
+			TargetInFlightRequests: proto.Uint32(50),
+		}.Build(),
+	}.Build()
 }
 
 func NewFunctionRequest(t *testing.T, fn *skipper.Function, method string, path string, body io.Reader) *http.Request {
@@ -48,12 +50,12 @@ func NewInstance(t *testing.T, fn *skipper.Function, handler http.HandlerFunc) *
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
-	return &skipper.Instance{
+	return skipper.Instance_builder{
 		Function:   fn,
-		Name:       uuid.NewString(),
-		Addr:       testServer.Listener.Addr().String(),
-		ReplicaSet: CurrentReplicaSetName(fn),
-		AssignedAt: time.Now(),
-		ReadyAt:    time.Now(),
-	}
+		Name:       proto.String(uuid.NewString()),
+		Addr:       proto.String(testServer.Listener.Addr().String()),
+		ReplicaSet: proto.String(CurrentReplicaSetName(fn)),
+		AssignedAt: timestamppb.Now(),
+		ReadyAt:    timestamppb.Now(),
+	}.Build()
 }

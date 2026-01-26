@@ -14,6 +14,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/assert"
 	"gotest.tools/v3/poll"
 	v1 "k8s.io/api/core/v1"
@@ -34,7 +36,7 @@ func TestSupervisor(t *testing.T) {
 				fn := fixture.NewFunction(t)
 				supervisor := ctrl.supervisor(fn)
 				assert.Assert(t, supervisor != nil)
-				assert.Assert(t, supervisor.fn.Equal(fn))
+				assert.Assert(t, proto.Equal(supervisor.fn, fn))
 			},
 		},
 		{
@@ -53,7 +55,7 @@ func TestSupervisor(t *testing.T) {
 			check: func(t *testing.T, ctrl *Controller) {
 				fn1 := fixture.NewFunction(t)
 				fn2 := fixture.NewFunction(t)
-				fn2.Deployment = "other-deployment"
+				fn2.SetDeployment("other-deployment")
 
 				supervisor1 := ctrl.supervisor(fn1)
 				supervisor2 := ctrl.supervisor(fn2)
@@ -78,7 +80,10 @@ func TestSupervisor(t *testing.T) {
 				assert.Assert(t, supervisor.routerHeartbeats != nil)
 
 				// verify it's a working map
-				supervisor.routerHeartbeats.Store("test-ip", &skipper.Heartbeat{})
+				supervisor.routerHeartbeats.Store("test-ip", skipper.Heartbeat_builder{
+					Function:  fn,
+					Timestamp: timestamppb.Now(),
+				}.Build())
 				_, ok := supervisor.routerHeartbeats.Load("test-ip")
 				assert.Assert(t, ok)
 			},
@@ -120,7 +125,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
 				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
 				assert.Assert(t, ok)
-				assert.Assert(t, supervisor.fn.Equal(state.fn))
+				assert.Assert(t, proto.Equal(supervisor.fn, state.fn))
 			},
 		},
 		{
@@ -131,7 +136,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 
 				// create a second function with different tenant
 				fn2 := fixture.NewFunction(t)
-				fn2.Tenant = "tenant-2"
+				fn2.SetTenant("tenant-2")
 				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn2))
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn2, nil))
 			},
@@ -155,7 +160,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
 				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
 				assert.Assert(t, ok)
-				assert.Assert(t, supervisor.fn.Equal(state.fn))
+				assert.Assert(t, proto.Equal(supervisor.fn, state.fn))
 			},
 		},
 		{
@@ -170,7 +175,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure the pod with invalid function annotation was deleted
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0)
 			},
@@ -195,7 +200,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 			err := state.ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			err = state.ctrl.discoverSupervisors(ctx, state.fn.Namespace)
+			err = state.ctrl.discoverSupervisors(ctx, state.fn.GetNamespace())
 			assert.NilError(t, err)
 			tc.check(t, state)
 		})
@@ -268,7 +273,7 @@ func TestScale(t *testing.T) {
 
 				// verify 4 pods remain unassigned
 				instance := state.instances[0]
-				pods, err := state.fakeKubernetes.CoreV1().Pods(instance.Function.Namespace).List(t.Context(), metav1.ListOptions{
+				pods, err := state.fakeKubernetes.CoreV1().Pods(instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{
 					LabelSelector: doesNotHaveTenantSelector.String(),
 				})
 				assert.NilError(t, err)
@@ -293,9 +298,9 @@ func TestScale(t *testing.T) {
 			desiredInstances: 1,
 			err:              context.DeadlineExceeded,
 			setup: func(t *testing.T, state *testState) {
-				fn := *state.fn // copy the function
-				fn.Metadata = "different"
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, &fn, nil))
+				fn := proto.Clone(state.fn).(*skipper.Function)
+				fn.SetMetadata("different")
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 0)
@@ -320,7 +325,7 @@ func TestScale(t *testing.T) {
 			desiredInstances: 1,
 			setup: func(t *testing.T, state *testState) {
 				// add max - 1 instances with older assignment times
-				for range state.fn.Scale.MaxInstances - 1 {
+				for range state.fn.GetScale().GetMaxInstances() - 1 {
 					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				}
 
@@ -332,7 +337,7 @@ func TestScale(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 1)
-				assert.Assert(t, state.instances[0].Name == "most-recent-assigned-at")
+				assert.Assert(t, state.instances[0].GetName() == "most-recent-assigned-at")
 			},
 		},
 
@@ -343,10 +348,10 @@ func TestScale(t *testing.T) {
 			name:             "scales to max ready instances while preserving unready",
 			desiredInstances: 5, // max instances
 			setup: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.fn.Scale.MaxInstances == 5)
+				assert.Assert(t, state.fn.GetScale().GetMaxInstances() == 5)
 
 				// add max - 1 ready instances
-				for range state.fn.Scale.MaxInstances - 1 {
+				for range state.fn.GetScale().GetMaxInstances() - 1 {
 					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				}
 
@@ -359,15 +364,15 @@ func TestScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
-				fn := state.instances[0].Function
-				assert.Assert(t, len(state.instances) == int(fn.Scale.MaxInstances))
+				fn := state.instances[0].GetFunction()
+				assert.Assert(t, len(state.instances) == int(fn.GetScale().GetMaxInstances()))
 
-				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == int(fn.Scale.MaxInstances)+1)
+				assert.Assert(t, len(pods.Items) == int(fn.GetScale().GetMaxInstances())+1)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
-				assert.Assert(t, readyCount == int(fn.Scale.MaxInstances))
+				assert.Assert(t, readyCount == int(fn.GetScale().GetMaxInstances()))
 				assert.Assert(t, unreadyCount == 1) // unready instance preserved
 			},
 		},
@@ -376,10 +381,10 @@ func TestScale(t *testing.T) {
 			name:             "blocks scale up when total instances exceed max",
 			desiredInstances: 5, // max instances
 			setup: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.fn.Scale.MaxInstances == 5)
+				assert.Assert(t, state.fn.GetScale().GetMaxInstances() == 5)
 
 				// add max + 1 unready instances (exceeds total instance limit)
-				for range int(state.fn.Scale.MaxInstances) + 1 {
+				for range int(state.fn.GetScale().GetMaxInstances()) + 1 {
 					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
@@ -398,7 +403,7 @@ func TestScale(t *testing.T) {
 			name:             "returns existing ready instances when blocked by total count",
 			desiredInstances: 5, // max instances
 			setup: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.fn.Scale.MaxInstances == 5)
+				assert.Assert(t, state.fn.GetScale().GetMaxInstances() == 5)
 
 				// add 2 ready instances
 				for range 2 {
@@ -406,7 +411,7 @@ func TestScale(t *testing.T) {
 				}
 
 				// add max + 1 unready instances
-				for range int(state.fn.Scale.MaxInstances) + 1 {
+				for range int(state.fn.GetScale().GetMaxInstances()) + 1 {
 					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
@@ -416,14 +421,14 @@ func TestScale(t *testing.T) {
 				// only 2 ready instances returned (can't scale up due to total count)
 				assert.Assert(t, len(state.instances) == 2)
 
-				fn := state.instances[0].Function
-				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				fn := state.instances[0].GetFunction()
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == int(fn.Scale.MaxInstances)+3)
+				assert.Assert(t, len(pods.Items) == int(fn.GetScale().GetMaxInstances())+3)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
 				assert.Assert(t, readyCount == 2)
-				assert.Assert(t, unreadyCount == int(fn.Scale.MaxInstances)+1) // unready preserved during scale up
+				assert.Assert(t, unreadyCount == int(fn.GetScale().GetMaxInstances())+1) // unready preserved during scale up
 			},
 		},
 		{
@@ -432,7 +437,7 @@ func TestScale(t *testing.T) {
 			desiredInstances: 0,
 			setup: func(t *testing.T, state *testState) {
 				// add max + 1 unready instances
-				for range int(state.fn.Scale.MaxInstances) + 1 {
+				for range int(state.fn.GetScale().GetMaxInstances()) + 1 {
 					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
@@ -456,7 +461,7 @@ func TestScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 
 				// add max unready instances
-				for range state.fn.Scale.MaxInstances {
+				for range state.fn.GetScale().GetMaxInstances() {
 					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
@@ -480,7 +485,7 @@ func TestScale(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 
 				// add max unready instances (1 ready + max unready = max+1 total)
-				for range state.fn.Scale.MaxInstances {
+				for range state.fn.GetScale().GetMaxInstances() {
 					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
@@ -490,14 +495,14 @@ func TestScale(t *testing.T) {
 				// only 1 ready instance returned (can't scale up, already over max total)
 				assert.Assert(t, len(state.instances) == 1)
 
-				fn := state.instances[0].Function
-				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				fn := state.instances[0].GetFunction()
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == int(fn.Scale.MaxInstances)+1)
+				assert.Assert(t, len(pods.Items) == int(fn.GetScale().GetMaxInstances())+1)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
 				assert.Assert(t, readyCount == 1)
-				assert.Assert(t, unreadyCount == int(fn.Scale.MaxInstances)) // unready preserved
+				assert.Assert(t, unreadyCount == int(fn.GetScale().GetMaxInstances())) // unready preserved
 			},
 		},
 		{
@@ -506,7 +511,7 @@ func TestScale(t *testing.T) {
 			desiredInstances: 2,
 			setup: func(t *testing.T, state *testState) {
 				// add max ready instances
-				for range state.fn.Scale.MaxInstances {
+				for range state.fn.GetScale().GetMaxInstances() {
 					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 				}
 
@@ -518,8 +523,8 @@ func TestScale(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 2)
 
-				fn := state.instances[0].Function
-				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				fn := state.instances[0].GetFunction()
+				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 2)
 
@@ -548,10 +553,10 @@ func TestScale(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, skipper.ScaleDecision{
-				DesiredInstances: tc.desiredInstances,
-				Reason:           "test",
-			})
+			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, skipper.ScaleDecision_builder{
+				DesiredInstances: proto.Uint32(tc.desiredInstances),
+				Reason:           skipper.ScaleReason_SCALE_REASON_UNSPECIFIED.Enum(),
+			}.Build())
 			if tc.err != nil {
 				assert.ErrorIs(t, err, tc.err)
 			} else {
@@ -591,10 +596,10 @@ func TestScaleForwarding(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Scale should succeed via forwarding to mock client
-	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScaleDecision{
-		DesiredInstances: 1,
-		Reason:           "test",
-	})
+	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScaleDecision_builder{
+		DesiredInstances: proto.Uint32(1),
+		Reason:           skipper.ScaleReason_SCALE_REASON_UNSPECIFIED.Enum(),
+	}.Build())
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 1)
 }
@@ -616,8 +621,8 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 
 	fn := fixture.NewFunction(t)
 	// Disable resource scaling so in-flight requests drive the decision
-	fn.Scale.TargetCPUUsageMilli = 0
-	fn.Scale.TargetMemoryUsageMiB = 0
+	fn.GetScale().SetTargetCpuUsageMilli(0)
+	fn.GetScale().SetTargetMemoryUsageMib(0)
 
 	// Set up mock client (should not be called for Scale)
 	mcc := fixture.NewMockControllerClient(t)
@@ -636,27 +641,27 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	assert.NilError(t, err)
 
 	// Capture initial pod count to verify no scaling occurs
-	initialPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	initialPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 	})
 	assert.NilError(t, err)
 	initialPodCount := len(initialPods.Items)
 
 	// Discover supervisors - should create supervisor even though we're not responsible
-	err = ctrl.discoverSupervisors(ctx, fn.Namespace)
+	err = ctrl.discoverSupervisors(ctx, fn.GetNamespace())
 	assert.NilError(t, err)
 
 	// Verify supervisor was created
 	supervisor, ok := ctrl.supervisors.Load(fn.Hash())
 	assert.Assert(t, ok, "supervisor should exist even when not responsible")
-	assert.Assert(t, supervisor.fn.Equal(fn))
+	assert.Assert(t, proto.Equal(supervisor.fn, fn))
 
 	// Add a heartbeat so we don't scale to 0
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:         fn,
-		Timestamp:        time.Now(),
-		InFlightRequests: 10,
-	})
+		Timestamp:        timestamppb.Now(),
+		InFlightRequests: proto.Uint32(10),
+	}.Build())
 
 	// Call converge multiple times to build up the stabilization window
 	// Each call should add a recommendation to the stabilization window
@@ -675,11 +680,11 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 
 	// Verify that when scaling down, the stabilization window is used
 	// Set up a scenario where we want to scale down
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:         fn,
-		Timestamp:        time.Now(),
-		InFlightRequests: 0, // low load should trigger scale down
-	})
+		Timestamp:        timestamppb.Now(),
+		InFlightRequests: proto.Uint32(0), // low load should trigger scale down
+	}.Build())
 
 	// Call converge - it should use the max recommendation from the stabilization window
 	err = supervisor.converge(ctx)
@@ -697,8 +702,8 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	assert.Assert(t, maxRec.DesiredInstances >= 1, "max recommendation should be at least 1")
 
 	// Verify no pods were created or deleted - converge should exit early when not responsible
-	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(finalPods.Items) == initialPodCount,
@@ -746,10 +751,10 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	}
 
 	// Add a recent heartbeat so we don't scale to 0
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:  fn,
-		Timestamp: time.Now(),
-	})
+		Timestamp: timestamppb.Now(),
+	}.Build())
 
 	// Call converge - it will calculate desired instances (should be 1 or 2 depending on metrics)
 	// The key is checking if the old recommendation (45s ago) was kept in the stabilization window
@@ -854,9 +859,9 @@ func TestConvergeProtectionPeriod(t *testing.T) {
 
 			fn := fixture.NewFunction(t)
 			// Disable resource scaling so heartbeat/in-flight drives the decision
-			fn.Scale.TargetCPUUsageMilli = 0
-			fn.Scale.TargetMemoryUsageMiB = 0
-			fn.Scale.TargetInFlightRequests = 0
+			fn.GetScale().SetTargetCpuUsageMilli(0)
+			fn.GetScale().SetTargetMemoryUsageMib(0)
+			fn.GetScale().SetTargetInFlightRequests(0)
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
@@ -883,16 +888,16 @@ func TestConvergeProtectionPeriod(t *testing.T) {
 			supervisor := ctrl.supervisor(fn)
 
 			if tc.storeHeartbeat {
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 					Function:         fn,
-					Timestamp:        time.Now(),
-					InFlightRequests: 0, // would normally trigger scale-down
-				})
+					Timestamp:        timestamppb.Now(),
+					InFlightRequests: proto.Uint32(0), // low load should trigger scale down
+				}.Build())
 			}
 
 			// Verify initial pod count
-			initialPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+			initialPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+				LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 			})
 			assert.NilError(t, err)
 			assert.Assert(t, len(initialPods.Items) == tc.initialPods,
@@ -903,8 +908,8 @@ func TestConvergeProtectionPeriod(t *testing.T) {
 			assert.NilError(t, err)
 
 			// Verify expected pod count after converge
-			finalPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-				LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+			finalPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+				LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 			})
 			assert.NilError(t, err)
 			assert.Assert(t, len(finalPods.Items) == tc.expectedPods,
@@ -925,9 +930,9 @@ func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
 
 	fn := fixture.NewFunction(t)
 	// Use in-flight requests for scaling decisions
-	fn.Scale.TargetInFlightRequests = 1
-	fn.Scale.TargetCPUUsageMilli = 0
-	fn.Scale.TargetMemoryUsageMiB = 0
+	fn.GetScale().SetTargetInFlightRequests(1)
+	fn.GetScale().SetTargetCpuUsageMilli(0)
+	fn.GetScale().SetTargetMemoryUsageMib(0)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
@@ -957,19 +962,19 @@ func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
 
 	// Set heartbeat with LOW in-flight requests - current decision would be 1 instance
 	// But stabilization window has max recommendation of 3
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:         fn,
-		Timestamp:        time.Now(),
-		InFlightRequests: 1, // with TargetInFlightRequests=1, this means desired=1
-	})
+		Timestamp:        timestamppb.Now(),
+		InFlightRequests: proto.Uint32(1), // with TargetInFlightRequests=1, this means desired=1
+	}.Build())
 
 	// Call converge - it should use max recommendation (3), not current decision (1)
 	err = supervisor.converge(ctx)
 	assert.NilError(t, err)
 
 	// Verify all 3 pods are still running (stabilized to max recommendation)
-	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(finalPods.Items) == 3,
@@ -1011,10 +1016,10 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 	supervisor := ctrl.supervisor(fn)
 
 	// Add a heartbeat so we don't scale to 0
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:  fn,
-		Timestamp: time.Now(),
-	})
+		Timestamp: timestamppb.Now(),
+	}.Build())
 
 	// Run multiple concurrent calls to converge to trigger any race conditions
 	// The race detector will catch unsynchronized access to stabilizationWindow
@@ -1029,10 +1034,10 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for range iterationsPerGoroutine {
 				// Update heartbeat timestamp to keep function alive
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 					Function:  fn,
-					Timestamp: time.Now(),
-				})
+					Timestamp: timestamppb.Now(),
+				}.Build())
 				_ = supervisor.converge(ctx)
 			}
 		}()
@@ -1069,7 +1074,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*skipper.Instance{
-				{ReadyAt: readyAt, CPUUsageMilli: 200},
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(200)}.Build(),
 			},
 			expectedInstances: 2,
 		},
@@ -1080,8 +1085,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*skipper.Instance{
-				{ReadyAt: readyAt, CPUUsageMilli: 50},
-				{ReadyAt: readyAt, CPUUsageMilli: 50},
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(50)}.Build(),
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(50)}.Build(),
 			},
 			expectedInstances: 1,
 		},
@@ -1091,7 +1096,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*skipper.Instance{
-				{ReadyAt: readyAt, CPUUsageMilli: 100},
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(100)}.Build(),
 			},
 			expectedInstances: 1,
 		},
@@ -1104,7 +1109,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*skipper.Instance{
-				{ReadyAt: readyAt, CPUUsageMilli: 110},
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(110)}.Build(),
 			},
 			expectedInstances: 1,
 		},
@@ -1117,8 +1122,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*skipper.Instance{
-				{ReadyAt: readyAt, CPUUsageMilli: 150},
-				{ReadyAt: readyAt, CPUUsageMilli: 0}, // missing metric
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(150)}.Build(),
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt)}.Build(), // missing metric
 			},
 			expectedInstances: 2,
 		},
@@ -1129,8 +1134,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*skipper.Instance{
-				{ReadyAt: readyAt, CPUUsageMilli: 150},    // included in calculation
-				{ReadyAt: time.Now(), CPUUsageMilli: 150}, // excluded (too new)
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(150)}.Build(), // included in calculation
+				skipper.Instance_builder{ReadyAt: timestamppb.Now(), CpuUsageMilli: proto.Uint32(150)}.Build(),        // excluded (too new)
 			},
 			expectedInstances: 2,
 		},
@@ -1141,8 +1146,8 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			metricName:  MetricCPU,
 			targetUsage: 100,
 			podMetrics: []*skipper.Instance{
-				{ReadyAt: readyAt, CPUUsageMilli: 0},
-				{ReadyAt: readyAt, CPUUsageMilli: 0},
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt)}.Build(),
+				skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt)}.Build(),
 			},
 			expectedInstances: 2,
 		},
@@ -1154,14 +1159,16 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 
 			// Configure target usage for each instance
 			for _, pm := range tc.podMetrics {
-				if pm.Function == nil {
-					pm.Function = &skipper.Function{Scale: &skipper.Scale{}}
+				if pm.GetFunction() == nil {
+					pm.SetFunction(skipper.Function_builder{
+						Scale: skipper.Scale_builder{}.Build(),
+					}.Build())
 				}
 				switch tc.metricName {
 				case MetricCPU:
-					pm.Function.Scale.TargetCPUUsageMilli = tc.targetUsage
+					pm.GetFunction().GetScale().SetTargetCpuUsageMilli(tc.targetUsage)
 				case MetricMemory:
-					pm.Function.Scale.TargetMemoryUsageMiB = tc.targetUsage
+					pm.GetFunction().GetScale().SetTargetMemoryUsageMib(tc.targetUsage)
 				}
 			}
 
@@ -1239,20 +1246,20 @@ func TestHeartbeat(t *testing.T) {
 
 			// Set up existing heartbeat if specified
 			if tc.existingRouter != "" {
-				supervisor.routerHeartbeats.Store(tc.existingRouter, &skipper.Heartbeat{
+				supervisor.routerHeartbeats.Store(tc.existingRouter, skipper.Heartbeat_builder{
 					Function:         fn,
-					Timestamp:        tc.existingTime,
-					InFlightRequests: 10,
-				})
+					Timestamp:        timestamppb.New(tc.existingTime),
+					InFlightRequests: proto.Uint32(10),
+				}.Build())
 			}
 
 			// Send new heartbeat
-			newHeartbeat := &skipper.Heartbeat{
+			hb := skipper.Heartbeat_builder{
 				Function:         fn,
-				Timestamp:        tc.newTime,
-				InFlightRequests: 20,
-			}
-			supervisor.heartbeat(tc.newRouter, newHeartbeat)
+				Timestamp:        timestamppb.New(tc.newTime),
+				InFlightRequests: proto.Uint32(20),
+			}.Build()
+			supervisor.heartbeat(tc.newRouter, hb)
 
 			// Verify heartbeat count
 			assert.Equal(t, tc.expectedCount, supervisor.routerHeartbeats.Size())
@@ -1261,11 +1268,11 @@ func TestHeartbeat(t *testing.T) {
 			stored, ok := supervisor.routerHeartbeats.Load(tc.newRouter)
 			assert.Assert(t, ok)
 			if tc.shouldUpdate {
-				assert.Assert(t, stored.Timestamp.Equal(tc.newTime))
-				assert.Equal(t, uint32(20), stored.InFlightRequests)
+				assert.Assert(t, stored.GetTimestamp().AsTime().Equal(tc.newTime))
+				assert.Equal(t, uint32(20), stored.GetInFlightRequests())
 			} else {
-				assert.Assert(t, stored.Timestamp.Equal(tc.existingTime))
-				assert.Equal(t, uint32(10), stored.InFlightRequests)
+				assert.Assert(t, stored.GetTimestamp().AsTime().Equal(tc.existingTime))
+				assert.Equal(t, uint32(10), stored.GetInFlightRequests())
 			}
 		})
 	}
@@ -1285,23 +1292,23 @@ func TestHeartbeatGarbageCollection(t *testing.T) {
 
 	// Store an expired heartbeat
 	expiredTime := time.Now().Add(-cfg.HeartbeatTimeout - time.Second)
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:  fn,
-		Timestamp: expiredTime,
-	})
+		Timestamp: timestamppb.New(expiredTime),
+	}.Build())
 
 	// Store a fresh heartbeat from a different router
 	freshTime := time.Now()
-	supervisor.routerHeartbeats.Store(fixture.RouterIP2, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP2, skipper.Heartbeat_builder{
 		Function:  fn,
-		Timestamp: freshTime,
-	})
+		Timestamp: timestamppb.New(freshTime),
+	}.Build())
 
 	// Trigger garbage collection by sending any heartbeat
-	supervisor.heartbeat("127.0.1.99", &skipper.Heartbeat{
+	supervisor.heartbeat("127.0.1.99", skipper.Heartbeat_builder{
 		Function:  fn,
-		Timestamp: time.Now(),
-	})
+		Timestamp: timestamppb.Now(),
+	}.Build())
 
 	// Verify expired heartbeat was removed
 	_, expiredExists := supervisor.routerHeartbeats.Load(fixture.RouterIP)
@@ -1332,11 +1339,11 @@ func TestCombinedHeartbeat(t *testing.T) {
 			// Single router heartbeat
 			name: "single router heartbeat",
 			routerHeartbeats: map[string]*skipper.Heartbeat{
-				fixture.RouterIP: {
+				fixture.RouterIP: skipper.Heartbeat_builder{
 					Function:         fn,
-					Timestamp:        time.Now(),
-					InFlightRequests: 10,
-				},
+					Timestamp:        timestamppb.Now(),
+					InFlightRequests: proto.Uint32(10),
+				}.Build(),
 			},
 			instances:                nil,
 			expectedInFlightRequests: 10,
@@ -1346,16 +1353,16 @@ func TestCombinedHeartbeat(t *testing.T) {
 			// Multiple routers: sums in-flight requests
 			name: "sums in-flight requests from multiple routers",
 			routerHeartbeats: map[string]*skipper.Heartbeat{
-				fixture.RouterIP: {
+				fixture.RouterIP: skipper.Heartbeat_builder{
 					Function:         fn,
-					Timestamp:        time.Now().Add(-time.Minute),
-					InFlightRequests: 10,
-				},
-				fixture.RouterIP2: {
+					Timestamp:        timestamppb.New(time.Now().Add(-time.Minute)),
+					InFlightRequests: proto.Uint32(10),
+				}.Build(),
+				fixture.RouterIP2: skipper.Heartbeat_builder{
 					Function:         fn,
-					Timestamp:        time.Now(),
-					InFlightRequests: 15,
-				},
+					Timestamp:        timestamppb.Now(),
+					InFlightRequests: proto.Uint32(15),
+				}.Build(),
 			},
 			instances:                nil,
 			expectedInFlightRequests: 25,
@@ -1365,14 +1372,17 @@ func TestCombinedHeartbeat(t *testing.T) {
 			// Instance AssignedAt is newer than router heartbeats
 			name: "uses instance AssignedAt when newer than router heartbeats",
 			routerHeartbeats: map[string]*skipper.Heartbeat{
-				fixture.RouterIP: {
+				fixture.RouterIP: skipper.Heartbeat_builder{
 					Function:         fn,
-					Timestamp:        time.Now().Add(-time.Minute),
-					InFlightRequests: 5,
-				},
+					Timestamp:        timestamppb.New(time.Now().Add(-time.Minute)),
+					InFlightRequests: proto.Uint32(5),
+				}.Build(),
 			},
 			instances: []*skipper.Instance{
-				{Function: fn, AssignedAt: time.Now()},
+				skipper.Instance_builder{
+					Function:   fn,
+					AssignedAt: timestamppb.Now(),
+				}.Build(),
 			},
 			expectedInFlightRequests: 5,
 			expectedTimestampSource:  "instance",
@@ -1381,14 +1391,17 @@ func TestCombinedHeartbeat(t *testing.T) {
 			// Router heartbeat is newer than instance AssignedAt
 			name: "uses router heartbeat timestamp when newer than instance",
 			routerHeartbeats: map[string]*skipper.Heartbeat{
-				fixture.RouterIP: {
+				fixture.RouterIP: skipper.Heartbeat_builder{
 					Function:         fn,
-					Timestamp:        time.Now(),
-					InFlightRequests: 8,
-				},
+					Timestamp:        timestamppb.Now(),
+					InFlightRequests: proto.Uint32(8),
+				}.Build(),
 			},
 			instances: []*skipper.Instance{
-				{Function: fn, AssignedAt: time.Now().Add(-time.Minute)},
+				skipper.Instance_builder{
+					Function:   fn,
+					AssignedAt: timestamppb.New(time.Now().Add(-time.Minute)),
+				}.Build(),
 			},
 			expectedInFlightRequests: 8,
 			expectedTimestampSource:  "router1",
@@ -1417,37 +1430,38 @@ func TestCombinedHeartbeat(t *testing.T) {
 				supervisor.routerHeartbeats.Store(routerIP, hb)
 				switch routerIP {
 				case fixture.RouterIP:
-					router1Time = hb.Timestamp
+					router1Time = hb.GetTimestamp().AsTime()
 				case fixture.RouterIP2:
-					router2Time = hb.Timestamp
+					router2Time = hb.GetTimestamp().AsTime()
 				}
 			}
 
 			// Get instance timestamp if present
 			var instanceTime time.Time
 			if len(tc.instances) > 0 {
-				instanceTime = tc.instances[0].AssignedAt
+				instanceTime = tc.instances[0].GetAssignedAt().AsTime()
 			}
 
 			combined := supervisor.combinedHeartbeat(tc.instances)
 
 			// Verify in-flight requests sum
-			assert.Equal(t, tc.expectedInFlightRequests, combined.InFlightRequests)
+			assert.Equal(t, tc.expectedInFlightRequests, combined.GetInFlightRequests())
 
 			// Verify timestamp source
+			combinedTime := combined.GetTimestamp().AsTime()
 			switch tc.expectedTimestampSource {
 			case "router1":
-				assert.Assert(t, combined.Timestamp.Equal(router1Time))
+				assert.Assert(t, combinedTime.Equal(router1Time))
 			case "router2":
-				assert.Assert(t, combined.Timestamp.Equal(router2Time))
+				assert.Assert(t, combinedTime.Equal(router2Time))
 			case "instance":
-				assert.Assert(t, combined.Timestamp.Equal(instanceTime))
+				assert.Assert(t, combinedTime.Equal(instanceTime))
 			case "zero":
-				assert.Assert(t, combined.Timestamp.IsZero())
+				assert.Assert(t, !combined.HasTimestamp())
 			}
 
 			// Verify function is set
-			assert.Assert(t, combined.Function == fn)
+			assert.Assert(t, combined.GetFunction() == fn)
 		})
 	}
 }
@@ -1478,7 +1492,7 @@ func TestGetReadyInstance(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.instance != nil)
-				assert.Assert(t, state.instance.Function.Equal(state.fn))
+				assert.Assert(t, proto.Equal(state.instance.GetFunction(), state.fn))
 			},
 		},
 		{
@@ -1509,7 +1523,7 @@ func TestGetReadyInstance(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.instance != nil)
-				assert.Equal(t, "included-pod", state.instance.Name)
+				assert.Equal(t, "included-pod", state.instance.GetName())
 			},
 		},
 		{
@@ -1529,7 +1543,7 @@ func TestGetReadyInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				// Should still return an instance (fallback behavior)
 				assert.Assert(t, state.instance != nil)
-				assert.Assert(t, state.instance.Name == "pod-1" || state.instance.Name == "pod-2")
+				assert.Assert(t, state.instance.GetName() == "pod-1" || state.instance.GetName() == "pod-2")
 			},
 		},
 		{
@@ -1537,7 +1551,7 @@ func TestGetReadyInstance(t *testing.T) {
 			name: "limits instances to maxInstances",
 			setup: func(t *testing.T, state *testState) {
 				// Set max instances to 2
-				state.fn.Scale.MaxInstances = 2
+				state.fn.GetScale().SetMaxInstances(2)
 
 				// Add more pods than max instances
 				for i := range 5 {
@@ -1617,44 +1631,48 @@ func TestCalculateDesiredInstances(t *testing.T) {
 		{
 			// Heartbeat timeout triggers scale to 0
 			name: "scales to zero on heartbeat timeout",
-			heartbeat: &skipper.Heartbeat{
-				Function: &skipper.Function{
-					Scale: &skipper.Scale{
-						MinInstances:           0,
-						MaxInstances:           5,
-						TargetInFlightRequests: 10,
-					},
-				},
-				Timestamp:        time.Now().Add(-cfg.HeartbeatTimeout - time.Second),
-				InFlightRequests: 5,
-			},
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Scale: skipper.Scale_builder{
+						MinInstances:           proto.Uint32(0),
+						MaxInstances:           proto.Uint32(5),
+						TargetInFlightRequests: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now().Add(-cfg.HeartbeatTimeout - time.Second)),
+				InFlightRequests: proto.Uint32(5),
+			}.Build(),
 			instances: []*skipper.Instance{
-				{ReadyAt: readyAt},
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.New(readyAt),
+				}.Build(),
 			},
 			expectedDesiredInstances: 0,
 			expectedUnclampedDesired: 0,
-			expectedReason:           skipper.ScaleReasonHeartbeatTimeout,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT,
 		},
 		{
 			// In-flight requests scaling: 25 requests / 10 target = 3 instances
 			name: "scales based on in-flight requests",
-			heartbeat: &skipper.Heartbeat{
-				Function: &skipper.Function{
-					Scale: &skipper.Scale{
-						MinInstances:           0,
-						MaxInstances:           10,
-						TargetInFlightRequests: 10,
-					},
-				},
-				Timestamp:        time.Now(),
-				InFlightRequests: 25,
-			},
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Scale: skipper.Scale_builder{
+						MinInstances:           proto.Uint32(0),
+						MaxInstances:           proto.Uint32(10),
+						TargetInFlightRequests: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(25),
+			}.Build(),
 			instances: []*skipper.Instance{
-				{ReadyAt: readyAt},
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.New(readyAt),
+				}.Build(),
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           skipper.ScaleReasonInFlightRequests,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS,
 		},
 		{
 			// Multiple metrics: takes the max across all
@@ -1662,92 +1680,102 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			// CPU: avg 200m / 100m = 2
 			// Result: max(2, 2) = 2
 			name: "takes max across multiple metrics",
-			heartbeat: &skipper.Heartbeat{
-				Function: &skipper.Function{
-					Scale: &skipper.Scale{
-						MinInstances:           0,
-						MaxInstances:           10,
-						TargetInFlightRequests: 10,
-						TargetCPUUsageMilli:    100,
-					},
-				},
-				Timestamp:        time.Now(),
-				InFlightRequests: 15,
-			},
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Scale: skipper.Scale_builder{
+						MinInstances:           proto.Uint32(0),
+						MaxInstances:           proto.Uint32(10),
+						TargetInFlightRequests: proto.Uint32(10),
+						TargetCpuUsageMilli:    proto.Uint32(100),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(15),
+			}.Build(),
 			instances: []*skipper.Instance{
-				{
-					Function: &skipper.Function{
-						Scale: &skipper.Scale{TargetCPUUsageMilli: 100},
-					},
-					ReadyAt:       readyAt,
-					CPUUsageMilli: 200,
-				},
+				skipper.Instance_builder{
+					Function: skipper.Function_builder{
+						Scale: skipper.Scale_builder{
+							MinInstances:        proto.Uint32(0),
+							MaxInstances:        proto.Uint32(0),
+							TargetCpuUsageMilli: proto.Uint32(100),
+						}.Build(),
+					}.Build(),
+					ReadyAt:       timestamppb.New(readyAt),
+					CpuUsageMilli: proto.Uint32(200),
+				}.Build(),
 			},
 			expectedDesiredInstances: 2,
 			expectedUnclampedDesired: 2,
-			expectedReason:           skipper.ScaleReasonInFlightRequests, // or CPU, both equal
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS, // or CPU, both equal
 		},
 		{
 			// Max clamping: would scale to 10 but max is 5
 			name: "applies max instances clamping",
-			heartbeat: &skipper.Heartbeat{
-				Function: &skipper.Function{
-					Scale: &skipper.Scale{
-						MinInstances:           0,
-						MaxInstances:           5,
-						TargetInFlightRequests: 10,
-					},
-				},
-				Timestamp:        time.Now(),
-				InFlightRequests: 100,
-			},
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Scale: skipper.Scale_builder{
+						MinInstances:           proto.Uint32(0),
+						MaxInstances:           proto.Uint32(5),
+						TargetInFlightRequests: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(100),
+			}.Build(),
 			instances: []*skipper.Instance{
-				{ReadyAt: readyAt},
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.New(readyAt),
+				}.Build(),
 			},
 			expectedDesiredInstances: 5,
 			expectedUnclampedDesired: 10,
-			expectedReason:           skipper.ScaleReasonInFlightRequests,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS,
 		},
 		{
 			// Min clamping: unclamped would be 1 (baseline without heartbeat timeout) but min is 2
 			name: "applies min instances clamping",
-			heartbeat: &skipper.Heartbeat{
-				Function: &skipper.Function{
-					Scale: &skipper.Scale{
-						MinInstances:           2,
-						MaxInstances:           10,
-						TargetInFlightRequests: 10,
-					},
-				},
-				Timestamp:        time.Now(),
-				InFlightRequests: 0,
-			},
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Scale: skipper.Scale_builder{
+						MinInstances:           proto.Uint32(2),
+						MaxInstances:           proto.Uint32(10),
+						TargetInFlightRequests: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(0),
+			}.Build(),
 			instances: []*skipper.Instance{
-				{ReadyAt: readyAt},
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.New(readyAt),
+				}.Build(),
 			},
 			expectedDesiredInstances: 2,
 			expectedUnclampedDesired: 1,
-			expectedReason:           "",
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_UNSPECIFIED,
 		},
 		{
 			// No scaling metrics configured: maintains at least 1 instance
 			name: "maintains one instance when no scaling metrics configured",
-			heartbeat: &skipper.Heartbeat{
-				Function: &skipper.Function{
-					Scale: &skipper.Scale{
-						MinInstances: 0,
-						MaxInstances: 10,
-					},
-				},
-				Timestamp:        time.Now(),
-				InFlightRequests: 0,
-			},
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Scale: skipper.Scale_builder{
+						MinInstances: proto.Uint32(0),
+						MaxInstances: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(0),
+			}.Build(),
 			instances: []*skipper.Instance{
-				{ReadyAt: readyAt},
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.New(readyAt),
+				}.Build(),
 			},
 			expectedDesiredInstances: 1,
 			expectedUnclampedDesired: 1,
-			expectedReason:           "",
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_UNSPECIFIED,
 		},
 		{
 			// CPU scaling dominates over in-flight requests
@@ -1755,56 +1783,64 @@ func TestCalculateDesiredInstances(t *testing.T) {
 			// CPU: avg 300m / 100m = 3
 			// Result: max(1, 3) = 3
 			name: "CPU scaling dominates when higher",
-			heartbeat: &skipper.Heartbeat{
-				Function: &skipper.Function{
-					Scale: &skipper.Scale{
-						MinInstances:           0,
-						MaxInstances:           10,
-						TargetInFlightRequests: 10,
-						TargetCPUUsageMilli:    100,
-					},
-				},
-				Timestamp:        time.Now(),
-				InFlightRequests: 5,
-			},
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Scale: skipper.Scale_builder{
+						MinInstances:           proto.Uint32(0),
+						MaxInstances:           proto.Uint32(10),
+						TargetInFlightRequests: proto.Uint32(10),
+						TargetCpuUsageMilli:    proto.Uint32(100),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(5),
+			}.Build(),
 			instances: []*skipper.Instance{
-				{
-					Function: &skipper.Function{
-						Scale: &skipper.Scale{TargetCPUUsageMilli: 100},
-					},
-					ReadyAt:       readyAt,
-					CPUUsageMilli: 300,
-				},
+				skipper.Instance_builder{
+					Function: skipper.Function_builder{
+						Scale: skipper.Scale_builder{
+							MinInstances:        proto.Uint32(0),
+							MaxInstances:        proto.Uint32(0),
+							TargetCpuUsageMilli: proto.Uint32(100),
+						}.Build(),
+					}.Build(),
+					ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(300),
+				}.Build(),
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           skipper.ScaleReasonCPU,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_CPU,
 		},
 		{
 			// Memory scaling
 			name: "scales based on memory usage",
-			heartbeat: &skipper.Heartbeat{
-				Function: &skipper.Function{
-					Scale: &skipper.Scale{
-						MinInstances:         0,
-						MaxInstances:         10,
-						TargetMemoryUsageMiB: 100,
-					},
-				},
-				Timestamp: time.Now(),
-			},
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Scale: skipper.Scale_builder{
+						MinInstances:         proto.Uint32(0),
+						MaxInstances:         proto.Uint32(10),
+						TargetMemoryUsageMib: proto.Uint32(100),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(0),
+			}.Build(),
 			instances: []*skipper.Instance{
-				{
-					Function: &skipper.Function{
-						Scale: &skipper.Scale{TargetMemoryUsageMiB: 100},
-					},
-					ReadyAt:        readyAt,
-					MemoryUsageMiB: 250,
-				},
+				skipper.Instance_builder{
+					Function: skipper.Function_builder{
+						Scale: skipper.Scale_builder{
+							MinInstances:         proto.Uint32(0),
+							MaxInstances:         proto.Uint32(0),
+							TargetMemoryUsageMib: proto.Uint32(100),
+						}.Build(),
+					}.Build(),
+					ReadyAt:        timestamppb.New(readyAt),
+					MemoryUsageMib: proto.Uint32(250),
+				}.Build(),
 			},
 			expectedDesiredInstances: 3,
 			expectedUnclampedDesired: 3,
-			expectedReason:           skipper.ScaleReasonMemory,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_MEMORY,
 		},
 	}
 
@@ -1814,9 +1850,9 @@ func TestCalculateDesiredInstances(t *testing.T) {
 
 			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
 
-			assert.Equal(t, tc.expectedDesiredInstances, decision.DesiredInstances)
-			assert.Equal(t, tc.expectedUnclampedDesired, decision.UnclampedDesiredInstances)
-			assert.Equal(t, tc.expectedReason, decision.Reason)
+			assert.Equal(t, tc.expectedDesiredInstances, decision.GetDesiredInstances())
+			assert.Equal(t, tc.expectedUnclampedDesired, decision.GetUnclampedDesiredInstances())
+			assert.Equal(t, tc.expectedReason, decision.GetReason())
 		})
 	}
 }
@@ -1971,16 +2007,16 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 	supervisor := ctrl.supervisor(fn)
 
 	// Add a heartbeat so the function doesn't scale to 0
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:         fn,
-		Timestamp:        time.Now(),
-		InFlightRequests: 1, // request in flight should trigger scale to 1
-	})
+		Timestamp:        timestamppb.Now(),
+		InFlightRequests: proto.Uint32(1), // request in flight should trigger scale to 1
+	}.Build())
 
 	// Wait for the loop to converge and assign a pod
 	poll.WaitOn(t, func(t poll.LogT) poll.Result {
-		pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-			LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+		pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+			LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 		})
 		if err != nil {
 			return poll.Continue("failed to list pods: %v", err)
@@ -2045,10 +2081,10 @@ func TestScaleToZeroStopsLoop(t *testing.T) {
 			supervisor := ctrl.supervisor(fn)
 
 			// Add an old heartbeat that will timeout
-			supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+			supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 				Function:  fn,
-				Timestamp: time.Now().Add(-cfg.HeartbeatTimeout - time.Second),
-			})
+				Timestamp: timestamppb.New(time.Now().Add(-cfg.HeartbeatTimeout - time.Second)),
+			}.Build())
 
 			// Now set context and start the supervisor loop
 			ctrl.ctx = ctx
@@ -2101,7 +2137,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// ensure the stuck instance was terminated
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0)
 				assert.Assert(t, len(instances) == 0)
@@ -2120,7 +2156,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// ensure the instance was not terminated
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				assert.Assert(t, len(instances) == 1)
@@ -2193,7 +2229,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// ensure the stale instance was replaced
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				assert.Assert(t, len(instances) == 1)
@@ -2212,7 +2248,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Instance should be kept since replica set lookup failed
 				assert.Assert(t, len(instances) == 1)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 			},
@@ -2237,7 +2273,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Stale instance should be kept because we couldn't assign a replacement
 				assert.Assert(t, len(instances) == 1)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 			},
@@ -2269,7 +2305,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// All 3 stale instances should be replaced with new ones
 				assert.Assert(t, len(instances) == 3)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				// Should have 3 new assigned pods (stale ones deleted)
 				assert.Assert(t, len(pods.Items) == 3)
@@ -2282,7 +2318,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "replaces all stale instances when at maxInstances",
 			setup: func(t *testing.T, state *testState) {
 				// Set maxInstances to exactly the number of stale instances
-				state.fn.Scale.MaxInstances = 3
+				state.fn.GetScale().SetMaxInstances(3)
 
 				// Create 3 stale pods on the old replica set
 				for i := range 3 {
@@ -2308,8 +2344,8 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// All 3 stale instances should be replaced
 				assert.Assert(t, len(instances) == 3, "expected 3 instances, got %d", len(instances))
 
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{
-					LabelSelector: key.Tenant.Label + "=" + state.fn.Tenant,
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
 				})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 3, "expected 3 pods, got %d", len(pods.Items))
@@ -2328,7 +2364,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "replaces stale instance even when at max instances",
 			setup: func(t *testing.T, state *testState) {
 				// Set max instances to 2
-				state.fn.Scale.MaxInstances = 2
+				state.fn.GetScale().SetMaxInstances(2)
 
 				// First, create the old (stale) replica set - this sets the "current" name
 				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
@@ -2357,7 +2393,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Should have 2 instances (1 fresh kept + 1 replacement for stale)
 				assert.Assert(t, len(instances) == 2)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				// Should have 2 pods: fresh-pod and the new replacement
 				assert.Assert(t, len(pods.Items) == 2)
@@ -2395,8 +2431,8 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// This simulates a race condition or external deletion - when replaceStaleInstances tries to delete,
 				// it will get a NotFound error, but should still add the new instance
 				for _, instance := range instances {
-					if instance.Name == "stale-pod" {
-						err := state.fakeKubernetes.CoreV1().Pods(instance.Function.Namespace).Delete(ctx, instance.Name, metav1.DeleteOptions{})
+					if instance.GetName() == "stale-pod" {
+						err := state.fakeKubernetes.CoreV1().Pods(instance.GetFunction().GetNamespace()).Delete(ctx, instance.GetName(), metav1.DeleteOptions{})
 						assert.NilError(t, err)
 						break
 					}
@@ -2406,9 +2442,9 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// Should have 1 instance (the replacement) even though stale deletion "failed" (pod already gone)
 				assert.Assert(t, len(instances) == 1, "expected 1 instance after replacement, got %d", len(instances))
 				// Verify the new instance is in the list (not the stale one)
-				assert.Assert(t, instances[0].Name != "stale-pod", "stale instance should not be in the result")
+				assert.Assert(t, instances[0].GetName() != "stale-pod", "stale instance should not be in the result")
 				// Verify stale pod is gone
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				for _, pod := range pods.Items {
 					assert.Assert(t, pod.Name != "stale-pod", "stale pod should have been deleted")
@@ -2421,7 +2457,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "skips replacement when already at maxInstances+1",
 			setup: func(t *testing.T, state *testState) {
 				// Set max instances to 2
-				state.fn.Scale.MaxInstances = 2
+				state.fn.GetScale().SetMaxInstances(2)
 
 				// First, create the old (stale) replica set
 				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
@@ -2452,8 +2488,8 @@ func TestReplaceStaleInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Should have 3 instances (1 stale kept + 2 fresh) - no new replacement
 				assert.Assert(t, len(instances) == 3, "expected 3 instances, got %d", len(instances))
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{
-					LabelSelector: key.Tenant.Label + "=" + state.fn.Tenant,
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
 				})
 				assert.NilError(t, err)
 				// Should still have exactly 3 assigned pods (+ 1 available) - stale pod still exists
@@ -2505,7 +2541,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// List all pods (not just assigned ones) to verify state
-				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 
 				// Count assigned vs available pods
@@ -2627,7 +2663,7 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 
 	for i := range numFunctions {
 		fn := fixture.NewFunction(t)
-		fn.Scale.MaxInstances = stalePerFunc + 10 // ensure we don't hit max instances limit
+		fn.GetScale().SetMaxInstances(uint32(stalePerFunc + 10)) // ensure we don't hit max instances limit
 		functions[i] = fn
 
 		// Create stale replica set (scaled to 0)
@@ -2721,7 +2757,7 @@ func TestReplaceStaleInstancesNamespaceListerNotFound(t *testing.T) {
 
 	// Create a supervisor for a function in a different namespace that doesn't have a lister
 	fnInUnknownNamespace := fixture.NewFunction(t)
-	fnInUnknownNamespace.Namespace = "unknown-namespace"
+	fnInUnknownNamespace.SetNamespace("unknown-namespace")
 	supervisor := ctrl.supervisor(fnInUnknownNamespace)
 
 	// Manually construct instances (can't use getInstances since no lister exists)
@@ -2752,7 +2788,7 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 	defer cancel()
 
 	fn := fixture.NewFunction(t)
-	fn.Scale.MaxInstances = 2
+	fn.GetScale().SetMaxInstances(2)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
@@ -2796,7 +2832,7 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 	// Filter to only ready instances (simulating what scaleLocal returns)
 	var readyInstances []*skipper.Instance
 	for _, inst := range allInstances {
-		if !inst.ReadyAt.IsZero() {
+		if inst.HasReadyAt() {
 			readyInstances = append(readyInstances, inst)
 		}
 	}
@@ -2810,8 +2846,8 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 
 	// Verify instances in cluster haven't changed (stale one kept)
 	// Verify no new pods were assigned (total should still be 3 assigned + 1 available)
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 3, "expected 3 assigned pods (no new replacement), got %d", len(pods.Items))
@@ -2868,20 +2904,20 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
 
 				// Add a heartbeat with high in-flight requests to trigger scale-up
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 					Function:         state.fn,
-					Timestamp:        time.Now(),
-					InFlightRequests: 10,
-				})
+					Timestamp:        timestamppb.Now(),
+					InFlightRequests: proto.Uint32(10),
+				}.Build())
 			},
 			resolveError: func(t *testing.T, ctx context.Context, state *testState, supervisor *Supervisor) {
 				// Add an available pod and update heartbeat
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 					Function:         state.fn,
-					Timestamp:        time.Now(),
-					InFlightRequests: 1,
-				})
+					Timestamp:        timestamppb.Now(),
+					InFlightRequests: proto.Uint32(1),
+				}.Build())
 			},
 			waitForErrors:                  300 * time.Millisecond,
 			startInformersBeforeSupervisor: true,
@@ -2930,11 +2966,11 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			// Add a heartbeat so the function won't scale to 0 when it eventually works
 			// (if not already set by setupError)
 			if state.supervisor.routerHeartbeats.Size() == 0 {
-				state.supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+				state.supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 					Function:         fn,
-					Timestamp:        time.Now(),
-					InFlightRequests: 1,
-				})
+					Timestamp:        timestamppb.Now(),
+					InFlightRequests: proto.Uint32(1),
+				}.Build())
 			}
 
 			// Now start the supervisor loop
@@ -2957,8 +2993,8 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			// Wait for the loop to eventually succeed (unless skipped to avoid race conditions)
 			if !tc.skipRecoveryVerification {
 				poll.WaitOn(t, func(t poll.LogT) poll.Result {
-					pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-						LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+					pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+						LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 					})
 					if err != nil {
 						return poll.Continue("failed to list pods: %v", err)
@@ -2983,7 +3019,7 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	defer cancel()
 
 	fn := fixture.NewFunction(t)
-	fn.Scale.MaxInstances = 3
+	fn.GetScale().SetMaxInstances(3)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	cfg := testConfig()
@@ -3030,11 +3066,11 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 
 	// Create supervisor and set up heartbeat requesting 3 instances
 	supervisor := ctrl.supervisor(fn)
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:         fn,
-		Timestamp:        time.Now(),
-		InFlightRequests: 150, // high load to trigger scale up to 3 (150/50 target = 3)
-	})
+		Timestamp:        timestamppb.Now(),
+		InFlightRequests: proto.Uint32(150), // high load to trigger scale up to 3 (150/50 target = 3)
+	}.Build())
 
 	// Call converge directly - this should:
 	// 1. Scale up from 2 to 3 based on the heartbeat
@@ -3043,8 +3079,8 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify stale pods are gone and we have fresh pods
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 3, "expected 3 pods, got %d", len(pods.Items))
@@ -3071,10 +3107,10 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	defer cancel()
 
 	fn := fixture.NewFunction(t)
-	fn.Scale.MaxInstances = 3
+	fn.GetScale().SetMaxInstances(3)
 	// Disable CPU/memory scaling to focus on in-flight requests for this test
-	fn.Scale.TargetCPUUsageMilli = 0
-	fn.Scale.TargetMemoryUsageMiB = 0
+	fn.GetScale().SetTargetCpuUsageMilli(0)
+	fn.GetScale().SetTargetMemoryUsageMib(0)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	cfg := testConfig()
@@ -3132,17 +3168,17 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 
 	// Create supervisor and set up heartbeat requesting only 1 instance (scale down)
 	supervisor := ctrl.supervisor(fn)
-	supervisor.routerHeartbeats.Store(fixture.RouterIP, &skipper.Heartbeat{
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Function:         fn,
-		Timestamp:        time.Now(),
-		InFlightRequests: 10, // low load to trigger scale down to 1 (ceil(10/50) = 1)
-	})
+		Timestamp:        timestamppb.Now(),
+		InFlightRequests: proto.Uint32(10), // low load to trigger scale down to 1 (ceil(10/50) = 1)
+	}.Build())
 
 	// Verify the scaling decision would request 1 instance
 	heartbeat := supervisor.combinedHeartbeat(instances)
 	scalingDecision := calculateDesiredInstances(ctx, cfg, heartbeat, instances)
-	assert.Assert(t, scalingDecision.DesiredInstances == 1,
-		"expected scaling decision of 1 instance, got %d", scalingDecision.DesiredInstances)
+	assert.Assert(t, scalingDecision.GetDesiredInstances() == 1,
+		"expected scaling decision of 1 instance, got %d", scalingDecision.GetDesiredInstances())
 
 	// Call converge directly - this should:
 	// 1. Scale down from 3 to 1 (deleting oldest instances first, which are the stale ones)
@@ -3151,8 +3187,8 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify remaining instances in cluster
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.Tenant,
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
 	})
 	assert.NilError(t, err)
 

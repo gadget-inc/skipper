@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var (
@@ -93,11 +94,11 @@ func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		var heartbeats []*skipper.Heartbeat
 		r.heartbeats.Range(func(fnHash skipper.FunctionHash, heartbeat *skipper.Heartbeat) bool {
-			if time.Since(heartbeat.Timestamp) > r.config.HeartbeatInterval*3 {
+			if time.Since(heartbeat.GetTimestamp().AsTime()) > r.config.HeartbeatInterval*3 {
 				r.heartbeats.Delete(fnHash) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
-				heartbeatsTotal.WithLabelValues(heartbeat.Function.Deployment).Inc()
+				heartbeatsTotal.WithLabelValues(heartbeat.GetFunction().GetDeployment()).Inc()
 			}
 			return true
 		})
@@ -123,38 +124,38 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), key.Function.Attr(fn))
-	requestsTotal.WithLabelValues(fn.Deployment).Inc()
+	requestsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		r.heartbeats.Compute(fn.Hash(), func(heartbeat *skipper.Heartbeat, _ bool) (*skipper.Heartbeat, xsync.ComputeOp) {
-			return &skipper.Heartbeat{
-				Function:         fn,
-				Timestamp:        time.Now(),
-				InFlightRequests: heartbeat.GetInFlightRequests(),
-			}, xsync.UpdateOp
+			newHeartbeat := &skipper.Heartbeat{}
+			newHeartbeat.SetFunction(fn)
+			newHeartbeat.SetTimestamp(timestamppb.Now())
+			newHeartbeat.SetInFlightRequests(heartbeat.GetInFlightRequests())
+			return newHeartbeat, xsync.UpdateOp
 		})
 		return nil
 	})
 
 	// increment the in-flight requests for this function
 	r.heartbeats.Compute(fn.Hash(), func(heartbeat *skipper.Heartbeat, _ bool) (*skipper.Heartbeat, xsync.ComputeOp) {
-		requestsInFlight.WithLabelValues(fn.Deployment).Inc()
-		return &skipper.Heartbeat{
-			Function:         fn,
-			Timestamp:        time.Now(),
-			InFlightRequests: heartbeat.GetInFlightRequests() + 1,
-		}, xsync.UpdateOp
+		requestsInFlight.WithLabelValues(fn.GetDeployment()).Inc()
+		newHeartbeat := &skipper.Heartbeat{}
+		newHeartbeat.SetFunction(fn)
+		newHeartbeat.SetTimestamp(timestamppb.Now())
+		newHeartbeat.SetInFlightRequests(heartbeat.GetInFlightRequests() + 1)
+		return newHeartbeat, xsync.UpdateOp
 	})
 
 	// decrement the in-flight requests for this function when the request is complete
 	defer r.heartbeats.Compute(fn.Hash(), func(heartbeat *skipper.Heartbeat, _ bool) (*skipper.Heartbeat, xsync.ComputeOp) {
-		requestsInFlight.WithLabelValues(fn.Deployment).Dec()
-		return &skipper.Heartbeat{
-			Function:         fn,
-			Timestamp:        time.Now(),
-			InFlightRequests: heartbeat.GetInFlightRequests() - 1,
-		}, xsync.UpdateOp
+		requestsInFlight.WithLabelValues(fn.GetDeployment()).Dec()
+		newHeartbeat := &skipper.Heartbeat{}
+		newHeartbeat.SetFunction(fn)
+		newHeartbeat.SetTimestamp(timestamppb.Now())
+		newHeartbeat.SetInFlightRequests(heartbeat.GetInFlightRequests() - 1)
+		return newHeartbeat, xsync.UpdateOp
 	})
 
 	r.reverseProxy.ServeHTTP(rw, req.WithContext(withFunction(ctx, fn)))
@@ -208,7 +209,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		req := req.WithContext(ctx)
 		req.URL.Scheme = "http"
-		req.URL.Host = instance.Addr
+		req.URL.Host = instance.GetAddr()
 
 		log.Info(ctx, "forwarding request")
 		start := time.Now()
@@ -221,7 +222,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Slog(err))
-				excludedInstanceNameSet[instance.Name] = struct{}{} // exclude this instance from future requests in case it's the problem
+				excludedInstanceNameSet[instance.GetName()] = struct{}{} // exclude this instance from future requests in case it's the problem
 				continue
 			}
 		}

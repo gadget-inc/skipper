@@ -25,8 +25,8 @@ func ensurePodIsAssignedToFunction(t *testing.T, pod v1.Pod, fn *skipper.Functio
 	fnJSON, err := json.Marshal(fn)
 	assert.NilError(t, err)
 
-	assert.Assert(t, fn.Deployment == pod.Labels[key.Deployment.Label])
-	assert.Assert(t, fn.Tenant == pod.Labels[key.Tenant.Label])
+	assert.Assert(t, fn.GetDeployment() == pod.Labels[key.Deployment.Label])
+	assert.Assert(t, fn.GetTenant() == pod.Labels[key.Tenant.Label])
 	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Annotation])
 	assert.Assert(t, pod.Annotations[key.ReplicaSet.Annotation] != "")
 	assert.Assert(t, pod.Annotations[key.AssignedAt.Annotation] != "")

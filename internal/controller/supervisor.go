@@ -19,6 +19,7 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -134,7 +135,7 @@ func (s *Supervisor) stop() {
 func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 	// update the heartbeat for the router if it's newer than the existing one
 	s.routerHeartbeats.Compute(routerIP, func(existing *skipper.Heartbeat, _ bool) (*skipper.Heartbeat, xsync.ComputeOp) {
-		if existing == nil || heartbeat.Timestamp.After(existing.Timestamp) {
+		if existing == nil || heartbeat.GetTimestamp().AsTime().After(existing.GetTimestamp().AsTime()) {
 			return heartbeat, xsync.UpdateOp
 		}
 		return existing, xsync.CancelOp
@@ -142,7 +143,7 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 
 	// garbage collect expired router heartbeats
 	s.routerHeartbeats.Range(func(routerIP string, heartbeat *skipper.Heartbeat) bool {
-		if time.Since(heartbeat.Timestamp) > s.ctrl.config.HeartbeatTimeout {
+		if time.Since(heartbeat.GetTimestamp().AsTime()) > s.ctrl.config.HeartbeatTimeout {
 			s.routerHeartbeats.Delete(routerIP)
 		}
 		return true
@@ -153,22 +154,31 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 // function, summing in-flight requests and using the most recent
 // timestamp from either router heartbeats or instance assignments.
 func (s *Supervisor) combinedHeartbeat(instances []*skipper.Instance) *skipper.Heartbeat {
-	heartbeat := &skipper.Heartbeat{
-		Function: s.fn,
-	}
+	heartbeat := &skipper.Heartbeat{}
+	heartbeat.SetFunction(s.fn)
+
+	var latestTimestamp time.Time
+	var totalInFlightRequests uint32
 
 	s.routerHeartbeats.Range(func(_ string, routerHeartbeat *skipper.Heartbeat) bool {
-		heartbeat.InFlightRequests += routerHeartbeat.InFlightRequests
-		if heartbeat.Timestamp.Before(routerHeartbeat.Timestamp) {
-			heartbeat.Timestamp = routerHeartbeat.Timestamp
+		totalInFlightRequests += routerHeartbeat.GetInFlightRequests()
+		routerTs := routerHeartbeat.GetTimestamp().AsTime()
+		if latestTimestamp.Before(routerTs) {
+			latestTimestamp = routerTs
 		}
 		return true
 	})
 
 	for _, instance := range instances {
-		if heartbeat.Timestamp.Before(instance.AssignedAt) {
-			heartbeat.Timestamp = instance.AssignedAt
+		assignedAt := instance.GetAssignedAt().AsTime()
+		if latestTimestamp.Before(assignedAt) {
+			latestTimestamp = assignedAt
 		}
+	}
+
+	heartbeat.SetInFlightRequests(totalInFlightRequests)
+	if !latestTimestamp.IsZero() {
+		heartbeat.SetTimestamp(timestamppb.New(latestTimestamp))
 	}
 
 	return heartbeat
@@ -223,10 +233,10 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	ctx = telemetry.With(ctx, key.Function.Attr(s.fn), key.Heartbeat.Attr(heartbeat))
 
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
-	maxRecommendation := s.recordRecommendation(scalingDecision.DesiredInstances)
+	maxRecommendation := s.recordRecommendation(scalingDecision.GetDesiredInstances())
 
 	currentInstances := uint32(len(instances))
-	isScalingDown := scalingDecision.DesiredInstances < currentInstances || scalingDecision.DesiredInstances == 0
+	isScalingDown := scalingDecision.GetDesiredInstances() < currentInstances || scalingDecision.GetDesiredInstances() == 0
 
 	if isScalingDown {
 		// Use the maximum of HPADownscaleStabilization and HeartbeatTimeout as the protection period.
@@ -241,13 +251,13 @@ func (s *Supervisor) converge(ctx context.Context) error {
 			return nil
 		}
 
-		if scalingDecision.DesiredInstances == 0 {
+		if scalingDecision.GetDesiredInstances() == 0 {
 			// we're scaling to 0, so stop when we're done scaling
 			defer s.stop()
 		} else {
 			// we're scaling down, but not to 0, so scale down to the max recommended instances within the stabilization window
 			// if we're already lower than the max recommended instances, then use the current number of instances (i.e. don't scale up)
-			scalingDecision.DesiredInstances = min(currentInstances, maxRecommendation.DesiredInstances)
+			scalingDecision.SetDesiredInstances(min(currentInstances, maxRecommendation.DesiredInstances))
 		}
 	}
 
@@ -282,14 +292,14 @@ func (s *Supervisor) converge(ctx context.Context) error {
 // responsible controller if this controller is not responsible for the
 // skipper. For scale-down, it deletes unready instances first, then
 // oldest ready instances.
-func (s *Supervisor) scale(ctx context.Context, decision skipper.ScaleDecision) ([]*skipper.Instance, error) {
+func (s *Supervisor) scale(ctx context.Context, decision *skipper.ScaleDecision) ([]*skipper.Instance, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	responsibleIP := s.ctrl.ring.Get(s.fn)
 	if responsibleIP != s.ctrl.config.PodIP {
 		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Slog(responsibleIP))
-		return s.ctrl.getControllerClient(responsibleIP).Scale(ctx, s.fn, decision.DesiredInstances, decision.Reason)
+		return s.ctrl.getControllerClient(responsibleIP).Scale(ctx, s.fn, decision.GetDesiredInstances(), decision.GetReason())
 	}
 
 	instances, err := s.ctrl.getInstances(ctx, s.fn)
@@ -304,14 +314,14 @@ func (s *Supervisor) scale(ctx context.Context, decision skipper.ScaleDecision) 
 // scaleWithoutLock is the internal implementation of scale that assumes
 // the caller already holds s.mu. It executes the scaling decision
 // without forwarding to another controller.
-func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.Instance, decision skipper.ScaleDecision) ([]*skipper.Instance, []*skipper.Instance, error) {
+func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.Instance, decision *skipper.ScaleDecision) ([]*skipper.Instance, []*skipper.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.scale")
 	defer span.End()
 
 	// split instances into ready and unready
 	var unreadyInstances []*skipper.Instance
 	readyInstances := slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
-		if instance.ReadyAt.IsZero() {
+		if !instance.HasReadyAt() {
 			unreadyInstances = append(unreadyInstances, instance)
 			return true
 		}
@@ -324,7 +334,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 		key.UnreadyInstances.Slog(len(unreadyInstances)),
 	)
 
-	if s.fn.Scale.MaxInstances > 1 && decision.UnclampedDesiredInstances > decision.DesiredInstances {
+	if s.fn.GetScale().GetMaxInstances() > 1 && decision.GetUnclampedDesiredInstances() > decision.GetDesiredInstances() {
 		// this function is allowed to scale beyond a single instance
 		// and it wanted to scale up higher than its max instances, so
 		// let's log that for observability
@@ -333,7 +343,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 
 	ready := uint32(len(readyInstances))
 	unready := uint32(len(unreadyInstances))
-	desired := decision.DesiredInstances
+	desired := decision.GetDesiredInstances()
 	total := ready + unready
 
 	if desired == ready && desired > unready {
@@ -344,14 +354,14 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 
 	if desired > ready {
 		// we need to scale up
-		if total >= s.fn.Scale.MaxInstances+1 {
+		if total >= s.fn.GetScale().GetMaxInstances()+1 {
 			// we have too many instances in total, so we can't scale up
 			log.Info(ctx, "skipping scale up because function has too many instances")
 			return readyInstances, unreadyInstances, nil
 		}
 
 		log.Info(ctx, "scaling function up")
-		scaleUpsTotal.WithLabelValues(s.fn.Deployment).Add(float64(desired - ready))
+		scaleUpsTotal.WithLabelValues(s.fn.GetDeployment()).Add(float64(desired - ready))
 
 		for range desired - ready {
 			instance, err := s.ctrl.assignPod(ctx, s.fn)
@@ -360,7 +370,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 			}
 			readyInstances = append(readyInstances, instance)
 		}
-	} else if decision.Reason == skipper.ScaleReasonNoReadyInstances {
+	} else if decision.GetReason() == skipper.ScaleReason_SCALE_REASON_NO_READY_INSTANCES {
 		// we were asked to scale up to 1 instance because there were no
 		// ready instances at the time of the request, but now we have
 		// at least 1 ready instance, so there's nothing to do
@@ -368,11 +378,11 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
-		scaleDownsTotal.WithLabelValues(s.fn.Deployment).Add(float64(total - desired))
+		scaleDownsTotal.WithLabelValues(s.fn.GetDeployment()).Add(float64(total - desired))
 
 		// delete all unready instances
 		for _, unreadyInstance := range unreadyInstances {
-			err := s.ctrl.deletePod(ctx, unreadyInstance.Function.Namespace, unreadyInstance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.deletePod(ctx, unreadyInstance.GetFunction().GetNamespace(), unreadyInstance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
@@ -380,12 +390,14 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 		unreadyInstances = nil
 
 		// sort ready instances by assigned at in descending order (newest first)
-		slices.SortFunc(readyInstances, func(a, b *skipper.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+		slices.SortFunc(readyInstances, func(a, b *skipper.Instance) int {
+			return b.GetAssignedAt().AsTime().Compare(a.GetAssignedAt().AsTime())
+		})
 
 		// delete oldest ready instances (they're at the end after sorting newest-first)
 		for toDelete := ready - desired; toDelete > 0; toDelete-- {
 			instance := readyInstances[len(readyInstances)-1]
-			err := s.ctrl.deletePod(ctx, instance.Function.Namespace, instance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
@@ -402,10 +414,10 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 // scaling execution to remove broken pods from consideration.
 func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*skipper.Instance) []*skipper.Instance {
 	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
-		if instance.ReadyAt.IsZero() && time.Since(instance.AssignedAt) > s.ctrl.config.FunctionAssignTimeout*2 {
+		if !instance.HasReadyAt() && time.Since(instance.GetAssignedAt().AsTime()) > s.ctrl.config.FunctionAssignTimeout*2 {
 			ctx := log.With(ctx, key.Instance.Slog(instance))
 			log.Warn(ctx, "terminating instance stuck in assigned state")
-			err := s.ctrl.deletePod(ctx, instance.Function.Namespace, instance.Name, metav1.DeleteOptions{})
+			err := s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
 			}
@@ -433,14 +445,14 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*ski
 // stale instance is kept and scale() will handle cleanup on subsequent
 // iterations.
 func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*skipper.Instance, currentTotalInstances int) {
-	namespaceLister, ok := s.ctrl.namespaceListers[s.fn.Namespace]
+	namespaceLister, ok := s.ctrl.namespaceListers[s.fn.GetNamespace()]
 	if !ok {
-		log.Warn(ctx, "namespace lister not found for function namespace", key.Namespace.Slog(s.fn.Namespace))
+		log.Warn(ctx, "namespace lister not found for function namespace", key.Namespace.Slog(s.fn.GetNamespace()))
 		return
 	}
 
 	for _, instance := range instances {
-		replicaSet, err := namespaceLister.replicaSetLister.ReplicaSets(s.fn.Namespace).Get(instance.ReplicaSet)
+		replicaSet, err := namespaceLister.replicaSetLister.ReplicaSets(s.fn.GetNamespace()).Get(instance.GetReplicaSet())
 		if err != nil {
 			log.Warn(ctx, "failed to get replica set for instance", key.Error.Slog(err), key.Instance.Slog(instance))
 			continue
@@ -458,7 +470,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*ski
 		// This can happen if a previous iteration assigned a replacement but failed
 		// to delete the stale pod. In this case, keep the stale instance and let
 		// scale() handle cleanup.
-		if currentTotalInstances >= int(s.fn.Scale.MaxInstances)+1 {
+		if currentTotalInstances >= int(s.fn.GetScale().GetMaxInstances())+1 {
 			log.Info(ctx, "skipping stale instance replacement, already at maxInstances+1")
 			continue
 		}
@@ -490,7 +502,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*ski
 		currentTotalInstances++
 
 		// Terminate the stale instance now that a replacement has been assigned
-		err = s.ctrl.deletePod(ctx, instance.Function.Namespace, instance.Name, metav1.DeleteOptions{})
+		err = s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
 		if err != nil {
 			log.Error(ctx, "failed to terminate stale instance", key.Error.Slog(err))
 			// If deletion fails, currentTotalInstances remains incremented, preventing
@@ -514,25 +526,27 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 	telemetry.SetAttributes(ctx, attribute.Bool("has_instances", len(instances) > 0))
 
 	for len(instances) == 0 {
-		if instances, err = s.scale(ctx, skipper.ScaleDecision{
-			DesiredInstances:          1,
-			UnclampedDesiredInstances: 1,
-			Reason:                    skipper.ScaleReasonNoReadyInstances,
-		}); err != nil {
+		decision := &skipper.ScaleDecision{}
+		decision.SetDesiredInstances(1)
+		decision.SetUnclampedDesiredInstances(1)
+		decision.SetReason(skipper.ScaleReason_SCALE_REASON_NO_READY_INSTANCES)
+		if instances, err = s.scale(ctx, decision); err != nil {
 			return nil, fmt.Errorf("failed to scale function: %w", err)
 		}
 	}
 
-	if len(instances) > int(s.fn.Scale.MaxInstances) {
+	if len(instances) > int(s.fn.GetScale().GetMaxInstances()) {
 		// sort instances by assigned at in descending order (newest first)
-		slices.SortFunc(instances, func(a, b *skipper.Instance) int { return b.AssignedAt.Compare(a.AssignedAt) })
+		slices.SortFunc(instances, func(a, b *skipper.Instance) int {
+			return b.GetAssignedAt().AsTime().Compare(a.GetAssignedAt().AsTime())
+		})
 		// keep the newest instances up to the max instances allowed for the function
-		instances = instances[:s.fn.Scale.MaxInstances]
+		instances = instances[:s.fn.GetScale().GetMaxInstances()]
 	}
 
 	if len(excludeNames) > 0 {
 		filtered := slices.DeleteFunc(slices.Clone(instances), func(inst *skipper.Instance) bool {
-			return slices.Contains(excludeNames, inst.Name)
+			return slices.Contains(excludeNames, inst.GetName())
 		})
 		if len(filtered) > 0 {
 			instances = filtered
@@ -568,14 +582,14 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 		var usage uint32
 		switch metric {
 		case MetricCPU:
-			usage = instance.CPUUsageMilli
+			usage = instance.GetCpuUsageMilli()
 		case MetricMemory:
-			usage = instance.MemoryUsageMiB
+			usage = instance.GetMemoryUsageMib()
 		default:
 			return currentInstances, 0
 		}
 
-		if metric == MetricCPU && (instance.ReadyAt.IsZero() || time.Since(instance.ReadyAt) <= cfg.HPAInitialReadinessDelay) {
+		if metric == MetricCPU && (!instance.HasReadyAt() || time.Since(instance.GetReadyAt().AsTime()) <= cfg.HPAInitialReadinessDelay) {
 			// ignore CPU metrics for pods that have been ready for less than the initial readiness delay
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 			continue
@@ -598,11 +612,11 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
 		case MetricCPU:
-			targetUsage = instance.Function.Scale.TargetCPUUsageMilli
-			totalUsage += instance.CPUUsageMilli
+			targetUsage = instance.GetFunction().GetScale().GetTargetCpuUsageMilli()
+			totalUsage += instance.GetCpuUsageMilli()
 		case MetricMemory:
-			targetUsage = instance.Function.Scale.TargetMemoryUsageMiB
-			totalUsage += instance.MemoryUsageMiB
+			targetUsage = instance.GetFunction().GetScale().GetTargetMemoryUsageMib()
+			totalUsage += instance.GetMemoryUsageMib()
 		}
 	}
 
@@ -651,56 +665,67 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) skipper.ScaleDecision {
-	if time.Since(heartbeat.Timestamp) >= cfg.HeartbeatTimeout {
-		return skipper.ScaleDecision{
-			DesiredInstances:          0,
-			UnclampedDesiredInstances: 0,
-			Reason:                    skipper.ScaleReasonHeartbeatTimeout,
-		}
+func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) *skipper.ScaleDecision {
+	if !heartbeat.HasTimestamp() || time.Since(heartbeat.GetTimestamp().AsTime()) >= cfg.HeartbeatTimeout {
+		decision := &skipper.ScaleDecision{}
+		decision.SetDesiredInstances(0)
+		decision.SetUnclampedDesiredInstances(0)
+		decision.SetReason(skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT)
+		return decision
 	}
 
 	maxDesiredInstances := 1 // we only scale to 0 from a heartbeat timeout, so we start at 1
 	var scaleReason skipper.ScaleReason
-	var scaleMetrics []skipper.ScaleMetric
+	var scaleMetrics []*skipper.ScaleMetric
 
-	if heartbeat.Function.Scale.TargetInFlightRequests > 0 {
-		desiredInstances := int(math.Ceil(float64(heartbeat.InFlightRequests) / float64(heartbeat.Function.Scale.TargetInFlightRequests)))
-		averageUsage := float64(heartbeat.InFlightRequests) / float64(len(instances))
-		scaleMetrics = append(scaleMetrics, skipper.ScaleMetric{Name: "in_flight_requests", Value: averageUsage})
+	scale := heartbeat.GetFunction().GetScale()
+
+	if scale.GetTargetInFlightRequests() > 0 {
+		desiredInstances := int(math.Ceil(float64(heartbeat.GetInFlightRequests()) / float64(scale.GetTargetInFlightRequests())))
+		averageUsage := float64(heartbeat.GetInFlightRequests()) / float64(len(instances))
+		metric := &skipper.ScaleMetric{}
+		metric.SetName("in_flight_requests")
+		metric.SetValue(averageUsage)
+		scaleMetrics = append(scaleMetrics, metric)
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scaleReason = skipper.ScaleReasonInFlightRequests
+			scaleReason = skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS
 		}
 	}
 
-	if heartbeat.Function.Scale.TargetCPUUsageMilli > 0 {
+	if scale.GetTargetCpuUsageMilli() > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricCPU, instances)
-		scaleMetrics = append(scaleMetrics, skipper.ScaleMetric{Name: "cpu", Value: averageUsage})
+		metric := &skipper.ScaleMetric{}
+		metric.SetName("cpu")
+		metric.SetValue(averageUsage)
+		scaleMetrics = append(scaleMetrics, metric)
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scaleReason = skipper.ScaleReasonCPU
+			scaleReason = skipper.ScaleReason_SCALE_REASON_CPU
 		}
 	}
 
-	if heartbeat.Function.Scale.TargetMemoryUsageMiB > 0 {
+	if scale.GetTargetMemoryUsageMib() > 0 {
 		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricMemory, instances)
-		scaleMetrics = append(scaleMetrics, skipper.ScaleMetric{Name: "memory", Value: averageUsage})
+		metric := &skipper.ScaleMetric{}
+		metric.SetName("memory")
+		metric.SetValue(averageUsage)
+		scaleMetrics = append(scaleMetrics, metric)
 		if desiredInstances > maxDesiredInstances {
 			maxDesiredInstances = desiredInstances
-			scaleReason = skipper.ScaleReasonMemory
+			scaleReason = skipper.ScaleReason_SCALE_REASON_MEMORY
 		}
 	}
 
 	// Apply min/max clamping
-	minInstances := heartbeat.Function.Scale.MinInstances
-	maxInstances := heartbeat.Function.Scale.MaxInstances
+	minInstances := scale.GetMinInstances()
+	maxInstances := scale.GetMaxInstances()
 	clampedValue := min(max(uint32(maxDesiredInstances), minInstances), maxInstances)
 
-	return skipper.ScaleDecision{
-		DesiredInstances:          clampedValue,
-		UnclampedDesiredInstances: uint32(maxDesiredInstances),
-		Reason:                    scaleReason,
-		Metrics:                   scaleMetrics,
-	}
+	decision := &skipper.ScaleDecision{}
+	decision.SetDesiredInstances(clampedValue)
+	decision.SetUnclampedDesiredInstances(uint32(maxDesiredInstances))
+	decision.SetReason(scaleReason)
+	decision.SetMetrics(scaleMetrics)
+	return decision
 }
