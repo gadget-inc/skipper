@@ -65,16 +65,16 @@
 		"metrics": [
 			{
 				"name": "cpu",
-				"value": "0.75"
+				"value": 0.75
 			},
 			{
 				"name": "memory",
-				"value": "0.5"
+				"value": 0.5
 			}
 		]
 	},
 	"ScaleMetric": {
 		"name": "in_flight_requests",
-		"value": "1.5"
+		"value": 1.5
 	}
 }

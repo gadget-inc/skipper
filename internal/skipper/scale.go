@@ -154,10 +154,11 @@ type ScaleMetric struct {
 	Value float64 `json:"value"`
 }
 
-// MarshalJSON implements json.Marshaler, encoding numbers as strings for protobuf compatibility.
+// MarshalJSON implements json.Marshaler.
+// Floats are marshaled as JSON numbers to match protobuf behavior.
 func (sm *ScaleMetric) MarshalJSON() ([]byte, error) {
 	type Alias ScaleMetric
-	return json.Marshal((*Alias)(sm), json.StringifyNumbers(true))
+	return json.Marshal((*Alias)(sm))
 }
 
 // UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded numbers.
