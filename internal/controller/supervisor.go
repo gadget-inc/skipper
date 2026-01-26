@@ -360,7 +360,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 			}
 			readyInstances = append(readyInstances, instance)
 		}
-	} else if decision.Reason == skipper.ScaleReasonNoReadyInstances {
+	} else if decision.Reason.Is(skipper.ScaleReasonNoReadyInstances) {
 		// we were asked to scale up to 1 instance because there were no
 		// ready instances at the time of the request, but now we have
 		// at least 1 ready instance, so there's nothing to do
