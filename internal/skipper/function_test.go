@@ -344,7 +344,7 @@ func TestFunctionFromHeader(t *testing.T) {
 		},
 		{
 			name:   "valid function with scale",
-			header: `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":"1","max_instances":"10","target_cpu_usage_milli":"500","target_memory_usage_mib":"256","target_in_flight_requests":"100"}}`,
+			header: `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`,
 			wantFn: validFn,
 		},
 	}

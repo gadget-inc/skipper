@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
-	"github.com/go-json-experiment/json"
 )
 
 type Instance struct {
@@ -45,21 +44,4 @@ func (i *Instance) Equal(other *Instance) bool {
 		i.ReadyAt.Equal(other.ReadyAt) &&
 		i.CPUUsageMilli == other.CPUUsageMilli &&
 		i.MemoryUsageMiB == other.MemoryUsageMiB
-}
-
-// MarshalJSON implements json.Marshaler.
-func (i *Instance) MarshalJSON() ([]byte, error) {
-	type Alias Instance
-	return json.Marshal((*Alias)(i))
-}
-
-// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
-func (i *Instance) UnmarshalJSON(data []byte) error {
-	type Alias Instance
-	// Try with StringifyNumbers first (for string-encoded numbers, the common case),
-	// then without it (for JSON numbers, backwards compatibility)
-	if err := json.Unmarshal(data, (*Alias)(i), json.StringifyNumbers(true)); err == nil {
-		return nil
-	}
-	return json.Unmarshal(data, (*Alias)(i))
 }
