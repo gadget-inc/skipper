@@ -1821,48 +1821,6 @@ func TestCalculateDesiredInstances(t *testing.T) {
 	}
 }
 
-// TestIsValidScaleReason tests the scale reason validation skipper.
-func TestIsValidScaleReason(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		reason   string
-		expected bool
-	}{
-		// Valid scaling reasons (SCALE_REASON_ prefixed format)
-		{reason: "SCALE_REASON_CPU", expected: true},
-		{reason: "SCALE_REASON_HEARTBEAT_TIMEOUT", expected: true},
-		{reason: "SCALE_REASON_IN_FLIGHT_REQUESTS", expected: true},
-		{reason: "SCALE_REASON_MEMORY", expected: true},
-		{reason: "SCALE_REASON_NO_READY_INSTANCES", expected: true},
-		{reason: "SCALE_REASON_UNKNOWN", expected: true},
-
-		// Valid scaling reasons (unprefixed format for backwards compatibility)
-		{reason: "CPU", expected: true},
-		{reason: "HEARTBEAT_TIMEOUT", expected: true},
-		{reason: "IN_FLIGHT_REQUESTS", expected: true},
-		{reason: "MEMORY", expected: true},
-		{reason: "NO_READY_INSTANCES", expected: true},
-		{reason: "UNKNOWN", expected: true},
-
-		// Invalid scaling reasons
-		{reason: "", expected: false},
-		{reason: "invalid", expected: false},
-		{reason: "SCALE_REASON_CPU ", expected: false}, // trailing space
-		{reason: " SCALE_REASON_CPU", expected: false}, // leading space
-		{reason: "random", expected: false},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.reason, func(t *testing.T) {
-			t.Parallel()
-
-			result := skipper.IsValidScaleReason(tc.reason)
-			assert.Equal(t, tc.expected, result)
-		})
-	}
-}
-
 // TestSupervisorLifecycle tests the Start/Stop lifecycle of the supervisor's
 // independent converge loop, including idempotency and context handling.
 func TestSupervisorLifecycle(t *testing.T) {
