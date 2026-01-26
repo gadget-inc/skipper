@@ -199,3 +199,35 @@ func TestIsValidScaleReason(t *testing.T) {
 		})
 	}
 }
+
+func TestScaleReasonIs(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		reason   ScaleReason
+		target   ScaleReason
+		expected bool
+	}{
+		// Prefixed matches prefixed
+		{name: "prefixed CPU matches", reason: ScaleReasonCPU, target: ScaleReasonCPU, expected: true},
+		{name: "prefixed NO_READY_INSTANCES matches", reason: ScaleReasonNoReadyInstances, target: ScaleReasonNoReadyInstances, expected: true},
+		// Unprefixed matches prefixed (backwards compatibility)
+		{name: "unprefixed CPU matches prefixed", reason: "CPU", target: ScaleReasonCPU, expected: true},
+		{name: "unprefixed NO_READY_INSTANCES matches prefixed", reason: "NO_READY_INSTANCES", target: ScaleReasonNoReadyInstances, expected: true},
+		{name: "unprefixed MEMORY matches prefixed", reason: "MEMORY", target: ScaleReasonMemory, expected: true},
+		// Non-matches
+		{name: "CPU does not match MEMORY", reason: ScaleReasonCPU, target: ScaleReasonMemory, expected: false},
+		{name: "unprefixed CPU does not match MEMORY", reason: "CPU", target: ScaleReasonMemory, expected: false},
+		{name: "invalid reason does not match", reason: "INVALID", target: ScaleReasonCPU, expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := tc.reason.Is(tc.target)
+			assert.Equal(t, result, tc.expected)
+		})
+	}
+}

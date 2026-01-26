@@ -87,6 +87,16 @@ func IsValidScaleReason(reason string) bool {
 	}
 }
 
+// Is checks if the ScaleReason matches the target, accepting both prefixed and
+// unprefixed formats for backwards compatibility during rolling deployments.
+func (r ScaleReason) Is(target ScaleReason) bool {
+	if r == target {
+		return true
+	}
+	// Handle unprefixed format from old controllers
+	return "SCALE_REASON_"+r == target
+}
+
 // ScaleMetric represents an unclamped metric value for a specific metric observed for scaling decisions
 type ScaleMetric struct {
 	Name  string  `json:"name"`
