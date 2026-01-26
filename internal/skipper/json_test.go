@@ -111,12 +111,12 @@ func TestScaleReasonUnmarshal(t *testing.T) {
 		input    string
 		expected ScaleReason
 	}{
-		{name: "CPU", input: `"CPU"`, expected: ScaleReasonCPU},
-		{name: "HEARTBEAT_TIMEOUT", input: `"HEARTBEAT_TIMEOUT"`, expected: ScaleReasonHeartbeatTimeout},
-		{name: "IN_FLIGHT_REQUESTS", input: `"IN_FLIGHT_REQUESTS"`, expected: ScaleReasonInFlightRequests},
-		{name: "MEMORY", input: `"MEMORY"`, expected: ScaleReasonMemory},
-		{name: "NO_READY_INSTANCES", input: `"NO_READY_INSTANCES"`, expected: ScaleReasonNoReadyInstances},
-		{name: "UNKNOWN", input: `"UNKNOWN"`, expected: ScaleReasonUnknown},
+		{name: "SCALE_REASON_CPU", input: `"SCALE_REASON_CPU"`, expected: ScaleReasonCPU},
+		{name: "SCALE_REASON_HEARTBEAT_TIMEOUT", input: `"SCALE_REASON_HEARTBEAT_TIMEOUT"`, expected: ScaleReasonHeartbeatTimeout},
+		{name: "SCALE_REASON_IN_FLIGHT_REQUESTS", input: `"SCALE_REASON_IN_FLIGHT_REQUESTS"`, expected: ScaleReasonInFlightRequests},
+		{name: "SCALE_REASON_MEMORY", input: `"SCALE_REASON_MEMORY"`, expected: ScaleReasonMemory},
+		{name: "SCALE_REASON_NO_READY_INSTANCES", input: `"SCALE_REASON_NO_READY_INSTANCES"`, expected: ScaleReasonNoReadyInstances},
+		{name: "SCALE_REASON_UNKNOWN", input: `"SCALE_REASON_UNKNOWN"`, expected: ScaleReasonUnknown},
 	}
 
 	for _, tc := range testCases {
@@ -171,12 +171,21 @@ func TestIsValidScaleReason(t *testing.T) {
 		input    string
 		expected bool
 	}{
+		// Prefixed format (current)
+		{name: "SCALE_REASON_CPU", input: "SCALE_REASON_CPU", expected: true},
+		{name: "SCALE_REASON_HEARTBEAT_TIMEOUT", input: "SCALE_REASON_HEARTBEAT_TIMEOUT", expected: true},
+		{name: "SCALE_REASON_IN_FLIGHT_REQUESTS", input: "SCALE_REASON_IN_FLIGHT_REQUESTS", expected: true},
+		{name: "SCALE_REASON_MEMORY", input: "SCALE_REASON_MEMORY", expected: true},
+		{name: "SCALE_REASON_NO_READY_INSTANCES", input: "SCALE_REASON_NO_READY_INSTANCES", expected: true},
+		{name: "SCALE_REASON_UNKNOWN", input: "SCALE_REASON_UNKNOWN", expected: true},
+		// Unprefixed format (backwards compatibility)
 		{name: "CPU", input: "CPU", expected: true},
 		{name: "HEARTBEAT_TIMEOUT", input: "HEARTBEAT_TIMEOUT", expected: true},
 		{name: "IN_FLIGHT_REQUESTS", input: "IN_FLIGHT_REQUESTS", expected: true},
 		{name: "MEMORY", input: "MEMORY", expected: true},
 		{name: "NO_READY_INSTANCES", input: "NO_READY_INSTANCES", expected: true},
 		{name: "UNKNOWN", input: "UNKNOWN", expected: true},
+		// Invalid
 		{name: "invalid", input: "INVALID", expected: false},
 		{name: "empty", input: "", expected: false},
 	}

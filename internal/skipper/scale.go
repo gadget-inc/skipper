@@ -66,18 +66,21 @@ func (sd ScaleDecision) LogValue() slog.Value {
 type ScaleReason string
 
 const (
-	ScaleReasonCPU              ScaleReason = "CPU"
-	ScaleReasonHeartbeatTimeout ScaleReason = "HEARTBEAT_TIMEOUT"
-	ScaleReasonInFlightRequests ScaleReason = "IN_FLIGHT_REQUESTS"
-	ScaleReasonMemory           ScaleReason = "MEMORY"
-	ScaleReasonNoReadyInstances ScaleReason = "NO_READY_INSTANCES"
-	ScaleReasonUnknown          ScaleReason = "UNKNOWN"
+	ScaleReasonCPU              ScaleReason = "SCALE_REASON_CPU"
+	ScaleReasonHeartbeatTimeout ScaleReason = "SCALE_REASON_HEARTBEAT_TIMEOUT"
+	ScaleReasonInFlightRequests ScaleReason = "SCALE_REASON_IN_FLIGHT_REQUESTS"
+	ScaleReasonMemory           ScaleReason = "SCALE_REASON_MEMORY"
+	ScaleReasonNoReadyInstances ScaleReason = "SCALE_REASON_NO_READY_INSTANCES"
+	ScaleReasonUnknown          ScaleReason = "SCALE_REASON_UNKNOWN"
 )
 
 // IsValidScaleReason returns true if the given string is a known scale reason.
+// Accepts both prefixed (SCALE_REASON_CPU) and unprefixed (CPU) formats.
 func IsValidScaleReason(reason string) bool {
 	switch reason {
-	case "CPU", "HEARTBEAT_TIMEOUT", "IN_FLIGHT_REQUESTS", "MEMORY", "NO_READY_INSTANCES", "UNKNOWN":
+	case "SCALE_REASON_CPU", "SCALE_REASON_HEARTBEAT_TIMEOUT", "SCALE_REASON_IN_FLIGHT_REQUESTS",
+		"SCALE_REASON_MEMORY", "SCALE_REASON_NO_READY_INSTANCES", "SCALE_REASON_UNKNOWN",
+		"CPU", "HEARTBEAT_TIMEOUT", "IN_FLIGHT_REQUESTS", "MEMORY", "NO_READY_INSTANCES", "UNKNOWN":
 		return true
 	default:
 		return false

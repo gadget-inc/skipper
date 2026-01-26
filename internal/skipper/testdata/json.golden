@@ -61,7 +61,7 @@
 	"ScaleDecision": {
 		"desired_instances": 3,
 		"unclamped_desired_instances": 5,
-		"reason": "CPU",
+		"reason": "SCALE_REASON_CPU",
 		"metrics": [
 			{
 				"name": "cpu",
