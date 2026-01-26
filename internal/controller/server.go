@@ -89,16 +89,17 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	}
 	desiredInstances := uint32(desiredInstances64)
 
-	reason := req.Header.Get(key.Reason.Header)
-	if !skipper.IsValidScaleReason(reason) {
-		log.Warn(ctx, "invalid scaling reason, using unknown", key.Reason.Slog(reason))
-		reason = string(skipper.ScaleReasonUnknown)
+	reasonStr := req.Header.Get(key.Reason.Header)
+	reason, ok := skipper.ScaleReason_value[reasonStr]
+	if !ok {
+		log.Warn(ctx, "invalid scaling reason, using unspecified", key.Reason.Slog(reasonStr))
+		reason = int32(skipper.ScaleReason_SCALE_REASON_UNSPECIFIED)
 	}
 
-	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScaleDecision{
-		DesiredInstances: desiredInstances,
-		Reason:           skipper.ScaleReason(reason),
-	})
+	decision := &skipper.ScaleDecision{}
+	decision.SetDesiredInstances(desiredInstances)
+	decision.SetReason(skipper.ScaleReason(reason))
+	instances, err := ctrl.supervisor(fn).scale(ctx, decision)
 	if err != nil {
 		log.Error(ctx, "failed to scale function", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -128,8 +129,8 @@ func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Reques
 	}
 
 	for _, heartbeat := range heartbeats {
-		heartbeatsCounter.WithLabelValues(heartbeat.Function.Deployment).Inc()
-		ctrl.supervisor(heartbeat.Function).heartbeat(routerIP, heartbeat)
+		heartbeatsCounter.WithLabelValues(heartbeat.GetFunction().GetDeployment()).Inc()
+		ctrl.supervisor(heartbeat.GetFunction()).heartbeat(routerIP, heartbeat)
 	}
 
 	log.Trace(req.Context(), "received heartbeats", key.Count.Slog(len(heartbeats)))

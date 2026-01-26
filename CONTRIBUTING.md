@@ -132,6 +132,22 @@ $ fmt  # Attempts to fix linting errors.
 
 All Go files must be formatted with **gofumpt** (enforced by `golangci-lint`).
 
+## Code Generation
+
+### Protocol Buffers
+
+Core domain types are defined in [`internal/skipper/types.proto`](internal/skipper/types.proto). After modifying the `.proto` file, regenerate the Go code:
+
+```bash
+$ buf generate
+```
+
+This uses [Buf](https://buf.build/) with the configuration in [`buf.gen.yaml`](buf.gen.yaml) to generate:
+
+- `types.pb.go` – Go structs and enums
+- `types_grpc.pb.go` – gRPC service stubs (if services are defined)
+- `types.pb.json.go` – JSON marshaling helpers
+
 ## Cleaning Up Resources
 
 To clean up all deployed resources and temporary files, run:

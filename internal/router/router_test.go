@@ -17,6 +17,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
+	"google.golang.org/protobuf/proto"
 	"gotest.tools/v3/assert"
 )
 
@@ -120,7 +121,7 @@ func TestGetInstanceDuration(t *testing.T) {
 			assert.Assert(t, req.URL.Path == "/")
 
 			rw.WriteHeader(http.StatusOK)
-			rw.Write([]byte("Hello, " + fn.Tenant))
+			rw.Write([]byte("Hello, " + fn.GetTenant()))
 		}), nil
 	})
 
@@ -131,7 +132,7 @@ func TestGetInstanceDuration(t *testing.T) {
 	router.ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
-	assert.Assert(t, "Hello, "+fn.Tenant == rw.Body.String())
+	assert.Assert(t, "Hello, "+fn.GetTenant() == rw.Body.String())
 	assert.Assert(t, len(rw.Header()[key.GetInstanceDurationMs.Header]) == 1)
 
 	duration, err := strconv.ParseInt(rw.Header()[key.GetInstanceDurationMs.Header][0], 10, 64)
@@ -214,10 +215,10 @@ func TestHeaders(t *testing.T) {
 		{
 			name: "smoke",
 			setup: func(t *testing.T, state *testState) {
-				state.req.Host = state.fn.Tenant + ".example.com"
+				state.req.Host = state.fn.GetTenant() + ".example.com"
 			},
 			check: func(t *testing.T, state *testState) {
-				expectedHost := state.fn.Tenant + ".example.com"
+				expectedHost := state.fn.GetTenant() + ".example.com"
 				expectedProto := "http"
 
 				assert.DeepEqual(t, state.headers.Values("Host"), []string{expectedHost})
@@ -477,7 +478,7 @@ func TestHeartbeats(t *testing.T) {
 	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
-			rw.Write([]byte("Hello, " + fn.Tenant))
+			rw.Write([]byte("Hello, " + fn.GetTenant()))
 			<-done
 		}), nil
 	})
@@ -492,9 +493,9 @@ func TestHeartbeats(t *testing.T) {
 		assert.Assert(t, len(forwardedFor) == 0)
 
 		heartbeat := heartbeats[0]
-		assert.Assert(t, heartbeat.Function.Equal(fn))
-		assert.Assert(t, heartbeat.Timestamp.After(testStartTime))
-		if heartbeat.InFlightRequests > 0 {
+		assert.Assert(t, proto.Equal(heartbeat.GetFunction(), fn))
+		assert.Assert(t, heartbeat.GetTimestamp().AsTime().After(testStartTime))
+		if heartbeat.GetInFlightRequests() > 0 {
 			once.Do(func() {
 				done <- struct{}{}
 			})
@@ -510,13 +511,13 @@ func TestHeartbeats(t *testing.T) {
 	router.ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
-	assert.Assert(t, rw.Body.String() == "Hello, "+fn.Tenant)
+	assert.Assert(t, rw.Body.String() == "Hello, "+fn.GetTenant())
 
 	heartbeat, ok := router.heartbeats.Load(fn.Hash())
 	assert.Assert(t, ok)
-	assert.Assert(t, heartbeat.Function.Equal(fn))
-	assert.Assert(t, heartbeat.Timestamp.After(testStartTime))
-	assert.Assert(t, heartbeat.InFlightRequests == 0) // ensure the number of in-flight requests is 0 now that the request is complete
+	assert.Assert(t, proto.Equal(heartbeat.GetFunction(), fn))
+	assert.Assert(t, heartbeat.GetTimestamp().AsTime().After(testStartTime))
+	assert.Assert(t, heartbeat.GetInFlightRequests() == 0) // ensure the number of in-flight requests is 0 now that the request is complete
 }
 
 func TestRetries(t *testing.T) {
@@ -542,7 +543,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.Tenant)
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.GetTenant())
 			},
 		},
 		{
@@ -553,7 +554,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.Tenant)
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.GetTenant())
 			},
 		},
 		{
@@ -564,7 +565,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.Tenant)
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.GetTenant())
 			},
 		},
 		{
@@ -576,7 +577,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.Tenant)
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.GetTenant())
 			},
 		},
 		{
@@ -625,7 +626,7 @@ func TestRetries(t *testing.T) {
 					assert.Assert(t, string(receivedBody) == expectedBody)
 
 					rw.WriteHeader(http.StatusOK)
-					rw.Write([]byte("Hello, " + fn.Tenant))
+					rw.Write([]byte("Hello, " + fn.GetTenant()))
 				}), nil
 			})
 
@@ -702,11 +703,11 @@ func TestInstanceExclusion(t *testing.T) {
 		{
 			name: "dial error excludes instance",
 			setup: func(t *testing.T, state *testState) {
-				failingInstance := &skipper.Instance{
+				failingInstance := skipper.Instance_builder{
 					Function: state.fn,
-					Name:     "failing-instance",
-					Addr:     "127.0.0.1:59999", // non-existent address
-				}
+					Name:     proto.String("failing-instance"),
+					Addr:     proto.String("127.0.0.1:59999"), // non-existent address
+				}.Build()
 				successInstance := fixture.NewInstance(t, state.fn, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(http.StatusOK)
 					rw.Write([]byte("success"))

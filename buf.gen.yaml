@@ -1,0 +1,15 @@
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: ./internal/skipper/
+    opt:
+      - paths=source_relative
+  - remote: buf.build/grpc/go
+    out: ./internal/skipper/
+    opt:
+      - paths=source_relative
+  - remote: buf.build/community/mfridman-go-json
+    out: ./internal/skipper/
+    opt:
+      - paths=source_relative
+      - orig_name=true

@@ -14,6 +14,7 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
 	"github.com/puzpuzpuz/xsync/v4"
+	"google.golang.org/protobuf/proto"
 	"gotest.tools/v3/assert"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
@@ -45,10 +46,10 @@ func NewAvailablePod(t *testing.T, fn *skipper.Function, handler http.Handler) *
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + uuid.NewString()[:8],
-			Namespace: fn.Namespace,
+			Name:      fn.GetDeployment() + "-" + uuid.NewString()[:8],
+			Namespace: fn.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.Deployment,
+				key.Deployment.Label: fn.GetDeployment(),
 			},
 			Annotations: map[string]string{
 				key.Port.Annotation: "http",
@@ -93,10 +94,10 @@ func defaultAvailablePodHandler(t *testing.T, fn *skipper.Function) http.Handler
 
 		assignedFn, err := skipper.FunctionFromHeader(req)
 		assert.NilError(t, err)
-		assert.Assert(t, assignedFn.Equal(fn))
+		assert.Assert(t, proto.Equal(assignedFn, fn))
 
 		parser := paseto.NewParserForValidNow()
-		parser.AddRule(paseto.Subject(fn.Tenant))
+		parser.AddRule(paseto.Subject(fn.GetTenant()))
 		_, err = parser.ParseV2Public(ControllerPasetoPublicKey, req.Header.Get(key.Token.Header))
 		assert.NilError(t, err)
 
@@ -121,11 +122,11 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.Deployment + "-" + uuid.NewString()[:8],
-			Namespace: fn.Namespace,
+			Name:      fn.GetDeployment() + "-" + uuid.NewString()[:8],
+			Namespace: fn.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.Deployment,
-				key.Tenant.Label:     fn.Tenant,
+				key.Deployment.Label: fn.GetDeployment(),
+				key.Tenant.Label:     fn.GetTenant(),
 			},
 			Annotations: map[string]string{
 				key.Function.Annotation:   string(fnJSON),
@@ -150,8 +151,8 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 					Ports:   []v1.ContainerPort{{ContainerPort: int32(port)}},
 					Resources: v1.ResourceRequirements{
 						Requests: v1.ResourceList{
-							v1.ResourceCPU:    resource.MustParse(strconv.FormatUint(uint64(fn.Scale.TargetCPUUsageMilli), 10) + "m"),
-							v1.ResourceMemory: resource.MustParse(strconv.FormatUint(uint64(fn.Scale.TargetMemoryUsageMiB), 10) + "Mi"),
+							v1.ResourceCPU:    resource.MustParse(strconv.FormatUint(uint64(fn.GetScale().GetTargetCpuUsageMilli()), 10) + "m"),
+							v1.ResourceMemory: resource.MustParse(strconv.FormatUint(uint64(fn.GetScale().GetTargetMemoryUsageMib()), 10) + "Mi"),
 						},
 					},
 				},
@@ -164,7 +165,7 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 // If no replicaset has been created yet for this function, it generates one.
 func CurrentReplicaSetName(fn *skipper.Function) string {
 	name, _ := replicaSetNames.LoadOrCompute(fn.Hash(), func() (string, bool) {
-		return fn.Deployment + "-rs-" + uuid.NewString()[:8], false
+		return fn.GetDeployment() + "-rs-" + uuid.NewString()[:8], false
 	})
 	return name
 }
@@ -174,9 +175,9 @@ func CurrentReplicaSet(t *testing.T, fn *skipper.Function) *appsv1.ReplicaSet {
 	return &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      CurrentReplicaSetName(fn),
-			Namespace: fn.Namespace,
+			Namespace: fn.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.Deployment,
+				key.Deployment.Label: fn.GetDeployment(),
 			},
 		},
 		Status: appsv1.ReplicaSetStatus{
@@ -190,7 +191,7 @@ func CurrentReplicaSet(t *testing.T, fn *skipper.Function) *appsv1.ReplicaSet {
 func NewReplicaSet(t *testing.T, fn *skipper.Function) *appsv1.ReplicaSet {
 	t.Helper()
 	// Generate a new replicaset name for this function
-	replicaSetNames.Store(fn.Hash(), fn.Deployment+"-rs-"+uuid.NewString()[:8])
+	replicaSetNames.Store(fn.Hash(), fn.GetDeployment()+"-rs-"+uuid.NewString()[:8])
 	return CurrentReplicaSet(t, fn)
 }
 

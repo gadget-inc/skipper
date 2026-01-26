@@ -12,6 +12,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/go-json-experiment/json"
+	"google.golang.org/protobuf/proto"
 	"gotest.tools/v3/assert"
 	"gotest.tools/v3/poll"
 	v1 "k8s.io/api/core/v1"
@@ -23,21 +24,21 @@ import (
 )
 
 func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod v1.Pod) {
-	assert.Assert(t, instance.Function.Deployment == pod.Labels[key.Deployment.Label])
-	assert.Assert(t, instance.Function.Tenant == pod.Labels[key.Tenant.Label])
+	assert.Assert(t, instance.GetFunction().GetDeployment() == pod.Labels[key.Deployment.Label])
+	assert.Assert(t, instance.GetFunction().GetTenant() == pod.Labels[key.Tenant.Label])
 
-	fnJSON, err := json.Marshal(instance.Function)
+	fnJSON, err := json.Marshal(instance.GetFunction())
 	assert.NilError(t, err)
 	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Annotation])
 
 	port, err := portFromPod(&pod)
 	assert.NilError(t, err)
 
-	assert.Assert(t, instance.Name == pod.Name)
-	assert.Assert(t, instance.Addr == net.JoinHostPort(pod.Status.PodIP, port))
-	assert.Assert(t, instance.ReplicaSet == pod.Annotations[key.ReplicaSet.Annotation])
-	assert.Assert(t, instance.AssignedAt.Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Annotation])
-	assert.Assert(t, instance.ReadyAt.Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Annotation])
+	assert.Assert(t, instance.GetName() == pod.Name)
+	assert.Assert(t, instance.GetAddr() == net.JoinHostPort(pod.Status.PodIP, port))
+	assert.Assert(t, instance.GetReplicaSet() == pod.Annotations[key.ReplicaSet.Annotation])
+	assert.Assert(t, instance.GetAssignedAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Annotation])
+	assert.Assert(t, instance.GetReadyAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Annotation])
 }
 
 func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
@@ -72,7 +73,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Function.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
@@ -94,12 +95,12 @@ func TestAssignPod(t *testing.T) {
 			name: "waits for pod to become available",
 			setup: func(t *testing.T, state *testState) {
 				go func() {
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(500 * time.Millisecond)
 					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 				}()
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Function.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
@@ -142,7 +143,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Function.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
@@ -157,7 +158,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.Function.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
@@ -178,7 +179,7 @@ func TestAssignPod(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure the pod was deleted because the assign request failed
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0)
 			},
@@ -254,7 +255,7 @@ func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
 	assert.Assert(t, instance == nil)
 
 	// verify pod still has original tenant and wasn't re-assigned
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(t.Context(), metav1.ListOptions{})
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 1)
 
@@ -580,7 +581,7 @@ func TestFunctionFromPod(t *testing.T) {
 				},
 			},
 			check: func(t *testing.T, resultFn *skipper.Function) {
-				assert.Assert(t, resultFn.Equal(fn))
+				assert.Assert(t, proto.Equal(resultFn, fn))
 			},
 		},
 		{
@@ -656,10 +657,10 @@ func TestInstanceFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-pod",
-					Namespace: fn.Namespace,
+					Namespace: fn.GetNamespace(),
 					Labels: map[string]string{
-						key.Tenant.Label:     fn.Tenant,
-						key.Deployment.Label: fn.Deployment,
+						key.Tenant.Label:     fn.GetTenant(),
+						key.Deployment.Label: fn.GetDeployment(),
 					},
 					Annotations: map[string]string{
 						key.Function.Annotation:   string(fnJSON),
@@ -682,11 +683,11 @@ func TestInstanceFromPod(t *testing.T) {
 				},
 			},
 			check: func(t *testing.T, instance *skipper.Instance) {
-				assert.Assert(t, instance.Name == "test-pod")
-				assert.Assert(t, instance.Addr == "10.0.0.1:8080")
-				assert.Assert(t, instance.ReplicaSet == "test-replicaset")
-				assert.Assert(t, instance.AssignedAt.Format(time.RFC3339) == "2024-01-01T00:00:00Z")
-				assert.Assert(t, instance.ReadyAt.Format(time.RFC3339) == "2024-01-01T00:00:01Z")
+				assert.Assert(t, instance.GetName() == "test-pod")
+				assert.Assert(t, instance.GetAddr() == "10.0.0.1:8080")
+				assert.Assert(t, instance.GetReplicaSet() == "test-replicaset")
+				assert.Assert(t, instance.GetAssignedAt().AsTime().Format(time.RFC3339) == "2024-01-01T00:00:00Z")
+				assert.Assert(t, instance.GetReadyAt().AsTime().Format(time.RFC3339) == "2024-01-01T00:00:01Z")
 			},
 		},
 		{
@@ -807,8 +808,8 @@ func TestInstanceFromPod(t *testing.T) {
 				},
 			},
 			check: func(t *testing.T, instance *skipper.Instance) {
-				assert.Assert(t, instance.ReadyAt.IsZero(), "ReadyAt should be zero when pod is not ready")
-				assert.Assert(t, !instance.AssignedAt.IsZero(), "AssignedAt should still be set")
+				assert.Assert(t, !instance.HasReadyAt(), "ReadyAt should be zero when pod is not ready")
+				assert.Assert(t, instance.HasAssignedAt(), "AssignedAt should still be set")
 			},
 		},
 	}
@@ -864,11 +865,11 @@ func TestRefreshMetrics(t *testing.T) {
 	ctrl.refreshMetrics(ctx)
 
 	// verify both metrics are in the cache
-	metric1, ok := ctrl.podMetrics.Load(fn.Namespace + "/" + pod1.Name)
+	metric1, ok := ctrl.podMetrics.Load(fn.GetNamespace() + "/" + pod1.Name)
 	assert.Assert(t, ok, "pod1 metrics should be in cache")
 	assert.Assert(t, metric1.Containers[0].Usage.Cpu().MilliValue() == 100)
 
-	metric2, ok := ctrl.podMetrics.Load(fn.Namespace + "/" + pod2.Name)
+	metric2, ok := ctrl.podMetrics.Load(fn.GetNamespace() + "/" + pod2.Name)
 	assert.Assert(t, ok, "pod2 metrics should be in cache")
 	assert.Assert(t, metric2.Containers[0].Usage.Cpu().MilliValue() == 200)
 }
@@ -897,7 +898,7 @@ func TestRefreshMetricsGarbageCollection(t *testing.T) {
 	assert.NilError(t, err)
 
 	// seed a stale entry in the cache for a pod that doesn't exist
-	staleKey := fn.Namespace + "/nonexistent-pod"
+	staleKey := fn.GetNamespace() + "/nonexistent-pod"
 	ctrl.podMetrics.Store(staleKey, metricsv1beta1.PodMetrics{})
 
 	// verify both entries exist before refresh
@@ -912,7 +913,7 @@ func TestRefreshMetricsGarbageCollection(t *testing.T) {
 	assert.Assert(t, !staleExists, "stale entry should be garbage collected")
 
 	// verify the valid entry for the existing pod is still there
-	validKey := fn.Namespace + "/" + assignedPod.Name
+	validKey := fn.GetNamespace() + "/" + assignedPod.Name
 	_, validExists := ctrl.podMetrics.Load(validKey)
 	assert.Assert(t, validExists, "valid entry should still exist after refresh")
 }
@@ -941,8 +942,8 @@ func TestGetInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 1, "should have 1 instance")
-				assert.Equal(t, "pod-1", state.instances[0].Name)
-				assert.Assert(t, state.instances[0].Function.Equal(state.fn))
+				assert.Equal(t, "pod-1", state.instances[0].GetName())
+				assert.Assert(t, proto.Equal(state.instances[0].GetFunction(), state.fn))
 			},
 		},
 		{
@@ -960,7 +961,7 @@ func TestGetInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 2, "should have 2 instances")
-				names := []string{state.instances[0].Name, state.instances[1].Name}
+				names := []string{state.instances[0].GetName(), state.instances[1].GetName()}
 				assert.Assert(t, slices.Contains(names, "pod-1"))
 				assert.Assert(t, slices.Contains(names, "pod-2"))
 			},
@@ -984,16 +985,16 @@ func TestGetInstances(t *testing.T) {
 				assert.NilError(t, err)
 
 				// Add pod for different function (different metadata)
-				fn2 := *state.fn
-				fn2.Metadata = "different"
-				pod2 := fixture.NewAssignedPod(t, &fn2, nil)
+				fn2 := proto.Clone(state.fn).(*skipper.Function)
+				fn2.SetMetadata("different")
+				pod2 := fixture.NewAssignedPod(t, fn2, nil)
 				pod2.Name = "pod-2"
 				err = state.fakeKubernetes.Tracker().Add(pod2)
 				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 1, "should have 1 instance for this function")
-				assert.Equal(t, "pod-1", state.instances[0].Name)
+				assert.Equal(t, "pod-1", state.instances[0].GetName())
 			},
 		},
 		{
@@ -1016,13 +1017,13 @@ func TestGetInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				// getInstances returns both ready and unready instances
 				assert.Assert(t, len(state.instances) == 2, "should have 2 instances (ready and unready)")
-				names := []string{state.instances[0].Name, state.instances[1].Name}
+				names := []string{state.instances[0].GetName(), state.instances[1].GetName()}
 				assert.Assert(t, slices.Contains(names, "ready-pod"))
 				assert.Assert(t, slices.Contains(names, "unready-pod"))
 				// Verify unready instance has zero ReadyAt
 				for _, inst := range state.instances {
-					if inst.Name == "unready-pod" {
-						assert.Assert(t, inst.ReadyAt.IsZero(), "unready instance should have zero ReadyAt")
+					if inst.GetName() == "unready-pod" {
+						assert.Assert(t, !inst.HasReadyAt(), "unready instance should have zero ReadyAt")
 					}
 				}
 			},
@@ -1046,10 +1047,10 @@ func TestGetInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				// Should return 1 valid instance, invalid pod should be deleted
 				assert.Assert(t, len(state.instances) == 1, "should have 1 valid instance")
-				assert.Equal(t, "valid-pod", state.instances[0].Name)
+				assert.Equal(t, "valid-pod", state.instances[0].GetName())
 
 				// Verify invalid pod was deleted
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1, "should have 1 pod remaining")
 				assert.Equal(t, "valid-pod", pods.Items[0].Name)
@@ -1074,10 +1075,10 @@ func TestGetInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				// Should return 1 valid instance, invalid pod should be deleted
 				assert.Assert(t, len(state.instances) == 1, "should have 1 valid instance")
-				assert.Equal(t, "valid-pod", state.instances[0].Name)
+				assert.Equal(t, "valid-pod", state.instances[0].GetName())
 
 				// Verify invalid pod was deleted
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1, "should have 1 pod remaining")
 				assert.Equal(t, "valid-pod", pods.Items[0].Name)
@@ -1102,10 +1103,10 @@ func TestGetInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				// Should return 1 valid instance, invalid pod should be deleted
 				assert.Assert(t, len(state.instances) == 1, "should have 1 valid instance")
-				assert.Equal(t, "valid-pod", state.instances[0].Name)
+				assert.Equal(t, "valid-pod", state.instances[0].GetName())
 
 				// Verify invalid pod was deleted
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1, "should have 1 pod remaining")
 				assert.Equal(t, "valid-pod", pods.Items[0].Name)
@@ -1136,10 +1137,10 @@ func TestGetInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				// Should return 1 valid instance, all invalid pods should be deleted
 				assert.Assert(t, len(state.instances) == 1, "should have 1 valid instance")
-				assert.Equal(t, "valid-pod", state.instances[0].Name)
+				assert.Equal(t, "valid-pod", state.instances[0].GetName())
 
 				// Verify all invalid pods were deleted
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1, "should have 1 pod remaining")
 				assert.Equal(t, "valid-pod", pods.Items[0].Name)
@@ -1158,7 +1159,7 @@ func TestGetInstances(t *testing.T) {
 				// Should return no instances but no error
 				assert.Assert(t, len(state.instances) == 0, "should have no instances")
 				// Verify pod was deleted
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0, "invalid pod should be deleted")
 			},
@@ -1282,9 +1283,9 @@ func TestGetReadyInstances(t *testing.T) {
 			name: "different metadata",
 			setup: func(t *testing.T, state *testState) {
 				// create a pod with different metadata than state.fn
-				fn := *state.fn // copy the function
-				fn.Metadata = "different"
-				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, &fn, nil))
+				fn := proto.Clone(state.fn).(*skipper.Function)
+				fn.SetMetadata("different")
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, state *testState) {
@@ -1351,7 +1352,7 @@ func TestPatchPod(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				// Verify pod was patched
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				patchedPod := pods.Items[0]
@@ -1361,7 +1362,7 @@ func TestPatchPod(t *testing.T) {
 
 				// Verify pod is in cache by checking it can be retrieved
 				// Pod should not be in instances (it's not assigned yet), but should be in cache
-				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(allPods.Items) == 1)
 			},
@@ -1375,7 +1376,7 @@ func TestPatchPod(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				// No pod should exist
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0)
 			},
@@ -1391,7 +1392,7 @@ func TestPatchPod(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				// Pod should still exist (invalid patch shouldn't delete it)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 			},
@@ -1416,7 +1417,7 @@ func TestPatchPod(t *testing.T) {
 
 			tc.setup(t, state)
 
-			pod, err := state.ctrl.patchPod(ctx, state.fn.Namespace, "test-pod", types.JSONPatchType, tc.patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
+			pod, err := state.ctrl.patchPod(ctx, state.fn.GetNamespace(), "test-pod", types.JSONPatchType, tc.patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
 			if tc.errContains != "" {
 				assert.ErrorContains(t, err, tc.errContains)
 				assert.Assert(t, pod == nil)
@@ -1459,7 +1460,7 @@ func TestDeletePod(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				// Verify pod was deleted from API
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0, "pod should be deleted from API")
 
@@ -1477,7 +1478,7 @@ func TestDeletePod(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				// No pod should exist
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0)
 			},
@@ -1494,7 +1495,7 @@ func TestDeletePod(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				// Pod should be deleted from API
 				// The deletePod function will succeed in deleting from API
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.Namespace).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0, "pod should be deleted from API")
 			},
@@ -1538,7 +1539,7 @@ func TestDeletePod(t *testing.T) {
 				}, poll.WithTimeout(2*time.Second), poll.WithDelay(50*time.Millisecond))
 			}
 
-			err = state.ctrl.deletePod(ctx, state.fn.Namespace, "test-pod", metav1.DeleteOptions{})
+			err = state.ctrl.deletePod(ctx, state.fn.GetNamespace(), "test-pod", metav1.DeleteOptions{})
 			if tc.errContains != "" {
 				assert.ErrorContains(t, err, tc.errContains)
 			} else if tc.err != nil {
@@ -1569,11 +1570,11 @@ func TestDeletePodWhenNotInCache(t *testing.T) {
 	fakeKubernetes.Tracker().Add(pod)
 
 	// Delete pod - should succeed even though it's not in cache
-	err := ctrl.deletePod(ctx, fn.Namespace, "test-pod", metav1.DeleteOptions{})
+	err := ctrl.deletePod(ctx, fn.GetNamespace(), "test-pod", metav1.DeleteOptions{})
 	assert.NilError(t, err)
 
 	// Verify pod was deleted from API
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.Namespace).List(ctx, metav1.ListOptions{})
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 0, "pod should be deleted from API")
 }
@@ -1606,7 +1607,7 @@ func TestDeletePodMultiplePods(t *testing.T) {
 	assert.Assert(t, len(instances) == 2, "should have 2 instances initially")
 
 	// Delete first pod
-	err = ctrl.deletePod(ctx, fn.Namespace, "pod-1", metav1.DeleteOptions{})
+	err = ctrl.deletePod(ctx, fn.GetNamespace(), "pod-1", metav1.DeleteOptions{})
 	assert.NilError(t, err)
 
 	// Verify only one pod remains
@@ -1614,6 +1615,6 @@ func TestDeletePodMultiplePods(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 1, "should have 1 instance remaining, got %d", len(instances))
 	if len(instances) == 1 {
-		assert.Assert(t, instances[0].Name == "pod-2", "remaining instance should be pod-2, got %s", instances[0].Name)
+		assert.Assert(t, instances[0].GetName() == "pod-2", "remaining instance should be pod-2, got %s", instances[0].GetName())
 	}
 }

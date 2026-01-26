@@ -81,7 +81,7 @@
 		"scale.target_memory_usage_mib": 42,
 		"scale_decision.desired_instances": 42,
 		"scale_decision.metrics.test": 1.5,
-		"scale_decision.reason": "test",
+		"scale_decision.reason": "SCALE_REASON_CPU",
 		"scale_decision.unclamped_desired_instances": 42,
 		"target_cpu_usage_milli": 42,
 		"target_in_flight_requests": 42,
@@ -208,7 +208,7 @@
 			"metrics": {
 				"test": 1.5
 			},
-			"reason": "test",
+			"reason": "SCALE_REASON_CPU",
 			"unclamped_desired_instances": 42
 		},
 		"target_cpu_usage_milli": 42,

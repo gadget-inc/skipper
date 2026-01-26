@@ -14,6 +14,7 @@
       {
         packages = {
           # dependencies
+          buf = pkgs.buf;
           git = pkgs.git;
           go = pkgs.go_1_25;
           gofumpt = pkgs.gofumpt;
@@ -34,6 +35,7 @@
           echo-request = pkgs.writeShellScriptBin "echo-request" '' "$WORKSPACE_DIR"/scripts/echo-request.ts "$@" '';
           echo-websocket = pkgs.writeShellScriptBin "echo-websocket" '' "$WORKSPACE_DIR"/scripts/echo-websocket.ts "$@" '';
           fmt = pkgs.writeShellScriptBin "fmt" '' "$WORKSPACE_DIR"/scripts/fmt.ts "$@" '';
+          generate = pkgs.writeShellScriptBin "generate" '' "$WORKSPACE_DIR"/scripts/generate.ts "$@" '';
           lint = pkgs.writeShellScriptBin "lint" '' "$WORKSPACE_DIR"/scripts/lint.ts "$@" '';
           logs = pkgs.writeShellScriptBin "logs" '' "$WORKSPACE_DIR"/scripts/logs.ts "$@" '';
           tests = pkgs.writeShellScriptBin "tests" '' "$WORKSPACE_DIR"/scripts/tests.ts "$@" '';

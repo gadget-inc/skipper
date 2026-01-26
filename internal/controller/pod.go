@@ -21,6 +21,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/go-json-experiment/json"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,7 +43,7 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Function) (in
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
-	assignmentsTotal.WithLabelValues(fn.Deployment).Inc()
+	assignmentsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
 GET_UNASSIGNED_POD:
 	var unassignedPod *v1.Pod
@@ -56,11 +58,7 @@ GET_UNASSIGNED_POD:
 		return nil, err
 	}
 
-	var fnJSON []byte
-	fnJSON, err = json.Marshal(fn)
-	if err == nil {
-		fnJSON, err = json.Marshal(string(fnJSON)) // escape the json so it can be used in the json patch
-	}
+	fnJSON, err := json.Marshal(fn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal function: %w", err)
 	}
@@ -73,8 +71,8 @@ GET_UNASSIGNED_POD:
 		{ "op": "test", "path": "` + key.Function.PatchAnnotation + `", "value": null },
 		{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
 		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
-		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.Tenant + `" },
-		{ "op": "add", "path": "` + key.Function.PatchAnnotation + `", "value": ` + string(fnJSON) + ` },
+		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.GetTenant() + `" },
+		{ "op": "add", "path": "` + key.Function.PatchAnnotation + `", "value": ` + strconv.Quote(string(fnJSON)) + ` },
 		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
 	]`)
 
@@ -105,7 +103,7 @@ GET_UNASSIGNED_POD:
 
 	now := time.Now()
 	token := paseto.NewToken()
-	token.SetSubject(fn.Tenant)
+	token.SetSubject(fn.GetTenant())
 	token.SetIssuedAt(now)
 	token.SetNotBefore(now)
 	token.SetExpiration(now.Add(7 * 24 * time.Hour))
@@ -147,8 +145,8 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Functi
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	waitingForUnassignedPods.WithLabelValues(fn.Deployment).Inc()
-	defer waitingForUnassignedPods.WithLabelValues(fn.Deployment).Dec()
+	waitingForUnassignedPods.WithLabelValues(fn.GetDeployment()).Inc()
+	defer waitingForUnassignedPods.WithLabelValues(fn.GetDeployment()).Dec()
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		unassignedPods, err := ctrl.getUnassignedPods(fn)
@@ -164,12 +162,12 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Functi
 }
 
 func (ctrl *Controller) getUnassignedPods(fn *skipper.Function) ([]*v1.Pod, error) {
-	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.Deployment})
+	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.GetDeployment()})
 	if err != nil {
 		return nil, err
 	}
 
-	pods, err := ctrl.listPods(fn.Namespace, doesNotHaveTenantSelector.Add(*equalDeploymentName))
+	pods, err := ctrl.listPods(fn.GetNamespace(), doesNotHaveTenantSelector.Add(*equalDeploymentName))
 	if err != nil {
 		return nil, err
 	}
@@ -185,13 +183,13 @@ func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Funct
 	}
 
 	// filter out instances that are unready
-	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool { return instance.ReadyAt.IsZero() }), nil
+	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool { return !instance.HasReadyAt() }), nil
 }
 
 func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
-	assignedPods, err := ctrl.listPods(fn.Namespace, labels.SelectorFromSet(labels.Set{
-		key.Tenant.Label:     fn.Tenant,
-		key.Deployment.Label: fn.Deployment,
+	assignedPods, err := ctrl.listPods(fn.GetNamespace(), labels.SelectorFromSet(labels.Set{
+		key.Tenant.Label:     fn.GetTenant(),
+		key.Deployment.Label: fn.GetDeployment(),
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
@@ -211,7 +209,7 @@ func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Function) 
 			continue
 		}
 
-		if !instance.Function.Equal(fn) {
+		if !proto.Equal(instance.GetFunction(), fn) {
 			// pod is assigned to a different function
 			continue
 		}
@@ -362,26 +360,14 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 		return nil, err
 	}
 
-	instance := &skipper.Instance{
-		Function: fn,
-		Name:     pod.Name,
-	}
-
-	instance.ReplicaSet = pod.Annotations[key.ReplicaSet.Annotation]
-	if instance.ReplicaSet == "" {
+	replicaSet := pod.Annotations[key.ReplicaSet.Annotation]
+	if replicaSet == "" {
 		return nil, errors.New("missing replica set annotation")
 	}
 
-	instance.AssignedAt, err = time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Annotation])
+	assignedAt, err := time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Annotation])
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
-	}
-
-	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Annotation]; ok && isPodReady(pod) {
-		instance.ReadyAt, err = time.Parse(time.RFC3339, readyAtStr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)
-		}
 	}
 
 	port, err := portFromPod(pod)
@@ -389,17 +375,33 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 		return nil, err
 	}
 
-	instance.Addr = net.JoinHostPort(pod.Status.PodIP, port)
-
+	var cpuUsageMilli, memoryUsageMib uint32
 	if podMetric, ok := ctrl.podMetrics.Load(pod.Namespace + "/" + pod.Name); ok {
 		for _, container := range podMetric.Containers {
 			if container.Usage.Cpu() != nil {
-				instance.CPUUsageMilli += uint32(container.Usage.Cpu().MilliValue())
+				cpuUsageMilli += uint32(container.Usage.Cpu().MilliValue())
 			}
 			if container.Usage.Memory() != nil {
-				instance.MemoryUsageMiB += uint32(container.Usage.Memory().Value() / 1024 / 1024) // convert to MiB
+				memoryUsageMib += uint32(container.Usage.Memory().Value() / 1024 / 1024) // convert to MiB
 			}
 		}
+	}
+
+	instance := &skipper.Instance{}
+	instance.SetFunction(fn)
+	instance.SetName(pod.Name)
+	instance.SetReplicaSet(replicaSet)
+	instance.SetAssignedAt(timestamppb.New(assignedAt))
+	instance.SetAddr(net.JoinHostPort(pod.Status.PodIP, port))
+	instance.SetCpuUsageMilli(cpuUsageMilli)
+	instance.SetMemoryUsageMib(memoryUsageMib)
+
+	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Annotation]; ok && isPodReady(pod) {
+		readyAt, err := time.Parse(time.RFC3339, readyAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)
+		}
+		instance.SetReadyAt(timestamppb.New(readyAt))
 	}
 
 	return instance, nil
