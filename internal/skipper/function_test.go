@@ -181,15 +181,15 @@ func hashStringsBuilder(f *Function) string {
 	b.WriteByte('/')
 	b.WriteString(f.Metadata)
 	b.WriteByte('/')
-	b.WriteString(strconv.FormatUint(f.Scale.MinInstances, 10))
+	b.WriteString(strconv.FormatUint(uint64(f.Scale.MinInstances), 10))
 	b.WriteByte('/')
-	b.WriteString(strconv.FormatUint(f.Scale.MaxInstances, 10))
+	b.WriteString(strconv.FormatUint(uint64(f.Scale.MaxInstances), 10))
 	b.WriteByte('/')
-	b.WriteString(strconv.FormatUint(f.Scale.TargetCPUUsageMilli, 10))
+	b.WriteString(strconv.FormatUint(uint64(f.Scale.TargetCPUUsageMilli), 10))
 	b.WriteByte('/')
-	b.WriteString(strconv.FormatUint(f.Scale.TargetMemoryUsageMiB, 10))
+	b.WriteString(strconv.FormatUint(uint64(f.Scale.TargetMemoryUsageMiB), 10))
 	b.WriteByte('/')
-	b.WriteString(strconv.FormatUint(f.Scale.TargetInFlightRequests, 10))
+	b.WriteString(strconv.FormatUint(uint64(f.Scale.TargetInFlightRequests), 10))
 	return b.String()
 }
 
@@ -203,16 +203,16 @@ func hashFNV64(f *Function) uint64 {
 	h.Write([]byte(f.Tenant))
 	h.Write([]byte{0})
 	h.Write([]byte(f.Metadata))
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MinInstances))
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.MinInstances)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MaxInstances))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.MaxInstances)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetCPUUsageMilli))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetCPUUsageMilli)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetMemoryUsageMiB))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetMemoryUsageMiB)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetInFlightRequests))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetInFlightRequests)
 	h.Write(buf[:])
 	return h.Sum64()
 }
@@ -227,16 +227,16 @@ func hashXXHash(f *Function) uint64 {
 	_, _ = h.WriteString(f.Tenant)
 	_, _ = h.Write([]byte{0})
 	_, _ = h.WriteString(f.Metadata)
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MinInstances))
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.MinInstances)
 	_, _ = h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MaxInstances))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.MaxInstances)
 	_, _ = h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetCPUUsageMilli))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetCPUUsageMilli)
 	_, _ = h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetMemoryUsageMiB))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetMemoryUsageMiB)
 	_, _ = h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetInFlightRequests))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetInFlightRequests)
 	_, _ = h.Write(buf[:])
 	return h.Sum64()
 }
@@ -252,16 +252,16 @@ func hashMapHash(f *Function) uint64 {
 	h.WriteString(f.Tenant)
 	h.WriteByte(0)
 	h.WriteString(f.Metadata)
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MinInstances))
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.MinInstances)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.MaxInstances))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.MaxInstances)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetCPUUsageMilli))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetCPUUsageMilli)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetMemoryUsageMiB))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetMemoryUsageMiB)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], uint64(f.Scale.TargetInFlightRequests))
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetInFlightRequests)
 	h.Write(buf[:])
 	return h.Sum64()
 }
@@ -315,27 +315,27 @@ func TestFunctionFromHeader(t *testing.T) {
 		{
 			name:    "negative min instances",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"min_instances":-1}}`,
-			wantErr: "into Go uint64",
+			wantErr: "into Go uint32",
 		},
 		{
 			name:    "negative max instances",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"max_instances":-1}}`,
-			wantErr: "into Go uint64",
+			wantErr: "into Go uint32",
 		},
 		{
 			name:    "negative target cpu usage",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_cpu_usage_milli":-1}}`,
-			wantErr: "into Go uint64",
+			wantErr: "into Go uint32",
 		},
 		{
 			name:    "negative target memory usage",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_memory_usage_mib":-1}}`,
-			wantErr: "into Go uint64",
+			wantErr: "into Go uint32",
 		},
 		{
 			name:    "negative target in flight requests",
 			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"target_in_flight_requests":-1}}`,
-			wantErr: "into Go uint64",
+			wantErr: "into Go uint32",
 		},
 		{
 			name:    "nil scale",

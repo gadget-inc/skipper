@@ -237,7 +237,7 @@ func TestScale(t *testing.T) {
 
 	testCases := []struct {
 		name             string
-		desiredInstances uint64
+		desiredInstances uint32
 		err              error
 		setup            func(*testing.T, *testState)
 		check            func(*testing.T, *testState)
@@ -581,7 +581,7 @@ func TestScaleForwarding(t *testing.T) {
 
 	// Set up mock client to handle forwarded scale request
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn *skipper.Function, desiredInstances uint64, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
+	mcc.HandleScale(func(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
 		return []*skipper.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
@@ -1058,7 +1058,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		name              string
 		metricName        Metric
 		podMetrics        []*skipper.Instance
-		targetUsage       uint64
+		targetUsage       uint32
 		expectedInstances int
 	}{
 		// ==================== Basic scaling decisions ====================
@@ -1262,10 +1262,10 @@ func TestHeartbeat(t *testing.T) {
 			assert.Assert(t, ok)
 			if tc.shouldUpdate {
 				assert.Assert(t, stored.Timestamp.Equal(tc.newTime))
-				assert.Equal(t, uint64(20), stored.InFlightRequests)
+				assert.Equal(t, uint32(20), stored.InFlightRequests)
 			} else {
 				assert.Assert(t, stored.Timestamp.Equal(tc.existingTime))
-				assert.Equal(t, uint64(10), stored.InFlightRequests)
+				assert.Equal(t, uint32(10), stored.InFlightRequests)
 			}
 		})
 	}
@@ -1325,7 +1325,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 		name                     string
 		routerHeartbeats         map[string]*skipper.Heartbeat
 		instances                []*skipper.Instance
-		expectedInFlightRequests uint64
+		expectedInFlightRequests uint32
 		expectedTimestampSource  string // "router1", "router2", "instance"
 	}{
 		{
@@ -1610,8 +1610,8 @@ func TestCalculateDesiredInstances(t *testing.T) {
 		name                     string
 		heartbeat                *skipper.Heartbeat
 		instances                []*skipper.Instance
-		expectedDesiredInstances uint64
-		expectedUnclampedDesired uint64
+		expectedDesiredInstances uint32
+		expectedUnclampedDesired uint32
 		expectedReason           skipper.ScaleReason
 	}{
 		{

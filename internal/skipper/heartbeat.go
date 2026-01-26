@@ -11,7 +11,7 @@ import (
 type Heartbeat struct {
 	Function         *Function `json:"function"`
 	Timestamp        time.Time `json:"timestamp"`
-	InFlightRequests uint64    `json:"in_flight_requests"`
+	InFlightRequests uint32    `json:"in_flight_requests"`
 }
 
 var _ slog.LogValuer = (*Heartbeat)(nil)
@@ -32,17 +32,17 @@ func (h *Heartbeat) Equal(other *Heartbeat) bool {
 		h.InFlightRequests == other.InFlightRequests
 }
 
-func (h *Heartbeat) GetInFlightRequests() uint64 {
+func (h *Heartbeat) GetInFlightRequests() uint32 {
 	if h == nil {
 		return 0
 	}
 	return h.InFlightRequests
 }
 
-// MarshalJSON implements json.Marshaler, encoding integers as strings for protobuf compatibility.
+// MarshalJSON implements json.Marshaler.
 func (h *Heartbeat) MarshalJSON() ([]byte, error) {
 	type Alias Heartbeat
-	return json.Marshal((*Alias)(h), json.StringifyNumbers(true))
+	return json.Marshal((*Alias)(h))
 }
 
 // UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.

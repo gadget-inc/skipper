@@ -15,8 +15,8 @@ type Instance struct {
 	ReplicaSet     string    `json:"replica_set"`      // replica set name
 	AssignedAt     time.Time `json:"assigned_at"`      // time the instance was assigned to the pod
 	ReadyAt        time.Time `json:"ready_at"`         // time the instance was ready to receive traffic
-	CPUUsageMilli  uint64    `json:"cpu_usage_milli"`  // cpu usage in millicores
-	MemoryUsageMiB uint64    `json:"memory_usage_mib"` // memory usage in MiB
+	CPUUsageMilli  uint32    `json:"cpu_usage_milli"`  // cpu usage in millicores
+	MemoryUsageMiB uint32    `json:"memory_usage_mib"` // memory usage in MiB
 }
 
 var _ slog.LogValuer = (*Instance)(nil)
@@ -47,10 +47,10 @@ func (i *Instance) Equal(other *Instance) bool {
 		i.MemoryUsageMiB == other.MemoryUsageMiB
 }
 
-// MarshalJSON implements json.Marshaler, encoding integers as strings for protobuf compatibility.
+// MarshalJSON implements json.Marshaler.
 func (i *Instance) MarshalJSON() ([]byte, error) {
 	type Alias Instance
-	return json.Marshal((*Alias)(i), json.StringifyNumbers(true))
+	return json.Marshal((*Alias)(i))
 }
 
 // UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.

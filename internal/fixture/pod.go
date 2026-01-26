@@ -150,8 +150,8 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 					Ports:   []v1.ContainerPort{{ContainerPort: int32(port)}},
 					Resources: v1.ResourceRequirements{
 						Requests: v1.ResourceList{
-							v1.ResourceCPU:    resource.MustParse(strconv.FormatUint(fn.Scale.TargetCPUUsageMilli, 10) + "m"),
-							v1.ResourceMemory: resource.MustParse(strconv.FormatUint(fn.Scale.TargetMemoryUsageMiB, 10) + "Mi"),
+							v1.ResourceCPU:    resource.MustParse(strconv.FormatUint(uint64(fn.Scale.TargetCPUUsageMilli), 10) + "m"),
+							v1.ResourceMemory: resource.MustParse(strconv.FormatUint(uint64(fn.Scale.TargetMemoryUsageMiB), 10) + "Mi"),
 						},
 					},
 				},

@@ -5,11 +5,11 @@
 		"tenant": "tenant-123",
 		"metadata": "metadata-value",
 		"scale": {
-			"min_instances": "1",
-			"max_instances": "10",
-			"target_cpu_usage_milli": "500",
-			"target_memory_usage_mib": "256",
-			"target_in_flight_requests": "100"
+			"min_instances": 1,
+			"max_instances": 10,
+			"target_cpu_usage_milli": 500,
+			"target_memory_usage_mib": 256,
+			"target_in_flight_requests": 100
 		}
 	},
 	"Heartbeat": {
@@ -19,15 +19,15 @@
 			"tenant": "tenant-123",
 			"metadata": "metadata-value",
 			"scale": {
-				"min_instances": "1",
-				"max_instances": "10",
-				"target_cpu_usage_milli": "500",
-				"target_memory_usage_mib": "256",
-				"target_in_flight_requests": "100"
+				"min_instances": 1,
+				"max_instances": 10,
+				"target_cpu_usage_milli": 500,
+				"target_memory_usage_mib": 256,
+				"target_in_flight_requests": 100
 			}
 		},
 		"timestamp": "2024-01-15T10:30:00Z",
-		"in_flight_requests": "42"
+		"in_flight_requests": 42
 	},
 	"Instance": {
 		"function": {
@@ -36,11 +36,11 @@
 			"tenant": "tenant-123",
 			"metadata": "metadata-value",
 			"scale": {
-				"min_instances": "1",
-				"max_instances": "10",
-				"target_cpu_usage_milli": "500",
-				"target_memory_usage_mib": "256",
-				"target_in_flight_requests": "100"
+				"min_instances": 1,
+				"max_instances": 10,
+				"target_cpu_usage_milli": 500,
+				"target_memory_usage_mib": 256,
+				"target_in_flight_requests": 100
 			}
 		},
 		"name": "my-app-abc123",
@@ -48,19 +48,19 @@
 		"replica_set": "my-app-5f4b8c",
 		"assigned_at": "2024-01-15T10:30:00Z",
 		"ready_at": "2024-01-15T10:30:05Z",
-		"cpu_usage_milli": "250",
-		"memory_usage_mib": "128"
+		"cpu_usage_milli": 250,
+		"memory_usage_mib": 128
 	},
 	"Scale": {
-		"min_instances": "1",
-		"max_instances": "10",
-		"target_cpu_usage_milli": "500",
-		"target_memory_usage_mib": "256",
-		"target_in_flight_requests": "100"
+		"min_instances": 1,
+		"max_instances": 10,
+		"target_cpu_usage_milli": 500,
+		"target_memory_usage_mib": 256,
+		"target_in_flight_requests": 100
 	},
 	"ScaleDecision": {
-		"desired_instances": "3",
-		"unclamped_desired_instances": "5",
+		"desired_instances": 3,
+		"unclamped_desired_instances": 5,
 		"reason": "CPU",
 		"metrics": [
 			{

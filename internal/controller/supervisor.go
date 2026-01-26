@@ -176,7 +176,7 @@ func (s *Supervisor) combinedHeartbeat(instances []*skipper.Instance) *skipper.H
 
 // recordRecommendation adds a scaling recommendation to the stabilization window,
 // prunes expired entries, and returns the maximum recommendation within the window.
-func (s *Supervisor) recordRecommendation(desiredInstances uint64) Recommendation {
+func (s *Supervisor) recordRecommendation(desiredInstances uint32) Recommendation {
 	now := time.Now()
 	cutoff := now.Add(-s.ctrl.config.HPADownscaleStabilization)
 	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{
@@ -225,7 +225,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
 	maxRecommendation := s.recordRecommendation(scalingDecision.DesiredInstances)
 
-	currentInstances := uint64(len(instances))
+	currentInstances := uint32(len(instances))
 	isScalingDown := scalingDecision.DesiredInstances < currentInstances || scalingDecision.DesiredInstances == 0
 
 	if isScalingDown {
@@ -331,8 +331,8 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, instances []*skipper.
 		log.Info(ctx, "scaling decision was clamped")
 	}
 
-	ready := uint64(len(readyInstances))
-	unready := uint64(len(unreadyInstances))
+	ready := uint32(len(readyInstances))
+	unready := uint32(len(unreadyInstances))
 	desired := decision.DesiredInstances
 	total := ready + unready
 
@@ -554,7 +554,7 @@ const (
 
 // Recommendation represents a scaling recommendation at a point in time
 type Recommendation struct {
-	DesiredInstances uint64
+	DesiredInstances uint32
 	Timestamp        time.Time
 }
 
@@ -565,7 +565,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 	var instancesWithoutMetrics []*skipper.Instance
 
 	for _, instance := range instances {
-		var usage uint64
+		var usage uint32
 		switch metric {
 		case MetricCPU:
 			usage = instance.CPUUsageMilli
@@ -592,8 +592,8 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 		return currentInstances, 0
 	}
 
-	var targetUsage uint64
-	var totalUsage uint64
+	var targetUsage uint32
+	var totalUsage uint32
 	for _, instance := range instancesWithMetrics {
 		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
@@ -625,7 +625,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 		adjustedTotalUsage := totalUsage
 		if desiredInstances < currentInstances {
 			// we wanted to scale down, so we assume that instances without metrics are consuming 100% of the target usage
-			adjustedTotalUsage += uint64(len(instancesWithoutMetrics)) * targetUsage
+			adjustedTotalUsage += uint32(len(instancesWithoutMetrics)) * targetUsage
 		} else { //nolint:staticcheck
 			// we wanted to scale up, so we assume that instances without metrics are consuming 0% of the target usage
 			// so no adjustment is needed
@@ -695,11 +695,11 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skip
 	// Apply min/max clamping
 	minInstances := heartbeat.Function.Scale.MinInstances
 	maxInstances := heartbeat.Function.Scale.MaxInstances
-	clampedValue := min(max(uint64(maxDesiredInstances), minInstances), maxInstances)
+	clampedValue := min(max(uint32(maxDesiredInstances), minInstances), maxInstances)
 
 	return skipper.ScaleDecision{
 		DesiredInstances:          clampedValue,
-		UnclampedDesiredInstances: uint64(maxDesiredInstances),
+		UnclampedDesiredInstances: uint32(maxDesiredInstances),
 		Reason:                    scaleReason,
 		Metrics:                   scaleMetrics,
 	}

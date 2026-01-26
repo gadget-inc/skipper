@@ -29,24 +29,24 @@ func TestKeys(t *testing.T) {
 		key.Addr.Attr(fakeString),
 		key.AssignedAt.Attr(fakeTime),
 		key.Attempt.Attr(fakeInt),
-		key.CPUUsageMilli.Attr(fakeUint64),
+		key.CPUUsageMilli.Attr(fakeUint32),
 		key.Count.Attr(fakeInt),
 		key.Deployment.Attr(fakeString),
-		key.DesiredInstances.Attr(fakeUint64),
+		key.DesiredInstances.Attr(fakeUint32),
 		key.Duration.Attr(fakeDuration),
 		key.Error.Attr(fakeError),
 		key.ExcludeInstanceNames.Attr(fakeStringSlice),
 		key.Function.Attr(fakeFunction),
 		key.GetInstanceDurationMs.Attr(fakeDuration),
 		key.Heartbeat.Attr(fakeHeartbeat),
-		key.InFlightRequests.Attr(fakeUint64),
+		key.InFlightRequests.Attr(fakeUint32),
 		key.Instance.Attr(fakeInstance),
 		key.K8sReplicaSet.Attr(fakeReplicaSet),
 		key.Labels.Attr(fakeStringMap),
-		key.MaxInstances.Attr(fakeUint64),
-		key.MemoryUsageMiB.Attr(fakeUint64),
+		key.MaxInstances.Attr(fakeUint32),
+		key.MemoryUsageMiB.Attr(fakeUint32),
 		key.Metadata.Attr(fakeString),
-		key.MinInstances.Attr(fakeUint64),
+		key.MinInstances.Attr(fakeUint32),
 		key.Name.Attr(fakeString),
 		key.Namespace.Attr(fakeString),
 		key.Pod.Attr(fakePod),
@@ -60,13 +60,13 @@ func TestKeys(t *testing.T) {
 		key.RouterIP.Attr(fakeString),
 		key.Scale.Attr(fakeScale),
 		key.ScaleDecision.Attr(fakeScaleDecision),
-		key.TargetCPUUsageMilli.Attr(fakeUint64),
-		key.TargetInFlightRequests.Attr(fakeUint64),
-		key.TargetMemoryUsageMiB.Attr(fakeUint64),
+		key.TargetCPUUsageMilli.Attr(fakeUint32),
+		key.TargetInFlightRequests.Attr(fakeUint32),
+		key.TargetMemoryUsageMiB.Attr(fakeUint32),
 		key.Tenant.Attr(fakeString),
 		key.Timestamp.Attr(fakeTime),
 		key.URL.Attr(fakeURL),
-		key.UnclampedDesiredInstances.Attr(fakeUint64),
+		key.UnclampedDesiredInstances.Attr(fakeUint32),
 		key.UnreadyInstances.Attr(fakeInt),
 	}
 
@@ -141,7 +141,7 @@ func sortMapKeys(m map[string]any) map[string]any {
 var (
 	fakeString      = "test"
 	fakeInt         = 42
-	fakeUint64      = uint64(42)
+	fakeUint32      = uint32(42)
 	fakeFloat       = 1.5
 	fakeTime        = time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 	fakeDuration    = 100 * time.Millisecond
@@ -150,11 +150,11 @@ var (
 	fakeStringMap   = map[string]string{"key": "value"}
 
 	fakeScale = &skipper.Scale{
-		MinInstances:           fakeUint64,
-		MaxInstances:           fakeUint64,
-		TargetCPUUsageMilli:    fakeUint64,
-		TargetMemoryUsageMiB:   fakeUint64,
-		TargetInFlightRequests: fakeUint64,
+		MinInstances:           fakeUint32,
+		MaxInstances:           fakeUint32,
+		TargetCPUUsageMilli:    fakeUint32,
+		TargetMemoryUsageMiB:   fakeUint32,
+		TargetInFlightRequests: fakeUint32,
 	}
 
 	fakeFunction = &skipper.Function{
@@ -168,7 +168,7 @@ var (
 	fakeHeartbeat = &skipper.Heartbeat{
 		Function:         fakeFunction,
 		Timestamp:        fakeTime,
-		InFlightRequests: fakeUint64,
+		InFlightRequests: fakeUint32,
 	}
 
 	fakeInstance = &skipper.Instance{
@@ -178,13 +178,13 @@ var (
 		ReplicaSet:     fakeString,
 		AssignedAt:     fakeTime,
 		ReadyAt:        fakeTime,
-		CPUUsageMilli:  fakeUint64,
-		MemoryUsageMiB: fakeUint64,
+		CPUUsageMilli:  fakeUint32,
+		MemoryUsageMiB: fakeUint32,
 	}
 
 	fakeScaleDecision = skipper.ScaleDecision{
-		DesiredInstances:          fakeUint64,
-		UnclampedDesiredInstances: fakeUint64,
+		DesiredInstances:          fakeUint32,
+		UnclampedDesiredInstances: fakeUint32,
 		Reason:                    skipper.ScaleReason(fakeString),
 		Metrics:                   []skipper.ScaleMetric{{Name: fakeString, Value: fakeFloat}},
 	}

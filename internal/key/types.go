@@ -41,8 +41,8 @@ func intKey(name string) Key[int] {
 	return newKey(name, func(id Identifier, v int) slog.Attr { return slog.Int(id.Name, v) })
 }
 
-func uint64Key(name string) Key[uint64] {
-	return newKey(name, func(id Identifier, v uint64) slog.Attr { return slog.Uint64(id.Name, v) })
+func uint32Key(name string) Key[uint32] {
+	return newKey(name, func(id Identifier, v uint32) slog.Attr { return slog.Int(id.Name, int(v)) })
 }
 
 func stringSliceKey(name string) Key[[]string] {

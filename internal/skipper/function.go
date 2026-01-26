@@ -37,16 +37,16 @@ func (f *Function) Hash() FunctionHash {
 	h.WriteString(f.Tenant)
 	h.WriteByte(0)
 	h.WriteString(f.Metadata)
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], f.Scale.MinInstances)
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.MinInstances)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], f.Scale.MaxInstances)
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.MaxInstances)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], f.Scale.TargetCPUUsageMilli)
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetCPUUsageMilli)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], f.Scale.TargetMemoryUsageMiB)
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetMemoryUsageMiB)
 	h.Write(buf[:])
-	binary.LittleEndian.PutUint64(buf[:], f.Scale.TargetInFlightRequests)
+	binary.LittleEndian.PutUint32(buf[:], f.Scale.TargetInFlightRequests)
 	h.Write(buf[:])
 	return h.Sum64()
 }

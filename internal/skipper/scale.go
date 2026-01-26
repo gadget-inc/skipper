@@ -9,11 +9,11 @@ import (
 )
 
 type Scale struct {
-	MinInstances           uint64 `json:"min_instances"`
-	MaxInstances           uint64 `json:"max_instances"`
-	TargetCPUUsageMilli    uint64 `json:"target_cpu_usage_milli"`
-	TargetMemoryUsageMiB   uint64 `json:"target_memory_usage_mib"`
-	TargetInFlightRequests uint64 `json:"target_in_flight_requests"`
+	MinInstances           uint32 `json:"min_instances"`
+	MaxInstances           uint32 `json:"max_instances"`
+	TargetCPUUsageMilli    uint32 `json:"target_cpu_usage_milli"`
+	TargetMemoryUsageMiB   uint32 `json:"target_memory_usage_mib"`
+	TargetInFlightRequests uint32 `json:"target_in_flight_requests"`
 }
 
 var _ slog.LogValuer = (*Scale)(nil)
@@ -39,10 +39,10 @@ func (s *Scale) Equal(other *Scale) bool {
 		s.TargetInFlightRequests == other.TargetInFlightRequests
 }
 
-// MarshalJSON implements json.Marshaler, encoding integers as strings for protobuf compatibility.
+// MarshalJSON implements json.Marshaler.
 func (s *Scale) MarshalJSON() ([]byte, error) {
 	type Alias Scale
-	return json.Marshal((*Alias)(s), json.StringifyNumbers(true))
+	return json.Marshal((*Alias)(s))
 }
 
 // UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
@@ -58,8 +58,8 @@ func (s *Scale) UnmarshalJSON(data []byte) error {
 
 // ScaleDecision contains the inputs and result of one scaling loop for one tenant
 type ScaleDecision struct {
-	DesiredInstances          uint64        `json:"desired_instances"`
-	UnclampedDesiredInstances uint64        `json:"unclamped_desired_instances"`
+	DesiredInstances          uint32        `json:"desired_instances"`
+	UnclampedDesiredInstances uint32        `json:"unclamped_desired_instances"`
 	Reason                    ScaleReason   `json:"reason"`
 	Metrics                   []ScaleMetric `json:"metrics"`
 }
@@ -81,10 +81,10 @@ func (sd ScaleDecision) LogValue() slog.Value {
 	)
 }
 
-// MarshalJSON implements json.Marshaler, encoding integers as strings for protobuf compatibility.
+// MarshalJSON implements json.Marshaler.
 func (sd *ScaleDecision) MarshalJSON() ([]byte, error) {
 	type Alias ScaleDecision
-	return json.Marshal((*Alias)(sd), json.StringifyNumbers(true))
+	return json.Marshal((*Alias)(sd))
 }
 
 // UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
