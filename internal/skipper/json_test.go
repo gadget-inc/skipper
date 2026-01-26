@@ -195,6 +195,126 @@ func TestScaleDecisionUnmarshalProtobufFormat(t *testing.T) {
 	assert.DeepEqual(t, decision, goldenScaleDecision)
 }
 
+func TestBackwardsCompatibleUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	t.Run("Scale", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			name  string
+			input string
+		}{
+			{
+				name:  "number format (old)",
+				input: `{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}`,
+			},
+			{
+				name:  "string format (new)",
+				input: `{"min_instances":"1","max_instances":"10","target_cpu_usage_milli":"500","target_memory_usage_mib":"256","target_in_flight_requests":"100"}`,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				var scale Scale
+				err := json.Unmarshal([]byte(tc.input), &scale)
+				assert.NilError(t, err)
+				assert.DeepEqual(t, &scale, goldenScale)
+			})
+		}
+	})
+
+	t.Run("ScaleDecision", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			name  string
+			input string
+		}{
+			{
+				name:  "number format (old)",
+				input: `{"desired_instances":3,"unclamped_desired_instances":5,"reason":"CPU","metrics":[{"name":"cpu","value":0.75},{"name":"memory","value":0.5}]}`,
+			},
+			{
+				name:  "string format (new)",
+				input: `{"desired_instances":"3","unclamped_desired_instances":"5","reason":"CPU","metrics":[{"name":"cpu","value":0.75},{"name":"memory","value":0.5}]}`,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				var decision ScaleDecision
+				err := json.Unmarshal([]byte(tc.input), &decision)
+				assert.NilError(t, err)
+				assert.DeepEqual(t, decision, goldenScaleDecision)
+			})
+		}
+	})
+
+	t.Run("Instance", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			name  string
+			input string
+		}{
+			{
+				name:  "number format (old)",
+				input: `{"function":{"namespace":"skipper-production","deployment":"my-app","tenant":"tenant-123","metadata":"metadata-value","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}},"name":"my-app-abc123","addr":"10.0.0.1:8080","replica_set":"my-app-5f4b8c","assigned_at":"2024-01-15T10:30:00Z","ready_at":"2024-01-15T10:30:05Z","cpu_usage_milli":250,"memory_usage_mib":128}`,
+			},
+			{
+				name:  "string format (new)",
+				input: `{"function":{"namespace":"skipper-production","deployment":"my-app","tenant":"tenant-123","metadata":"metadata-value","scale":{"min_instances":"1","max_instances":"10","target_cpu_usage_milli":"500","target_memory_usage_mib":"256","target_in_flight_requests":"100"}},"name":"my-app-abc123","addr":"10.0.0.1:8080","replica_set":"my-app-5f4b8c","assigned_at":"2024-01-15T10:30:00Z","ready_at":"2024-01-15T10:30:05Z","cpu_usage_milli":"250","memory_usage_mib":"128"}`,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				var instance Instance
+				err := json.Unmarshal([]byte(tc.input), &instance)
+				assert.NilError(t, err)
+				assert.DeepEqual(t, &instance, goldenInstance)
+			})
+		}
+	})
+
+	t.Run("Heartbeat", func(t *testing.T) {
+		t.Parallel()
+
+		testCases := []struct {
+			name  string
+			input string
+		}{
+			{
+				name:  "number format (old)",
+				input: `{"function":{"namespace":"skipper-production","deployment":"my-app","tenant":"tenant-123","metadata":"metadata-value","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}},"timestamp":"2024-01-15T10:30:00Z","in_flight_requests":42}`,
+			},
+			{
+				name:  "string format (new)",
+				input: `{"function":{"namespace":"skipper-production","deployment":"my-app","tenant":"tenant-123","metadata":"metadata-value","scale":{"min_instances":"1","max_instances":"10","target_cpu_usage_milli":"500","target_memory_usage_mib":"256","target_in_flight_requests":"100"}},"timestamp":"2024-01-15T10:30:00Z","in_flight_requests":"42"}`,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				var heartbeat Heartbeat
+				err := json.Unmarshal([]byte(tc.input), &heartbeat)
+				assert.NilError(t, err)
+				assert.DeepEqual(t, &heartbeat, goldenHeartbeat)
+			})
+		}
+	})
+}
+
 func TestNormalizeScaleReason(t *testing.T) {
 	t.Parallel()
 

@@ -56,9 +56,10 @@ func (i *Instance) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
 func (i *Instance) UnmarshalJSON(data []byte) error {
 	type Alias Instance
-	// Try normal unmarshal first (for JSON numbers), then with StringifyNumbers (for string-encoded numbers)
-	if err := json.Unmarshal(data, (*Alias)(i)); err == nil {
+	// Try with StringifyNumbers first (for string-encoded numbers, the common case),
+	// then without it (for JSON numbers, backwards compatibility)
+	if err := json.Unmarshal(data, (*Alias)(i), json.StringifyNumbers(true)); err == nil {
 		return nil
 	}
-	return json.Unmarshal(data, (*Alias)(i), json.StringifyNumbers(true))
+	return json.Unmarshal(data, (*Alias)(i))
 }

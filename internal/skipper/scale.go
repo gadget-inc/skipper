@@ -45,10 +45,15 @@ func (s *Scale) MarshalJSON() ([]byte, error) {
 	return json.Marshal((*Alias)(s), json.StringifyNumbers(true))
 }
 
-// UnmarshalJSON implements json.Unmarshaler, expecting string-encoded integers.
+// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
 func (s *Scale) UnmarshalJSON(data []byte) error {
 	type Alias Scale
-	return json.Unmarshal(data, (*Alias)(s), json.StringifyNumbers(true))
+	// Try with StringifyNumbers first (for string-encoded numbers, the common case),
+	// then without it (for JSON numbers, backwards compatibility)
+	if err := json.Unmarshal(data, (*Alias)(s), json.StringifyNumbers(true)); err == nil {
+		return nil
+	}
+	return json.Unmarshal(data, (*Alias)(s))
 }
 
 // ScaleDecision contains the inputs and result of one scaling loop for one tenant
@@ -82,10 +87,15 @@ func (sd *ScaleDecision) MarshalJSON() ([]byte, error) {
 	return json.Marshal((*Alias)(sd), json.StringifyNumbers(true))
 }
 
-// UnmarshalJSON implements json.Unmarshaler, expecting string-encoded integers.
+// UnmarshalJSON implements json.Unmarshaler, accepting both number and string-encoded integers.
 func (sd *ScaleDecision) UnmarshalJSON(data []byte) error {
 	type Alias ScaleDecision
-	return json.Unmarshal(data, (*Alias)(sd), json.StringifyNumbers(true))
+	// Try with StringifyNumbers first (for string-encoded numbers, the common case),
+	// then without it (for JSON numbers, backwards compatibility)
+	if err := json.Unmarshal(data, (*Alias)(sd), json.StringifyNumbers(true)); err == nil {
+		return nil
+	}
+	return json.Unmarshal(data, (*Alias)(sd))
 }
 
 // ScaleReason represents the reason for a scaling decision.
