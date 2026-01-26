@@ -75,26 +75,14 @@ const (
 )
 
 // IsValidScaleReason returns true if the given string is a known scale reason.
-// Accepts both prefixed (SCALE_REASON_CPU) and unprefixed (CPU) formats.
 func IsValidScaleReason(reason string) bool {
 	switch reason {
 	case "SCALE_REASON_CPU", "SCALE_REASON_HEARTBEAT_TIMEOUT", "SCALE_REASON_IN_FLIGHT_REQUESTS",
-		"SCALE_REASON_MEMORY", "SCALE_REASON_NO_READY_INSTANCES", "SCALE_REASON_UNKNOWN",
-		"CPU", "HEARTBEAT_TIMEOUT", "IN_FLIGHT_REQUESTS", "MEMORY", "NO_READY_INSTANCES", "UNKNOWN":
+		"SCALE_REASON_MEMORY", "SCALE_REASON_NO_READY_INSTANCES", "SCALE_REASON_UNKNOWN":
 		return true
 	default:
 		return false
 	}
-}
-
-// Is checks if the ScaleReason matches the target, accepting both prefixed and
-// unprefixed formats for backwards compatibility during rolling deployments.
-func (r ScaleReason) Is(target ScaleReason) bool {
-	if r == target {
-		return true
-	}
-	// Handle unprefixed format from old controllers
-	return "SCALE_REASON_"+r == target
 }
 
 // ScaleMetric represents an unclamped metric value for a specific metric observed for scaling decisions

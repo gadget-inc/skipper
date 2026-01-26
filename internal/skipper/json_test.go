@@ -171,23 +171,16 @@ func TestIsValidScaleReason(t *testing.T) {
 		input    string
 		expected bool
 	}{
-		// Prefixed format (current)
 		{name: "SCALE_REASON_CPU", input: "SCALE_REASON_CPU", expected: true},
 		{name: "SCALE_REASON_HEARTBEAT_TIMEOUT", input: "SCALE_REASON_HEARTBEAT_TIMEOUT", expected: true},
 		{name: "SCALE_REASON_IN_FLIGHT_REQUESTS", input: "SCALE_REASON_IN_FLIGHT_REQUESTS", expected: true},
 		{name: "SCALE_REASON_MEMORY", input: "SCALE_REASON_MEMORY", expected: true},
 		{name: "SCALE_REASON_NO_READY_INSTANCES", input: "SCALE_REASON_NO_READY_INSTANCES", expected: true},
 		{name: "SCALE_REASON_UNKNOWN", input: "SCALE_REASON_UNKNOWN", expected: true},
-		// Unprefixed format (backwards compatibility)
-		{name: "CPU", input: "CPU", expected: true},
-		{name: "HEARTBEAT_TIMEOUT", input: "HEARTBEAT_TIMEOUT", expected: true},
-		{name: "IN_FLIGHT_REQUESTS", input: "IN_FLIGHT_REQUESTS", expected: true},
-		{name: "MEMORY", input: "MEMORY", expected: true},
-		{name: "NO_READY_INSTANCES", input: "NO_READY_INSTANCES", expected: true},
-		{name: "UNKNOWN", input: "UNKNOWN", expected: true},
-		// Invalid
 		{name: "invalid", input: "INVALID", expected: false},
 		{name: "empty", input: "", expected: false},
+		{name: "trailing space", input: "SCALE_REASON_CPU ", expected: false},
+		{name: "leading space", input: " SCALE_REASON_CPU", expected: false},
 	}
 
 	for _, tc := range testCases {
@@ -195,38 +188,6 @@ func TestIsValidScaleReason(t *testing.T) {
 			t.Parallel()
 
 			result := IsValidScaleReason(tc.input)
-			assert.Equal(t, result, tc.expected)
-		})
-	}
-}
-
-func TestScaleReasonIs(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name     string
-		reason   ScaleReason
-		target   ScaleReason
-		expected bool
-	}{
-		// Prefixed matches prefixed
-		{name: "prefixed CPU matches", reason: ScaleReasonCPU, target: ScaleReasonCPU, expected: true},
-		{name: "prefixed NO_READY_INSTANCES matches", reason: ScaleReasonNoReadyInstances, target: ScaleReasonNoReadyInstances, expected: true},
-		// Unprefixed matches prefixed (backwards compatibility)
-		{name: "unprefixed CPU matches prefixed", reason: "CPU", target: ScaleReasonCPU, expected: true},
-		{name: "unprefixed NO_READY_INSTANCES matches prefixed", reason: "NO_READY_INSTANCES", target: ScaleReasonNoReadyInstances, expected: true},
-		{name: "unprefixed MEMORY matches prefixed", reason: "MEMORY", target: ScaleReasonMemory, expected: true},
-		// Non-matches
-		{name: "CPU does not match MEMORY", reason: ScaleReasonCPU, target: ScaleReasonMemory, expected: false},
-		{name: "unprefixed CPU does not match MEMORY", reason: "CPU", target: ScaleReasonMemory, expected: false},
-		{name: "invalid reason does not match", reason: "INVALID", target: ScaleReasonCPU, expected: false},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			result := tc.reason.Is(tc.target)
 			assert.Equal(t, result, tc.expected)
 		})
 	}
