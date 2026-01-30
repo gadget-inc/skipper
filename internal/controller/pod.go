@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
-	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
 var (
@@ -322,15 +321,14 @@ func (ctrl *Controller) refreshMetrics(ctx context.Context) {
 	}
 
 	// garbage collect metrics for pods that no longer exist
-	ctrl.podMetrics.Range(func(key string, _ metricsv1beta1.PodMetrics) bool {
+	for key := range ctrl.podMetrics.AllRelaxed() {
 		namespace, podName, _ := strings.Cut(key, "/")
 		if lister, ok := ctrl.namespaceListers[namespace]; ok {
 			if _, err := lister.podLister.Pods(namespace).Get(podName); err != nil {
 				ctrl.podMetrics.Delete(key)
 			}
 		}
-		return true
-	})
+	}
 }
 
 func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*skipper.Function, error) {

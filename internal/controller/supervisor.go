@@ -142,12 +142,11 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 	})
 
 	// garbage collect expired router heartbeats
-	s.routerHeartbeats.Range(func(routerIP string, heartbeat *skipper.Heartbeat) bool {
+	for routerIP, heartbeat := range s.routerHeartbeats.AllRelaxed() {
 		if time.Since(heartbeat.GetTimestamp().AsTime()) > s.ctrl.config.HeartbeatTimeout {
 			s.routerHeartbeats.Delete(routerIP)
 		}
-		return true
-	})
+	}
 }
 
 // combinedHeartbeat aggregates heartbeats from all routers for this
@@ -160,14 +159,13 @@ func (s *Supervisor) combinedHeartbeat(instances []*skipper.Instance) *skipper.H
 	var latestTimestamp time.Time
 	var totalInFlightRequests uint32
 
-	s.routerHeartbeats.Range(func(_ string, routerHeartbeat *skipper.Heartbeat) bool {
+	for _, routerHeartbeat := range s.routerHeartbeats.All() {
 		totalInFlightRequests += routerHeartbeat.GetInFlightRequests()
 		routerTs := routerHeartbeat.GetTimestamp().AsTime()
 		if latestTimestamp.Before(routerTs) {
 			latestTimestamp = routerTs
 		}
-		return true
-	})
+	}
 
 	for _, instance := range instances {
 		assignedAt := instance.GetAssignedAt().AsTime()

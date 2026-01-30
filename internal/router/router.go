@@ -93,15 +93,14 @@ func New(cfg *Config, ctrl controller.Client) *Router {
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		var heartbeats []*skipper.Heartbeat
-		r.heartbeats.Range(func(fnHash skipper.FunctionHash, heartbeat *skipper.Heartbeat) bool {
+		for fnHash, heartbeat := range r.heartbeats.AllRelaxed() { // duplicate visits are rare and harmless here
 			if time.Since(heartbeat.GetTimestamp().AsTime()) > r.config.HeartbeatInterval*3 {
 				r.heartbeats.Delete(fnHash) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				heartbeats = append(heartbeats, heartbeat) // otherwise, send the heartbeat
 				heartbeatsTotal.WithLabelValues(heartbeat.GetFunction().GetDeployment()).Inc()
 			}
-			return true
-		})
+		}
 
 		err := r.ctrl.Heartbeat(ctx, r.config.PodIP, heartbeats)
 		if err != nil {
