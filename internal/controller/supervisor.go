@@ -67,6 +67,9 @@ func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace strin
 	seenFunctions := make(map[skipper.FunctionHash]bool)
 
 	for _, pod := range pods {
+		if !isPodRunning(pod) {
+			continue // Skip terminating or non-running pods
+		}
 		fn, err := ctrl.functionFromPod(pod)
 		if err != nil {
 			log.Warn(ctx, "failed to get function from pod", key.Error.Slog(err), key.Pod.Slog(pod))

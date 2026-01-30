@@ -180,6 +180,25 @@ func TestDiscoverSupervisors(t *testing.T) {
 				assert.Assert(t, len(pods.Items) == 0)
 			},
 		},
+		{
+			// Terminating pods (DeletionTimestamp set) should not trigger supervisor creation.
+			// This prevents resurrection of stopped supervisors when pods are in Terminating state.
+			name: "ignores terminating pods",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create an assigned pod with DeletionTimestamp set (simulating Terminating state)
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				now := metav1.Now()
+				pod.DeletionTimestamp = &now
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			check: func(t *testing.T, state *testState) {
+				// ensure NO supervisor was created for the terminating pod
+				_, exists := state.ctrl.supervisors.Load(state.fn.Hash())
+				assert.Assert(t, !exists, "discoverSupervisors should not create supervisor for pod with DeletionTimestamp")
+			},
+		},
 	}
 
 	for _, tc := range testCases {
