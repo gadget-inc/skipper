@@ -3329,7 +3329,8 @@ func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
 	cfg.HeartbeatTimeout = 10 * time.Second // Long timeout
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
-	ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+	// Use max() to match the protection period logic in converge()
+	ctrl.startedAt = time.Now().Add(-max(cfg.HPADownscaleStabilization, cfg.HeartbeatTimeout) - time.Second)
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
