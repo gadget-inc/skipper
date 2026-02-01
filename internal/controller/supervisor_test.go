@@ -3309,3 +3309,60 @@ func TestSupervisorStartup(t *testing.T) {
 		})
 	}
 }
+
+// TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat verifies that the
+// supervisor stops when all instances are gone, even if there's a fresh
+// router heartbeat. This tests the fix for a bug where the supervisor would
+// keep trying to scale up based on stale heartbeats after all pods died.
+func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	// No pods - simulates all instances dying
+
+	cfg := testConfig()
+	cfg.ScaleInterval = 50 * time.Millisecond
+	cfg.HeartbeatTimeout = 10 * time.Second // Long timeout
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	supervisor := ctrl.supervisor(fn)
+
+	// Simulate that this supervisor previously had instances (which then died)
+	supervisor.hadInstances = true
+
+	// Add a FRESH heartbeat (only 1 second old, well within 10s timeout)
+	// This simulates: traffic stopped recently, then all pods died
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
+		Function:  fn,
+		Timestamp: timestamppb.New(time.Now().Add(-1 * time.Second)),
+	}.Build())
+
+	ctrl.ctx = ctx
+	supervisor.start(ctx)
+
+	_, exists := ctrl.supervisors.Load(fn.Hash())
+	assert.Assert(t, exists, "supervisor should exist in map initially")
+
+	// Without the fix, this will timeout because the supervisor
+	// keeps trying to scale up based on the fresh heartbeat.
+	// With the fix, the supervisor should stop quickly because
+	// there are no instances and heartbeats are cleared.
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		_, exists := ctrl.supervisors.Load(fn.Hash())
+		if !exists {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for supervisor to be removed from map")
+	}, poll.WithDelay(100*time.Millisecond), poll.WithTimeout(2*time.Second))
+
+	assert.ErrorIs(t, supervisor.ctx.Err(), context.Canceled)
+}
