@@ -18,6 +18,7 @@ type Client interface {
 	Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error)
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
+	Close() error
 }
 
 type NewClientFunc func(host string, port int) Client
@@ -125,4 +126,8 @@ func (c *HTTPClient) Scale(ctx context.Context, fn *skipper.Function, desiredIns
 	}
 
 	return instances, nil
+}
+
+func (c *HTTPClient) Close() error {
+	return nil
 }

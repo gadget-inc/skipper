@@ -83,6 +83,10 @@ func NewRouter() *cobra.Command {
 				return fmt.Errorf("failed to shutdown router: %w", err)
 			}
 
+			if err := client.Close(); err != nil {
+				return fmt.Errorf("failed to close controller client: %w", err)
+			}
+
 			log.Info(ctx, "router shutdown")
 			return nil
 		},

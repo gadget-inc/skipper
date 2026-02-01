@@ -96,6 +96,11 @@ func (f *MockControllerClient) Heartbeat(ctx context.Context, routerIP string, h
 	return f.heartbeatHandler(ctx, routerIP, heartbeats, forwardedFor...)
 }
 
+// Close implements controller.Client.
+func (f *MockControllerClient) Close() error {
+	return nil
+}
+
 func NewControllerPod() *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

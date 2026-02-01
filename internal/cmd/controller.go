@@ -139,7 +139,19 @@ func NewController() *cobra.Command {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 			defer cancel()
 
-			grpcServer.GracefulStop()
+			grpcStopped := make(chan struct{})
+			go func() {
+				grpcServer.GracefulStop()
+				close(grpcStopped)
+			}()
+
+			select {
+			case <-grpcStopped:
+			case <-shutdownCtx.Done():
+				log.Warn(ctx, "gRPC graceful stop timed out, forcing stop")
+				grpcServer.Stop()
+			}
+
 			if err := httpServer.Shutdown(shutdownCtx); err != nil {
 				return fmt.Errorf("failed to shutdown controller HTTP: %w", err)
 			}
