@@ -37,6 +37,7 @@ type Supervisor struct {
 	ctrl                *Controller
 	routerHeartbeats    *xsync.Map[string, *skipper.Heartbeat]
 	stabilizationWindow []Recommendation
+	hadInstances        bool // tracks whether we've ever had instances
 }
 
 // supervisor returns the supervisor for the given function, creating it if necessary.
@@ -224,6 +225,19 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	instances, err := s.ctrl.getInstances(ctx, s.fn)
 	if err != nil {
 		return fmt.Errorf("failed to get instances: %w", err)
+	}
+
+	// If we previously had instances but now have none, clear router heartbeats.
+	// They represent past traffic, not current demand. Without instances to serve
+	// requests, we should scale to zero rather than keep trying to assign pods
+	// based on stale traffic signals. We only clear when transitioning from
+	// having instances to not having them, allowing the initial scale-up case
+	// where heartbeats may exist before instances are assigned.
+	if s.hadInstances && len(instances) == 0 {
+		s.routerHeartbeats.Clear()
+	}
+	if len(instances) > 0 {
+		s.hadInstances = true
 	}
 
 	// 1. Calculate scaling decision
