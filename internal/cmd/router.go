@@ -30,7 +30,26 @@ func NewRouter() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			r := router.New(cfg, controller.NewHTTPClient(cfg.ControllerServiceHost, cfg.ControllerServicePort))
+			var client controller.Client
+			switch cfg.ControllerProtocol {
+			case "grpc":
+				// Use the gRPC-specific headless service host if configured,
+				// otherwise fall back to the standard service host
+				grpcHost := cfg.ControllerGRPCServiceHost
+				if grpcHost == "" {
+					grpcHost = cfg.ControllerServiceHost
+				}
+
+				var err error
+				client, err = controller.NewGRPCClient(grpcHost, cfg.ControllerGRPCPort)
+				if err != nil {
+					return fmt.Errorf("failed to create gRPC client: %w", err)
+				}
+			default:
+				client = controller.NewHTTPClient(cfg.ControllerServiceHost, cfg.ControllerHTTPPort)
+			}
+
+			r := router.New(cfg, client)
 			r.Start(ctx)
 
 			httpServer := &http.Server{

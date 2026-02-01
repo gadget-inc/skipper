@@ -1,0 +1,44 @@
+edition = "2023";
+
+package skipper;
+
+import "google/protobuf/go_features.proto";
+import "types.proto";
+
+option go_package = "github.com/gadget-inc/skipper/internal/skipper";
+option features.(pb.go).api_level = API_OPAQUE;
+
+// Request/Response messages for gRPC service
+message GetInstanceRequest {
+  Function function = 1;
+  repeated string exclude_instance_names = 2;
+}
+
+message GetInstanceResponse {
+  Instance instance = 1;
+}
+
+message HeartbeatRequest {
+  string router_ip = 1;
+  repeated Heartbeat heartbeats = 2;
+  repeated string forwarded_for = 3;
+}
+
+message HeartbeatResponse {}
+
+message ScaleRequest {
+  Function function = 1;
+  uint32 desired_instances = 2;
+  ScaleReason reason = 3;
+}
+
+message ScaleResponse {
+  repeated Instance instances = 1;
+}
+
+// Controller service
+service ControllerService {
+  rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc Scale(ScaleRequest) returns (ScaleResponse);
+}

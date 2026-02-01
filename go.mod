@@ -10,12 +10,14 @@ require (
 	github.com/prometheus/common v0.67.5
 	github.com/puzpuzpuz/xsync/v4 v4.4.0
 	github.com/spf13/pflag v1.0.10
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.64.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.64.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.39.0
 	go.opentelemetry.io/otel/sdk v1.39.0
 	go.opentelemetry.io/otel/trace v1.39.0
 	golang.org/x/sync v0.19.0
+	google.golang.org/grpc v1.78.0
 	gopkg.in/evanphx/json-patch.v4 v4.13.0
 	k8s.io/api v0.35.0
 	k8s.io/apimachinery v0.35.0
@@ -53,7 +55,6 @@ require (
 	golang.org/x/crypto v0.47.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
-	google.golang.org/grpc v1.78.0 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.1 // indirect
 )
