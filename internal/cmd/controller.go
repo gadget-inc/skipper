@@ -156,6 +156,8 @@ func NewController() *cobra.Command {
 				return fmt.Errorf("failed to shutdown controller HTTP: %w", err)
 			}
 
+			ctrl.Close()
+
 			log.Info(ctx, "controller shutdown")
 			return nil
 		},

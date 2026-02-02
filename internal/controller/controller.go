@@ -296,3 +296,10 @@ func (ctrl *Controller) getControllerClient(ip string) Client {
 	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, ctrl.config.HTTPPort), false })
 	return controllerClient
 }
+
+func (ctrl *Controller) Close() {
+	for ip, client := range ctrl.controllerClients.All() {
+		ctrl.controllerClients.Delete(ip)
+		client.Close()
+	}
+}

@@ -285,3 +285,64 @@ func TestGetControllerClient(t *testing.T) {
 		})
 	}
 }
+
+// closeTrackingClient wraps a Client and tracks Close() calls
+type closeTrackingClient struct {
+	Client
+	closeCalls *atomic.Int32
+}
+
+func (c *closeTrackingClient) Close() error {
+	c.closeCalls.Add(1)
+	return c.Client.Close()
+}
+
+func TestControllerClose(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		clientIPs  []string
+		wantClosed int32
+	}{
+		{
+			name:       "closes all clients",
+			clientIPs:  []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
+			wantClosed: 3,
+		},
+		{
+			name:       "handles no clients",
+			clientIPs:  []string{},
+			wantClosed: 0,
+		},
+		{
+			name:       "closes single client",
+			clientIPs:  []string{"127.0.0.1"},
+			wantClosed: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			closeCalls := &atomic.Int32{}
+			ctrl := New(testConfig(), func(host string, port int) Client {
+				return &closeTrackingClient{
+					Client:     fixture.NewMockControllerClient(t),
+					closeCalls: closeCalls,
+				}
+			}, fake.NewClientset(), nil)
+
+			// Create clients for each IP
+			for _, ip := range tc.clientIPs {
+				ctrl.getControllerClient(ip)
+			}
+
+			ctrl.Close()
+
+			assert.Assert(t, closeCalls.Load() == tc.wantClosed,
+				"expected %d Close() calls, got %d", tc.wantClosed, closeCalls.Load())
+		})
+	}
+}

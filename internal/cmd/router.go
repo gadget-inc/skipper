@@ -48,6 +48,7 @@ func NewRouter() *cobra.Command {
 			default:
 				client = controller.NewHTTPClient(cfg.ControllerServiceHost, cfg.ControllerHTTPPort)
 			}
+			defer client.Close()
 
 			r := router.New(cfg, client)
 			r.Start(ctx)
@@ -81,10 +82,6 @@ func NewRouter() *cobra.Command {
 
 			if err := httpServer.Shutdown(shutdownCtx); err != nil {
 				return fmt.Errorf("failed to shutdown router: %w", err)
-			}
-
-			if err := client.Close(); err != nil {
-				return fmt.Errorf("failed to close controller client: %w", err)
 			}
 
 			log.Info(ctx, "router shutdown")
