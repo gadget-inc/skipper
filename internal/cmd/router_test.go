@@ -286,10 +286,7 @@ func TestRouterHTTPServerStartupFailure(t *testing.T) {
 	port := listener.Addr().(*net.TCPAddr).Port
 
 	mcc := fixture.NewMockControllerClient(t)
-	// Heartbeat may or may not be called depending on timing
-	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
-		return nil
-	})
+	mcc.AllowHeartbeat() // Heartbeat may or may not be called depending on timing
 
 	deps := &RouterDeps{
 		NewControllerClient: func(cfg *router.Config) (controller.Client, error) {

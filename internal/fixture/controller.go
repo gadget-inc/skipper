@@ -69,6 +69,15 @@ func (f *MockControllerClient) HandleHeartbeat(h HeartbeatHandler) {
 	f.heartbeatHandler = h
 }
 
+// AllowHeartbeat permits heartbeat calls without requiring them.
+// Use this when heartbeats may or may not occur depending on timing.
+func (f *MockControllerClient) AllowHeartbeat() {
+	f.heartbeatHandler = func(context.Context, string, []*skipper.Heartbeat, ...string) error {
+		return nil
+	}
+	f.heartbeatWasCalled.Store(true) // Pre-mark as called to skip cleanup check
+}
+
 // Instance implements controller.Client.
 func (f *MockControllerClient) Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error) {
 	if f.instanceHandler == nil {
