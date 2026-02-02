@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/gadget-inc/skipper/internal/config"
-	"github.com/gadget-inc/skipper/internal/controller"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/router"
@@ -16,7 +15,13 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-func NewRouter() *cobra.Command {
+// NewRouter creates the router subcommand.
+// Optional deps can be provided for testing; if nil, production defaults are used.
+func NewRouter(deps *RouterDeps) *cobra.Command {
+	if deps == nil {
+		deps = DefaultRouterDeps()
+	}
+
 	cfg := config.New[router.Config]()
 
 	cmd := &cobra.Command{
@@ -30,23 +35,9 @@ func NewRouter() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			var client controller.Client
-			switch cfg.ControllerProtocol {
-			case "grpc":
-				// Use the gRPC-specific headless service host if configured,
-				// otherwise fall back to the standard service host
-				grpcHost := cfg.ControllerGRPCServiceHost
-				if grpcHost == "" {
-					grpcHost = cfg.ControllerServiceHost
-				}
-
-				var err error
-				client, err = controller.NewGRPCClient(grpcHost, cfg.ControllerGRPCPort)
-				if err != nil {
-					return fmt.Errorf("failed to create gRPC client: %w", err)
-				}
-			default:
-				client = controller.NewHTTPClient(cfg.ControllerServiceHost, cfg.ControllerHTTPPort)
+			client, err := deps.NewControllerClient(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to create controller client: %w", err)
 			}
 			defer client.Close()
 
