@@ -442,4 +442,3 @@ func TestControllerHTTPListenerFailure(t *testing.T) {
 	assert.Assert(t, err != nil, "expected error when HTTP port is already bound")
 	assert.ErrorContains(t, err, "failed to serve controller HTTP")
 }
-

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/gadget-inc/skipper/internal/config"
 	"github.com/gadget-inc/skipper/internal/controller"
@@ -19,6 +20,8 @@ import (
 	"google.golang.org/grpc"
 	"k8s.io/klog/v2"
 )
+
+var klogOnce sync.Once
 
 // NewController creates the controller subcommand.
 // Optional deps can be provided for testing; if nil, production defaults are used.
@@ -43,7 +46,7 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 			}
 
 			// make klog use slog which will have already been configured by the root command
-			klog.SetSlogLogger(slog.Default())
+			klogOnce.Do(func() { klog.SetSlogLogger(slog.Default()) })
 
 			kubeConfig, err := deps.LoadKubeConfig()
 			if err != nil {

@@ -738,7 +738,7 @@ func TestRouterHeartbeatContinuesDuringLongRequest(t *testing.T) {
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
 		fn.SetHeader(req)
-		http.DefaultClient.Do(req)
+		_, _ = http.DefaultClient.Do(req)
 		close(requestDone)
 	}()
 

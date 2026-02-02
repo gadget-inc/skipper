@@ -1853,7 +1853,7 @@ func TestStreamingResponseDuringShutdown(t *testing.T) {
 			// Write chunks with flushing
 			flusher, ok := rw.(http.Flusher)
 			for i := range expectedChunks {
-				rw.Write([]byte(fmt.Sprintf("chunk-%d\n", i)))
+				fmt.Fprintf(rw, "chunk-%d\n", i)
 				if ok {
 					flusher.Flush()
 				}
