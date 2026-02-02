@@ -31,8 +31,8 @@ func NewRoot() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(NewController())
-	cmd.AddCommand(NewRouter())
+	cmd.AddCommand(NewController(nil))
+	cmd.AddCommand(NewRouter(nil))
 
 	config.BindPersistent(cmd, logCfg)
 	config.BindPersistent(cmd, pprofCfg)

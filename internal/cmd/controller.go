@@ -2,13 +2,12 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
-	"path/filepath"
 	"strconv"
+	"sync"
 
 	"github.com/gadget-inc/skipper/internal/config"
 	"github.com/gadget-inc/skipper/internal/controller"
@@ -19,15 +18,18 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 	"k8s.io/klog/v2"
-	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-func NewController() *cobra.Command {
+var klogOnce sync.Once
+
+// NewController creates the controller subcommand.
+// Optional deps can be provided for testing; if nil, production defaults are used.
+func NewController(deps *ControllerDeps) *cobra.Command {
+	if deps == nil {
+		deps = DefaultControllerDeps()
+	}
+
 	cfg := config.New[controller.Config]()
 
 	cmd := &cobra.Command{
@@ -44,12 +46,9 @@ func NewController() *cobra.Command {
 			}
 
 			// make klog use slog which will have already been configured by the root command
-			klog.SetSlogLogger(slog.Default())
+			klogOnce.Do(func() { klog.SetSlogLogger(slog.Default()) })
 
-			kubeConfig, err := rest.InClusterConfig()
-			if errors.Is(err, rest.ErrNotInCluster) {
-				kubeConfig, err = clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
-			}
+			kubeConfig, err := deps.LoadKubeConfig()
 			if err != nil {
 				return fmt.Errorf("failed to load kubernetes config: %w", err)
 			}
@@ -58,12 +57,12 @@ func NewController() *cobra.Command {
 			kubeConfig.Burst = cfg.KubeConfigBurst
 			kubeConfig.WrapTransport = func(rt http.RoundTripper) http.RoundTripper { return otelhttp.NewTransport(rt) }
 
-			kubernetesClient, err := kubernetes.NewForConfig(kubeConfig)
+			kubernetesClient, err := deps.NewK8sClient(kubeConfig)
 			if err != nil {
 				return fmt.Errorf("failed to create kubernetes client: %w", err)
 			}
 
-			kubernetesMetrics, err := kubernetesmetrics.NewForConfig(kubeConfig)
+			kubernetesMetrics, err := deps.NewMetricsClient(kubeConfig)
 			if err != nil {
 				return fmt.Errorf("failed to create metrics client: %w", err)
 			}
@@ -71,20 +70,7 @@ func NewController() *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			var newClientFunc controller.NewClientFunc
-			switch cfg.Protocol {
-			case "grpc":
-				newClientFunc = func(host string, port int) controller.Client {
-					client, err := controller.NewGRPCClient(host, cfg.GRPCPort)
-					if err != nil {
-						// NewGRPCClient only fails for configuration errors (grpc.NewClient is lazy)
-						panic(fmt.Sprintf("failed to create gRPC client: %v", err))
-					}
-					return client
-				}
-			default:
-				newClientFunc = controller.NewHTTPClient
-			}
+			newClientFunc := deps.NewClientFunc(cfg.Protocol, cfg.GRPCPort)
 
 			ctrl := controller.New(cfg, newClientFunc, kubernetesClient, kubernetesMetrics)
 			if err := ctrl.Start(ctx); err != nil {

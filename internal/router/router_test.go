@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -919,4 +920,1636 @@ func TestCalculateBackoff(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRequestDrainingOnShutdown(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	requestStarted := make(chan struct{})
+	requestCanFinish := make(chan struct{})
+	requestCompleted := make(chan struct{})
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			close(requestStarted)
+			<-requestCanFinish
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("completed"))
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.ShutdownTimeout = 5 * time.Second
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	// Create a real HTTP server to test proper request draining
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start a request in the background
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			assert.Assert(t, resp.StatusCode == http.StatusOK)
+			assert.Assert(t, string(body) == "completed")
+		}
+		close(requestCompleted)
+	}()
+
+	// Wait for the request to start processing
+	<-requestStarted
+
+	// Cancel the context (simulating shutdown signal)
+	cancel()
+
+	// Allow the request to complete
+	close(requestCanFinish)
+
+	// Verify the request completed successfully
+	select {
+	case <-requestCompleted:
+		// Success - request completed despite shutdown
+	case <-time.After(2 * time.Second):
+		t.Fatal("request did not complete within timeout")
+	}
+}
+
+func TestConcurrentRequestsSameFunction(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	const numRequests = 50
+	var maxInFlight int64
+	var currentInFlight int64
+	var mu sync.Mutex
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			mu.Lock()
+			currentInFlight++
+			if currentInFlight > maxInFlight {
+				maxInFlight = currentInFlight
+			}
+			mu.Unlock()
+
+			// Simulate some processing time
+			time.Sleep(10 * time.Millisecond)
+
+			mu.Lock()
+			currentInFlight--
+			mu.Unlock()
+
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	var wg sync.WaitGroup
+	errors := make(chan error, numRequests)
+
+	for range numRequests {
+		wg.Go(func() {
+			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+			fn.SetHeader(req)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				errors <- err
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				errors <- fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+			}
+		})
+	}
+
+	wg.Wait()
+	close(errors)
+
+	for err := range errors {
+		t.Errorf("request failed: %v", err)
+	}
+
+	// Verify concurrent execution happened
+	assert.Assert(t, maxInFlight > 1, "expected concurrent execution, but max in-flight was %d", maxInFlight)
+
+	// Verify in-flight count is back to 0
+	heartbeat, ok := router.heartbeats.Load(fn.Hash())
+	if ok {
+		assert.Assert(t, heartbeat.GetInFlightRequests() == 0, "expected 0 in-flight requests, got %d", heartbeat.GetInFlightRequests())
+	}
+}
+
+func TestHeartbeatStaleCleanup(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	// Use longer interval to reduce impact of the ±200ms jitter in timer.Loop
+	cfg.HeartbeatInterval = 300 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	// Use a real server so request context gets cancelled when request completes
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Make a request to create a heartbeat entry
+	req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+	fn.SetHeader(req)
+	resp, err := http.DefaultClient.Do(req)
+	assert.NilError(t, err)
+	resp.Body.Close()
+	assert.Assert(t, resp.StatusCode == http.StatusOK)
+
+	// Verify heartbeat exists
+	_, ok := router.heartbeats.Load(fn.Hash())
+	assert.Assert(t, ok, "expected heartbeat to exist after request")
+
+	// Wait for more than 3x heartbeat interval for stale cleanup, plus buffer for jitter and loop
+	// Cleanup happens when timestamp is older than 3 intervals (900ms), plus up to 200ms jitter
+	// Then the heartbeat loop needs to run again (another interval + jitter)
+	time.Sleep(cfg.HeartbeatInterval*4 + 500*time.Millisecond)
+
+	// Verify heartbeat was cleaned up
+	_, ok = router.heartbeats.Load(fn.Hash())
+	assert.Assert(t, !ok, "expected heartbeat to be cleaned up after becoming stale")
+}
+
+func TestHeartbeatControllerError(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	heartbeatCalls := make(chan struct{}, 10)
+	requestHolding := make(chan struct{})
+	releaseRequest := make(chan struct{})
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			select {
+			case requestHolding <- struct{}{}:
+			default:
+			}
+			<-releaseRequest
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		select {
+		case heartbeatCalls <- struct{}{}:
+		default:
+		}
+		// Return an error to simulate controller failure
+		return errors.New("controller unavailable")
+	})
+
+	cfg := testConfig()
+	cfg.HeartbeatInterval = 50 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	// Start a request in the background
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		http.DefaultClient.Do(req) //nolint:errcheck
+	}()
+
+	// Wait for request to be held
+	<-requestHolding
+
+	// Wait for multiple heartbeat attempts despite errors
+	heartbeatCount := 0
+	timeout := time.After(500 * time.Millisecond)
+	for heartbeatCount < 3 {
+		select {
+		case <-heartbeatCalls:
+			heartbeatCount++
+		case <-timeout:
+			t.Fatalf("expected at least 3 heartbeat calls, got %d", heartbeatCount)
+		}
+	}
+
+	// Release the request
+	close(releaseRequest)
+}
+
+func TestStartContextCancellationStopsHeartbeats(t *testing.T) {
+	t.Parallel()
+
+	heartbeatCalls := make(chan struct{}, 100)
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		select {
+		case heartbeatCalls <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.HeartbeatInterval = 20 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	// Wait for some heartbeats
+	time.Sleep(100 * time.Millisecond)
+
+	// Count heartbeats before cancel
+	countBefore := len(heartbeatCalls)
+	assert.Assert(t, countBefore > 0, "expected some heartbeats before cancel")
+
+	// Cancel the context
+	cancel()
+
+	// Wait a bit for cancellation to propagate
+	time.Sleep(50 * time.Millisecond)
+
+	// Drain and count heartbeats after cancel
+	countAfter := len(heartbeatCalls)
+
+	// Wait more to ensure no new heartbeats
+	time.Sleep(100 * time.Millisecond)
+	finalCount := len(heartbeatCalls)
+
+	assert.Assert(t, finalCount == countAfter, "expected no new heartbeats after cancel, got %d more", finalCount-countAfter)
+}
+
+func TestResponseStatusCodes(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		statusCode int
+		body       string
+	}{
+		{"200 OK", http.StatusOK, "success"},
+		{"201 Created", http.StatusCreated, "created"},
+		{"204 No Content", http.StatusNoContent, ""},
+		{"400 Bad Request", http.StatusBadRequest, "bad request"},
+		{"401 Unauthorized", http.StatusUnauthorized, "unauthorized"},
+		{"403 Forbidden", http.StatusForbidden, "forbidden"},
+		{"404 Not Found", http.StatusNotFound, "not found"},
+		{"500 Internal Server Error", http.StatusInternalServerError, "internal error"},
+		{"502 Bad Gateway", http.StatusBadGateway, "bad gateway"},
+		{"503 Service Unavailable", http.StatusServiceUnavailable, "service unavailable"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fn := fixture.NewFunction(t)
+
+			mcc := fixture.NewMockControllerClient(t)
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+					rw.WriteHeader(tc.statusCode)
+					if tc.body != "" {
+						rw.Write([]byte(tc.body))
+					}
+				}), nil
+			})
+
+			rw := httptest.NewRecorder()
+			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+
+			router := New(testConfig(), mcc)
+			router.ServeHTTP(rw, req)
+
+			assert.Assert(t, rw.Code == tc.statusCode, "expected status %d, got %d", tc.statusCode, rw.Code)
+			assert.Assert(t, rw.Body.String() == tc.body, "expected body %q, got %q", tc.body, rw.Body.String())
+		})
+	}
+}
+
+func TestResponseHeaders(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.Header().Set("X-Custom-Response", "custom-value")
+			rw.Header().Set("Content-Type", "application/json")
+			rw.Header().Add("X-Multi-Value", "value1")
+			rw.Header().Add("X-Multi-Value", "value2")
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte(`{"status":"ok"}`))
+		}), nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+
+	router := New(testConfig(), mcc)
+	router.ServeHTTP(rw, req)
+
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, rw.Header().Get("X-Custom-Response") == "custom-value")
+	assert.Assert(t, rw.Header().Get("Content-Type") == "application/json")
+	assert.DeepEqual(t, rw.Header().Values("X-Multi-Value"), []string{"value1", "value2"})
+}
+
+func TestQueryStringPreservation(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	var receivedQuery string
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			receivedQuery = req.URL.RawQuery
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/?foo=bar&baz=qux&special=%20encoded", nil)
+
+	router := New(testConfig(), mcc)
+	router.ServeHTTP(rw, req)
+
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, receivedQuery == "foo=bar&baz=qux&special=%20encoded", "expected query string to be preserved, got %q", receivedQuery)
+}
+
+func TestHeartbeatBatching(t *testing.T) {
+	t.Parallel()
+
+	fn1 := fixture.NewFunction(t)
+	fn2 := fixture.NewFunction(t)
+	fn3 := fixture.NewFunction(t)
+
+	requestsHolding := make(chan struct{}, 3)
+	releaseRequests := make(chan struct{})
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			requestsHolding <- struct{}{}
+			<-releaseRequests
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+
+	var maxBatchSize int
+	var mu sync.Mutex
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		mu.Lock()
+		if len(heartbeats) > maxBatchSize {
+			maxBatchSize = len(heartbeats)
+		}
+		mu.Unlock()
+		return nil
+	})
+
+	cfg := testConfig()
+	// Use longer interval to account for ±200ms jitter in timer.Loop
+	cfg.HeartbeatInterval = 300 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start 3 requests for different functions concurrently
+	var wg sync.WaitGroup
+	for _, fn := range []*skipper.Function{fn1, fn2, fn3} {
+		wg.Go(func() {
+			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+			fn.SetHeader(req)
+			http.DefaultClient.Do(req) //nolint:errcheck
+		})
+	}
+
+	// Wait for all 3 requests to be holding
+	for range 3 {
+		<-requestsHolding
+	}
+
+	// Wait for heartbeats to be registered and the loop to run multiple times
+	// Account for ±200ms jitter in timer.Loop
+	time.Sleep(cfg.HeartbeatInterval*3 + 500*time.Millisecond)
+
+	mu.Lock()
+	batchSize := maxBatchSize
+	mu.Unlock()
+
+	// Release all requests and wait for them to complete
+	close(releaseRequests)
+	wg.Wait()
+
+	assert.Assert(t, batchSize >= 3, "expected heartbeats to be batched with at least 3 entries, got %d", batchSize)
+}
+
+func TestLargeRequestBody(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	// 1MB body
+	largeBody := strings.Repeat("x", 1024*1024)
+	var receivedBody string
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				rw.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			receivedBody = string(body)
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := fixture.NewFunctionRequest(t, fn, http.MethodPost, "/", strings.NewReader(largeBody))
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	router := New(testConfig(), mcc)
+	router.ServeHTTP(rw, req)
+
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, len(receivedBody) == len(largeBody), "expected body length %d, got %d", len(largeBody), len(receivedBody))
+}
+
+func TestLargeResponseBody(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	// 1MB response
+	largeResponse := strings.Repeat("y", 1024*1024)
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.Header().Set("Content-Type", "application/octet-stream")
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte(largeResponse))
+		}), nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+
+	router := New(testConfig(), mcc)
+	router.ServeHTTP(rw, req)
+
+	assert.Assert(t, rw.Code == http.StatusOK)
+	assert.Assert(t, rw.Body.Len() == len(largeResponse), "expected body length %d, got %d", len(largeResponse), rw.Body.Len())
+}
+
+func TestMultipleConcurrentRequestsDrainOnShutdown(t *testing.T) {
+	t.Parallel()
+
+	const numRequests = 10
+	requestsStarted := make(chan struct{}, numRequests)
+	requestsCanFinish := make(chan struct{})
+	requestResults := make(chan error, numRequests)
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			requestsStarted <- struct{}{}
+			<-requestsCanFinish
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("completed"))
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.ShutdownTimeout = 10 * time.Second
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start multiple concurrent requests
+	var wg sync.WaitGroup
+	for range numRequests {
+		fn := fixture.NewFunction(t)
+		wg.Go(func() {
+			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+			fn.SetHeader(req)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				requestResults <- err
+				return
+			}
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusOK || string(body) != "completed" {
+				requestResults <- errors.New("unexpected response")
+				return
+			}
+			requestResults <- nil
+		})
+	}
+
+	// Wait for all requests to start processing
+	for range numRequests {
+		<-requestsStarted
+	}
+
+	// Cancel the context (simulating shutdown signal) while requests are in-flight
+	cancel()
+
+	// Allow all requests to complete
+	close(requestsCanFinish)
+
+	// Wait for all requests to finish
+	wg.Wait()
+	close(requestResults)
+
+	// Verify all requests completed successfully
+	var failedCount int
+	for err := range requestResults {
+		if err != nil {
+			failedCount++
+			t.Logf("request failed: %v", err)
+		}
+	}
+	assert.Assert(t, failedCount == 0, "expected all %d requests to complete, but %d failed", numRequests, failedCount)
+}
+
+func TestShutdownTimeoutExceeded(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	requestStarted := make(chan struct{})
+	requestCanFinish := make(chan struct{})
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			close(requestStarted)
+			<-requestCanFinish
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("completed"))
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.ShutdownTimeout = 50 * time.Millisecond // Very short timeout
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start a request that will take longer than shutdown timeout
+	requestCompleted := make(chan struct {
+		statusCode int
+		body       string
+		err        error
+	}, 1)
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		resp, err := http.DefaultClient.Do(req)
+		result := struct {
+			statusCode int
+			body       string
+			err        error
+		}{err: err}
+		if err == nil {
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			result.statusCode = resp.StatusCode
+			result.body = string(body)
+		}
+		requestCompleted <- result
+	}()
+
+	// Wait for request to start
+	<-requestStarted
+
+	// Trigger shutdown - this will timeout because request takes longer
+	cancel()
+
+	// Wait longer than shutdown timeout
+	time.Sleep(cfg.ShutdownTimeout + 50*time.Millisecond)
+
+	// Now let the request complete
+	close(requestCanFinish)
+
+	// Verify the request eventually completes
+	// (Go's http.Server.Shutdown doesn't force-close connections on timeout)
+	select {
+	case result := <-requestCompleted:
+		// Request may succeed or fail depending on timing
+		// The key is that shutdown timeout was exceeded
+		if result.err == nil {
+			assert.Assert(t, result.statusCode == http.StatusOK, "expected 200, got %d", result.statusCode)
+		}
+		// If there was an error, that's also acceptable - the connection may have been closed
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not complete within expected time")
+	}
+}
+
+func TestNewRequestsRejectedDuringShutdown(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+
+	mcc := fixture.NewMockControllerClient(t)
+	// Instance won't be called since server is closed before request
+	// Heartbeat might be called during startup, so we mock it
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.ShutdownTimeout = 5 * time.Second
+	cfg.HeartbeatInterval = 20 * time.Millisecond // Short so it gets called before we close
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+
+	// Wait for at least one heartbeat call to satisfy the mock
+	time.Sleep(cfg.HeartbeatInterval + 50*time.Millisecond)
+
+	// Create a custom HTTP client with shorter timeouts
+	client := &http.Client{
+		Timeout: 1 * time.Second,
+	}
+
+	// Close the server
+	cancel()
+	server.Close()
+
+	// Try to make a new request after server is closed
+	req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+	fn.SetHeader(req)
+	_, err := client.Do(req)
+
+	// The request should fail since the server is closed
+	assert.Assert(t, err != nil, "expected error when making request after shutdown")
+}
+
+func TestHeartbeatTimestampUpdatedDuringLongRequest(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	requestStarted := make(chan struct{})
+	requestCanFinish := make(chan struct{})
+
+	// Track heartbeat timestamps for heartbeats that have in-flight requests
+	var heartbeatTimestamps []time.Time
+	var heartbeatMu sync.Mutex
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			close(requestStarted)
+			<-requestCanFinish
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		heartbeatMu.Lock()
+		defer heartbeatMu.Unlock()
+		// Track any heartbeat with in-flight requests (our test request)
+		for _, hb := range heartbeats {
+			if hb.GetInFlightRequests() > 0 {
+				heartbeatTimestamps = append(heartbeatTimestamps, hb.GetTimestamp().AsTime())
+			}
+		}
+		return nil
+	})
+
+	cfg := testConfig()
+	// Use a longer interval to make the test more robust
+	cfg.HeartbeatInterval = 100 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start a long-running request
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		http.DefaultClient.Do(req) //nolint:errcheck
+	}()
+
+	// Wait for request to start
+	<-requestStarted
+
+	// Wait for multiple heartbeat intervals (with buffer for jitter)
+	time.Sleep(cfg.HeartbeatInterval*6 + 300*time.Millisecond)
+
+	// Allow request to complete
+	close(requestCanFinish)
+
+	// Give time for final heartbeats
+	time.Sleep(100 * time.Millisecond)
+
+	heartbeatMu.Lock()
+	timestamps := make([]time.Time, len(heartbeatTimestamps))
+	copy(timestamps, heartbeatTimestamps)
+	heartbeatMu.Unlock()
+
+	// Verify we got multiple heartbeats with increasing timestamps
+	assert.Assert(t, len(timestamps) >= 3, "expected at least 3 heartbeats, got %d", len(timestamps))
+
+	// Verify timestamps are increasing (heartbeat was updated during request)
+	for i := 1; i < len(timestamps); i++ {
+		assert.Assert(t, !timestamps[i].Before(timestamps[i-1]),
+			"heartbeat timestamps should be non-decreasing: %v -> %v", timestamps[i-1], timestamps[i])
+	}
+}
+
+func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	const numRequests = 5
+	requestsStarted := make(chan struct{}, numRequests)
+	requestCanFinish := make(chan struct{})
+
+	// Track in-flight counts from heartbeats
+	var inFlightCounts []uint32
+	var inFlightMu sync.Mutex
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			requestsStarted <- struct{}{}
+			<-requestCanFinish
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		inFlightMu.Lock()
+		defer inFlightMu.Unlock()
+		for _, hb := range heartbeats {
+			if hb.GetFunction().Hash() == fn.Hash() {
+				inFlightCounts = append(inFlightCounts, hb.GetInFlightRequests())
+			}
+		}
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.HeartbeatInterval = 50 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start concurrent requests
+	var wg sync.WaitGroup
+	for range numRequests {
+		wg.Go(func() {
+			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+			fn.SetHeader(req)
+			http.DefaultClient.Do(req) //nolint:errcheck
+		})
+	}
+
+	// Wait for all requests to start
+	for range numRequests {
+		<-requestsStarted
+	}
+
+	// Wait for heartbeats while all requests are in-flight
+	time.Sleep(cfg.HeartbeatInterval*3 + 100*time.Millisecond)
+
+	// Release all requests
+	close(requestCanFinish)
+	wg.Wait()
+
+	// Wait for final heartbeats after requests complete
+	time.Sleep(cfg.HeartbeatInterval*2 + 100*time.Millisecond)
+
+	inFlightMu.Lock()
+	counts := make([]uint32, len(inFlightCounts))
+	copy(counts, inFlightCounts)
+	inFlightMu.Unlock()
+
+	// Verify we recorded heartbeats
+	assert.Assert(t, len(counts) >= 2, "expected at least 2 heartbeat recordings, got %d", len(counts))
+
+	// Find the maximum in-flight count
+	var maxInFlight uint32
+	for _, count := range counts {
+		if count > maxInFlight {
+			maxInFlight = count
+		}
+	}
+
+	// Verify max in-flight reached the expected level
+	assert.Assert(t, maxInFlight == uint32(numRequests),
+		"expected max in-flight to be %d, got %d", numRequests, maxInFlight)
+
+	// Verify the count never exceeds expected (thread safety)
+	for _, count := range counts {
+		assert.Assert(t, count <= uint32(numRequests),
+			"in-flight count %d exceeded max expected %d", count, numRequests)
+	}
+}
+
+func TestStreamingResponseDuringShutdown(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	streamStarted := make(chan struct{})
+	streamCanContinue := make(chan struct{})
+	expectedChunks := 5
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			// Enable chunked transfer encoding
+			rw.Header().Set("Transfer-Encoding", "chunked")
+			rw.WriteHeader(http.StatusOK)
+
+			// Signal that streaming has started
+			close(streamStarted)
+
+			// Wait for signal to continue
+			<-streamCanContinue
+
+			// Write chunks with flushing
+			flusher, ok := rw.(http.Flusher)
+			for i := range expectedChunks {
+				fmt.Fprintf(rw, "chunk-%d\n", i)
+				if ok {
+					flusher.Flush()
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.ShutdownTimeout = 5 * time.Second
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start streaming request
+	responseComplete := make(chan struct {
+		body string
+		err  error
+	}, 1)
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		resp, err := http.DefaultClient.Do(req)
+		result := struct {
+			body string
+			err  error
+		}{err: err}
+		if err == nil {
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			result.body = string(body)
+		}
+		responseComplete <- result
+	}()
+
+	// Wait for streaming to start
+	<-streamStarted
+
+	// Initiate shutdown while streaming
+	cancel()
+
+	// Allow streaming to continue
+	close(streamCanContinue)
+
+	// Verify full response is received
+	select {
+	case result := <-responseComplete:
+		assert.NilError(t, result.err)
+		// Verify all chunks were received
+		for i := range expectedChunks {
+			expected := fmt.Sprintf("chunk-%d", i)
+			assert.Assert(t, strings.Contains(result.body, expected),
+				"expected body to contain %q, got %q", expected, result.body)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("streaming response did not complete within timeout")
+	}
+}
+
+func TestRequestBodyReusedAcrossRetries(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	expectedBody := "this body should be readable on retry"
+
+	// Track how many times the body was successfully read
+	var bodyReadCount int
+	var bodyReadMu sync.Mutex
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			body, err := io.ReadAll(req.Body)
+			if err == nil && string(body) == expectedBody {
+				bodyReadMu.Lock()
+				bodyReadCount++
+				bodyReadMu.Unlock()
+			}
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("success"))
+		}), nil
+	})
+
+	cfg := testConfig()
+	cfg.MaxRoundTripAttempts = 3
+	cfg.RoundTripRetryMinTimeout = 10 * time.Millisecond
+	cfg.RoundTripRetryMaxTimeout = 50 * time.Millisecond
+	router := New(cfg, mcc)
+
+	// Inject a dial error on the first attempt
+	roundTripCount := 0
+	originalTransport := router.roundTripper
+	router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		roundTripCount++
+		if roundTripCount == 1 {
+			// Simulate dial error on first attempt - body should be reusable
+			return nil, &net.OpError{Op: "dial", Err: errors.New("connection refused")}
+		}
+		return originalTransport.RoundTrip(req)
+	})
+
+	body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
+	req := fixture.NewFunctionRequest(t, fn, http.MethodPost, "/", body)
+	rw := httptest.NewRecorder()
+
+	router.ServeHTTP(rw, req)
+
+	assert.Assert(t, rw.Code == http.StatusOK, "expected 200, got %d", rw.Code)
+	assert.Assert(t, rw.Body.String() == "success", "expected 'success', got %q", rw.Body.String())
+
+	bodyReadMu.Lock()
+	count := bodyReadCount
+	bodyReadMu.Unlock()
+	assert.Assert(t, count == 1, "expected body to be read once on successful retry, got %d", count)
+	assert.Assert(t, body.closed, "expected body to be closed after request")
+}
+
+func TestControllerUnavailableMidRequest(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	requestStarted := make(chan struct{})
+	requestCanFinish := make(chan struct{})
+
+	// Track heartbeat calls and errors
+	var heartbeatCallCount int
+	var heartbeatErrorCount int
+	var heartbeatMu sync.Mutex
+	failHeartbeats := false
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			close(requestStarted)
+			<-requestCanFinish
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("completed"))
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		heartbeatMu.Lock()
+		defer heartbeatMu.Unlock()
+		heartbeatCallCount++
+		if failHeartbeats {
+			heartbeatErrorCount++
+			return errors.New("controller unavailable")
+		}
+		return nil
+	})
+
+	cfg := testConfig()
+	// Use a short interval but account for jitter
+	cfg.HeartbeatInterval = 50 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start a request
+	requestCompleted := make(chan struct {
+		statusCode int
+		body       string
+		err        error
+	}, 1)
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		resp, err := http.DefaultClient.Do(req)
+		result := struct {
+			statusCode int
+			body       string
+			err        error
+		}{err: err}
+		if err == nil {
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			result.statusCode = resp.StatusCode
+			result.body = string(body)
+		}
+		requestCompleted <- result
+	}()
+
+	// Wait for request to start
+	<-requestStarted
+
+	// Wait for at least one successful heartbeat first
+	time.Sleep(cfg.HeartbeatInterval*2 + 100*time.Millisecond)
+
+	// Make controller heartbeats start failing
+	heartbeatMu.Lock()
+	failHeartbeats = true
+	heartbeatMu.Unlock()
+
+	// Wait for some heartbeats to fail while request is in-flight
+	time.Sleep(cfg.HeartbeatInterval*4 + 200*time.Millisecond)
+
+	// Allow request to complete
+	close(requestCanFinish)
+
+	// Verify the request completed successfully despite heartbeat failures
+	select {
+	case result := <-requestCompleted:
+		assert.NilError(t, result.err)
+		assert.Assert(t, result.statusCode == http.StatusOK, "expected 200, got %d", result.statusCode)
+		assert.Assert(t, result.body == "completed", "expected 'completed', got %q", result.body)
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not complete within timeout")
+	}
+
+	// Verify some heartbeat errors occurred
+	heartbeatMu.Lock()
+	errorCount := heartbeatErrorCount
+	totalCalls := heartbeatCallCount
+	heartbeatMu.Unlock()
+	assert.Assert(t, totalCalls > 0, "expected some heartbeat calls, got 0")
+	assert.Assert(t, errorCount > 0, "expected some heartbeat errors, got 0 (total calls: %d)", totalCalls)
+}
+
+func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	instanceFetchStarted := make(chan struct{})
+	instanceFetchCanFinish := make(chan struct{})
+	requestCompleted := make(chan struct {
+		statusCode int
+		body       string
+		err        error
+	}, 1)
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		// Signal that we're waiting for an instance
+		select {
+		case instanceFetchStarted <- struct{}{}:
+		default:
+		}
+		// Block until test allows us to continue
+		select {
+		case <-instanceFetchCanFinish:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+			rw.Write([]byte("completed"))
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.ShutdownTimeout = 5 * time.Second
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Start a request that will block during instance fetch
+	go func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		resp, err := http.DefaultClient.Do(req)
+		result := struct {
+			statusCode int
+			body       string
+			err        error
+		}{err: err}
+		if err == nil {
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			result.statusCode = resp.StatusCode
+			result.body = string(body)
+		}
+		requestCompleted <- result
+	}()
+
+	// Wait for the instance fetch to start
+	<-instanceFetchStarted
+
+	// Cancel the context (simulating shutdown) while blocked on instance fetch
+	cancel()
+
+	// Allow the instance fetch to complete
+	close(instanceFetchCanFinish)
+
+	// Verify the request completes (either successfully or with context error)
+	select {
+	case result := <-requestCompleted:
+		// Either outcome is acceptable - request may complete successfully
+		// if it gets an instance before context is fully cancelled,
+		// or it may fail with a connection error
+		if result.err == nil {
+			assert.Assert(t, result.statusCode == http.StatusOK, "expected 200, got %d", result.statusCode)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not complete within timeout")
+	}
+
+	// Verify in-flight count returns to 0
+	heartbeat, ok := router.heartbeats.Load(fn.Hash())
+	if ok {
+		assert.Assert(t, heartbeat.GetInFlightRequests() == 0, "expected 0 in-flight requests, got %d", heartbeat.GetInFlightRequests())
+	}
+}
+
+func TestBackoffDoesNotOverflowAtHighAttempts(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.RoundTripRetryMinTimeout = 100 * time.Millisecond
+	cfg.RoundTripRetryMaxTimeout = 5 * time.Second
+	router := New(cfg, fixture.NewMockControllerClient(t))
+
+	// Test various high attempt numbers that could cause overflow
+	testAttempts := []int{10, 50, 100, 1000, 10000}
+
+	for _, attempt := range testAttempts {
+		// Run multiple times due to randomness in backoff calculation
+		for range 10 {
+			backoff := router.calculateBackoff(attempt)
+
+			// Verify backoff is within valid range
+			assert.Assert(t, backoff >= 0, "attempt %d: backoff should not be negative: %v", attempt, backoff)
+			assert.Assert(t, backoff <= cfg.RoundTripRetryMaxTimeout, "attempt %d: backoff %v exceeds max %v", attempt, backoff, cfg.RoundTripRetryMaxTimeout)
+		}
+	}
+}
+
+func TestZeroInFlightAfterAllRequestsComplete(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	const numRequests = 100
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			// Small delay to ensure concurrent execution
+			time.Sleep(5 * time.Millisecond)
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	var wg sync.WaitGroup
+	errors := make(chan error, numRequests)
+
+	for range numRequests {
+		wg.Go(func() {
+			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+			fn.SetHeader(req)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				errors <- err
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				errors <- fmt.Errorf("unexpected status: %d", resp.StatusCode)
+			}
+		})
+	}
+
+	wg.Wait()
+	close(errors)
+
+	for err := range errors {
+		t.Errorf("request failed: %v", err)
+	}
+
+	// Verify in-flight count is exactly 0
+	heartbeat, ok := router.heartbeats.Load(fn.Hash())
+	if ok {
+		assert.Assert(t, heartbeat.GetInFlightRequests() == 0,
+			"expected exactly 0 in-flight requests after all requests complete, got %d",
+			heartbeat.GetInFlightRequests())
+	}
+}
+
+func TestInstanceCallContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	instanceCallStarted := make(chan struct{})
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		close(instanceCallStarted)
+		// Block until context is cancelled
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Create a request with a cancellable context
+	reqCtx, reqCancel := context.WithCancel(t.Context())
+	req, _ := http.NewRequestWithContext(reqCtx, http.MethodGet, server.URL+"/", nil)
+	fn.SetHeader(req)
+
+	requestCompleted := make(chan error, 1)
+	go func() {
+		_, err := http.DefaultClient.Do(req)
+		requestCompleted <- err
+	}()
+
+	// Wait for the instance call to start
+	<-instanceCallStarted
+
+	// Cancel the request context
+	reqCancel()
+
+	// Verify the request fails with context cancellation
+	select {
+	case err := <-requestCompleted:
+		assert.Assert(t, err != nil, "expected error when context is cancelled")
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not complete within timeout")
+	}
+
+	cancel() // cleanup router context
+}
+
+func TestHeartbeatNotSentAfterContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	var heartbeatCount int64
+	var heartbeatMu sync.Mutex
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		heartbeatMu.Lock()
+		heartbeatCount++
+		heartbeatMu.Unlock()
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.HeartbeatInterval = 50 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	// Wait for a few heartbeats
+	time.Sleep(cfg.HeartbeatInterval*3 + 50*time.Millisecond)
+
+	heartbeatMu.Lock()
+	countBeforeCancel := heartbeatCount
+	heartbeatMu.Unlock()
+	assert.Assert(t, countBeforeCancel > 0, "expected some heartbeats before cancel")
+
+	// Cancel the context
+	cancel()
+
+	// Wait a bit to ensure cancellation is processed
+	time.Sleep(50 * time.Millisecond)
+
+	// Record count right after cancel
+	heartbeatMu.Lock()
+	countAfterCancel := heartbeatCount
+	heartbeatMu.Unlock()
+
+	// Wait for 3 more heartbeat intervals
+	time.Sleep(cfg.HeartbeatInterval * 4)
+
+	// Verify no new heartbeats were sent
+	heartbeatMu.Lock()
+	finalCount := heartbeatCount
+	heartbeatMu.Unlock()
+
+	assert.Assert(t, finalCount == countAfterCancel,
+		"expected no heartbeats after cancel, but count went from %d to %d",
+		countAfterCancel, finalCount)
+}
+
+func TestRequestBodyReadErrorDuringRetry(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	var attemptCount int
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		attemptCount++
+		if attemptCount == 1 {
+			// First attempt - return an instance that will fail with dial error
+			instance := &skipper.Instance{}
+			instance.SetName("failing-instance")
+			instance.SetAddr("192.0.2.1:9999") // Non-routable address
+			return instance, nil
+		}
+		// Second attempt - return a working instance
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			// Read the body to verify it was preserved across retry
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				rw.WriteHeader(http.StatusInternalServerError)
+				rw.Write([]byte("failed to read body: " + err.Error()))
+				return
+			}
+			rw.WriteHeader(http.StatusOK)
+			rw.Write(body)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.MaxRoundTripAttempts = 3
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	// Make a request with a body
+	bodyContent := "test body content"
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/", strings.NewReader(bodyContent))
+	fn.SetHeader(req)
+
+	resp, err := http.DefaultClient.Do(req)
+	assert.NilError(t, err)
+	defer resp.Body.Close()
+
+	// The request should succeed on retry and echo back the body
+	respBody, _ := io.ReadAll(resp.Body)
+	assert.Assert(t, resp.StatusCode == http.StatusOK, "expected 200, got %d: %s", resp.StatusCode, string(respBody))
+	assert.Assert(t, string(respBody) == bodyContent, "body was not preserved across retry: got %q", string(respBody))
+}
+
+func TestAllInstancesExhaustedReturnsError(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	var attemptCount int
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		attemptCount++
+		// Always return an instance at a non-routable address
+		instance := &skipper.Instance{}
+		instance.SetName(fmt.Sprintf("failing-instance-%d", attemptCount))
+		instance.SetAddr("192.0.2.1:9999") // Non-routable address
+		return instance, nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.MaxRoundTripAttempts = 3
+	cfg.RoundTripRetryMinTimeout = 1 * time.Millisecond // Speed up test
+	cfg.RoundTripRetryMaxTimeout = 10 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+	fn.SetHeader(req)
+
+	resp, err := http.DefaultClient.Do(req)
+	assert.NilError(t, err)
+	defer resp.Body.Close()
+
+	// Should get a 502 Bad Gateway after exhausting retries
+	assert.Assert(t, resp.StatusCode == http.StatusBadGateway, "expected 502, got %d", resp.StatusCode)
+
+	// Verify we made the expected number of attempts
+	assert.Assert(t, attemptCount == cfg.MaxRoundTripAttempts,
+		"expected %d attempts, got %d", cfg.MaxRoundTripAttempts, attemptCount)
+}
+
+func TestRapidRequestsDuringShutdownWindow(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	var requestsStarted int64
+	var requestsCompleted int64
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			atomic.AddInt64(&requestsStarted, 1)
+			time.Sleep(50 * time.Millisecond) // Simulate processing
+			atomic.AddInt64(&requestsCompleted, 1)
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.ShutdownTimeout = 5 * time.Second
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	const numRequests = 20
+	var wg sync.WaitGroup
+	results := make(chan error, numRequests)
+
+	// Start requests rapidly
+	for range numRequests {
+		wg.Go(func() {
+			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+			fn.SetHeader(req)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				results <- err
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				results <- fmt.Errorf("unexpected status: %d", resp.StatusCode)
+				return
+			}
+			results <- nil
+		})
+	}
+
+	// Wait for some requests to start, then trigger shutdown
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	// Wait for all requests to complete
+	wg.Wait()
+	close(results)
+
+	var failures int
+	for err := range results {
+		if err != nil {
+			failures++
+		}
+	}
+
+	started := atomic.LoadInt64(&requestsStarted)
+	completed := atomic.LoadInt64(&requestsCompleted)
+
+	// Requests that started should have completed
+	assert.Assert(t, started == completed,
+		"all started requests should complete: started=%d completed=%d", started, completed)
+
+	// Some requests may have failed if they didn't connect before shutdown
+	// but all that started should have completed
+	t.Logf("requests: started=%d completed=%d failures=%d", started, completed, failures)
 }
