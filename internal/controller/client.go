@@ -18,19 +18,20 @@ type Client interface {
 	Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error)
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
+	Close() error
 }
 
 type NewClientFunc func(host string, port int) Client
 
-type httpClient struct {
+type HTTPClient struct {
 	*http.Client
 	addr string
 }
 
-var _ Client = &httpClient{}
+var _ Client = &HTTPClient{}
 
 func NewHTTPClient(host string, port int) Client {
-	return &httpClient{
+	return &HTTPClient{
 		addr: fmt.Sprintf("http://%s:%d", host, port),
 		Client: &http.Client{
 			Transport: otelhttp.NewTransport(http.DefaultTransport,
@@ -40,7 +41,7 @@ func NewHTTPClient(host string, port int) Client {
 	}
 }
 
-func (c *httpClient) Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error) {
+func (c *HTTPClient) Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/instance", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create instance request: %w", err)
@@ -68,7 +69,7 @@ func (c *httpClient) Instance(ctx context.Context, fn *skipper.Function, exclude
 	return instance, nil
 }
 
-func (c *httpClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+func (c *HTTPClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
 	if len(heartbeats) == 0 {
 		return nil
 	}
@@ -99,7 +100,7 @@ func (c *httpClient) Heartbeat(ctx context.Context, routerIP string, heartbeats 
 	return nil
 }
 
-func (c *httpClient) Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
+func (c *HTTPClient) Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/scale", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create scale request: %w", err)
@@ -125,4 +126,8 @@ func (c *httpClient) Scale(ctx context.Context, fn *skipper.Function, desiredIns
 	}
 
 	return instances, nil
+}
+
+func (c *HTTPClient) Close() error {
+	return nil
 }
