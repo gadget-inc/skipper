@@ -258,8 +258,8 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		//    instances assigned longer than HeartbeatTimeout ago would immediately trigger
 		//    heartbeat_timeout scale-to-zero when a new controller starts with empty heartbeat state
 		protectionPeriod := max(s.ctrl.config.HPADownscaleStabilization, s.ctrl.config.HeartbeatTimeout)
-		if time.Since(s.ctrl.startedAt) < protectionPeriod {
-			log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", s.ctrl.startedAt))
+		if time.Since(s.ctrl.StartedAt()) < protectionPeriod {
+			log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", s.ctrl.StartedAt()))
 			return nil
 		}
 

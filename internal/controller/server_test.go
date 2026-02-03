@@ -24,14 +24,30 @@ import (
 func TestHealthz(t *testing.T) {
 	t.Parallel()
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	rw := httptest.NewRecorder()
+	t.Run("returns 503 before ready", func(t *testing.T) {
+		t.Parallel()
+		ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
 
-	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
-	ctrl.Handler().ServeHTTP(rw, req)
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		rw := httptest.NewRecorder()
+		ctrl.Handler().ServeHTTP(rw, req)
 
-	assert.Assert(t, rw.Code == http.StatusOK)
-	assert.Assert(t, rw.Body.Len() == 0)
+		assert.Equal(t, rw.Code, http.StatusServiceUnavailable)
+	})
+
+	t.Run("returns 200 after ready", func(t *testing.T) {
+		t.Parallel()
+		ctrl := New(testConfig(), nil, fake.NewClientset(fixture.NewControllerPod()), nil)
+		err := ctrl.startInformers(t.Context())
+		assert.NilError(t, err)
+		ctrl.setStartedAt(time.Now())
+
+		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		rw := httptest.NewRecorder()
+		ctrl.Handler().ServeHTTP(rw, req)
+
+		assert.Equal(t, rw.Code, http.StatusOK)
+	})
 }
 
 func TestHandleInstance(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/hashring"
@@ -39,7 +40,7 @@ type namespaceLister struct {
 type Controller struct {
 	config              *Config
 	ctx                 context.Context
-	startedAt           time.Time
+	startedAtNano       atomic.Int64
 	ring                *hashring.HashRing
 	supervisors         *xsync.Map[skipper.FunctionHash, *Supervisor]
 	newClientFunc       NewClientFunc
@@ -74,7 +75,7 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start informers: %w", err)
 	}
 
-	ctrl.startedAt = time.Now()
+	ctrl.startedAtNano.Store(time.Now().UnixNano())
 
 	go timer.Loop(ctx, ctrl.config.ScaleInterval, func(ctx context.Context) error {
 		defer func() {
@@ -301,5 +302,28 @@ func (ctrl *Controller) Close() {
 	for ip, client := range ctrl.controllerClients.All() {
 		ctrl.controllerClients.Delete(ip)
 		client.Close()
+	}
+}
+
+// StartedAt returns when the controller started, or zero time if not started.
+func (ctrl *Controller) StartedAt() time.Time {
+	nano := ctrl.startedAtNano.Load()
+	if nano == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, nano)
+}
+
+// Ready returns true after informers have synced.
+func (ctrl *Controller) Ready() bool {
+	return ctrl.startedAtNano.Load() != 0
+}
+
+// setStartedAt sets the controller's started time (for testing).
+func (ctrl *Controller) setStartedAt(t time.Time) {
+	if t.IsZero() {
+		ctrl.startedAtNano.Store(0)
+	} else {
+		ctrl.startedAtNano.Store(t.UnixNano())
 	}
 }

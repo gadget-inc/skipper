@@ -37,6 +37,10 @@ func (ctrl *Controller) Handler() http.Handler {
 }
 
 func (ctrl *Controller) handleHealthz(rw http.ResponseWriter, req *http.Request) {
+	if !ctrl.Ready() {
+		rw.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	rw.WriteHeader(http.StatusOK)
 }
 

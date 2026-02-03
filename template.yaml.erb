@@ -287,26 +287,41 @@ spec:
               cpu: "<%= controller_limit_cpu %>"
               <%- end -%>
           startupProbe:
+            <%- if controller_protocol == "grpc" -%>
+            grpc:
+              port: <%= controller_grpc_port %>
+            <%- else -%>
             httpGet:
               path: /healthz
               port: http
+            <%- end -%>
             failureThreshold: 3
             initialDelaySeconds: 3
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
           livenessProbe:
+            <%- if controller_protocol == "grpc" -%>
+            grpc:
+              port: <%= controller_grpc_port %>
+            <%- else -%>
             httpGet:
               path: /healthz
               port: http
+            <%- end -%>
             failureThreshold: 2
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
           readinessProbe:
+            <%- if controller_protocol == "grpc" -%>
+            grpc:
+              port: <%= controller_grpc_port %>
+            <%- else -%>
             httpGet:
               path: /healthz
               port: http
+            <%- end -%>
             failureThreshold: 1
             periodSeconds: 1
             successThreshold: 1

@@ -630,7 +630,7 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	cfg := testConfig()
 	cfg.HPADownscaleStabilization = 5 * time.Second
 	ctrl := New(cfg, func(host string, port int) Client { return mcc }, fakeKubernetes, nil)
-	ctrl.startedAt = time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second))
+	ctrl.setStartedAt(time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second)))
 
 	// Add pods so discoverSupervisors can find them
 	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
@@ -736,7 +736,7 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	fakeKubernetes.Tracker().Add(pod2)
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
-	ctrl.startedAt = time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second))
+	ctrl.setStartedAt(time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second)))
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
@@ -880,7 +880,7 @@ func TestConvergeProtectionPeriod(t *testing.T) {
 			cfg.HeartbeatTimeout = tc.heartbeatTimeout
 
 			ctrl := New(cfg, nil, fakeKubernetes, nil)
-			ctrl.startedAt = time.Now().Add(-tc.controllerAge)
+			ctrl.setStartedAt(time.Now().Add(-tc.controllerAge))
 
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
@@ -947,7 +947,7 @@ func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
 	// Controller has been running long enough to allow scale-down
-	ctrl.startedAt = time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second))
+	ctrl.setStartedAt(time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second)))
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
@@ -1009,7 +1009,7 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 
 	cfg := testConfig()
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
-	ctrl.startedAt = time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second))
+	ctrl.setStartedAt(time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second)))
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
@@ -1998,7 +1998,7 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
 	ctrl.ctx = ctx // set context so supervisor loop starts
-	ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+	ctrl.setStartedAt(time.Now().Add(-cfg.HPADownscaleStabilization - time.Second))
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
@@ -2072,7 +2072,7 @@ func TestScaleToZeroStopsLoop(t *testing.T) {
 			// Don't set ctrl.ctx yet - we need to store the heartbeat before the
 			// supervisor loop starts, otherwise converge() may see no heartbeats
 			// and immediately scale to 0, removing the supervisor from the map.
-			ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+			ctrl.setStartedAt(time.Now().Add(-cfg.HPADownscaleStabilization - time.Second))
 
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
@@ -2941,9 +2941,10 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			cfg.HeartbeatTimeout = 10 * time.Second
 
 			ctrl := New(cfg, nil, fakeKubernetes, nil)
-			// Don't set ctrl.startedAt - this prevents supervisor loops from starting
-			// until we've finished setup. Otherwise there's a race between the loop
-			// starting and setupError storing the heartbeat.
+			// Don't call ctrl.setStartedAt() - this keeps the controller not ready,
+			// preventing supervisor loops from starting until we've finished setup.
+			// Otherwise there's a race between the loop starting and setupError
+			// storing the heartbeat.
 
 			state := &testState{
 				fn:             fn,
@@ -2957,7 +2958,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 				assert.NilError(t, err)
 			}
 
-			// Create supervisor (loop won't start yet because ctrl.startedAt is zero)
+			// Create supervisor (loop won't start yet because startedAtNano is zero)
 			state.supervisor = ctrl.supervisor(fn)
 
 			// Set up error condition (supervisor is now available)
@@ -2975,7 +2976,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 
 			// Now start the supervisor loop
 			ctrl.ctx = ctx
-			ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+			ctrl.setStartedAt(time.Now().Add(-cfg.HPADownscaleStabilization - time.Second))
 			state.supervisor.start(ctx)
 
 			// Wait for a few loop iterations to happen (they should fail and log errors)
@@ -3026,7 +3027,7 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	cfg.HeartbeatTimeout = 10 * time.Second
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
-	ctrl.startedAt = time.Now().Add(-cfg.HPADownscaleStabilization - time.Second)
+	ctrl.setStartedAt(time.Now().Add(-cfg.HPADownscaleStabilization - time.Second))
 
 	// First, create the old (stale) replica set
 	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
@@ -3120,7 +3121,7 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
 	// Controller must have been running longer than max(HPADownscaleStabilization, HeartbeatTimeout)
 	// to allow scale-down
-	ctrl.startedAt = time.Now().Add(-cfg.HeartbeatTimeout - time.Second)
+	ctrl.setStartedAt(time.Now().Add(-cfg.HeartbeatTimeout - time.Second))
 
 	// First, create the old (stale) replica set
 	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
@@ -3330,7 +3331,7 @@ func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
 	// Use max() to match the protection period logic in converge()
-	ctrl.startedAt = time.Now().Add(-max(cfg.HPADownscaleStabilization, cfg.HeartbeatTimeout) - time.Second)
+	ctrl.setStartedAt(time.Now().Add(-max(cfg.HPADownscaleStabilization, cfg.HeartbeatTimeout) - time.Second))
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
