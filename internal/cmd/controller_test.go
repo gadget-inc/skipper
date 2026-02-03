@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/controller"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"gotest.tools/v3/assert"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
@@ -441,4 +445,90 @@ func TestControllerHTTPListenerFailure(t *testing.T) {
 	err = cmd.ExecuteContext(ctx)
 	assert.Assert(t, err != nil, "expected error when HTTP port is already bound")
 	assert.ErrorContains(t, err, "failed to serve controller HTTP")
+}
+
+func TestControllerGRPCHealthCheck(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	t.Parallel()
+
+	// Find free ports
+	httpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NilError(t, err)
+	httpPort := httpListener.Addr().(*net.TCPAddr).Port
+	httpListener.Close()
+
+	grpcListener, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NilError(t, err)
+	grpcPort := grpcListener.Addr().(*net.TCPAddr).Port
+	grpcListener.Close()
+
+	deps := &ControllerDeps{
+		LoadKubeConfig: func() (*rest.Config, error) {
+			return &rest.Config{}, nil
+		},
+		NewK8sClient: func(c *rest.Config) (kubernetes.Interface, error) {
+			return fake.NewClientset(), nil
+		},
+		NewMetricsClient: func(c *rest.Config) (kubernetesmetrics.Interface, error) {
+			return fakemetrics.NewSimpleClientset(), nil //nolint:staticcheck // NewClientset isn't generated for this package
+		},
+		NewClientFunc: func(protocol string, grpcPort int) controller.NewClientFunc {
+			return func(host string, port int) controller.Client {
+				return nil
+			}
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cmd := NewController(deps)
+	cmd.SetArgs([]string{
+		"--namespace=test",
+		"--pod-ip=10.0.0.1",
+		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
+		"--function-namespaces=default",
+		"--host=127.0.0.1",
+		"--http-port=" + strconv.Itoa(httpPort),
+		"--grpc-port=" + strconv.Itoa(grpcPort),
+	})
+
+	cmdErr := make(chan error, 1)
+	go func() {
+		cmdErr <- cmd.ExecuteContext(ctx)
+	}()
+
+	// Connect and check gRPC health with retry
+	var conn *grpc.ClientConn
+	var healthClient healthgrpc.HealthClient
+	var resp *healthgrpc.HealthCheckResponse
+
+	for i := 0; i < 50; i++ {
+		conn, err = grpc.NewClient(
+			net.JoinHostPort("127.0.0.1", strconv.Itoa(grpcPort)),
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+
+		healthClient = healthgrpc.NewHealthClient(conn)
+		resp, err = healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
+		if err == nil {
+			break
+		}
+		conn.Close()
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	assert.NilError(t, err)
+	assert.Equal(t, resp.Status, healthgrpc.HealthCheckResponse_SERVING)
+	conn.Close()
+
+	cancel()
+	<-cmdErr
 }

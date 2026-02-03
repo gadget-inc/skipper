@@ -18,6 +18,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/klog/v2"
 )
 
@@ -98,6 +100,9 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 				grpc.StatsHandler(otelgrpc.NewServerHandler()),
 			)
 			skipper.RegisterControllerServiceServer(grpcServer, controller.NewGRPCServer(ctrl))
+			healthServer := health.NewServer()
+			healthServer.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
+			healthgrpc.RegisterHealthServer(grpcServer, healthServer)
 
 			grpcListener, err := net.Listen("tcp", net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.GRPCPort)))
 			if err != nil {
