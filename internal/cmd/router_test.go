@@ -90,7 +90,7 @@ func TestRouterProtocolSelection(t *testing.T) {
 			protocol: "grpc",
 		},
 		{
-			name:     "empty protocol creates client (defaults to http)",
+			name:     "empty protocol creates client (defaults to grpc)",
 			protocol: "",
 		},
 	}

@@ -16,7 +16,7 @@ type Config struct {
 	Host                           string           `flag:"host" description:"The hostname the controller listens on." default:"0.0.0.0"`
 	HTTPPort                       int              `flag:"http-port" description:"The port the HTTP server listens on." default:"8080"`
 	GRPCPort                       int              `flag:"grpc-port" description:"The port the gRPC server listens on." default:"50051"`
-	Protocol                       string           `flag:"protocol" description:"Protocol for inter-controller communication (http or grpc)." default:"http"`
+	Protocol                       string           `flag:"protocol" description:"Protocol for inter-controller communication (http or grpc)." default:"grpc"`
 	ShutdownTimeout                time.Duration    `flag:"shutdown-timeout" description:"The timeout for shutting down the controller." default:"5s"`
 	Namespace                      string           `flag:"namespace" description:"The namespace the controller is in." required:"true"`
 	PodIP                          string           `flag:"pod-ip" description:"The pod IP the controller is running on." required:"true"`

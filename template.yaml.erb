@@ -220,7 +220,7 @@ spec:
             - name: http
               containerPort: 8080
             - name: grpc
-              containerPort: 50051
+              containerPort: <%= controller_grpc_port %>
             - name: metrics
               containerPort: 9090
           env:
@@ -399,7 +399,7 @@ spec:
       port: 80
       targetPort: http
     - name: grpc
-      port: 50051
+      port: <%= controller_grpc_port %>
       targetPort: grpc
   <%- if service_spec.any? -%>
   <%= to_yaml(service_spec, indentation: 2) %>
@@ -420,7 +420,7 @@ spec:
     app.kubernetes.io/instance: <%= namespace %>
   ports:
     - name: grpc
-      port: 50051
+      port: <%= controller_grpc_port %>
       targetPort: grpc
 <%- if controller_min_replicas != controller_max_replicas -%>
 ---

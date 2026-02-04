@@ -59,7 +59,9 @@ func defaultNewMetricsClient(config *rest.Config) (kubernetesmetrics.Interface, 
 
 func defaultNewClientFunc(protocol string, grpcPort int) controller.NewClientFunc {
 	switch protocol {
-	case "grpc":
+	case "http":
+		return controller.NewHTTPClient
+	default:
 		return func(host string, port int) controller.Client {
 			client, err := controller.NewGRPCClient(host, grpcPort)
 			if err != nil {
@@ -68,8 +70,6 @@ func defaultNewClientFunc(protocol string, grpcPort int) controller.NewClientFun
 			}
 			return client
 		}
-	default:
-		return controller.NewHTTPClient
 	}
 }
 
@@ -89,7 +89,9 @@ func DefaultRouterDeps() *RouterDeps {
 
 func defaultNewControllerClient(cfg *router.Config) (controller.Client, error) {
 	switch cfg.ControllerProtocol {
-	case "grpc":
+	case "http":
+		return controller.NewHTTPClient(cfg.ControllerServiceHost, cfg.ControllerHTTPPort), nil
+	default:
 		// Use the gRPC-specific headless service host if configured,
 		// otherwise fall back to the standard service host
 		grpcHost := cfg.ControllerGRPCServiceHost
@@ -97,7 +99,5 @@ func defaultNewControllerClient(cfg *router.Config) (controller.Client, error) {
 			grpcHost = cfg.ControllerServiceHost
 		}
 		return controller.NewGRPCClient(grpcHost, cfg.ControllerGRPCPort)
-	default:
-		return controller.NewHTTPClient(cfg.ControllerServiceHost, cfg.ControllerHTTPPort), nil
 	}
 }

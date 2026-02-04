@@ -46,9 +46,9 @@ func TestControllerProtocolSelection(t *testing.T) {
 			expectGRPC: true,
 		},
 		{
-			name:       "empty protocol defaults to HTTP",
+			name:       "empty protocol defaults to gRPC",
 			protocol:   "",
-			expectGRPC: false,
+			expectGRPC: true,
 		},
 	}
 
@@ -58,8 +58,8 @@ func TestControllerProtocolSelection(t *testing.T) {
 
 			var usedGRPC atomic.Bool
 
-			mockNewClientFunc := func(protocol string, grpcPort int) controller.NewClientFunc {
-				usedGRPC.Store(protocol == "grpc")
+			mockNewClientFunc := func(protocol string, _ int) controller.NewClientFunc {
+				usedGRPC.Store(protocol != "http")
 				// Return a dummy function - we just care about what protocol was passed
 				return func(host string, port int) controller.Client {
 					return nil
@@ -159,7 +159,7 @@ func TestDefaultNewClientFunc(t *testing.T) {
 			grpcPort: 50051,
 		},
 		{
-			name:     "empty protocol defaults to http",
+			name:     "empty protocol defaults to grpc",
 			protocol: "",
 			grpcPort: 50051,
 		},
