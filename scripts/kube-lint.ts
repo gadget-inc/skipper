@@ -11,7 +11,6 @@ $.cwd = abs();
 interface BindingConfig {
   name: string;
   bindings: Record<string, unknown>;
-  expectYamllintFailure?: boolean;
 }
 
 const baseBindings = {
@@ -203,62 +202,51 @@ for (const config of configs) {
     quiet: true,
   })`yamllint -f parsable -c ${abs(".yamllint.yaml")} ${configDir}/template.yaml`;
 
-  const yamllintFailed = yamllintResult.exitCode !== 0;
-
-  if (config.expectYamllintFailure) {
-    if (!yamllintFailed) {
-      console.error(`${configDir}/template.yaml: yamllint should have failed but passed`);
-      hasErrors = true;
-    }
-  } else {
-    if (yamllintFailed) {
-      // parsable format: file:line:col: [error] message
-      const output = (yamllintResult.stdout || yamllintResult.stderr).trim();
-      if (output) {
-        for (const line of output.split("\n")) {
-          const match = line.match(/^(.+?:\d+:\d+): (\[error\]) (.+)$/);
-          if (match) {
-            console.error(`${chalk.dim(match[1])}: ${chalk.red(match[2])} ${match[3]}`);
-          } else {
-            console.error(line);
-          }
+  if (yamllintResult.exitCode !== 0) {
+    // parsable format: file:line:col: [error] message
+    const output = (yamllintResult.stdout || yamllintResult.stderr).trim();
+    if (output) {
+      for (const line of output.split("\n")) {
+        const match = line.match(/^(.+?:\d+:\d+): (\[error\]) (.+)$/);
+        if (match) {
+          console.error(`${chalk.dim(match[1])}: ${chalk.red(match[2])} ${match[3]}`);
+        } else {
+          console.error(line);
         }
       }
-      hasErrors = true;
     }
+    hasErrors = true;
   }
 
-  // Run kube-linter for Kubernetes validation (skip if yamllint was expected to fail)
-  if (!config.expectYamllintFailure) {
-    const kubeLinterResult = await $({
-      nothrow: true,
-      quiet: true,
-    })`kube-linter lint --format json ${configDir}/template.yaml`;
+  // Run kube-linter for Kubernetes validation
+  const kubeLinterResult = await $({
+    nothrow: true,
+    quiet: true,
+  })`kube-linter lint --format json ${configDir}/template.yaml`;
 
-    if (kubeLinterResult.exitCode !== 0) {
-      // Parse JSON output for compact error display
-      try {
-        const output = JSON.parse(kubeLinterResult.stdout);
-        const basePath = abs().replace(/\/$/, "") + "/";
-        for (const report of output.Reports || []) {
-          let file = report.Object?.Metadata?.FilePath || configDir + "/template.yaml";
-          // Convert absolute paths to relative
-          if (file.startsWith(basePath)) {
-            file = file.slice(basePath.length);
-          }
-          const objectName = report.Object?.K8sObject?.Name || "unknown";
-          const check = report.Check || "unknown";
-          const message = report.Diagnostic?.Message || "unknown error";
-          console.error(
-            `${chalk.dim(file)}: ${objectName} [${chalk.yellow(check)}]: ${chalk.red(message)}`,
-          );
+  if (kubeLinterResult.exitCode !== 0) {
+    // Parse JSON output for compact error display
+    try {
+      const output = JSON.parse(kubeLinterResult.stdout);
+      const basePath = abs().replace(/\/$/, "") + "/";
+      for (const report of output.Reports || []) {
+        let file = report.Object?.Metadata?.FilePath || configDir + "/template.yaml";
+        // Convert absolute paths to relative
+        if (file.startsWith(basePath)) {
+          file = file.slice(basePath.length);
         }
-      } catch {
-        // Fallback if JSON parsing fails
-        console.error(kubeLinterResult.stdout || kubeLinterResult.stderr);
+        const objectName = report.Object?.K8sObject?.Name || "unknown";
+        const check = report.Check || "unknown";
+        const message = report.Diagnostic?.Message || "unknown error";
+        console.error(
+          `${chalk.dim(file)}: ${objectName} [${chalk.yellow(check)}]: ${chalk.red(message)}`,
+        );
       }
-      hasErrors = true;
+    } catch {
+      // Fallback if JSON parsing fails
+      console.error(kubeLinterResult.stdout || kubeLinterResult.stderr);
     }
+    hasErrors = true;
   }
 }
 

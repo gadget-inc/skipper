@@ -217,7 +217,7 @@ if (flags.values.level) {
   const matchLevels = validLevels.slice(levelIndex);
   // Match level in various formats: level=INFO, "level":"INFO", [INFO], etc.
   // Use (?i) for case-insensitive matching (Go regex syntax used by stern)
-  const levelPattern = `(?i)(level[=:]\\s*"?(${matchLevels.join("|")})|(\\[\\s*(${matchLevels.join("|")})\\s*\\]))`;
+  const levelPattern = `(?i)("?level"?[=:]\\s*"?(${matchLevels.join("|")})|(\\[\\s*(${matchLevels.join("|")})\\s*\\]))`;
   sternArgs.push(`--include=${levelPattern}`);
 }
 
