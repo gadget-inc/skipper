@@ -7,7 +7,7 @@ Flags:
       --controller-grpc-port int                The gRPC port the controller service listens on. (env SKIPPER_CONTROLLER_GRPC_PORT) (default 50051)
       --controller-grpc-service-host string     The hostname of the headless controller service for gRPC. Falls back to controller-service-host if not set. (env SKIPPER_CONTROLLER_GRPC_SERVICE_HOST)
       --controller-http-port int                The HTTP port the controller service listens on. (env SKIPPER_CONTROLLER_HTTP_PORT) (default 80)
-      --controller-protocol string              Protocol to use for controller communication (http or grpc). (env SKIPPER_CONTROLLER_PROTOCOL) (default "http")
+      --controller-protocol string              Protocol to use for controller communication (http or grpc). (env SKIPPER_CONTROLLER_PROTOCOL) (default "grpc")
       --controller-service-host string          The hostname of the controller service. (env SKIPPER_CONTROLLER_SERVICE_HOST)
       --heartbeat-interval duration             The interval at which to send heartbeats to the controller. (env SKIPPER_HEARTBEAT_INTERVAL) (default 5s)
   -h, --help                                    help for router

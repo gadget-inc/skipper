@@ -16,7 +16,7 @@ type Config struct {
 	RoundTripRetryMaxTimeout  time.Duration `flag:"round-trip-retry-max-timeout" description:"The maximum timeout between round trip attempts." default:"5s"`
 	ControllerServiceHost     string        `flag:"controller-service-host" description:"The hostname of the controller service." required:"true"`
 	ControllerHTTPPort        int           `flag:"controller-http-port" description:"The HTTP port the controller service listens on." default:"80"`
-	ControllerProtocol        string        `flag:"controller-protocol" description:"Protocol to use for controller communication (http or grpc)." default:"http"`
+	ControllerProtocol        string        `flag:"controller-protocol" description:"Protocol to use for controller communication (http or grpc)." default:"grpc"`
 	ControllerGRPCPort        int           `flag:"controller-grpc-port" description:"The gRPC port the controller service listens on." default:"50051"`
 	ControllerGRPCServiceHost string        `flag:"controller-grpc-service-host" description:"The hostname of the headless controller service for gRPC. Falls back to controller-service-host if not set."`
 }
