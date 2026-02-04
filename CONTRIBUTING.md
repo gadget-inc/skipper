@@ -96,16 +96,20 @@ All `*.local.*` files are ignored by `.gitignore` so you can duplicate and creat
 
 ### Watching Logs
 
-To watch the logs of Skipper pods in a given namespace, run:
+To watch the logs of Skipper pods, run:
 
 ```bash
-$ logs                                 # Streams logs from all Skipper pods.
-$ logs --namespace=skipper-development # Streams logs from the development namespace.
-$ logs | grep <trace-id>               # Streams logs by trace ID. (e.g., `logs | grep 64627b12057c02db7a60d82a9dbf74cb`)
+$ logs                                        # Streams logs from all Skipper pods.
+$ logs -c controller                          # Streams logs from controller pods only.
+$ logs -c router --level=warn                 # Streams router warnings and errors.
+$ logs --grep="trace_id=<id>"                 # Filter logs by trace ID (native, no pipe needed).
+$ logs --errors --since=5m                    # Show errors from last 5 minutes and exit.
 ```
 
+See `logs --help` for all available flags including output formats and filtering options.
+
 > [!NOTE]
-> The `logs` command takes over your terminal with a continuous stream of logs. It's recommended to run this in a separate terminal tab or window while you run other commands in your main terminal.
+> By default, `logs` shows current logs and exits. Use `-f` or `--follow` to stream continuously.
 
 ## Testing
 
