@@ -13,7 +13,10 @@ direnv exec . tests -v ./internal/controller/...  # Run specific package tests
 direnv exec . lint                                # Run golangci-lint, oxfmt, oxlint
 direnv exec . fmt                                 # Auto-fix formatting
 direnv exec . buf generate                        # Regenerate protobuf Go code from .proto files
-direnv exec . logs                                # Stream Skipper pod logs
+direnv exec . logs                                # Show recent logs and exit
+direnv exec . logs -f                             # Stream logs continuously (follow)
+direnv exec . logs -c controller                  # Show controller logs
+direnv exec . logs --errors --since=5m            # Recent errors only
 direnv exec . clean                               # Delete all Kubernetes resources
 ```
 

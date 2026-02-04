@@ -28,8 +28,8 @@ RUN apt-get update -qqy && \
     ca-certificates curl jq less vim && \
     rm -rf /var/lib/apt/lists/* && \
     update-ca-certificates
-RUN useradd -ms /bin/bash skipper
+RUN useradd -u 1000 -ms /bin/bash skipper
 WORKDIR /home/skipper
-USER skipper
-COPY --from=build --chown=skipper /out/skipper .
+USER 1000
+COPY --from=build --chown=1000 /out/skipper .
 ENTRYPOINT ["./skipper"]

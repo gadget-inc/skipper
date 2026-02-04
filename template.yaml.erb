@@ -205,6 +205,9 @@ spec:
         - name: controller
           image: <%= controller_image %>
           imagePullPolicy: <%= controller_image_pull_policy %>
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
           lifecycle:
             preStop:
               exec:
@@ -342,6 +345,18 @@ spec:
       <%- if controller_affinity.any? -%>
       affinity:
         <%= to_yaml(controller_affinity, indentation: 8) %>
+      <%- else -%>
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: skipper
+                    app.kubernetes.io/component: controller
+                    app.kubernetes.io/instance: <%= namespace %>
       <%- end -%>
       topologySpreadConstraints:
         - topologyKey: kubernetes.io/hostname
@@ -441,6 +456,7 @@ metadata:
   name: <%= controller_name %>-pdb
 spec:
   maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app.kubernetes.io/name: skipper
@@ -505,6 +521,9 @@ spec:
         - name: router
           image: <%= router_image %>
           imagePullPolicy: <%= router_image_pull_policy %>
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
           lifecycle:
             preStop:
               exec:
@@ -615,6 +634,18 @@ spec:
       <%- if router_affinity.any? -%>
       affinity:
         <%= to_yaml(router_affinity, indentation: 8) %>
+      <%- else -%>
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: skipper
+                    app.kubernetes.io/component: router
+                    app.kubernetes.io/instance: <%= namespace %>
       <%- end -%>
       topologySpreadConstraints:
         - topologyKey: kubernetes.io/hostname
@@ -701,6 +732,7 @@ metadata:
   name: <%= router_name %>-pdb
 spec:
   maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app.kubernetes.io/name: skipper

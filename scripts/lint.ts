@@ -9,3 +9,5 @@ $.stdio = "inherit";
 await $nothrow`golangci-lint run`;
 await $nothrow`oxfmt --check .`;
 await $nothrow`oxlint --type-aware --type-check --max-warnings=0 .`;
+
+await $nothrow`scripts/kube-lint.ts`;
