@@ -1,6 +1,4 @@
 #!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
-import { mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
 import { dedent } from "ts-dedent";
@@ -22,42 +20,15 @@ const COMPONENT_PODS: Record<string, string> = {
   all: ".",
 };
 
-const PRESETS: Record<string, Record<string, string | boolean>> = {
-  "debug-controller": {
-    component: "controller",
-    level: "debug",
-    since: "10m",
-  },
-  "debug-router": {
-    component: "router",
-    level: "debug",
-    since: "10m",
-  },
-  "recent-errors": {
-    level: "error",
-    since: "30m",
-  },
-  "test-run": {
-    namespace: "skipper-test,skipper-test-fixtures",
-    since: "5m",
-  },
-};
-
 const flags = parseArgs({
   args: process.argv.slice(2),
   allowNegative: true,
-  tokens: true,
   options: {
     // Core options
     namespace: {
       type: "string",
       default: DEFAULT_NAMESPACES,
       short: "n",
-    },
-    file: {
-      type: "string",
-      default: abs("tmp/logs/logs.log"),
-      // No short flag - -f is now used for --follow
     },
     help: {
       type: "boolean",
@@ -115,18 +86,6 @@ const flags = parseArgs({
       default: "text",
       short: "o",
     },
-
-    // Presets
-    preset: {
-      type: "string",
-      short: "p",
-    },
-
-    // Disable file output
-    stdout: {
-      type: "boolean",
-      default: false,
-    },
   },
 });
 
@@ -139,8 +98,6 @@ if (flags.values.help) {
 
     Flags:
       -n, --namespace <string>   Namespaces to stream from (${DEFAULT_NAMESPACES})
-          --file <string>        Output file path (tmp/logs/logs.log)
-          --stdout               Disable file output (stdout only)
       -h, --help                 Show this help message
 
     Component Filtering:
@@ -164,50 +121,19 @@ if (flags.values.help) {
     Output Format:
       -o, --output <string>      Output format: text, json, raw (text)
 
-    Presets:
-      -p, --preset <string>      Use a built-in configuration:
-                                   debug-controller  Controller logs at debug level, last 10m
-                                   debug-router      Router logs at debug level, last 10m
-                                   recent-errors     All error logs from last 30m
-                                   test-run          Test namespace logs from last 5m
-
     Examples:
       logs                                    # Show recent logs and exit
       logs -f                                 # Stream logs continuously (follow)
       logs -c controller                      # Show controller logs
       logs --errors --since=5m                # Recent errors only
       logs -g "trace_id=abc123"               # Filter by trace ID
-      logs -p recent-errors                   # Use recent-errors preset
       logs -o json > logs.json                # Export as JSON
   `);
   process.exit(0);
 }
 
-// Track which flags were explicitly provided by the user
-const explicitFlags = new Set(
-  flags.tokens?.filter((t) => t.kind === "option").map((t) => (t as { name: string }).name) ?? [],
-);
-
-// Apply preset if specified
-if (flags.values.preset) {
-  const preset = PRESETS[flags.values.preset];
-  if (!preset) {
-    console.error(
-      `Unknown preset: ${flags.values.preset}. Available: ${Object.keys(PRESETS).join(", ")}`,
-    );
-    process.exit(1);
-  }
-  // Apply preset values (but don't override explicit flags)
-  for (const [key, value] of Object.entries(preset)) {
-    // Only apply if user didn't explicitly set this flag
-    if (!explicitFlags.has(key)) {
-      (flags.values as Record<string, unknown>)[key] = value;
-    }
-  }
-}
-
-// Handle --errors shortcut (only if --level wasn't explicitly set)
-if (flags.values.errors && !explicitFlags.has("level")) {
+// Handle --errors shortcut
+if (flags.values.errors) {
   flags.values.level = "error";
 }
 
@@ -300,14 +226,5 @@ if (isCI) {
   sternArgs.push("--color=never");
 }
 
-// Create output directory if needed
-if (!flags.values.stdout) {
-  await mkdir(dirname(flags.values.file), { recursive: true });
-}
-
-// Run stern with or without tee
-if (flags.values.stdout) {
-  await $`stern ${sternArgs}`;
-} else {
-  await $`stern ${sternArgs} | tee ${flags.values.file}`;
-}
+// Run stern
+await $`stern ${sternArgs}`;

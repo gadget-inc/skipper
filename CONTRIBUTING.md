@@ -104,10 +104,9 @@ $ logs -c controller                          # Streams logs from controller pod
 $ logs -c router --level=warn                 # Streams router warnings and errors.
 $ logs --grep="trace_id=<id>"                 # Filter logs by trace ID (native, no pipe needed).
 $ logs --errors --since=5m                    # Show errors from last 5 minutes and exit.
-$ logs -p recent-errors                       # Use preset for recent errors.
 ```
 
-See `logs --help` for all available flags including presets, output formats, and filtering options.
+See `logs --help` for all available flags including output formats and filtering options.
 
 > [!NOTE]
 > By default, `logs` shows current logs and exits. Use `-f` or `--follow` to stream continuously.
