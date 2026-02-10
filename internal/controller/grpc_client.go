@@ -26,6 +26,7 @@ var _ Client = &GRPCClient{}
 //   - GetInstance: Retries on UNAVAILABLE since routing is critical
 //   - Heartbeat: Retries on UNAVAILABLE to prevent premature pod termination
 //   - Scale: Retries on UNAVAILABLE for reliability
+//   - ReplaceInstance: Retries on UNAVAILABLE for reliability
 const defaultServiceConfig = `{
 	"loadBalancingConfig": [{"round_robin": {}}],
 	"methodConfig": [
@@ -55,6 +56,16 @@ const defaultServiceConfig = `{
 				"maxAttempts": 3,
 				"initialBackoff": "0.05s",
 				"maxBackoff": "0.5s",
+				"backoffMultiplier": 2,
+				"retryableStatusCodes": ["UNAVAILABLE"]
+			}
+		},
+		{
+			"name": [{"service": "skipper.ControllerService", "method": "ReplaceInstance"}],
+			"retryPolicy": {
+				"maxAttempts": 2,
+				"initialBackoff": "0.01s",
+				"maxBackoff": "0.05s",
 				"backoffMultiplier": 2,
 				"retryableStatusCodes": ["UNAVAILABLE"]
 			}
@@ -129,6 +140,19 @@ func (c *GRPCClient) Scale(ctx context.Context, fn *skipper.Function, desiredIns
 	}
 
 	return resp.GetInstances(), nil
+}
+
+func (c *GRPCClient) ReplaceInstance(ctx context.Context, fn *skipper.Function, instanceName string) error {
+	req := &skipper.ReplaceInstanceRequest{}
+	req.SetFunction(fn)
+	req.SetInstanceName(instanceName)
+
+	_, err := c.client.ReplaceInstance(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to replace instance: %w", err)
+	}
+
+	return nil
 }
 
 // Close closes the gRPC connection.

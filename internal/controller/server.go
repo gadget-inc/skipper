@@ -31,6 +31,7 @@ func (ctrl *Controller) Handler() http.Handler {
 	mux.HandleFunc("GET /instance", ctrl.handleInstance)
 	mux.HandleFunc("POST /scale", ctrl.handleScale)
 	mux.HandleFunc("POST /heartbeat", ctrl.handleHeartbeat)
+	mux.HandleFunc("POST /replace-instance", ctrl.handleReplaceInstance)
 	mux.Handle("/", http.NotFoundHandler())
 
 	return mux
@@ -115,6 +116,29 @@ func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
 	if err := json.MarshalWrite(rw, instances); err != nil {
 		log.Error(ctx, "failed to encode scale response", key.Error.Slog(err))
 	}
+}
+
+func (ctrl *Controller) handleReplaceInstance(rw http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+	fn, err := skipper.FunctionFromHeader(req)
+	if err != nil {
+		log.Error(ctx, "failed to get function from header", key.Error.Slog(err))
+		http.Error(rw, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	instanceName := req.Header.Get(key.InstanceName.Header)
+	if instanceName == "" {
+		log.Error(ctx, "missing instance name header")
+		http.Error(rw, "missing "+key.InstanceName.Header, http.StatusBadRequest)
+		return
+	}
+
+	ctx = telemetry.With(ctx, key.Function.Attr(fn), key.InstanceName.Attr(instanceName))
+	log.Info(ctx, "marking instance as application-stale")
+
+	ctrl.supervisor(fn).markInstanceStale(ctx, instanceName)
+	rw.WriteHeader(http.StatusOK)
 }
 
 func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) {

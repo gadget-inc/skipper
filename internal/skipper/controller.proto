@@ -36,9 +36,17 @@ message ScaleResponse {
   repeated Instance instances = 1;
 }
 
+message ReplaceInstanceRequest {
+  Function function = 1;
+  string instance_name = 2;
+}
+
+message ReplaceInstanceResponse {}
+
 // Controller service
 service ControllerService {
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc Scale(ScaleRequest) returns (ScaleResponse);
+  rpc ReplaceInstance(ReplaceInstanceRequest) returns (ReplaceInstanceResponse);
 }

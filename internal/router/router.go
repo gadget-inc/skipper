@@ -14,6 +14,7 @@ import (
 	"net/http/httputil"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/controller"
@@ -53,18 +54,20 @@ var (
 )
 
 type Router struct {
-	config       *Config
-	ctrl         controller.Client
-	heartbeats   *xsync.Map[skipper.FunctionHash, *skipper.Heartbeat]
-	reverseProxy *httputil.ReverseProxy
-	roundTripper http.RoundTripper
+	config         *Config
+	ctrl           controller.Client
+	heartbeats     *xsync.Map[skipper.FunctionHash, *skipper.Heartbeat]
+	staleInstances *xsync.Map[string, time.Time] // last ReplaceInstance call time per instance name
+	reverseProxy   *httputil.ReverseProxy
+	roundTripper   http.RoundTripper
 }
 
 func New(cfg *Config, ctrl controller.Client) *Router {
 	r := &Router{
-		config:     cfg,
-		ctrl:       ctrl,
-		heartbeats: xsync.NewMap[skipper.FunctionHash, *skipper.Heartbeat](),
+		config:         cfg,
+		ctrl:           ctrl,
+		heartbeats:     xsync.NewMap[skipper.FunctionHash, *skipper.Heartbeat](),
+		staleInstances: xsync.NewMap[string, time.Time](),
 		roundTripper: otelhttp.NewTransport(&http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -106,6 +109,13 @@ func (r *Router) Start(ctx context.Context) {
 		if err != nil {
 			log.Warn(ctx, "failed to send heartbeats", key.Error.Slog(err))
 		}
+
+		for name, reportedAt := range r.staleInstances.AllRelaxed() {
+			if time.Since(reportedAt) > 30*time.Second {
+				r.staleInstances.Delete(name)
+			}
+		}
+
 		return nil
 	})
 }
@@ -235,6 +245,21 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		}
 
 		if res != nil {
+			if strings.EqualFold(res.Header.Get("X-Skipper-Instance-Stale"), "true") {
+				res.Header.Del("X-Skipper-Instance-Stale")
+				lastReported, exists := r.staleInstances.Load(instance.GetName())
+				if !exists || time.Since(lastReported) > 10*time.Second {
+					r.staleInstances.Store(instance.GetName(), time.Now())
+					log.Info(ctx, "detected stale environment, requesting instance replacement", key.InstanceName.Slog(instance.GetName()))
+					go func() {
+						replaceCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+						defer cancel()
+						if err := r.ctrl.ReplaceInstance(replaceCtx, fn, instance.GetName()); err != nil {
+							log.Warn(replaceCtx, "failed to replace stale instance", key.Error.Slog(err))
+						}
+					}()
+				}
+			}
 			res.Header[key.GetInstanceDurationMs.Header] = []string{strconv.FormatInt(getInstanceDuration.Milliseconds(), 10)}
 		}
 

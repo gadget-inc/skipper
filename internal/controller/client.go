@@ -18,6 +18,7 @@ type Client interface {
 	Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error)
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
+	ReplaceInstance(ctx context.Context, fn *skipper.Function, instanceName string) error
 	Close() error
 }
 
@@ -126,6 +127,28 @@ func (c *HTTPClient) Scale(ctx context.Context, fn *skipper.Function, desiredIns
 	}
 
 	return instances, nil
+}
+
+func (c *HTTPClient) ReplaceInstance(ctx context.Context, fn *skipper.Function, instanceName string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/replace-instance", nil)
+	if err != nil {
+		return fmt.Errorf("failed to create replace instance request: %w", err)
+	}
+
+	fn.SetHeader(req)
+	req.Header[key.InstanceName.Header] = []string{instanceName}
+
+	res, err := c.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send replace instance request: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("replace instance request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
+	}
+
+	return nil
 }
 
 func (c *HTTPClient) Close() error {

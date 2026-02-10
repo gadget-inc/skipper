@@ -33,6 +33,7 @@ message Instance {
   google.protobuf.Timestamp ready_at = 6;
   uint32 cpu_usage_milli = 7;
   uint32 memory_usage_mib = 8;
+  bool application_stale = 9;
 }
 
 message Heartbeat {

@@ -473,19 +473,20 @@ func (b0 Function_builder) Build() *Function {
 }
 
 type Instance struct {
-	state                     protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Function       *Function              `protobuf:"bytes,1,opt,name=function"`
-	xxx_hidden_Name           *string                `protobuf:"bytes,2,opt,name=name"`
-	xxx_hidden_Addr           *string                `protobuf:"bytes,3,opt,name=addr"`
-	xxx_hidden_ReplicaSet     *string                `protobuf:"bytes,4,opt,name=replica_set,json=replicaSet"`
-	xxx_hidden_AssignedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=assigned_at,json=assignedAt"`
-	xxx_hidden_ReadyAt        *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=ready_at,json=readyAt"`
-	xxx_hidden_CpuUsageMilli  uint32                 `protobuf:"varint,7,opt,name=cpu_usage_milli,json=cpuUsageMilli"`
-	xxx_hidden_MemoryUsageMib uint32                 `protobuf:"varint,8,opt,name=memory_usage_mib,json=memoryUsageMib"`
-	XXX_raceDetectHookData    protoimpl.RaceDetectHookData
-	XXX_presence              [1]uint32
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	state                       protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Function         *Function              `protobuf:"bytes,1,opt,name=function"`
+	xxx_hidden_Name             *string                `protobuf:"bytes,2,opt,name=name"`
+	xxx_hidden_Addr             *string                `protobuf:"bytes,3,opt,name=addr"`
+	xxx_hidden_ReplicaSet       *string                `protobuf:"bytes,4,opt,name=replica_set,json=replicaSet"`
+	xxx_hidden_AssignedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=assigned_at,json=assignedAt"`
+	xxx_hidden_ReadyAt          *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=ready_at,json=readyAt"`
+	xxx_hidden_CpuUsageMilli    uint32                 `protobuf:"varint,7,opt,name=cpu_usage_milli,json=cpuUsageMilli"`
+	xxx_hidden_MemoryUsageMib   uint32                 `protobuf:"varint,8,opt,name=memory_usage_mib,json=memoryUsageMib"`
+	xxx_hidden_ApplicationStale bool                   `protobuf:"varint,9,opt,name=application_stale,json=applicationStale"`
+	XXX_raceDetectHookData      protoimpl.RaceDetectHookData
+	XXX_presence                [1]uint32
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *Instance) Reset() {
@@ -578,23 +579,30 @@ func (x *Instance) GetMemoryUsageMib() uint32 {
 	return 0
 }
 
+func (x *Instance) GetApplicationStale() bool {
+	if x != nil {
+		return x.xxx_hidden_ApplicationStale
+	}
+	return false
+}
+
 func (x *Instance) SetFunction(v *Function) {
 	x.xxx_hidden_Function = v
 }
 
 func (x *Instance) SetName(v string) {
 	x.xxx_hidden_Name = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 9)
 }
 
 func (x *Instance) SetAddr(v string) {
 	x.xxx_hidden_Addr = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 9)
 }
 
 func (x *Instance) SetReplicaSet(v string) {
 	x.xxx_hidden_ReplicaSet = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 9)
 }
 
 func (x *Instance) SetAssignedAt(v *timestamppb.Timestamp) {
@@ -607,12 +615,17 @@ func (x *Instance) SetReadyAt(v *timestamppb.Timestamp) {
 
 func (x *Instance) SetCpuUsageMilli(v uint32) {
 	x.xxx_hidden_CpuUsageMilli = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 9)
 }
 
 func (x *Instance) SetMemoryUsageMib(v uint32) {
 	x.xxx_hidden_MemoryUsageMib = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 8)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 9)
+}
+
+func (x *Instance) SetApplicationStale(v bool) {
+	x.xxx_hidden_ApplicationStale = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 8, 9)
 }
 
 func (x *Instance) HasFunction() bool {
@@ -671,6 +684,13 @@ func (x *Instance) HasMemoryUsageMib() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 7)
 }
 
+func (x *Instance) HasApplicationStale() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 8)
+}
+
 func (x *Instance) ClearFunction() {
 	x.xxx_hidden_Function = nil
 }
@@ -708,17 +728,23 @@ func (x *Instance) ClearMemoryUsageMib() {
 	x.xxx_hidden_MemoryUsageMib = 0
 }
 
+func (x *Instance) ClearApplicationStale() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 8)
+	x.xxx_hidden_ApplicationStale = false
+}
+
 type Instance_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Function       *Function
-	Name           *string
-	Addr           *string
-	ReplicaSet     *string
-	AssignedAt     *timestamppb.Timestamp
-	ReadyAt        *timestamppb.Timestamp
-	CpuUsageMilli  *uint32
-	MemoryUsageMib *uint32
+	Function         *Function
+	Name             *string
+	Addr             *string
+	ReplicaSet       *string
+	AssignedAt       *timestamppb.Timestamp
+	ReadyAt          *timestamppb.Timestamp
+	CpuUsageMilli    *uint32
+	MemoryUsageMib   *uint32
+	ApplicationStale *bool
 }
 
 func (b0 Instance_builder) Build() *Instance {
@@ -727,26 +753,30 @@ func (b0 Instance_builder) Build() *Instance {
 	_, _ = b, x
 	x.xxx_hidden_Function = b.Function
 	if b.Name != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 9)
 		x.xxx_hidden_Name = b.Name
 	}
 	if b.Addr != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 9)
 		x.xxx_hidden_Addr = b.Addr
 	}
 	if b.ReplicaSet != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 9)
 		x.xxx_hidden_ReplicaSet = b.ReplicaSet
 	}
 	x.xxx_hidden_AssignedAt = b.AssignedAt
 	x.xxx_hidden_ReadyAt = b.ReadyAt
 	if b.CpuUsageMilli != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 9)
 		x.xxx_hidden_CpuUsageMilli = *b.CpuUsageMilli
 	}
 	if b.MemoryUsageMib != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 8)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 9)
 		x.xxx_hidden_MemoryUsageMib = *b.MemoryUsageMib
+	}
+	if b.ApplicationStale != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 8, 9)
+		x.xxx_hidden_ApplicationStale = *b.ApplicationStale
 	}
 	return m0
 }
@@ -1155,7 +1185,7 @@ const file_types_proto_rawDesc = "" +
 	"deployment\x12\x16\n" +
 	"\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x1a\n" +
 	"\bmetadata\x18\x04 \x01(\tR\bmetadata\x12$\n" +
-	"\x05scale\x18\x05 \x01(\v2\x0e.skipper.ScaleR\x05scale\"\xc8\x02\n" +
+	"\x05scale\x18\x05 \x01(\v2\x0e.skipper.ScaleR\x05scale\"\xf5\x02\n" +
 	"\bInstance\x12-\n" +
 	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -1166,7 +1196,8 @@ const file_types_proto_rawDesc = "" +
 	"assignedAt\x125\n" +
 	"\bready_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\areadyAt\x12&\n" +
 	"\x0fcpu_usage_milli\x18\a \x01(\rR\rcpuUsageMilli\x12(\n" +
-	"\x10memory_usage_mib\x18\b \x01(\rR\x0ememoryUsageMib\"\xa2\x01\n" +
+	"\x10memory_usage_mib\x18\b \x01(\rR\x0ememoryUsageMib\x12+\n" +
+	"\x11application_stale\x18\t \x01(\bR\x10applicationStale\"\xa2\x01\n" +
 	"\tHeartbeat\x12-\n" +
 	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12,\n" +

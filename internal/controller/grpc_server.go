@@ -111,3 +111,21 @@ func (s *GRPCServer) Scale(ctx context.Context, req *skipper.ScaleRequest) (*ski
 	resp.SetInstances(instances)
 	return resp, nil
 }
+
+func (s *GRPCServer) ReplaceInstance(ctx context.Context, req *skipper.ReplaceInstanceRequest) (*skipper.ReplaceInstanceResponse, error) {
+	fn := req.GetFunction()
+	if err := fn.Validate(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid function: %v", err)
+	}
+
+	instanceName := req.GetInstanceName()
+	if instanceName == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing instance_name")
+	}
+
+	ctx = telemetry.With(ctx, key.Function.Attr(fn), key.InstanceName.Attr(instanceName))
+	log.Info(ctx, "marking instance as application-stale")
+
+	s.ctrl.supervisor(fn).markInstanceStale(ctx, instanceName)
+	return &skipper.ReplaceInstanceResponse{}, nil
+}

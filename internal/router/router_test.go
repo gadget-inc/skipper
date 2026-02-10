@@ -858,6 +858,126 @@ func TestContextCancellation(t *testing.T) {
 	}
 }
 
+func TestStaleEnvironmentHeader(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn                   *skipper.Function
+		rw                   *httptest.ResponseRecorder
+		replaceInstanceCalls atomic.Int32
+	}
+
+	testCases := []struct {
+		name          string
+		expectReplace bool
+		setup         func(*testing.T, *testState, *fixture.MockControllerClient, *sync.WaitGroup)
+		check         func(*testing.T, *testState)
+	}{
+		{
+			name:          "stale header true strips header and calls ReplaceInstance",
+			expectReplace: true,
+			setup: func(t *testing.T, state *testState, mcc *fixture.MockControllerClient, wg *sync.WaitGroup) {
+				mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+					return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+						rw.Header().Set("X-Skipper-Instance-Stale", "true")
+						rw.WriteHeader(http.StatusOK)
+						rw.Write([]byte("stale"))
+					}), nil
+				})
+				mcc.HandleReplaceInstance(func(ctx context.Context, fn *skipper.Function, instanceName string) error {
+					state.replaceInstanceCalls.Add(1)
+					wg.Done()
+					return nil
+				})
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Body.String() == "stale")
+				assert.Assert(t, state.rw.Header().Get("X-Skipper-Instance-Stale") == "", "stale header should be stripped")
+				assert.Assert(t, state.replaceInstanceCalls.Load() == 1, "ReplaceInstance should be called once, got %d", state.replaceInstanceCalls.Load())
+			},
+		},
+		{
+			name:          "stale header case insensitive",
+			expectReplace: true,
+			setup: func(t *testing.T, state *testState, mcc *fixture.MockControllerClient, wg *sync.WaitGroup) {
+				mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+					return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+						rw.Header().Set("X-Skipper-Instance-Stale", "True")
+						rw.WriteHeader(http.StatusOK)
+					}), nil
+				})
+				mcc.HandleReplaceInstance(func(ctx context.Context, fn *skipper.Function, instanceName string) error {
+					state.replaceInstanceCalls.Add(1)
+					wg.Done()
+					return nil
+				})
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.rw.Header().Get("X-Skipper-Instance-Stale") == "", "stale header should be stripped")
+				assert.Assert(t, state.replaceInstanceCalls.Load() == 1, "ReplaceInstance should be called once")
+			},
+		},
+		{
+			name: "stale header false does not trigger replacement",
+			setup: func(t *testing.T, state *testState, mcc *fixture.MockControllerClient, wg *sync.WaitGroup) {
+				mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+					return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+						rw.Header().Set("X-Skipper-Instance-Stale", "false")
+						rw.WriteHeader(http.StatusOK)
+					}), nil
+				})
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.replaceInstanceCalls.Load() == 0, "ReplaceInstance should not be called")
+			},
+		},
+		{
+			name: "no stale header does not trigger replacement",
+			setup: func(t *testing.T, state *testState, mcc *fixture.MockControllerClient, wg *sync.WaitGroup) {
+				mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+					return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+						rw.WriteHeader(http.StatusOK)
+					}), nil
+				})
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, state.rw.Code == http.StatusOK)
+				assert.Assert(t, state.replaceInstanceCalls.Load() == 0, "ReplaceInstance should not be called")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mcc := fixture.NewMockControllerClient(t)
+			state := &testState{
+				fn: fixture.NewFunction(t),
+				rw: httptest.NewRecorder(),
+			}
+
+			var wg sync.WaitGroup
+			if tc.expectReplace {
+				wg.Add(1)
+			}
+
+			tc.setup(t, state, mcc, &wg)
+
+			req := fixture.NewFunctionRequest(t, state.fn, http.MethodGet, "/", nil)
+			router := New(testConfig(), mcc)
+			router.ServeHTTP(state.rw, req)
+
+			wg.Wait()
+
+			tc.check(t, state)
+		})
+	}
+}
+
 func TestCalculateBackoff(t *testing.T) {
 	t.Parallel()
 

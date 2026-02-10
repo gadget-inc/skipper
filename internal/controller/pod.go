@@ -391,6 +391,7 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 	instance.SetReplicaSet(replicaSet)
 	instance.SetAssignedAt(timestamppb.New(assignedAt))
 	instance.SetAddr(net.JoinHostPort(pod.Status.PodIP, port))
+	instance.SetApplicationStale(pod.Annotations[key.ApplicationStale.Annotation] == "true")
 	instance.SetCpuUsageMilli(cpuUsageMilli)
 	instance.SetMemoryUsageMib(memoryUsageMib)
 

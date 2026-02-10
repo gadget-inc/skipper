@@ -13,9 +13,10 @@ import (
 )
 
 type (
-	InstanceHandler  func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error)
-	ScaleHandler     func(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
-	HeartbeatHandler func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
+	InstanceHandler        func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error)
+	ScaleHandler           func(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
+	HeartbeatHandler       func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
+	ReplaceInstanceHandler func(ctx context.Context, fn *skipper.Function, instanceName string) error
 )
 
 const (
@@ -30,13 +31,15 @@ var (
 )
 
 type MockControllerClient struct {
-	t                  *testing.T
-	instanceHandler    InstanceHandler
-	instanceWasCalled  atomic.Bool
-	scaleHandler       ScaleHandler
-	scaleWasCalled     atomic.Bool
-	heartbeatHandler   HeartbeatHandler
-	heartbeatWasCalled atomic.Bool
+	t                        *testing.T
+	instanceHandler          InstanceHandler
+	instanceWasCalled        atomic.Bool
+	scaleHandler             ScaleHandler
+	scaleWasCalled           atomic.Bool
+	heartbeatHandler         HeartbeatHandler
+	heartbeatWasCalled       atomic.Bool
+	replaceInstanceHandler   ReplaceInstanceHandler
+	replaceInstanceWasCalled atomic.Bool
 }
 
 // var _ controller.Client = &MockControllerClient{}
@@ -53,6 +56,9 @@ func NewMockControllerClient(t *testing.T) *MockControllerClient {
 		if mcc.heartbeatHandler != nil && !mcc.heartbeatWasCalled.Load() {
 			t.Fatalf("mcc.Heartbeat was mocked but never called")
 		}
+		if mcc.replaceInstanceHandler != nil && !mcc.replaceInstanceWasCalled.Load() {
+			t.Fatalf("mcc.ReplaceInstance was mocked but never called")
+		}
 	})
 	return mcc
 }
@@ -67,6 +73,10 @@ func (f *MockControllerClient) HandleScale(h ScaleHandler) {
 
 func (f *MockControllerClient) HandleHeartbeat(h HeartbeatHandler) {
 	f.heartbeatHandler = h
+}
+
+func (f *MockControllerClient) HandleReplaceInstance(h ReplaceInstanceHandler) {
+	f.replaceInstanceHandler = h
 }
 
 // AllowHeartbeat permits heartbeat calls without requiring them.
@@ -103,6 +113,15 @@ func (f *MockControllerClient) Heartbeat(ctx context.Context, routerIP string, h
 	}
 	f.heartbeatWasCalled.Store(true)
 	return f.heartbeatHandler(ctx, routerIP, heartbeats, forwardedFor...)
+}
+
+// ReplaceInstance implements controller.Client.
+func (f *MockControllerClient) ReplaceInstance(ctx context.Context, fn *skipper.Function, instanceName string) error {
+	if f.replaceInstanceHandler == nil {
+		f.t.Fatalf("mcc.ReplaceInstance was called but not mocked")
+	}
+	f.replaceInstanceWasCalled.Store(true)
+	return f.replaceInstanceHandler(ctx, fn, instanceName)
 }
 
 // Close implements controller.Client.

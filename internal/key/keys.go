@@ -4,6 +4,7 @@ package key
 // Each key provides consistent naming across logs, traces, headers, and labels.
 var (
 	Addr                      = stringKey("address")
+	ApplicationStale          = newIdentifier("application_stale")
 	AssignedAt                = timeKey("assigned_at")
 	Attempt                   = intKey("attempt")
 	CPUUsageMilli             = uint32Key("cpu_usage_milli")
@@ -20,6 +21,7 @@ var (
 	Heartbeat                 = logValuerKey("heartbeat")
 	InFlightRequests          = uint32Key("in_flight_requests")
 	Instance                  = logValuerKey("instance")
+	InstanceName              = stringKey("instance_name")
 	K8sReplicaSet             = replicaSetKey("k8s.replicaset")
 	Labels                    = mapStringStringKey("labels")
 	MaxInstances              = uint32Key("max_instances")

@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // Supervisor manages scaling decisions for a single skipper. It tracks
@@ -147,6 +148,16 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 		if time.Since(heartbeat.GetTimestamp().AsTime()) > s.ctrl.config.HeartbeatTimeout {
 			s.routerHeartbeats.Delete(routerIP)
 		}
+	}
+}
+
+// markInstanceStale annotates a pod as application-stale.
+// The next converge loop will replace it with a fresh instance.
+func (s *Supervisor) markInstanceStale(ctx context.Context, instanceName string) {
+	patches := []byte(`[{ "op": "add", "path": "` + key.ApplicationStale.PatchAnnotation + `", "value": "true" }]`)
+	_, err := s.ctrl.patchPod(ctx, s.fn.GetNamespace(), instanceName, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
+	if err != nil {
+		log.Error(ctx, "failed to annotate instance as application-stale", key.Error.Slog(err), key.InstanceName.Slog(instanceName))
 	}
 }
 
@@ -439,12 +450,14 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*ski
 	})
 }
 
-// replaceStaleInstances detects instances running on replica sets
-// that have been scaled to 0 (e.g., after a deployment update) and
-// replaces them. For each stale instance, it first assigns a new pod
-// from the active replica set (temporarily exceeding max instances if
-// needed), then terminates the stale instance. This guarantees
-// availability during deployment rollouts.
+// replaceStaleInstances detects stale instances and replaces them.
+// An instance is considered stale if its replica set has been scaled to 0
+// (e.g., after a deployment update) or if it has been marked as
+// application-stale via the X-Skipper-Instance-Stale header.
+// For each stale instance, it first assigns a new pod from the active
+// replica set (temporarily exceeding max instances if needed), then
+// terminates the stale instance. This guarantees availability during
+// deployment rollouts and application-triggered refreshes.
 //
 // This function should only be called when NOT scaling down, as
 // scale-down naturally deletes oldest instances first (which are
@@ -470,8 +483,8 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*ski
 			continue
 		}
 
-		if replicaSet.Status.Replicas > 0 {
-			// Instance is on an active replica set, not stale
+		if replicaSet.Status.Replicas > 0 && !instance.GetApplicationStale() {
+			// Instance is on an active replica set and not application-stale
 			continue
 		}
 

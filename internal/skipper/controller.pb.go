@@ -514,6 +514,152 @@ func (b0 ScaleResponse_builder) Build() *ScaleResponse {
 	return m0
 }
 
+type ReplaceInstanceRequest struct {
+	state                   protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Function     *Function              `protobuf:"bytes,1,opt,name=function"`
+	xxx_hidden_InstanceName *string                `protobuf:"bytes,2,opt,name=instance_name,json=instanceName"`
+	XXX_raceDetectHookData  protoimpl.RaceDetectHookData
+	XXX_presence            [1]uint32
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
+}
+
+func (x *ReplaceInstanceRequest) Reset() {
+	*x = ReplaceInstanceRequest{}
+	mi := &file_controller_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplaceInstanceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplaceInstanceRequest) ProtoMessage() {}
+
+func (x *ReplaceInstanceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_controller_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ReplaceInstanceRequest) GetFunction() *Function {
+	if x != nil {
+		return x.xxx_hidden_Function
+	}
+	return nil
+}
+
+func (x *ReplaceInstanceRequest) GetInstanceName() string {
+	if x != nil {
+		if x.xxx_hidden_InstanceName != nil {
+			return *x.xxx_hidden_InstanceName
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ReplaceInstanceRequest) SetFunction(v *Function) {
+	x.xxx_hidden_Function = v
+}
+
+func (x *ReplaceInstanceRequest) SetInstanceName(v string) {
+	x.xxx_hidden_InstanceName = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 2)
+}
+
+func (x *ReplaceInstanceRequest) HasFunction() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Function != nil
+}
+
+func (x *ReplaceInstanceRequest) HasInstanceName() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *ReplaceInstanceRequest) ClearFunction() {
+	x.xxx_hidden_Function = nil
+}
+
+func (x *ReplaceInstanceRequest) ClearInstanceName() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_InstanceName = nil
+}
+
+type ReplaceInstanceRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Function     *Function
+	InstanceName *string
+}
+
+func (b0 ReplaceInstanceRequest_builder) Build() *ReplaceInstanceRequest {
+	m0 := &ReplaceInstanceRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_Function = b.Function
+	if b.InstanceName != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 2)
+		x.xxx_hidden_InstanceName = b.InstanceName
+	}
+	return m0
+}
+
+type ReplaceInstanceResponse struct {
+	state         protoimpl.MessageState `protogen:"opaque.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplaceInstanceResponse) Reset() {
+	*x = ReplaceInstanceResponse{}
+	mi := &file_controller_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplaceInstanceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplaceInstanceResponse) ProtoMessage() {}
+
+func (x *ReplaceInstanceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_controller_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+type ReplaceInstanceResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+}
+
+func (b0 ReplaceInstanceResponse_builder) Build() *ReplaceInstanceResponse {
+	m0 := &ReplaceInstanceResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	return m0
+}
+
 var File_controller_proto protoreflect.FileDescriptor
 
 const file_controller_proto_rawDesc = "" +
@@ -536,43 +682,53 @@ const file_controller_proto_rawDesc = "" +
 	"\x11desired_instances\x18\x02 \x01(\rR\x10desiredInstances\x12,\n" +
 	"\x06reason\x18\x03 \x01(\x0e2\x14.skipper.ScaleReasonR\x06reason\"@\n" +
 	"\rScaleResponse\x12/\n" +
-	"\tinstances\x18\x01 \x03(\v2\x11.skipper.InstanceR\tinstances2\xd9\x01\n" +
+	"\tinstances\x18\x01 \x03(\v2\x11.skipper.InstanceR\tinstances\"l\n" +
+	"\x16ReplaceInstanceRequest\x12-\n" +
+	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x12#\n" +
+	"\rinstance_name\x18\x02 \x01(\tR\finstanceName\"\x19\n" +
+	"\x17ReplaceInstanceResponse2\xaf\x02\n" +
 	"\x11ControllerService\x12H\n" +
 	"\vGetInstance\x12\x1b.skipper.GetInstanceRequest\x1a\x1c.skipper.GetInstanceResponse\x12B\n" +
 	"\tHeartbeat\x12\x19.skipper.HeartbeatRequest\x1a\x1a.skipper.HeartbeatResponse\x126\n" +
-	"\x05Scale\x12\x15.skipper.ScaleRequest\x1a\x16.skipper.ScaleResponseB8Z.github.com/gadget-inc/skipper/internal/skipper\x92\x03\x05\xd2>\x02\x10\x03b\beditionsp\xe8\a"
+	"\x05Scale\x12\x15.skipper.ScaleRequest\x1a\x16.skipper.ScaleResponse\x12T\n" +
+	"\x0fReplaceInstance\x12\x1f.skipper.ReplaceInstanceRequest\x1a .skipper.ReplaceInstanceResponseB8Z.github.com/gadget-inc/skipper/internal/skipper\x92\x03\x05\xd2>\x02\x10\x03b\beditionsp\xe8\a"
 
-var file_controller_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_controller_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_controller_proto_goTypes = []any{
-	(*GetInstanceRequest)(nil),  // 0: skipper.GetInstanceRequest
-	(*GetInstanceResponse)(nil), // 1: skipper.GetInstanceResponse
-	(*HeartbeatRequest)(nil),    // 2: skipper.HeartbeatRequest
-	(*HeartbeatResponse)(nil),   // 3: skipper.HeartbeatResponse
-	(*ScaleRequest)(nil),        // 4: skipper.ScaleRequest
-	(*ScaleResponse)(nil),       // 5: skipper.ScaleResponse
-	(*Function)(nil),            // 6: skipper.Function
-	(*Instance)(nil),            // 7: skipper.Instance
-	(*Heartbeat)(nil),           // 8: skipper.Heartbeat
-	(ScaleReason)(0),            // 9: skipper.ScaleReason
+	(*GetInstanceRequest)(nil),      // 0: skipper.GetInstanceRequest
+	(*GetInstanceResponse)(nil),     // 1: skipper.GetInstanceResponse
+	(*HeartbeatRequest)(nil),        // 2: skipper.HeartbeatRequest
+	(*HeartbeatResponse)(nil),       // 3: skipper.HeartbeatResponse
+	(*ScaleRequest)(nil),            // 4: skipper.ScaleRequest
+	(*ScaleResponse)(nil),           // 5: skipper.ScaleResponse
+	(*ReplaceInstanceRequest)(nil),  // 6: skipper.ReplaceInstanceRequest
+	(*ReplaceInstanceResponse)(nil), // 7: skipper.ReplaceInstanceResponse
+	(*Function)(nil),                // 8: skipper.Function
+	(*Instance)(nil),                // 9: skipper.Instance
+	(*Heartbeat)(nil),               // 10: skipper.Heartbeat
+	(ScaleReason)(0),                // 11: skipper.ScaleReason
 }
 var file_controller_proto_depIdxs = []int32{
-	6, // 0: skipper.GetInstanceRequest.function:type_name -> skipper.Function
-	7, // 1: skipper.GetInstanceResponse.instance:type_name -> skipper.Instance
-	8, // 2: skipper.HeartbeatRequest.heartbeats:type_name -> skipper.Heartbeat
-	6, // 3: skipper.ScaleRequest.function:type_name -> skipper.Function
-	9, // 4: skipper.ScaleRequest.reason:type_name -> skipper.ScaleReason
-	7, // 5: skipper.ScaleResponse.instances:type_name -> skipper.Instance
-	0, // 6: skipper.ControllerService.GetInstance:input_type -> skipper.GetInstanceRequest
-	2, // 7: skipper.ControllerService.Heartbeat:input_type -> skipper.HeartbeatRequest
-	4, // 8: skipper.ControllerService.Scale:input_type -> skipper.ScaleRequest
-	1, // 9: skipper.ControllerService.GetInstance:output_type -> skipper.GetInstanceResponse
-	3, // 10: skipper.ControllerService.Heartbeat:output_type -> skipper.HeartbeatResponse
-	5, // 11: skipper.ControllerService.Scale:output_type -> skipper.ScaleResponse
-	9, // [9:12] is the sub-list for method output_type
-	6, // [6:9] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	8,  // 0: skipper.GetInstanceRequest.function:type_name -> skipper.Function
+	9,  // 1: skipper.GetInstanceResponse.instance:type_name -> skipper.Instance
+	10, // 2: skipper.HeartbeatRequest.heartbeats:type_name -> skipper.Heartbeat
+	8,  // 3: skipper.ScaleRequest.function:type_name -> skipper.Function
+	11, // 4: skipper.ScaleRequest.reason:type_name -> skipper.ScaleReason
+	9,  // 5: skipper.ScaleResponse.instances:type_name -> skipper.Instance
+	8,  // 6: skipper.ReplaceInstanceRequest.function:type_name -> skipper.Function
+	0,  // 7: skipper.ControllerService.GetInstance:input_type -> skipper.GetInstanceRequest
+	2,  // 8: skipper.ControllerService.Heartbeat:input_type -> skipper.HeartbeatRequest
+	4,  // 9: skipper.ControllerService.Scale:input_type -> skipper.ScaleRequest
+	6,  // 10: skipper.ControllerService.ReplaceInstance:input_type -> skipper.ReplaceInstanceRequest
+	1,  // 11: skipper.ControllerService.GetInstance:output_type -> skipper.GetInstanceResponse
+	3,  // 12: skipper.ControllerService.Heartbeat:output_type -> skipper.HeartbeatResponse
+	5,  // 13: skipper.ControllerService.Scale:output_type -> skipper.ScaleResponse
+	7,  // 14: skipper.ControllerService.ReplaceInstance:output_type -> skipper.ReplaceInstanceResponse
+	11, // [11:15] is the sub-list for method output_type
+	7,  // [7:11] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_controller_proto_init() }
@@ -587,7 +743,7 @@ func file_controller_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_controller_proto_rawDesc), len(file_controller_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
