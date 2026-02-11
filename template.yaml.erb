@@ -27,7 +27,7 @@ service_annotations ||= {}
 service_spec ||= {}
 
 controller_name = "#{namespace}-controller"
-controller_protocol ||= "http"
+controller_protocol ||= "grpc"
 controller_grpc_port ||= 50051
 controller_http_port ||= 80
 controller_log_level ||= log_level
