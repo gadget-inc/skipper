@@ -15,13 +15,14 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-// NewRouter creates the router subcommand.
+// NewRouter creates the router command.
 // Optional deps can be provided for testing; if nil, production defaults are used.
 func NewRouter(deps *RouterDeps) *cobra.Command {
 	if deps == nil {
 		deps = DefaultRouterDeps()
 	}
 
+	baseCfg := NewBaseConfig()
 	cfg := config.New[router.Config]()
 
 	cmd := &cobra.Command{
@@ -31,6 +32,12 @@ func NewRouter(deps *RouterDeps) *cobra.Command {
 			// flags have been parsed and validated by now, so don't print usage or errors anymore
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
+
+			cleanup, err := baseCfg.Init(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
 
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
@@ -80,6 +87,7 @@ func NewRouter(deps *RouterDeps) *cobra.Command {
 		},
 	}
 
+	baseCfg.Bind(cmd)
 	config.Bind(cmd, cfg)
 
 	return cmd

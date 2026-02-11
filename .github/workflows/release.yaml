@@ -94,12 +94,14 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
 
-      - name: Merge images into a multi-architecture manifest and push to Google Artifact Registry
+      - name: Merge images into multi-architecture manifests and push to Google Artifact Registry
         run: |
           sha=$(git rev-parse --short HEAD)
+          registry="us-central1-docker.pkg.dev/gadget-core-production/core-production"
 
-          docker manifest create "us-central1-docker.pkg.dev/gadget-core-production/core-production/skipper:sha-${sha}" \
-              "us-central1-docker.pkg.dev/gadget-core-production/core-production/skipper:sha-${sha}-amd64" \
-              "us-central1-docker.pkg.dev/gadget-core-production/core-production/skipper:sha-${sha}-arm64"
-
-          docker manifest push "us-central1-docker.pkg.dev/gadget-core-production/core-production/skipper:sha-${sha}"
+          for image in skipper-controller skipper-router; do
+            docker manifest create "${registry}/${image}:sha-${sha}" \
+                "${registry}/${image}:sha-${sha}-amd64" \
+                "${registry}/${image}:sha-${sha}-arm64"
+            docker manifest push "${registry}/${image}:sha-${sha}"
+          done

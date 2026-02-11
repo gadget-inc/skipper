@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"gotest.tools/v3/golden"
 )
 
@@ -12,22 +13,17 @@ func TestHelpTexts(t *testing.T) {
 
 	testCases := []struct {
 		name       string
-		args       []string
+		newCmd     func() *cobra.Command
 		goldenFile string
 	}{
 		{
-			name:       "root",
-			args:       []string{"--help"},
-			goldenFile: "help_root.golden",
-		},
-		{
 			name:       "controller",
-			args:       []string{"controller", "--help"},
+			newCmd:     func() *cobra.Command { return NewController(nil) },
 			goldenFile: "help_controller.golden",
 		},
 		{
 			name:       "router",
-			args:       []string{"router", "--help"},
+			newCmd:     func() *cobra.Command { return NewRouter(nil) },
 			goldenFile: "help_router.golden",
 		},
 	}
@@ -37,10 +33,10 @@ func TestHelpTexts(t *testing.T) {
 			t.Parallel()
 
 			var buf bytes.Buffer
-			cmd := NewRoot()
+			cmd := tc.newCmd()
 			cmd.SetOut(&buf)
 			cmd.SetErr(&buf)
-			cmd.SetArgs(tc.args)
+			cmd.SetArgs([]string{"--help"})
 
 			err := cmd.Execute()
 			if err != nil {

@@ -11,6 +11,7 @@ import {
   currentImageTag,
   deployKraneNamespace,
   emptyDir,
+  expandSkipperAlias,
   isCI,
   renderKraneNamespace,
 } from "./_utils.ts";
@@ -30,11 +31,14 @@ const flags = parseArgs({
     },
     development: { type: "boolean", default: !isCI },
     help: { type: "boolean", default: false, short: "h" },
-    only: { type: "string", default: "skipper,fixtures,metrics-server,otel-lgtm" },
+    only: { type: "string", default: "controller,router,fixtures,metrics-server,otel-lgtm" },
     otel: { type: "boolean", default: !isCI },
     test: { type: "boolean", default: true },
   },
 });
+
+// Expand "skipper" to "controller,router" for convenience
+flags.values.only = expandSkipperAlias(flags.values.only);
 
 if (flags.values.help) {
   console.log(dedent`
@@ -68,7 +72,9 @@ if (flags.values["generate-paseto-keypair"]) {
   await $`ls -la ${abs("tmp/paseto")}`;
 }
 
-if (flags.values.only.includes("metrics-server")) {
+const components = new Set(flags.values.only.split(","));
+
+if (components.has("metrics-server")) {
   const clusterRenderDir = await renderKraneNamespace("cluster");
   await $`krane global-deploy "$SKIPPER_KUBECTL_CONTEXT" -f ${clusterRenderDir}/* --selector=app.kubernetes.io/managed-by=krane `;
 
@@ -76,11 +82,11 @@ if (flags.values.only.includes("metrics-server")) {
   await $`krane deploy kube-system "$SKIPPER_KUBECTL_CONTEXT" -f ${kubeSystemRenderDir}/* --selector=app.kubernetes.io/managed-by=krane --protected-namespaces=default kube-public`;
 }
 
-if (flags.values.only.includes("otel-lgtm") && flags.values.otel) {
+if (components.has("otel-lgtm") && flags.values.otel) {
   await deployKraneNamespace("otel-lgtm");
 }
 
-if (flags.values.only.includes("fixtures")) {
+if (components.has("fixtures")) {
   if (flags.values.development) {
     await deployKraneNamespace("skipper-development-fixtures", {
       echo_image_tag: await currentImageTag(),
@@ -104,9 +110,11 @@ if (flags.values.only.includes("fixtures")) {
   }
 }
 
-if (flags.values.only.includes("skipper")) {
+if (components.has("controller") || components.has("router")) {
   if (flags.values.development) {
     await deployKraneNamespace("skipper-development", {
+      controller_image_name: "skipper-controller",
+      router_image_name: "skipper-router",
       image_tag: await currentImageTag(),
       namespace: "skipper-development",
       function_namespaces: ["skipper-development-fixtures"],
@@ -123,6 +131,8 @@ if (flags.values.only.includes("skipper")) {
 
   if (flags.values.test) {
     await deployKraneNamespace("skipper-test", {
+      controller_image_name: "skipper-controller",
+      router_image_name: "skipper-router",
       image_tag: await currentImageTag(),
       namespace: "skipper-test",
       function_namespaces: ["skipper-test-fixtures"],

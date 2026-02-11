@@ -117,3 +117,10 @@ export function reportErrorAndExit(error: unknown) {
   }
   process.exit(1);
 }
+
+export function expandSkipperAlias(only: string): string {
+  return only
+    .split(",")
+    .flatMap((token) => (token === "skipper" ? ["controller", "router"] : [token]))
+    .join(",");
+}
