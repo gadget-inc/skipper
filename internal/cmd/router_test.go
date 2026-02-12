@@ -19,26 +19,26 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-func TestRouterGRPCHostFallback(t *testing.T) {
+func TestRouterHeadlessHostFallback(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name            string
-		serviceHost     string
-		grpcServiceHost string
-		expectedHost    string
+		name                string
+		serviceHost         string
+		headlessServiceHost string
+		expectedHost        string
 	}{
 		{
-			name:            "uses dedicated gRPC host when set",
-			serviceHost:     "controller-http",
-			grpcServiceHost: "controller-grpc-headless",
-			expectedHost:    "controller-grpc-headless",
+			name:                "uses dedicated headless host when set",
+			serviceHost:         "controller",
+			headlessServiceHost: "controller-headless",
+			expectedHost:        "controller-headless",
 		},
 		{
-			name:            "falls back to service host when gRPC host is empty",
-			serviceHost:     "controller",
-			grpcServiceHost: "",
-			expectedHost:    "controller",
+			name:                "falls back to service host when headless host is empty",
+			serviceHost:         "controller",
+			headlessServiceHost: "",
+			expectedHost:        "controller",
 		},
 	}
 
@@ -51,20 +51,19 @@ func TestRouterGRPCHostFallback(t *testing.T) {
 			deps := &RouterDeps{
 				NewControllerClient: func(cfg *router.Config) (controller.Client, error) {
 					// Replicate the fallback logic from defaultNewControllerClient
-					grpcHost := cfg.ControllerGRPCServiceHost
-					if grpcHost == "" {
-						grpcHost = cfg.ControllerServiceHost
+					host := cfg.ControllerHeadlessServiceHost
+					if host == "" {
+						host = cfg.ControllerServiceHost
 					}
-					capturedHost = grpcHost
+					capturedHost = host
 					return nil, nil // We just care about the host selection
 				},
 			}
 
 			cfg := &router.Config{
-				ControllerProtocol:        "grpc",
-				ControllerServiceHost:     tc.serviceHost,
-				ControllerGRPCServiceHost: tc.grpcServiceHost,
-				ControllerGRPCPort:        50051,
+				ControllerServiceHost:         tc.serviceHost,
+				ControllerHeadlessServiceHost: tc.headlessServiceHost,
+				ControllerPort:                50051,
 			}
 
 			_, _ = deps.NewControllerClient(cfg)
@@ -74,70 +73,22 @@ func TestRouterGRPCHostFallback(t *testing.T) {
 	}
 }
 
-func TestRouterProtocolSelection(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name     string
-		protocol string
-	}{
-		{
-			name:     "http protocol creates client",
-			protocol: "http",
-		},
-		{
-			name:     "grpc protocol creates client",
-			protocol: "grpc",
-		},
-		{
-			name:     "empty protocol creates client (defaults to grpc)",
-			protocol: "",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			cfg := &router.Config{
-				ControllerProtocol:    tc.protocol,
-				ControllerServiceHost: "controller",
-				ControllerHTTPPort:    80,
-				ControllerGRPCPort:    50051,
-			}
-
-			// Verify the default function creates a valid client
-			client, err := defaultNewControllerClient(cfg)
-			assert.NilError(t, err)
-			assert.Assert(t, client != nil)
-		})
-	}
-}
-
 func TestDefaultNewControllerClient(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name            string
-		protocol        string
-		serviceHost     string
-		grpcServiceHost string
+		name                string
+		serviceHost         string
+		headlessServiceHost string
 	}{
 		{
-			name:        "http protocol creates HTTP client",
-			protocol:    "http",
+			name:        "creates client",
 			serviceHost: "controller",
 		},
 		{
-			name:        "grpc protocol creates gRPC client",
-			protocol:    "grpc",
-			serviceHost: "controller",
-		},
-		{
-			name:            "grpc with dedicated host",
-			protocol:        "grpc",
-			serviceHost:     "controller-http",
-			grpcServiceHost: "controller-grpc-headless",
+			name:                "with dedicated headless host",
+			serviceHost:         "controller",
+			headlessServiceHost: "controller-headless",
 		},
 	}
 
@@ -146,11 +97,9 @@ func TestDefaultNewControllerClient(t *testing.T) {
 			t.Parallel()
 
 			cfg := &router.Config{
-				ControllerProtocol:        tc.protocol,
-				ControllerServiceHost:     tc.serviceHost,
-				ControllerGRPCServiceHost: tc.grpcServiceHost,
-				ControllerHTTPPort:        80,
-				ControllerGRPCPort:        50051,
+				ControllerServiceHost:         tc.serviceHost,
+				ControllerHeadlessServiceHost: tc.headlessServiceHost,
+				ControllerPort:                50051,
 			}
 
 			client, err := defaultNewControllerClient(cfg)

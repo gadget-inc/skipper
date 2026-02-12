@@ -2,19 +2,17 @@ package controller
 
 import (
 	"context"
-	"net/http"
 	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/telemetry"
-	"github.com/go-json-experiment/json"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -24,144 +22,100 @@ var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help:      "The number of heartbeats received by the controller",
 }, []string{"function_deployment"})
 
-func (ctrl *Controller) Handler() http.Handler {
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("GET /healthz", ctrl.handleHealthz)
-	mux.HandleFunc("GET /instance", ctrl.handleInstance)
-	mux.HandleFunc("POST /scale", ctrl.handleScale)
-	mux.HandleFunc("POST /heartbeat", ctrl.handleHeartbeat)
-	mux.Handle("/", http.NotFoundHandler())
-
-	return mux
+// Server implements the ControllerServiceServer interface.
+type Server struct {
+	skipper.UnimplementedControllerServiceServer
+	ctrl *Controller
 }
 
-func (ctrl *Controller) handleHealthz(rw http.ResponseWriter, req *http.Request) {
-	if !ctrl.Ready() {
-		rw.WriteHeader(http.StatusServiceUnavailable)
-		return
-	}
-	rw.WriteHeader(http.StatusOK)
+// NewServer creates a new server wrapping the controller.
+func NewServer(ctrl *Controller) *Server {
+	return &Server{ctrl: ctrl}
 }
 
-func (ctrl *Controller) handleInstance(rw http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	fn, err := skipper.FunctionFromHeader(req)
-	if err != nil {
-		log.Error(ctx, "failed to get function from header", key.Error.Slog(err))
-		http.Error(rw, err.Error(), http.StatusBadRequest)
-		return
+func (s *Server) GetInstance(ctx context.Context, req *skipper.GetInstanceRequest) (*skipper.GetInstanceResponse, error) {
+	fn := req.GetFunction()
+	if err := fn.Validate(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid function: %v", err)
 	}
 
 	ctx = telemetry.With(ctx, key.Function.Attr(fn))
 
-	var excludeNames []string
-	if excludeHeader := req.Header.Get(key.ExcludeInstanceNames.Header); excludeHeader != "" {
-		excludeNames = strings.Split(excludeHeader, ",")
-	}
+	excludeNames := req.GetExcludeInstanceNames()
 
-	instance, err := ctrl.supervisor(fn).getReadyInstance(ctx, excludeNames)
+	instance, err := s.ctrl.supervisor(fn).getReadyInstance(ctx, excludeNames)
 	if err != nil {
 		log.Error(ctx, "failed to get ready instance", key.Error.Slog(err))
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, status.Errorf(codes.Internal, "failed to get ready instance: %v", err)
 	}
 
-	rw.Header().Set("Content-Type", "application/json")
-	rw.WriteHeader(http.StatusOK)
-	if err := json.MarshalWrite(rw, instance); err != nil {
-		log.Error(ctx, "failed to encode instance response", key.Error.Slog(err))
-	}
+	resp := &skipper.GetInstanceResponse{}
+	resp.SetInstance(instance)
+	return resp, nil
 }
 
-func (ctrl *Controller) handleScale(rw http.ResponseWriter, req *http.Request) {
-	ctx := req.Context()
-	fn, err := skipper.FunctionFromHeader(req)
-	if err != nil {
-		log.Error(ctx, "failed to get function from header", key.Error.Slog(err))
-		http.Error(rw, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	ctx = telemetry.With(ctx, key.Function.Attr(fn))
-
-	desiredInstances64, err := strconv.ParseUint(req.Header.Get(key.DesiredInstances.Header), 10, 32)
-	if err != nil {
-		log.Error(ctx, "failed to get desired instances from header", key.Error.Slog(err))
-		http.Error(rw, err.Error(), http.StatusBadRequest)
-		return
-	}
-	desiredInstances := uint32(desiredInstances64)
-
-	reasonStr := req.Header.Get(key.Reason.Header)
-	reason, ok := skipper.ScaleReason_value[reasonStr]
-	if !ok {
-		log.Warn(ctx, "invalid scaling reason, using unspecified", key.Reason.Slog(reasonStr))
-		reason = int32(skipper.ScaleReason_SCALE_REASON_UNSPECIFIED)
-	}
-
-	decision := &skipper.ScaleDecision{}
-	decision.SetDesiredInstances(desiredInstances)
-	decision.SetReason(skipper.ScaleReason(reason))
-	instances, err := ctrl.supervisor(fn).scale(ctx, decision)
-	if err != nil {
-		log.Error(ctx, "failed to scale function", key.Error.Slog(err))
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	rw.Header().Set("Content-Type", "application/json")
-	rw.WriteHeader(http.StatusOK)
-	if err := json.MarshalWrite(rw, instances); err != nil {
-		log.Error(ctx, "failed to encode scale response", key.Error.Slog(err))
-	}
-}
-
-func (ctrl *Controller) handleHeartbeat(rw http.ResponseWriter, req *http.Request) {
-	routerIP := req.Header.Get(key.RouterIP.Header)
+func (s *Server) Heartbeat(ctx context.Context, req *skipper.HeartbeatRequest) (*skipper.HeartbeatResponse, error) {
+	routerIP := req.GetRouterIp()
 	if routerIP == "" {
-		log.Error(req.Context(), "failed to get router IP from header")
-		http.Error(rw, "missing "+key.RouterIP.Header, http.StatusBadRequest)
-		return
+		return nil, status.Error(codes.InvalidArgument, "missing router_ip")
 	}
 
-	var heartbeats []*skipper.Heartbeat
-	if err := json.UnmarshalRead(req.Body, &heartbeats); err != nil {
-		log.Error(req.Context(), "failed to decode heartbeats", key.Error.Slog(err))
-		http.Error(rw, err.Error(), http.StatusBadRequest)
-		return
-	}
-
+	heartbeats := req.GetHeartbeats()
 	for _, heartbeat := range heartbeats {
 		heartbeatsCounter.WithLabelValues(heartbeat.GetFunction().GetDeployment()).Inc()
-		ctrl.supervisor(heartbeat.GetFunction()).heartbeat(routerIP, heartbeat)
+		s.ctrl.supervisor(heartbeat.GetFunction()).heartbeat(routerIP, heartbeat)
 	}
 
-	log.Trace(req.Context(), "received heartbeats", key.Count.Slog(len(heartbeats)))
-	rw.WriteHeader(http.StatusOK)
+	log.Trace(ctx, "received heartbeats", key.Count.Slog(len(heartbeats)))
 
-	controllersThatHaveReceivedHeartbeats := slices.Clone(req.Header[key.ForwardedFor.Header])
-	controllersThatHaveReceivedHeartbeats = append(controllersThatHaveReceivedHeartbeats, ctrl.config.PodIP)
+	// Forward heartbeats to other controllers
+	seen := append(slices.Clone(req.GetForwardedFor()), s.ctrl.config.PodIP)
 
-	var controllersThatWillReceiveHeartbeats []string
-	for _, controllerIP := range ctrl.ring.List() {
-		if !slices.Contains(controllersThatHaveReceivedHeartbeats, controllerIP) {
-			controllersThatWillReceiveHeartbeats = append(controllersThatWillReceiveHeartbeats, controllerIP)
+	var targets []string
+	for _, ip := range s.ctrl.ring.List() {
+		if !slices.Contains(seen, ip) {
+			targets = append(targets, ip)
 		}
 	}
 
-	// make forwardedFor contain all controllers that have received heartbeats and all controllers that will receive heartbeats
-	// this ensures that the heartbeats are forwarded to all the controllers once, and only once
-	forwardedFor := append(controllersThatHaveReceivedHeartbeats, controllersThatWillReceiveHeartbeats...)
+	forwardedFor := slices.Concat(seen, targets)
 
-	for _, controllerIP := range controllersThatWillReceiveHeartbeats {
+	for _, controllerIP := range targets {
 		go func() {
-			ctx, cancel := context.WithTimeout(context.WithoutCancel(req.Context()), 5*time.Second)
+			forwardCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			defer cancel()
 
-			if err := ctrl.getControllerClient(controllerIP).Heartbeat(ctx, routerIP, heartbeats, forwardedFor...); err != nil {
-				log.Warn(ctx, "failed to forward heartbeats", key.Error.Slog(err), key.ResponsibleIP.Slog(controllerIP))
+			if err := s.ctrl.getControllerClient(controllerIP).Heartbeat(forwardCtx, routerIP, heartbeats, forwardedFor...); err != nil {
+				log.Warn(forwardCtx, "failed to forward heartbeats", key.Error.Slog(err), key.ResponsibleIP.Slog(controllerIP))
 			}
 		}()
 	}
+
+	return &skipper.HeartbeatResponse{}, nil
+}
+
+func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper.ScaleResponse, error) {
+	fn := req.GetFunction()
+	if err := fn.Validate(); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid function: %v", err)
+	}
+
+	ctx = telemetry.With(ctx, key.Function.Attr(fn))
+
+	desiredInstances := req.GetDesiredInstances()
+	reason := req.GetReason()
+
+	decision := &skipper.ScaleDecision{}
+	decision.SetDesiredInstances(desiredInstances)
+	decision.SetReason(reason)
+
+	instances, err := s.ctrl.supervisor(fn).scale(ctx, decision)
+	if err != nil {
+		log.Error(ctx, "failed to scale function", key.Error.Slog(err))
+		return nil, status.Errorf(codes.Internal, "failed to scale function: %v", err)
+	}
+
+	resp := &skipper.ScaleResponse{}
+	resp.SetInstances(instances)
+	return resp, nil
 }

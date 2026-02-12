@@ -5,18 +5,21 @@ import (
 	"errors"
 	"net"
 	"strconv"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/controller"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"gotest.tools/v3/assert"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
+	ktesting "k8s.io/client-go/testing"
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 	fakemetrics "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
@@ -26,52 +29,6 @@ import (
 const testPasetoPrivateKeyPEM = `-----BEGIN PRIVATE KEY-----
 MC4CAQAwBQYDK2VwBCIEIBzCPypLbnSWs2p4k8OQFMXE9EYXbVkqpTT/JNpQPwyc
 -----END PRIVATE KEY-----`
-
-func TestControllerProtocolSelection(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name       string
-		protocol   string
-		expectGRPC bool
-	}{
-		{
-			name:       "http protocol uses HTTP client",
-			protocol:   "http",
-			expectGRPC: false,
-		},
-		{
-			name:       "grpc protocol uses gRPC client",
-			protocol:   "grpc",
-			expectGRPC: true,
-		},
-		{
-			name:       "empty protocol defaults to gRPC",
-			protocol:   "",
-			expectGRPC: true,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var usedGRPC atomic.Bool
-
-			mockNewClientFunc := func(protocol string, _ int) controller.NewClientFunc {
-				usedGRPC.Store(protocol != "http")
-				// Return a dummy function - we just care about what protocol was passed
-				return func(host string, port int) controller.Client {
-					return nil
-				}
-			}
-
-			_ = mockNewClientFunc(tc.protocol, 50051)
-
-			assert.Equal(t, usedGRPC.Load(), tc.expectGRPC)
-		})
-	}
-}
 
 func TestControllerKubeConfigLoading(t *testing.T) {
 	t.Parallel()
@@ -97,25 +54,25 @@ func TestControllerKubeConfigLoading(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var usedOutOfCluster atomic.Bool
+			var usedOutOfCluster bool
 
 			// Simulate the defaultLoadKubeConfig behavior
 			loadKubeConfig := func() (*rest.Config, error) {
 				if tc.inClusterError != nil {
 					if errors.Is(tc.inClusterError, rest.ErrNotInCluster) {
-						usedOutOfCluster.Store(true)
+						usedOutOfCluster = true
 						return &rest.Config{}, nil // Simulating successful out-of-cluster load
 					}
 					return nil, tc.inClusterError
 				}
-				usedOutOfCluster.Store(false)
+				usedOutOfCluster = false
 				return &rest.Config{}, nil // Simulating successful in-cluster load
 			}
 
 			cfg, err := loadKubeConfig()
 			assert.NilError(t, err)
 			assert.Assert(t, cfg != nil)
-			assert.Equal(t, usedOutOfCluster.Load(), tc.expectOutOfCluster)
+			assert.Equal(t, usedOutOfCluster, tc.expectOutOfCluster)
 		})
 	}
 }
@@ -143,40 +100,12 @@ func TestDefaultLoadKubeConfig(t *testing.T) {
 func TestDefaultNewClientFunc(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		name     string
-		protocol string
-		grpcPort int
-	}{
-		{
-			name:     "http protocol",
-			protocol: "http",
-			grpcPort: 50051,
-		},
-		{
-			name:     "grpc protocol",
-			protocol: "grpc",
-			grpcPort: 50051,
-		},
-		{
-			name:     "empty protocol defaults to grpc",
-			protocol: "",
-			grpcPort: 50051,
-		},
-	}
+	newClientFunc := defaultNewClientFunc(50051)
+	assert.Assert(t, newClientFunc != nil)
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			newClientFunc := defaultNewClientFunc(tc.protocol, tc.grpcPort)
-			assert.Assert(t, newClientFunc != nil)
-
-			// Create a client to verify it works
-			client := newClientFunc("localhost", 8080)
-			assert.Assert(t, client != nil)
-		})
-	}
+	// Create a client to verify it works
+	client := newClientFunc("localhost")
+	assert.Assert(t, client != nil)
 }
 
 func TestControllerCommandConfigValidation(t *testing.T) {
@@ -234,8 +163,8 @@ func TestControllerCommandConfigValidation(t *testing.T) {
 				NewMetricsClient: func(c *rest.Config) (kubernetesmetrics.Interface, error) {
 					return fakemetrics.NewSimpleClientset(), nil //nolint:staticcheck // NewClientset isn't generated for this package
 				},
-				NewClientFunc: func(protocol string, grpcPort int) controller.NewClientFunc {
-					return func(host string, port int) controller.Client {
+				NewClientFunc: func(port int) controller.NewClientFunc {
+					return func(host string) controller.Client {
 						return nil
 					}
 				},
@@ -344,7 +273,7 @@ func TestControllerMetricsClientCreationFailure(t *testing.T) {
 	assert.ErrorContains(t, err, "metrics server unavailable")
 }
 
-func TestControllerGRPCListenerFailure(t *testing.T) {
+func TestControllerListenerFailure(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -355,7 +284,7 @@ func TestControllerGRPCListenerFailure(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NilError(t, err)
 	defer listener.Close()
-	grpcPort := listener.Addr().(*net.TCPAddr).Port
+	port := listener.Addr().(*net.TCPAddr).Port
 
 	deps := &ControllerDeps{
 		LoadKubeConfig: func() (*rest.Config, error) {
@@ -367,8 +296,8 @@ func TestControllerGRPCListenerFailure(t *testing.T) {
 		NewMetricsClient: func(c *rest.Config) (kubernetesmetrics.Interface, error) {
 			return fakemetrics.NewSimpleClientset(), nil //nolint:staticcheck // NewClientset isn't generated for this package
 		},
-		NewClientFunc: func(protocol string, grpcPort int) controller.NewClientFunc {
-			return func(host string, port int) controller.Client {
+		NewClientFunc: func(port int) controller.NewClientFunc {
+			return func(host string) controller.Client {
 				return nil
 			}
 		},
@@ -381,102 +310,50 @@ func TestControllerGRPCListenerFailure(t *testing.T) {
 		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
 		"--function-namespaces=default",
 		"--host=127.0.0.1",
-		"--grpc-port=" + itoa(grpcPort), // Same port that's already bound
+		"--port=" + itoa(port), // Same port that's already bound
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	err = cmd.ExecuteContext(ctx)
-	assert.Assert(t, err != nil, "expected error when gRPC port is already bound")
-	assert.ErrorContains(t, err, "failed to create gRPC listener")
+	assert.Assert(t, err != nil, "expected error when port is already bound")
+	assert.ErrorContains(t, err, "failed to create listener")
 }
 
-func TestControllerHTTPListenerFailure(t *testing.T) {
+func TestControllerHealthCheck(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
 
 	t.Parallel()
 
-	// Bind to the HTTP port first to cause server startup to fail
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	// Find free port
+	freeListener, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NilError(t, err)
-	defer listener.Close()
-	httpPort := listener.Addr().(*net.TCPAddr).Port
+	port := freeListener.Addr().(*net.TCPAddr).Port
+	freeListener.Close()
 
-	// Find a free port for gRPC
-	grpcListener, err := net.Listen("tcp", "127.0.0.1:0")
-	assert.NilError(t, err)
-	grpcPort := grpcListener.Addr().(*net.TCPAddr).Port
-	grpcListener.Close()
-
-	deps := &ControllerDeps{
-		LoadKubeConfig: func() (*rest.Config, error) {
-			return &rest.Config{}, nil
-		},
-		NewK8sClient: func(c *rest.Config) (kubernetes.Interface, error) {
-			return fake.NewClientset(), nil
-		},
-		NewMetricsClient: func(c *rest.Config) (kubernetesmetrics.Interface, error) {
-			return fakemetrics.NewSimpleClientset(), nil //nolint:staticcheck // NewClientset isn't generated for this package
-		},
-		NewClientFunc: func(protocol string, grpcPort int) controller.NewClientFunc {
-			return func(host string, port int) controller.Client {
-				return nil
-			}
-		},
-	}
-
-	cmd := NewController(deps)
-	cmd.SetArgs([]string{
-		"--namespace=test",
-		"--pod-ip=10.0.0.1",
-		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
-		"--function-namespaces=default",
-		"--host=127.0.0.1",
-		"--http-port=" + itoa(httpPort), // Same port that's already bound
-		"--grpc-port=" + itoa(grpcPort),
+	// Block informer sync so we can observe NOT_SERVING before the controller is ready
+	unblockInformers := make(chan struct{})
+	fakeClient := fake.NewClientset()
+	fakeClient.PrependReactor("list", "*", func(action ktesting.Action) (bool, runtime.Object, error) {
+		<-unblockInformers
+		return false, nil, nil
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = cmd.ExecuteContext(ctx)
-	assert.Assert(t, err != nil, "expected error when HTTP port is already bound")
-	assert.ErrorContains(t, err, "failed to serve controller HTTP")
-}
-
-func TestControllerGRPCHealthCheck(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test in short mode")
-	}
-
-	t.Parallel()
-
-	// Find free ports
-	httpListener, err := net.Listen("tcp", "127.0.0.1:0")
-	assert.NilError(t, err)
-	httpPort := httpListener.Addr().(*net.TCPAddr).Port
-	httpListener.Close()
-
-	grpcListener, err := net.Listen("tcp", "127.0.0.1:0")
-	assert.NilError(t, err)
-	grpcPort := grpcListener.Addr().(*net.TCPAddr).Port
-	grpcListener.Close()
-
 	deps := &ControllerDeps{
 		LoadKubeConfig: func() (*rest.Config, error) {
 			return &rest.Config{}, nil
 		},
 		NewK8sClient: func(c *rest.Config) (kubernetes.Interface, error) {
-			return fake.NewClientset(), nil
+			return fakeClient, nil
 		},
 		NewMetricsClient: func(c *rest.Config) (kubernetesmetrics.Interface, error) {
 			return fakemetrics.NewSimpleClientset(), nil //nolint:staticcheck // NewClientset isn't generated for this package
 		},
-		NewClientFunc: func(protocol string, grpcPort int) controller.NewClientFunc {
-			return func(host string, port int) controller.Client {
+		NewClientFunc: func(port int) controller.NewClientFunc {
+			return func(host string) controller.Client {
 				return nil
 			}
 		},
@@ -492,8 +369,7 @@ func TestControllerGRPCHealthCheck(t *testing.T) {
 		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
 		"--function-namespaces=default",
 		"--host=127.0.0.1",
-		"--http-port=" + strconv.Itoa(httpPort),
-		"--grpc-port=" + strconv.Itoa(grpcPort),
+		"--port=" + strconv.Itoa(port),
 	})
 
 	cmdErr := make(chan error, 1)
@@ -501,33 +377,50 @@ func TestControllerGRPCHealthCheck(t *testing.T) {
 		cmdErr <- cmd.ExecuteContext(ctx)
 	}()
 
-	// Connect and check gRPC health with retry
-	var conn *grpc.ClientConn
-	var healthClient healthgrpc.HealthClient
-	var resp *healthgrpc.HealthCheckResponse
+	// Wait for the gRPC server to accept connections (health is NOT_SERVING while informers sync)
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	assert.NilError(t, err)
+	defer conn.Close()
 
+	healthClient := healthgrpc.NewHealthClient(conn)
+
+	// Health should NOT return SERVING while informers are blocked
+	var notServing bool
 	for i := 0; i < 50; i++ {
-		conn, err = grpc.NewClient(
-			net.JoinHostPort("127.0.0.1", strconv.Itoa(grpcPort)),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+		resp, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
 		if err != nil {
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.NotFound {
+				notServing = true
+				break
+			}
+			// Server not yet accepting connections, retry
 			time.Sleep(20 * time.Millisecond)
 			continue
 		}
-
-		healthClient = healthgrpc.NewHealthClient(conn)
-		resp, err = healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
-		if err == nil {
+		if resp.Status != healthgrpc.HealthCheckResponse_SERVING {
+			notServing = true
 			break
 		}
-		conn.Close()
 		time.Sleep(20 * time.Millisecond)
 	}
+	assert.Assert(t, notServing, "expected health to NOT be SERVING before controller is ready")
 
+	// Unblock informers so the controller can finish starting
+	close(unblockInformers)
+
+	// Health should transition to SERVING after the controller is ready
+	var resp *healthgrpc.HealthCheckResponse
+	for i := 0; i < 50; i++ {
+		resp, err = healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
+		if err == nil && resp.Status == healthgrpc.HealthCheckResponse_SERVING {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	assert.NilError(t, err)
 	assert.Equal(t, resp.Status, healthgrpc.HealthCheckResponse_SERVING)
-	conn.Close()
 
 	cancel()
 	<-cmdErr

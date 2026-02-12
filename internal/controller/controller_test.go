@@ -276,7 +276,7 @@ func TestGetControllerClient(t *testing.T) {
 			t.Parallel()
 
 			callCount := &atomic.Int32{}
-			ctrl := New(testConfig(), func(host string, port int) Client {
+			ctrl := New(testConfig(), func(host string) Client {
 				callCount.Add(1)
 				return fixture.NewMockControllerClient(t)
 			}, fake.NewClientset(), nil)
@@ -327,7 +327,7 @@ func TestControllerClose(t *testing.T) {
 			t.Parallel()
 
 			closeCalls := &atomic.Int32{}
-			ctrl := New(testConfig(), func(host string, port int) Client {
+			ctrl := New(testConfig(), func(host string) Client {
 				return &closeTrackingClient{
 					Client:     fixture.NewMockControllerClient(t),
 					closeCalls: closeCalls,
