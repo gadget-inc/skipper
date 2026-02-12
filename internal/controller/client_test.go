@@ -3,14 +3,12 @@ package controller
 import (
 	"context"
 	"net"
-	"net/http"
-	"net/http/httptest"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/fixture"
-	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -18,51 +16,30 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-// clientSetup contains the common setup for testing both HTTP and gRPC clients.
-type clientSetup struct {
-	client  Client
-	cleanup func()
-}
-
-// setupHTTPClient creates an HTTP test server and client.
-func setupHTTPClient(t *testing.T, ctrl *Controller) clientSetup {
-	server := httptest.NewServer(ctrl.Handler())
-	client := NewHTTPClient(server.Listener.Addr().String(), 0)
-	client.(*HTTPClient).addr = server.URL
-	return clientSetup{
-		client:  client,
-		cleanup: server.Close,
-	}
-}
-
-// setupGRPCClient creates a gRPC test server and client.
-func setupGRPCClient(t *testing.T, ctrl *Controller) clientSetup {
+// setupClient creates a gRPC test server and client.
+func setupClient(t *testing.T, ctrl *Controller) (Client, func()) {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	assert.NilError(t, err)
 
 	srv := grpc.NewServer()
-	skipper.RegisterControllerServiceServer(srv, NewGRPCServer(ctrl))
+	skipper.RegisterControllerServiceServer(srv, NewServer(ctrl))
 	go func() {
 		_ = srv.Serve(lis)
 	}()
 
 	addr := lis.Addr().(*net.TCPAddr)
-	client, err := NewGRPCClient(addr.IP.String(), addr.Port)
+	client, err := NewClient(addr.IP.String(), addr.Port)
 	assert.NilError(t, err)
 
-	return clientSetup{
-		client: client,
-		cleanup: func() {
-			srv.Stop()
-			client.(*GRPCClient).Close()
-		},
+	return client, func() {
+		srv.Stop()
+		client.Close()
 	}
 }
-
-type clientFactory func(t *testing.T, ctrl *Controller) clientSetup
 
 func TestClientInstance(t *testing.T) {
 	t.Parallel()
@@ -148,76 +125,40 @@ func TestClientInstance(t *testing.T) {
 				assert.Assert(t, proto.Equal(instance.GetFunction(), state.fn))
 			},
 		},
-	}
-
-	protocols := []struct {
-		name    string
-		factory clientFactory
-	}{
-		{"HTTP", setupHTTPClient},
-		{"gRPC", setupGRPCClient},
-	}
-
-	for _, proto := range protocols {
-		t.Run(proto.name, func(t *testing.T) {
-			t.Parallel()
-			for _, tc := range testCases {
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
-
-					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-					defer cancel()
-
-					state := &testState{
-						fn:             fixture.NewFunction(t),
-						fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
-					}
-					state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
-
-					tc.setup(t, state)
-
-					err := state.ctrl.startInformers(ctx)
-					assert.NilError(t, err)
-
-					setup := proto.factory(t, state.ctrl)
-					defer setup.cleanup()
-					state.client = setup.client
-
-					instance, err := state.client.Instance(ctx, state.fn, state.excludeNames...)
-					tc.check(t, state, instance, err)
-				})
-			}
-		})
-	}
-}
-
-func TestClientScaleReasonHeaderSerialization(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name           string
-		reason         skipper.ScaleReason
-		expectedHeader string
-	}{
 		{
-			name:           "in flight requests",
-			reason:         skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS,
-			expectedHeader: "SCALE_REASON_IN_FLIGHT_REQUESTS",
-		},
-		{
-			name:           "cpu",
-			reason:         skipper.ScaleReason_SCALE_REASON_CPU,
-			expectedHeader: "SCALE_REASON_CPU",
-		},
-		{
-			name:           "memory",
-			reason:         skipper.ScaleReason_SCALE_REASON_MEMORY,
-			expectedHeader: "SCALE_REASON_MEMORY",
-		},
-		{
-			name:           "unspecified",
-			reason:         skipper.ScaleReason_SCALE_REASON_UNSPECIFIED,
-			expectedHeader: "SCALE_REASON_UNSPECIFIED",
+			name: "no ready instances while scaling up race",
+			setup: func(t *testing.T, state *testState) {
+				// Grab supervisor lock before the client call so GetInstance blocks
+				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor.mu.Lock()
+
+				go func() {
+					// Wait for GetInstance to arrive and block on the lock
+					time.Sleep(500 * time.Millisecond)
+
+					// Add 2 assigned pods while the lock is held
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+
+					// Give informers a chance to update their caches
+					time.Sleep(10 * time.Millisecond)
+
+					// Release supervisor lock
+					supervisor.mu.Unlock()
+				}()
+			},
+			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
+				assert.NilError(t, err)
+				assert.Assert(t, instance != nil)
+				assert.Assert(t, proto.Equal(instance.GetFunction(), state.fn))
+				assert.Assert(t, instance.HasReadyAt())
+
+				// Verify both pods still exist — the controller should not have
+				// scaled down to 1 just because the original request was for 1 instance
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 2, "expected 2 pods but got %d — controller should not over-scale", len(pods.Items))
+			},
 		},
 	}
 
@@ -225,26 +166,26 @@ func TestClientScaleReasonHeaderSerialization(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var capturedReasonHeader string
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				capturedReasonHeader = r.Header.Get(key.Reason.Header)
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("[]")) // return empty instances array
-			}))
-			defer server.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			defer cancel()
 
-			// Parse the server URL to get host and port
-			client := NewHTTPClient(server.Listener.Addr().String(), 0)
-			// Override the addr since NewHTTPClient formats it with http:// prefix
-			client.(*HTTPClient).addr = server.URL
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
 
-			fn := fixture.NewFunction(t)
-			_, err := client.Scale(t.Context(), fn, 1, tc.reason)
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			assert.Equal(t, capturedReasonHeader, tc.expectedHeader,
-				"ScaleReason header should be the enum name string, not a control character. Got %q (len=%d), expected %q",
-				capturedReasonHeader, len(capturedReasonHeader), tc.expectedHeader)
+			client, cleanup := setupClient(t, state.ctrl)
+			defer cleanup()
+			state.client = client
+
+			instance, err := state.client.Instance(ctx, state.fn, state.excludeNames...)
+			tc.check(t, state, instance, err)
 		})
 	}
 }
@@ -350,36 +291,133 @@ func TestClientHeartbeat(t *testing.T) {
 		},
 	}
 
-	protocols := []struct {
-		name    string
-		factory clientFactory
-	}{
-		{"HTTP", setupHTTPClient},
-		{"gRPC", setupGRPCClient},
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := t.Context()
+
+			state := &testState{}
+			state.ctrl = New(testConfig(), nil, fake.NewClientset(), nil)
+
+			tc.setup(t, state)
+
+			client, cleanup := setupClient(t, state.ctrl)
+			defer cleanup()
+			state.client = client
+
+			err := state.client.Heartbeat(ctx, state.routerIP, state.heartbeats)
+			tc.check(t, state, err)
+		})
+	}
+}
+
+func TestClientHeartbeatForwarding(t *testing.T) {
+	t.Parallel()
+
+	type forwardedHeartbeat struct {
+		routerIP     string
+		heartbeats   []*skipper.Heartbeat
+		forwardedFor []string
 	}
 
-	for _, proto := range protocols {
-		t.Run(proto.name, func(t *testing.T) {
+	type testState struct {
+		ctrl      *Controller
+		client    Client
+		forwarded chan forwardedHeartbeat
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState, error)
+	}{
+		{
+			name: "forwards heartbeats to other controllers",
+			setup: func(t *testing.T, state *testState) {
+				// Add a second controller to the ring so forwarding triggers
+				state.ctrl.ring.Add(fixture.ControllerIP2)
+			},
+			check: func(t *testing.T, state *testState, err error) {
+				assert.NilError(t, err)
+
+				select {
+				case fwd := <-state.forwarded:
+					assert.Equal(t, fwd.routerIP, fixture.RouterIP)
+					assert.Assert(t, len(fwd.heartbeats) == 1)
+					// forwardedFor should contain both the originating controller and the target
+					assert.Assert(t, len(fwd.forwardedFor) == 2, "expected forwardedFor to have 2 entries, got %d", len(fwd.forwardedFor))
+					assert.Assert(t, slices.Contains(fwd.forwardedFor, fixture.ControllerIP), "forwardedFor should contain originating controller IP")
+					assert.Assert(t, slices.Contains(fwd.forwardedFor, fixture.ControllerIP2), "forwardedFor should contain target controller IP")
+				case <-time.After(2 * time.Second):
+					t.Fatal("timed out waiting for forwarded heartbeat")
+				}
+			},
+		},
+		{
+			name: "does not forward when already in forwardedFor",
+			setup: func(t *testing.T, state *testState) {
+				// Add a second controller to the ring
+				state.ctrl.ring.Add(fixture.ControllerIP2)
+			},
+			check: func(t *testing.T, state *testState, err error) {
+				assert.NilError(t, err)
+
+				select {
+				case fwd := <-state.forwarded:
+					t.Fatalf("unexpected forwarded heartbeat: %+v", fwd)
+				case <-time.After(100 * time.Millisecond):
+					// Expected: no forwarding when target is already in forwardedFor
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			for _, tc := range testCases {
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
 
-					ctx := t.Context()
+			ctx := t.Context()
 
-					state := &testState{}
-					state.ctrl = New(testConfig(), nil, fake.NewClientset(), nil)
-
-					tc.setup(t, state)
-
-					setup := proto.factory(t, state.ctrl)
-					defer setup.cleanup()
-					state.client = setup.client
-
-					err := state.client.Heartbeat(ctx, state.routerIP, state.heartbeats)
-					tc.check(t, state, err)
-				})
+			state := &testState{
+				forwarded: make(chan forwardedHeartbeat, 10),
 			}
+
+			state.ctrl = New(testConfig(), func(host string) Client {
+				mock := fixture.NewMockControllerClient(t)
+				mock.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+					state.forwarded <- forwardedHeartbeat{
+						routerIP:     routerIP,
+						heartbeats:   heartbeats,
+						forwardedFor: forwardedFor,
+					}
+					return nil
+				})
+				return mock
+			}, fake.NewClientset(), nil)
+
+			// Add our own IP to the ring (the server always adds itself to forwardedFor)
+			state.ctrl.ring.Add(fixture.ControllerIP)
+
+			tc.setup(t, state)
+
+			client, cleanup := setupClient(t, state.ctrl)
+			defer cleanup()
+			state.client = client
+
+			fn := fixture.NewFunction(t)
+			heartbeats := []*skipper.Heartbeat{
+				skipper.Heartbeat_builder{Function: fn, Timestamp: timestamppb.Now()}.Build(),
+			}
+
+			var err error
+			if tc.name == "does not forward when already in forwardedFor" {
+				// Send with forwardedFor already containing the other controller
+				err = state.client.Heartbeat(ctx, fixture.RouterIP, heartbeats, fixture.ControllerIP2)
+			} else {
+				err = state.client.Heartbeat(ctx, fixture.RouterIP, heartbeats)
+			}
+			tc.check(t, state, err)
 		})
 	}
 }
@@ -419,7 +457,7 @@ func (s *failingServer) Scale(ctx context.Context, req *skipper.ScaleRequest) (*
 	return &skipper.ScaleResponse{}, nil
 }
 
-func TestGRPCClientRetries(t *testing.T) {
+func TestClientRetries(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -521,9 +559,9 @@ func TestGRPCClientRetries(t *testing.T) {
 			defer srv.Stop()
 
 			addr := lis.Addr().(*net.TCPAddr)
-			client, err := NewGRPCClient(addr.IP.String(), addr.Port)
+			client, err := NewClient(addr.IP.String(), addr.Port)
 			assert.NilError(t, err)
-			defer client.(*GRPCClient).Close()
+			defer client.Close()
 
 			fn := fixture.NewFunction(t)
 
@@ -640,43 +678,30 @@ func TestClientScale(t *testing.T) {
 		},
 	}
 
-	protocols := []struct {
-		name    string
-		factory clientFactory
-	}{
-		{"HTTP", setupHTTPClient},
-		{"gRPC", setupGRPCClient},
-	}
-
-	for _, proto := range protocols {
-		t.Run(proto.name, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			for _, tc := range testCases {
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
 
-					ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
-					defer cancel()
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			defer cancel()
 
-					state := &testState{
-						fn:             fixture.NewFunction(t),
-						fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
-					}
-					state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
-
-					tc.setup(t, state)
-
-					err := state.ctrl.startInformers(ctx)
-					assert.NilError(t, err)
-
-					setup := proto.factory(t, state.ctrl)
-					defer setup.cleanup()
-					state.client = setup.client
-
-					instances, err := state.client.Scale(ctx, state.fn, state.desiredInstances, state.reason)
-					tc.check(t, state, instances, err)
-				})
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			client, cleanup := setupClient(t, state.ctrl)
+			defer cleanup()
+			state.client = client
+
+			instances, err := state.client.Scale(ctx, state.fn, state.desiredInstances, state.reason)
+			tc.check(t, state, instances, err)
 		})
 	}
 }

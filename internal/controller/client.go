@@ -1,19 +1,16 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"net/http"
-	"strconv"
-	"strings"
 
-	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
-	"github.com/go-json-experiment/json"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
+// Client is the interface for communicating with a controller.
 type Client interface {
 	Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error)
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
@@ -21,113 +18,134 @@ type Client interface {
 	Close() error
 }
 
-type NewClientFunc func(host string, port int) Client
+// NewClientFunc creates a Client for the given host.
+type NewClientFunc func(host string) Client
 
-type HTTPClient struct {
-	*http.Client
-	addr string
+// client implements the Client interface.
+type client struct {
+	conn   *grpc.ClientConn
+	client skipper.ControllerServiceClient
 }
 
-var _ Client = &HTTPClient{}
+var _ Client = &client{}
 
-func NewHTTPClient(host string, port int) Client {
-	return &HTTPClient{
-		addr: fmt.Sprintf("http://%s:%d", host, port),
-		Client: &http.Client{
-			Transport: otelhttp.NewTransport(http.DefaultTransport,
-				otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
-			),
+// defaultServiceConfig configures gRPC client behavior including load balancing
+// and retry policies. This is used with DNS-based service discovery where
+// multiple A records are returned for a headless Kubernetes service.
+//
+// Retry policies are configured per-RPC:
+//   - GetInstance: Retries on UNAVAILABLE since routing is critical
+//   - Heartbeat: Retries on UNAVAILABLE to prevent premature pod termination
+//   - Scale: Retries on UNAVAILABLE for reliability
+const defaultServiceConfig = `{
+	"loadBalancingConfig": [{"round_robin": {}}],
+	"methodConfig": [
+		{
+			"name": [{"service": "skipper.ControllerService", "method": "GetInstance"}],
+			"retryPolicy": {
+				"maxAttempts": 3,
+				"initialBackoff": "0.01s",
+				"maxBackoff": "0.1s",
+				"backoffMultiplier": 2,
+				"retryableStatusCodes": ["UNAVAILABLE"]
+			}
 		},
+		{
+			"name": [{"service": "skipper.ControllerService", "method": "Heartbeat"}],
+			"retryPolicy": {
+				"maxAttempts": 2,
+				"initialBackoff": "0.01s",
+				"maxBackoff": "0.05s",
+				"backoffMultiplier": 2,
+				"retryableStatusCodes": ["UNAVAILABLE"]
+			}
+		},
+		{
+			"name": [{"service": "skipper.ControllerService", "method": "Scale"}],
+			"retryPolicy": {
+				"maxAttempts": 3,
+				"initialBackoff": "0.05s",
+				"maxBackoff": "0.5s",
+				"backoffMultiplier": 2,
+				"retryableStatusCodes": ["UNAVAILABLE"]
+			}
+		}
+	]
+}`
+
+// NewClient creates a new client for the controller.
+// When used with a headless Kubernetes service, the DNS resolver will
+// return all pod IPs, and round-robin load balancing will distribute
+// requests across all available controller pods.
+func NewClient(host string, port int) (Client, error) {
+	// Use dns:/// scheme to enable DNS-based service discovery.
+	// This allows gRPC to resolve the service name to multiple IP addresses
+	// (from a headless service) and load balance across them.
+	target := fmt.Sprintf("dns:///%s:%d", host, port)
+	conn, err := grpc.NewClient(target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithDefaultServiceConfig(defaultServiceConfig),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection: %w", err)
 	}
+
+	return &client{
+		conn:   conn,
+		client: skipper.NewControllerServiceClient(conn),
+	}, nil
 }
 
-func (c *HTTPClient) Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.addr+"/instance", nil)
+func (c *client) Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	req := &skipper.GetInstanceRequest{}
+	req.SetFunction(fn)
+	req.SetExcludeInstanceNames(excludeInstanceNames)
+
+	resp, err := c.client.GetInstance(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create instance request: %w", err)
+		return nil, fmt.Errorf("failed to get instance: %w", err)
 	}
 
-	fn.SetHeader(req)
-	if len(excludeInstanceNames) > 0 {
-		req.Header[key.ExcludeInstanceNames.Header] = []string{strings.Join(excludeInstanceNames, ",")}
-	}
-
-	res, err := c.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send instance request: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("instance request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
-	}
-
-	if err := json.UnmarshalRead(res.Body, &instance); err != nil {
-		return nil, fmt.Errorf("failed to decode instance response: %w", err)
-	}
-
-	return instance, nil
+	return resp.GetInstance(), nil
 }
 
-func (c *HTTPClient) Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+func (c *client) Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
 	if len(heartbeats) == 0 {
 		return nil
 	}
 
-	body, err := json.Marshal(heartbeats)
+	req := &skipper.HeartbeatRequest{}
+	req.SetRouterIp(routerIP)
+	req.SetHeartbeats(heartbeats)
+	req.SetForwardedFor(forwardedFor)
+
+	_, err := c.client.Heartbeat(ctx, req)
 	if err != nil {
-		return fmt.Errorf("failed to marshal heartbeats: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/heartbeat", bytes.NewBuffer(body))
-	if err != nil {
-		return fmt.Errorf("failed to create heartbeat request: %w", err)
-	}
-
-	req.Header[key.RouterIP.Header] = []string{routerIP}
-	req.Header[key.ForwardedFor.Header] = append(req.Header[key.ForwardedFor.Header], forwardedFor...)
-
-	res, err := c.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send heartbeat request: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("heartbeat request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
+		return fmt.Errorf("failed to send heartbeat: %w", err)
 	}
 
 	return nil
 }
 
-func (c *HTTPClient) Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.addr+"/scale", nil)
+func (c *client) Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
+	req := &skipper.ScaleRequest{}
+	req.SetFunction(fn)
+	req.SetDesiredInstances(desiredInstances)
+	req.SetReason(reason)
+
+	resp, err := c.client.Scale(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create scale request: %w", err)
+		return nil, fmt.Errorf("failed to scale: %w", err)
 	}
 
-	fn.SetHeader(req)
-	req.Header[key.DesiredInstances.Header] = []string{strconv.FormatUint(uint64(desiredInstances), 10)}
-	req.Header[key.Reason.Header] = []string{reason.String()}
-
-	res, err := c.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send scale request: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("scale request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
-	}
-
-	var instances []*skipper.Instance
-	if err := json.UnmarshalRead(res.Body, &instances); err != nil {
-		return nil, fmt.Errorf("failed to decode scale response: %w", err)
-	}
-
-	return instances, nil
+	return resp.GetInstances(), nil
 }
 
-func (c *HTTPClient) Close() error {
+// Close closes the connection.
+func (c *client) Close() error {
+	if c.conn != nil {
+		return c.conn.Close()
+	}
 	return nil
 }

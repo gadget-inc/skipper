@@ -39,7 +39,7 @@ type MockControllerClient struct {
 	heartbeatWasCalled atomic.Bool
 }
 
-// var _ controller.Client = &MockControllerClient{}
+// var _ controller.Client = &MockControllerClient{} // import cycle: verified by router_test.go usage
 
 func NewMockControllerClient(t *testing.T) *MockControllerClient {
 	mcc := &MockControllerClient{t: t}

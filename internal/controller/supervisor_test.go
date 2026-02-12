@@ -590,7 +590,7 @@ func TestScaleForwarding(t *testing.T) {
 		return []*skipper.Instance{fixture.NewInstance(t, fn, nil)}, nil
 	})
 
-	ctrl := New(testConfig(), func(host string, port int) Client { return mcc }, fakeKubernetes, nil)
+	ctrl := New(testConfig(), func(host string) Client { return mcc }, fakeKubernetes, nil)
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
@@ -629,7 +629,7 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 
 	cfg := testConfig()
 	cfg.HPADownscaleStabilization = 5 * time.Second
-	ctrl := New(cfg, func(host string, port int) Client { return mcc }, fakeKubernetes, nil)
+	ctrl := New(cfg, func(host string) Client { return mcc }, fakeKubernetes, nil)
 	ctrl.setStartedAt(time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second)))
 
 	// Add pods so discoverSupervisors can find them

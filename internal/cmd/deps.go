@@ -27,8 +27,7 @@ type ControllerDeps struct {
 	NewMetricsClient func(*rest.Config) (kubernetesmetrics.Interface, error)
 
 	// NewClientFunc returns a function that creates controller clients for inter-controller communication.
-	// The protocol parameter is "http" or "grpc".
-	NewClientFunc func(protocol string, grpcPort int) controller.NewClientFunc
+	NewClientFunc func(port int) controller.NewClientFunc
 }
 
 // DefaultControllerDeps returns the default production dependencies.
@@ -57,19 +56,14 @@ func defaultNewMetricsClient(config *rest.Config) (kubernetesmetrics.Interface, 
 	return kubernetesmetrics.NewForConfig(config)
 }
 
-func defaultNewClientFunc(protocol string, grpcPort int) controller.NewClientFunc {
-	switch protocol {
-	case "http":
-		return controller.NewHTTPClient
-	default:
-		return func(host string, port int) controller.Client {
-			client, err := controller.NewGRPCClient(host, grpcPort)
-			if err != nil {
-				// NewGRPCClient only fails for configuration errors (grpc.NewClient is lazy)
-				panic("failed to create gRPC client: " + err.Error())
-			}
-			return client
+func defaultNewClientFunc(port int) controller.NewClientFunc {
+	return func(host string) controller.Client {
+		client, err := controller.NewClient(host, port)
+		if err != nil {
+			// NewClient only fails for configuration errors (grpc.NewClient is lazy)
+			panic("failed to create client: " + err.Error())
 		}
+		return client
 	}
 }
 
@@ -88,16 +82,11 @@ func DefaultRouterDeps() *RouterDeps {
 }
 
 func defaultNewControllerClient(cfg *router.Config) (controller.Client, error) {
-	switch cfg.ControllerProtocol {
-	case "http":
-		return controller.NewHTTPClient(cfg.ControllerServiceHost, cfg.ControllerHTTPPort), nil
-	default:
-		// Use the gRPC-specific headless service host if configured,
-		// otherwise fall back to the standard service host
-		grpcHost := cfg.ControllerGRPCServiceHost
-		if grpcHost == "" {
-			grpcHost = cfg.ControllerServiceHost
-		}
-		return controller.NewGRPCClient(grpcHost, cfg.ControllerGRPCPort)
+	// Use the headless service host if configured,
+	// otherwise fall back to the standard service host
+	host := cfg.ControllerHeadlessServiceHost
+	if host == "" {
+		host = cfg.ControllerServiceHost
 	}
+	return controller.NewClient(host, cfg.ControllerPort)
 }

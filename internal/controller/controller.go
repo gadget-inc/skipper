@@ -294,7 +294,7 @@ func (ctrl *Controller) watchErrorHandler(ctx context.Context, attrs ...slog.Att
 }
 
 func (ctrl *Controller) getControllerClient(ip string) Client {
-	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip, ctrl.config.HTTPPort), false })
+	controllerClient, _ := ctrl.controllerClients.LoadOrCompute(ip, func() (Client, bool) { return ctrl.newClientFunc(ip), false })
 	return controllerClient
 }
 

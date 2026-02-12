@@ -79,57 +79,38 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
 
-			newClientFunc := deps.NewClientFunc(cfg.Protocol, cfg.GRPCPort)
+			newClientFunc := deps.NewClientFunc(cfg.Port)
 
 			ctrl := controller.New(cfg, newClientFunc, kubernetesClient, kubernetesMetrics)
 			if err := ctrl.Start(ctx); err != nil {
 				return fmt.Errorf("failed to start controller: %w", err)
 			}
 
-			httpServer := &http.Server{
-				Addr: net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.HTTPPort)),
-				Handler: otelhttp.NewHandler(ctrl.Handler(), "",
-					otelhttp.WithFilter(func(r *http.Request) bool { return r.URL.Path != "/healthz" }),
-					otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string { return "HTTP " + r.Method + " " + r.URL.Path }),
-				),
-			}
-
-			httpServerError := make(chan error, 1)
-
-			go func() {
-				log.Info(ctx, "serving controller HTTP", key.Addr.Slog(httpServer.Addr))
-				if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-					httpServerError <- err
-				}
-			}()
-
-			grpcServer := grpc.NewServer(
+			server := grpc.NewServer(
 				grpc.StatsHandler(otelgrpc.NewServerHandler()),
 			)
-			skipper.RegisterControllerServiceServer(grpcServer, controller.NewGRPCServer(ctrl))
+			skipper.RegisterControllerServiceServer(server, controller.NewServer(ctrl))
 			healthServer := health.NewServer()
 			healthServer.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
-			healthgrpc.RegisterHealthServer(grpcServer, healthServer)
+			healthgrpc.RegisterHealthServer(server, healthServer)
 
-			grpcListener, err := net.Listen("tcp", net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.GRPCPort)))
+			listener, err := net.Listen("tcp", net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)))
 			if err != nil {
-				return fmt.Errorf("failed to create gRPC listener: %w", err)
+				return fmt.Errorf("failed to create listener: %w", err)
 			}
 
-			grpcServerError := make(chan error, 1)
+			serverError := make(chan error, 1)
 
 			go func() {
-				log.Info(ctx, "serving controller gRPC", key.Addr.Slog(grpcListener.Addr().String()))
-				if err := grpcServer.Serve(grpcListener); err != nil {
-					grpcServerError <- err
+				log.Info(ctx, "serving controller", key.Addr.Slog(listener.Addr().String()))
+				if err := server.Serve(listener); err != nil {
+					serverError <- err
 				}
 			}()
 
 			select {
-			case err := <-httpServerError:
-				return fmt.Errorf("failed to serve controller HTTP: %w", err)
-			case err := <-grpcServerError:
-				return fmt.Errorf("failed to serve controller gRPC: %w", err)
+			case err := <-serverError:
+				return fmt.Errorf("failed to serve controller: %w", err)
 			case <-ctx.Done():
 				log.Info(ctx, "shutting down controller")
 			}
@@ -137,21 +118,17 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 			defer cancel()
 
-			grpcStopped := make(chan struct{})
+			stopped := make(chan struct{})
 			go func() {
-				grpcServer.GracefulStop()
-				close(grpcStopped)
+				server.GracefulStop()
+				close(stopped)
 			}()
 
 			select {
-			case <-grpcStopped:
+			case <-stopped:
 			case <-shutdownCtx.Done():
-				log.Warn(ctx, "gRPC graceful stop timed out, forcing stop")
-				grpcServer.Stop()
-			}
-
-			if err := httpServer.Shutdown(shutdownCtx); err != nil {
-				return fmt.Errorf("failed to shutdown controller HTTP: %w", err)
+				log.Warn(ctx, "graceful stop timed out, forcing stop")
+				server.Stop()
 			}
 
 			ctrl.Close()

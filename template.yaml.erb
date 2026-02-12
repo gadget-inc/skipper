@@ -26,9 +26,7 @@ service_annotations ||= {}
 service_spec ||= {}
 
 controller_name = "#{namespace}-controller"
-controller_protocol ||= "grpc"
-controller_grpc_port ||= 50051
-controller_http_port ||= 80
+controller_port ||= 50051
 controller_log_level ||= log_level
 controller_log_format ||= log_format
 controller_image_registry ||= image_registry
@@ -100,9 +98,7 @@ router_affinity ||= affinity
 router_topology_spread_constraints ||= topology_spread_constraints
 router_service_annotations ||= {}
 router_service_spec ||= {}
-router_controller_protocol ||= controller_protocol
-router_controller_grpc_port ||= controller_grpc_port
-router_controller_http_port ||= controller_http_port
+router_controller_port ||= controller_port
 
 router_image = ""
 if router_image_registry.present?
@@ -214,10 +210,8 @@ spec:
           ports:
             - name: pprof
               containerPort: 6060
-            - name: http
-              containerPort: 8080
             - name: grpc
-              containerPort: <%= controller_grpc_port %>
+              containerPort: <%= controller_port %>
             - name: metrics
               containerPort: 9090
           env:
@@ -257,10 +251,8 @@ spec:
               value: "<%= skip_forbidden_namespaces %>"
             - name: SKIPPER_SHUTDOWN_TIMEOUT
               value: "<%= controller_shutdown_timeout_seconds %>s"
-            - name: SKIPPER_GRPC_PORT
-              value: "<%= controller_grpc_port %>"
-            - name: SKIPPER_PROTOCOL
-              value: "<%= controller_protocol %>"
+            - name: SKIPPER_PORT
+              value: "<%= controller_port %>"
             <%- env.each do |key, value| -%>
             - name: "<%= key %>"
               value: "<%= value %>"
@@ -287,41 +279,23 @@ spec:
               cpu: "<%= controller_limit_cpu %>"
               <%- end -%>
           startupProbe:
-            <%- if controller_protocol == "grpc" -%>
             grpc:
-              port: <%= controller_grpc_port %>
-            <%- else -%>
-            httpGet:
-              path: /healthz
-              port: http
-            <%- end -%>
+              port: <%= controller_port %>
             failureThreshold: 3
             initialDelaySeconds: 3
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
           livenessProbe:
-            <%- if controller_protocol == "grpc" -%>
             grpc:
-              port: <%= controller_grpc_port %>
-            <%- else -%>
-            httpGet:
-              path: /healthz
-              port: http
-            <%- end -%>
+              port: <%= controller_port %>
             failureThreshold: 2
             periodSeconds: 1
             successThreshold: 1
             timeoutSeconds: 1
           readinessProbe:
-            <%- if controller_protocol == "grpc" -%>
             grpc:
-              port: <%= controller_grpc_port %>
-            <%- else -%>
-            httpGet:
-              path: /healthz
-              port: http
-            <%- end -%>
+              port: <%= controller_port %>
             failureThreshold: 1
             periodSeconds: 1
             successThreshold: 1
@@ -392,11 +366,8 @@ spec:
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: <%= namespace %>
   ports:
-    - name: http
-      port: 80
-      targetPort: http
     - name: grpc
-      port: <%= controller_grpc_port %>
+      port: <%= controller_port %>
       targetPort: grpc
   <%- if service_spec.any? -%>
   <%= to_yaml(service_spec, indentation: 2) %>
@@ -417,7 +388,7 @@ spec:
     app.kubernetes.io/instance: <%= namespace %>
   ports:
     - name: grpc
-      port: <%= controller_grpc_port %>
+      port: <%= controller_port %>
       targetPort: grpc
 <%- if controller_min_replicas != controller_max_replicas -%>
 ---
@@ -561,13 +532,9 @@ spec:
               value: "<%= router_log_format %>"
             - name: SKIPPER_CONTROLLER_SERVICE_HOST
               value: "<%= controller_name %>.<%= namespace %>.svc.cluster.local"
-            - name: SKIPPER_CONTROLLER_HTTP_PORT
-              value: "<%= router_controller_http_port %>"
-            - name: SKIPPER_CONTROLLER_PROTOCOL
-              value: "<%= router_controller_protocol %>"
-            - name: SKIPPER_CONTROLLER_GRPC_PORT
-              value: "<%= router_controller_grpc_port %>"
-            - name: SKIPPER_CONTROLLER_GRPC_SERVICE_HOST
+            - name: SKIPPER_CONTROLLER_PORT
+              value: "<%= router_controller_port %>"
+            - name: SKIPPER_CONTROLLER_HEADLESS_SERVICE_HOST
               value: "<%= controller_name %>-headless.<%= namespace %>.svc.cluster.local"
             - name: SKIPPER_SHUTDOWN_TIMEOUT
               value: "<%= router_shutdown_timeout_seconds %>s"
