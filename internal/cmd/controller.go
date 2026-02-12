@@ -82,16 +82,13 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 			newClientFunc := deps.NewClientFunc(cfg.Port)
 
 			ctrl := controller.New(cfg, newClientFunc, kubernetesClient, kubernetesMetrics)
-			if err := ctrl.Start(ctx); err != nil {
-				return fmt.Errorf("failed to start controller: %w", err)
-			}
 
 			server := grpc.NewServer(
 				grpc.StatsHandler(otelgrpc.NewServerHandler()),
 			)
 			skipper.RegisterControllerServiceServer(server, controller.NewServer(ctrl))
 			healthServer := health.NewServer()
-			healthServer.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
+			healthServer.SetServingStatus("", healthgrpc.HealthCheckResponse_NOT_SERVING)
 			healthgrpc.RegisterHealthServer(server, healthServer)
 
 			listener, err := net.Listen("tcp", net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)))
@@ -107,6 +104,13 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 					serverError <- err
 				}
 			}()
+
+			if err := ctrl.Start(ctx); err != nil {
+				server.Stop()
+				return fmt.Errorf("failed to start controller: %w", err)
+			}
+
+			healthServer.SetServingStatus("", healthgrpc.HealthCheckResponse_SERVING)
 
 			select {
 			case err := <-serverError:

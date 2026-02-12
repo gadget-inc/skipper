@@ -10,12 +10,16 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/controller"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	healthgrpc "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"gotest.tools/v3/assert"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
+	ktesting "k8s.io/client-go/testing"
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 	fakemetrics "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
@@ -330,12 +334,20 @@ func TestControllerHealthCheck(t *testing.T) {
 	port := freeListener.Addr().(*net.TCPAddr).Port
 	freeListener.Close()
 
+	// Block informer sync so we can observe NOT_SERVING before the controller is ready
+	unblockInformers := make(chan struct{})
+	fakeClient := fake.NewClientset()
+	fakeClient.PrependReactor("list", "*", func(action ktesting.Action) (bool, runtime.Object, error) {
+		<-unblockInformers
+		return false, nil, nil
+	})
+
 	deps := &ControllerDeps{
 		LoadKubeConfig: func() (*rest.Config, error) {
 			return &rest.Config{}, nil
 		},
 		NewK8sClient: func(c *rest.Config) (kubernetes.Interface, error) {
-			return fake.NewClientset(), nil
+			return fakeClient, nil
 		},
 		NewMetricsClient: func(c *rest.Config) (kubernetesmetrics.Interface, error) {
 			return fakemetrics.NewSimpleClientset(), nil //nolint:staticcheck // NewClientset isn't generated for this package
@@ -365,33 +377,50 @@ func TestControllerHealthCheck(t *testing.T) {
 		cmdErr <- cmd.ExecuteContext(ctx)
 	}()
 
-	// Connect and check health with retry
-	var conn *grpc.ClientConn
-	var healthClient healthgrpc.HealthClient
-	var resp *healthgrpc.HealthCheckResponse
+	// Wait for the gRPC server to accept connections (health is NOT_SERVING while informers sync)
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	assert.NilError(t, err)
+	defer conn.Close()
 
+	healthClient := healthgrpc.NewHealthClient(conn)
+
+	// Health should NOT return SERVING while informers are blocked
+	var notServing bool
 	for i := 0; i < 50; i++ {
-		conn, err = grpc.NewClient(
-			net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
+		resp, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
 		if err != nil {
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.NotFound {
+				notServing = true
+				break
+			}
+			// Server not yet accepting connections, retry
 			time.Sleep(20 * time.Millisecond)
 			continue
 		}
-
-		healthClient = healthgrpc.NewHealthClient(conn)
-		resp, err = healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
-		if err == nil {
+		if resp.Status != healthgrpc.HealthCheckResponse_SERVING {
+			notServing = true
 			break
 		}
-		conn.Close()
 		time.Sleep(20 * time.Millisecond)
 	}
+	assert.Assert(t, notServing, "expected health to NOT be SERVING before controller is ready")
 
+	// Unblock informers so the controller can finish starting
+	close(unblockInformers)
+
+	// Health should transition to SERVING after the controller is ready
+	var resp *healthgrpc.HealthCheckResponse
+	for i := 0; i < 50; i++ {
+		resp, err = healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
+		if err == nil && resp.Status == healthgrpc.HealthCheckResponse_SERVING {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	assert.NilError(t, err)
 	assert.Equal(t, resp.Status, healthgrpc.HealthCheckResponse_SERVING)
-	conn.Close()
 
 	cancel()
 	<-cmdErr

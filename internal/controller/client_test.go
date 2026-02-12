@@ -112,6 +112,16 @@ func TestClientInstance(t *testing.T) {
 			},
 		},
 		{
+			name: "returns error for invalid function",
+			setup: func(t *testing.T, state *testState) {
+				state.fn = &skipper.Function{} // empty fields fail validation
+			},
+			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
+				assert.Assert(t, err != nil)
+				assert.ErrorContains(t, err, "invalid function")
+			},
+		},
+		{
 			name: "waits for eventual instance",
 			setup: func(t *testing.T, state *testState) {
 				go func() {
@@ -260,6 +270,19 @@ func TestClientHeartbeat(t *testing.T) {
 				assert.NilError(t, err)
 				// No supervisors should be created
 				assert.Assert(t, state.ctrl.supervisors.Size() == 0)
+			},
+		},
+		{
+			name: "returns error for empty router IP",
+			setup: func(t *testing.T, state *testState) {
+				state.routerIP = ""
+				state.heartbeats = []*skipper.Heartbeat{
+					skipper.Heartbeat_builder{Function: fixture.NewFunction(t), Timestamp: timestamppb.Now()}.Build(),
+				}
+			},
+			check: func(t *testing.T, state *testState, err error) {
+				assert.Assert(t, err != nil)
+				assert.ErrorContains(t, err, "missing router_ip")
 			},
 		},
 		{
@@ -650,6 +673,18 @@ func TestClientScale(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, len(instances) == 1)
+			},
+		},
+		{
+			name: "returns error for invalid function",
+			setup: func(t *testing.T, state *testState) {
+				state.fn = &skipper.Function{} // empty fields fail validation
+				state.desiredInstances = 1
+				state.reason = skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance, err error) {
+				assert.Assert(t, err != nil)
+				assert.ErrorContains(t, err, "invalid function")
 			},
 		},
 		{
