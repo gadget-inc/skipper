@@ -1997,13 +1997,15 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 	cfg.HeartbeatTimeout = 10 * time.Second // long enough to not timeout during test
 
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
-	ctrl.ctx = ctx // set context so supervisor loop starts
+	// Don't set ctrl.ctx yet - we need to store the heartbeat before the
+	// supervisor loop starts, otherwise converge() may see no heartbeats
+	// and immediately scale to 0.
 	ctrl.setStartedAt(time.Now().Add(-cfg.HPADownscaleStabilization - time.Second))
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	// Get supervisor which will start its loop
+	// Create supervisor without starting its loop (ctrl.ctx is nil)
 	supervisor := ctrl.supervisor(fn)
 
 	// Add a heartbeat so the function doesn't scale to 0
@@ -2012,6 +2014,10 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 		Timestamp:        timestamppb.Now(),
 		InFlightRequests: proto.Uint32(1), // request in flight should trigger scale to 1
 	}.Build())
+
+	// Now set context and start the supervisor loop
+	ctrl.ctx = ctx
+	supervisor.start(ctx)
 
 	// Wait for the loop to converge and assign a pod
 	poll.WaitOn(t, func(t poll.LogT) poll.Result {
