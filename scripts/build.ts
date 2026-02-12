@@ -3,7 +3,7 @@ import process from "node:process";
 import { parseArgs } from "node:util";
 import { dedent } from "ts-dedent";
 import { $, glob, path } from "zx";
-import { abs, currentDockerPlatform, currentImageTag, isCI } from "./_utils.ts";
+import { abs, currentDockerPlatform, currentImageTag, expandSkipperAlias, isCI } from "./_utils.ts";
 
 $.cwd = abs();
 
@@ -17,11 +17,14 @@ const flags = parseArgs({
     help: { type: "boolean", default: false },
     kind: { type: "boolean", default: isCI },
     load: { type: "boolean", default: true },
-    only: { type: "string", default: "skipper,fixtures" },
+    only: { type: "string", default: "controller,router,fixtures" },
     provenance: { type: "boolean", default: false },
     push: { type: "boolean", default: false },
   },
 });
+
+// Expand "skipper" to "controller,router" for convenience
+flags.values.only = expandSkipperAlias(flags.values.only);
 
 if (flags.values.help) {
   console.log(dedent`
@@ -41,33 +44,57 @@ if (flags.values.help) {
   process.exit(0);
 }
 
-if (flags.values.only.includes("skipper")) {
-  const imageName = flags.values.registry ? `${flags.values.registry}/skipper` : "skipper";
-  const buildFlags = [
-    `--platform=${flags.values.platform}`,
-    `--tag=${imageName}:${flags.values.tag}`,
-  ];
+const components = new Set(flags.values.only.split(","));
+const buildController = components.has("controller");
+const buildRouter = components.has("router");
+
+if (buildController || buildRouter) {
+  const targets: string[] = [];
+  if (buildController) targets.push("controller");
+  if (buildRouter) targets.push("router");
+
+  const bakeFlags: string[] = [];
 
   if (flags.values.load) {
-    buildFlags.push("--load");
+    bakeFlags.push("--load");
   }
 
   if (flags.values.push) {
-    buildFlags.push("--push");
+    bakeFlags.push("--push");
   }
 
   if (!flags.values.provenance) {
-    buildFlags.push("--provenance=false");
+    bakeFlags.push("--provenance=false");
   }
 
-  await $({ verbose: true })`docker buildx build . ${buildFlags}`;
+  // Set bake variables via environment
+  const bakeEnv = {
+    ...process.env,
+    TAG: flags.values.tag,
+    PLATFORM: flags.values.platform,
+    ...(flags.values.registry && { REGISTRY: flags.values.registry }),
+  };
+
+  await $({ verbose: true, env: bakeEnv })`docker buildx bake ${targets} ${bakeFlags}`;
 
   if (flags.values.kind) {
-    await $`kind load docker-image ${imageName}:${flags.values.tag}`;
+    const controllerImageName = flags.values.registry
+      ? `${flags.values.registry}/skipper-controller`
+      : "skipper-controller";
+    const routerImageName = flags.values.registry
+      ? `${flags.values.registry}/skipper-router`
+      : "skipper-router";
+
+    if (buildController) {
+      await $`kind load docker-image ${controllerImageName}:${flags.values.tag}`;
+    }
+    if (buildRouter) {
+      await $`kind load docker-image ${routerImageName}:${flags.values.tag}`;
+    }
   }
 }
 
-if (flags.values.only.includes("fixtures")) {
+if (components.has("fixtures")) {
   for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) {
     const name = path.basename(fixture);
     const imageName = `skipper-fixtures-${name}`;

@@ -1,7 +1,7 @@
 Start the router
 
 Usage:
-  skipper router [flags]
+  router [flags]
 
 Flags:
       --controller-grpc-port int                The gRPC port the controller service listens on. (env SKIPPER_CONTROLLER_GRPC_PORT) (default 50051)
@@ -12,24 +12,22 @@ Flags:
       --heartbeat-interval duration             The interval at which to send heartbeats to the controller. (env SKIPPER_HEARTBEAT_INTERVAL) (default 5s)
   -h, --help                                    help for router
       --host string                             The hostname the router listens on. (env SKIPPER_HOST) (default "0.0.0.0")
+      --log-format string                       The log format to use. (json, text) (env SKIPPER_LOG_FORMAT) (default "json")
+      --log-level                               The log level to use. (trace, debug, info, warn, error) (env SKIPPER_LOG_LEVEL) (default INFO)
       --max-round-trip-attempts int             The maximum number of attempts to proxy a request to a function. (env SKIPPER_MAX_ROUND_TRIP_ATTEMPTS) (default 6)
       --pod-ip string                           The pod IP the router is running on. (env SKIPPER_POD_IP)
       --port int                                The port the router listens on. (env SKIPPER_PORT) (default 8080)
+      --pprof                                   Whether to enable pprof. (env SKIPPER_PPROF) (default true)
+      --pprof-host string                       The host to serve the pprof on. (env SKIPPER_PPROF_HOST) (default "0.0.0.0")
+      --pprof-port int                          The port to serve the pprof on. (env SKIPPER_PPROF_PORT) (default 6060)
+      --pprof-shutdown-timeout duration         The timeout for shutting down the pprof. (env SKIPPER_PPROF_SHUTDOWN_TIMEOUT) (default 5s)
       --round-trip-retry-max-timeout duration   The maximum timeout between round trip attempts. (env SKIPPER_ROUND_TRIP_RETRY_MAX_TIMEOUT) (default 5s)
       --round-trip-retry-min-timeout duration   The minimum timeout between round trip attempts. (env SKIPPER_ROUND_TRIP_RETRY_MIN_TIMEOUT) (default 100ms)
       --shutdown-timeout duration               The timeout for shutting down the router. (env SKIPPER_SHUTDOWN_TIMEOUT) (default 5s)
-
-Global Flags:
-      --log-format string                     The log format to use. (json, text) (env SKIPPER_LOG_FORMAT) (default "json")
-      --log-level                             The log level to use. (trace, debug, info, warn, error) (env SKIPPER_LOG_LEVEL) (default INFO)
-      --pprof                                 Whether to enable pprof. (env SKIPPER_PPROF) (default true)
-      --pprof-host string                     The host to serve the pprof on. (env SKIPPER_PPROF_HOST) (default "0.0.0.0")
-      --pprof-port int                        The port to serve the pprof on. (env SKIPPER_PPROF_PORT) (default 6060)
-      --pprof-shutdown-timeout duration       The timeout for shutting down the pprof. (env SKIPPER_PPROF_SHUTDOWN_TIMEOUT) (default 5s)
-      --telemetry                             Whether to enable OpenTelemetry. (env SKIPPER_TELEMETRY)
-      --telemetry-metric                      Whether to enable metrics if telemetry is enabled. (env SKIPPER_TELEMETRY_METRIC) (default true)
-      --telemetry-metric-otlp                 Whether to send metrics to the OTLP endpoint. (env SKIPPER_TELEMETRY_METRIC_OTLP)
-      --telemetry-prometheus-host string      The host for the Prometheus metrics endpoint. (env SKIPPER_TELEMETRY_PROMETHEUS_HOST) (default "0.0.0.0")
-      --telemetry-prometheus-port int         The port for the Prometheus metrics endpoint. (env SKIPPER_TELEMETRY_PROMETHEUS_PORT) (default 9090)
-      --telemetry-shutdown-timeout duration   The timeout for shutting down the telemetry. (env SKIPPER_TELEMETRY_SHUTDOWN_TIMEOUT) (default 5s)
-      --telemetry-trace                       Whether to enable tracing if telemetry is enabled. (env SKIPPER_TELEMETRY_TRACE) (default true)
+      --telemetry                               Whether to enable OpenTelemetry. (env SKIPPER_TELEMETRY)
+      --telemetry-metric                        Whether to enable metrics if telemetry is enabled. (env SKIPPER_TELEMETRY_METRIC) (default true)
+      --telemetry-metric-otlp                   Whether to send metrics to the OTLP endpoint. (env SKIPPER_TELEMETRY_METRIC_OTLP)
+      --telemetry-prometheus-host string        The host for the Prometheus metrics endpoint. (env SKIPPER_TELEMETRY_PROMETHEUS_HOST) (default "0.0.0.0")
+      --telemetry-prometheus-port int           The port for the Prometheus metrics endpoint. (env SKIPPER_TELEMETRY_PROMETHEUS_PORT) (default 9090)
+      --telemetry-shutdown-timeout duration     The timeout for shutting down the telemetry. (env SKIPPER_TELEMETRY_SHUTDOWN_TIMEOUT) (default 5s)
+      --telemetry-trace                         Whether to enable tracing if telemetry is enabled. (env SKIPPER_TELEMETRY_TRACE) (default true)

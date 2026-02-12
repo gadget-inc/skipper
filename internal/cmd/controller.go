@@ -25,13 +25,14 @@ import (
 
 var klogOnce sync.Once
 
-// NewController creates the controller subcommand.
+// NewController creates the controller command.
 // Optional deps can be provided for testing; if nil, production defaults are used.
 func NewController(deps *ControllerDeps) *cobra.Command {
 	if deps == nil {
 		deps = DefaultControllerDeps()
 	}
 
+	baseCfg := NewBaseConfig()
 	cfg := config.New[controller.Config]()
 
 	cmd := &cobra.Command{
@@ -41,6 +42,12 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 			// flags have been parsed and validated by now, so don't print usage or errors anymore
 			cmd.SilenceErrors = true
 			cmd.SilenceUsage = true
+
+			cleanup, err := baseCfg.Init(cmd)
+			if err != nil {
+				return err
+			}
+			defer cleanup()
 
 			// validate config
 			if err := cfg.Validate(); err != nil {
@@ -154,6 +161,7 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 		},
 	}
 
+	baseCfg.Bind(cmd)
 	config.Bind(cmd, cfg)
 
 	return cmd

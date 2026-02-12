@@ -13,8 +13,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	cmd := cmd.NewRoot()
-	if err := cmd.ExecuteContext(ctx); err != nil {
+	if err := cmd.NewRouter(nil).ExecuteContext(ctx); err != nil {
 		log.Fatal(err)
 	}
 }

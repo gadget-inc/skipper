@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Setup Nix and direnv
-FROM nixos/nix:2.29.0 AS build
+FROM nixos/nix:2.29.0 AS build-base
 RUN tee -a /etc/nix/nix.conf <<EOF
 experimental-features = nix-command flakes
 filter-syscalls = false
@@ -14,15 +14,25 @@ COPY nix ./nix
 RUN direnv allow && direnv exec . true
 SHELL ["direnv", "exec", ".", "bash", "-lc"]
 
-# Build skipper
+# Download dependencies (shared layer)
+FROM build-base AS deps
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
+
+# Build controller
+FROM deps AS build-controller
 COPY . .
 ARG TARGETOS TARGETARCH
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/skipper .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/controller ./cmd/controller
 
-# Final image
-FROM debian:bookworm-slim
+# Build router
+FROM deps AS build-router
+COPY . .
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/router ./cmd/router
+
+# Runtime base
+FROM debian:bookworm-slim AS runtime-base
 RUN apt-get update -qqy && \
     apt-get install -qqy --no-install-recommends --no-install-suggests \
     ca-certificates curl jq less vim && \
@@ -31,5 +41,13 @@ RUN apt-get update -qqy && \
 RUN useradd -u 1000 -ms /bin/bash skipper
 WORKDIR /home/skipper
 USER 1000
-COPY --from=build --chown=1000 /out/skipper .
-ENTRYPOINT ["./skipper"]
+
+# Controller image
+FROM runtime-base AS controller
+COPY --from=build-controller --chown=1000 /out/controller ./controller
+ENTRYPOINT ["./controller"]
+
+# Router image
+FROM runtime-base AS router
+COPY --from=build-router --chown=1000 /out/router ./router
+ENTRYPOINT ["./router"]
