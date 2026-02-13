@@ -20,6 +20,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"google.golang.org/protobuf/proto"
 	"gotest.tools/v3/assert"
+	"gotest.tools/v3/poll"
 )
 
 func TestHealthz(t *testing.T) {
@@ -1792,35 +1793,27 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 		<-requestsStarted
 	}
 
-	// Wait for heartbeats while all requests are in-flight
-	time.Sleep(cfg.HeartbeatInterval*3 + 100*time.Millisecond)
+	// Wait for a heartbeat that sees all requests in-flight. Heartbeats may fire during
+	// ramp-up and see fewer requests, so poll until we observe the expected count.
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		inFlightMu.Lock()
+		defer inFlightMu.Unlock()
+		for _, count := range inFlightCounts {
+			if count == uint32(numRequests) {
+				return poll.Success()
+			}
+		}
+		return poll.Continue("waiting for heartbeat with %d in-flight, recordings so far: %v", numRequests, inFlightCounts)
+	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(5*time.Second))
 
 	// Release all requests
 	close(requestCanFinish)
 	wg.Wait()
 
-	// Wait for final heartbeats after requests complete
-	time.Sleep(cfg.HeartbeatInterval*2 + 100*time.Millisecond)
-
 	inFlightMu.Lock()
 	counts := make([]uint32, len(inFlightCounts))
 	copy(counts, inFlightCounts)
 	inFlightMu.Unlock()
-
-	// Verify we recorded heartbeats
-	assert.Assert(t, len(counts) >= 2, "expected at least 2 heartbeat recordings, got %d", len(counts))
-
-	// Find the maximum in-flight count
-	var maxInFlight uint32
-	for _, count := range counts {
-		if count > maxInFlight {
-			maxInFlight = count
-		}
-	}
-
-	// Verify max in-flight reached the expected level
-	assert.Assert(t, maxInFlight == uint32(numRequests),
-		"expected max in-flight to be %d, got %d", numRequests, maxInFlight)
 
 	// Verify the count never exceeds expected (thread safety)
 	for _, count := range counts {

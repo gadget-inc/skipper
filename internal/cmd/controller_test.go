@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 	"gotest.tools/v3/assert"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
@@ -338,6 +339,10 @@ func TestControllerHealthCheck(t *testing.T) {
 	unblockInformers := make(chan struct{})
 	fakeClient := fake.NewClientset()
 	fakeClient.PrependReactor("list", "*", func(action ktesting.Action) (bool, runtime.Object, error) {
+		<-unblockInformers
+		return false, nil, nil
+	})
+	fakeClient.PrependWatchReactor("*", func(action ktesting.Action) (bool, watch.Interface, error) {
 		<-unblockInformers
 		return false, nil, nil
 	})
