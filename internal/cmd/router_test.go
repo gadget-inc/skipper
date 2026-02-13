@@ -17,6 +17,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/router"
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"gotest.tools/v3/assert"
+	"gotest.tools/v3/poll"
 )
 
 func TestRouterHeadlessHostFallback(t *testing.T) {
@@ -676,9 +677,6 @@ func TestRouterHeartbeatContinuesDuringLongRequest(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Record heartbeat count before request
-	heartbeatsBefore := heartbeatCount.Load()
-
 	// Start a long-running request
 	requestDone := make(chan struct{})
 	go func() {
@@ -691,12 +689,17 @@ func TestRouterHeartbeatContinuesDuringLongRequest(t *testing.T) {
 	// Wait for request to start
 	<-requestStarted
 
-	// Let the request run for a while to allow multiple heartbeats
-	time.Sleep(200 * time.Millisecond)
+	// Record heartbeat count after request started
+	heartbeatsBefore := heartbeatCount.Load()
 
-	// Check that heartbeats continued during the request
-	heartbeatsDuring := heartbeatCount.Load()
-	assert.Assert(t, heartbeatsDuring > heartbeatsBefore, "heartbeats should continue during long request: before=%d, during=%d", heartbeatsBefore, heartbeatsDuring)
+	// Wait for heartbeats to continue during the request (timer.Loop has ±200ms jitter)
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		current := heartbeatCount.Load()
+		if current > heartbeatsBefore {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for heartbeats during request: before=%d, current=%d", heartbeatsBefore, current)
+	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(5*time.Second))
 
 	// Allow request to complete and shutdown
 	close(requestCanFinish)
