@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -337,8 +338,11 @@ func TestControllerHealthCheck(t *testing.T) {
 
 	// Block informer sync so we can observe NOT_SERVING before the controller is ready
 	unblockInformers := make(chan struct{})
+	reactorEntered := make(chan struct{})
+	var reactorOnce sync.Once
 	fakeClient := fake.NewClientset()
 	fakeClient.PrependReactor("list", "*", func(action ktesting.Action) (bool, runtime.Object, error) {
+		reactorOnce.Do(func() { close(reactorEntered) })
 		<-unblockInformers
 		return false, nil, nil
 	})
@@ -381,6 +385,10 @@ func TestControllerHealthCheck(t *testing.T) {
 	go func() {
 		cmdErr <- cmd.ExecuteContext(ctx)
 	}()
+
+	// Wait until the informer's list call is blocked inside the reactor.
+	// This guarantees informers haven't synced so health must be NOT_SERVING.
+	<-reactorEntered
 
 	// Wait for the gRPC server to accept connections (health is NOT_SERVING while informers sync)
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
