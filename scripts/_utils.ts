@@ -2,6 +2,7 @@ import cleanStack from "clean-stack";
 import assert from "node:assert";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, rm } from "node:fs/promises";
+import { relative } from "node:path";
 import process from "node:process";
 import { $, path } from "zx";
 
@@ -28,6 +29,11 @@ export const workspaceDir = new URL("..", import.meta.url).pathname;
 
 export function abs(...segments: string[]) {
   return path.join(workspaceDir, ...segments);
+}
+
+export function rel(...segments: string[]): string {
+  const filepath = path.isAbsolute(segments[0]!) ? path.join(...segments) : abs(...segments);
+  return relative(workspaceDir, filepath);
 }
 
 export async function gitSha() {

@@ -1,5 +1,11 @@
 packages:
-  - "fixtures/*"
-  - "scripts"
+  - fixtures/*
+  - scripts
+
+onlyBuiltDependencies:
+  - esbuild
+  - protobufjs
+
 updateNotifier: false
-verifyDepsBeforeRun: "prompt"
+
+verifyDepsBeforeRun: prompt

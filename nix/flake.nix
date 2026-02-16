@@ -24,10 +24,10 @@
           krane = pkgs.krane;
           kube-linter = pkgs.kube-linter;
           kubectl = pkgs.kubectl;
-          yamllint = pkgs.yamllint;
           nodejs = pkgs.nodejs_24;
           pnpm = pkgs.pnpm.override { nodejs = flake.packages.nodejs; };
           stern = pkgs.stern;
+          yamllint = pkgs.yamllint;
 
           # scripts
           build = pkgs.writeShellScriptBin "build" '' "$WORKSPACE_DIR"/scripts/build.ts "$@" '';
@@ -41,6 +41,8 @@
           kube-lint = pkgs.writeShellScriptBin "kube-lint" '' "$WORKSPACE_DIR"/scripts/kube-lint.ts "$@" '';
           lint = pkgs.writeShellScriptBin "lint" '' "$WORKSPACE_DIR"/scripts/lint.ts "$@" '';
           logs = pkgs.writeShellScriptBin "logs" '' "$WORKSPACE_DIR"/scripts/logs.ts "$@" '';
+          profile = pkgs.writeShellScriptBin "profile" '' "$WORKSPACE_DIR"/scripts/profile.ts "$@" '';
+          script-tests = pkgs.writeShellScriptBin "script-tests" '' pnpm --filter scripts test "$@" '';
           tests = pkgs.writeShellScriptBin "tests" '' "$WORKSPACE_DIR"/scripts/tests.ts "$@" '';
         };
 
