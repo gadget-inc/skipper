@@ -88,7 +88,7 @@ vi.mock("./_utils.ts", () => ({
 
 // -- Import module under test --
 
-import { fetchProfile, findProfiles, merge, mergeProfiles, open } from "./profile.ts";
+import { analyze, fetchProfile, findProfiles, merge, mergeProfiles, open } from "./profile.ts";
 
 // -- Helpers --
 
@@ -885,5 +885,142 @@ describe("merge", () => {
     );
     expect(warningLog).toBeUndefined();
     spy.mockRestore();
+  });
+});
+
+// ---- analyze ----
+
+describe("analyze", () => {
+  it("throws when no file provided and --pgo not set", async () => {
+    await expect(analyze([])).rejects.toThrow(
+      "No profile provided (use --pgo or pass a file path)",
+    );
+  });
+
+  it("throws on invalid mode", async () => {
+    await expect(analyze(["--mode=invalid", "--pgo"])).rejects.toThrow(
+      "Invalid mode: invalid (must be one of top, peek, source, diff)",
+    );
+  });
+
+  it("throws when peek mode used without --function", async () => {
+    await expect(analyze(["--mode=peek", "--pgo"])).rejects.toThrow(
+      "--function is required for --mode=peek",
+    );
+  });
+
+  it("throws when source mode used without --function", async () => {
+    await expect(analyze(["--mode=source", "--pgo"])).rejects.toThrow(
+      "--function is required for --mode=source",
+    );
+  });
+
+  it("throws when diff mode used without --diff-base", async () => {
+    await expect(analyze(["--mode=diff", "--pgo"])).rejects.toThrow(
+      "--diff-base is required for --mode=diff",
+    );
+  });
+
+  it("resolves --pgo to cmd/controller/default.pgo by default", async () => {
+    await analyze(["--pgo"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("cmd/controller/default.pgo");
+  });
+
+  it("resolves --pgo with -c router to cmd/router/default.pgo", async () => {
+    await analyze(["--pgo", "-c", "router"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("cmd/router/default.pgo");
+  });
+
+  it("uses positional file path when no --pgo", async () => {
+    await analyze(["tmp/pprof/my-profile.pb.gz"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("tmp/pprof/my-profile.pb.gz");
+  });
+
+  it("throws when profile file does not exist", async () => {
+    mocks.mockExistsSync.mockReturnValueOnce(false);
+    await expect(analyze(["tmp/missing.pb.gz"])).rejects.toThrow("Profile not found: tmp/missing.pb.gz");
+  });
+
+  it("throws when --pgo profile does not exist", async () => {
+    mocks.mockExistsSync.mockReturnValueOnce(false);
+    await expect(analyze(["--pgo"])).rejects.toThrow("Profile not found: cmd/controller/default.pgo");
+  });
+
+  it("uses -top and -nodecount=20 in default top mode", async () => {
+    await analyze(["--pgo"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("-top");
+    expect(cmd).toContain("-nodecount=20");
+  });
+
+  it("adds -cum flag when --cum is passed", async () => {
+    await analyze(["--pgo", "--cum"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("-cum");
+  });
+
+  it("uses custom --nodecount", async () => {
+    await analyze(["--pgo", "--nodecount=50"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("-nodecount=50");
+  });
+
+  it("uses -peek flag in peek mode", async () => {
+    await analyze(["--pgo", "--mode=peek", "-f", "HashRing"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("-peek=HashRing");
+  });
+
+  it("uses -list flag in source mode", async () => {
+    await analyze(["--pgo", "--mode=source", "-f", "Get"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("-list=Get");
+  });
+
+  it("uses -diff_base flag in diff mode", async () => {
+    await analyze(["--mode=diff", "--diff-base=tmp/before.pb.gz", "tmp/after.pb.gz"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("-diff_base=/workspace/tmp/before.pb.gz");
+    expect(cmd).toContain("-top");
+  });
+
+  it("diff mode respects --cum and --nodecount", async () => {
+    await analyze(["--mode=diff", "--diff-base=tmp/before.pb.gz", "--cum", "--nodecount=10", "tmp/after.pb.gz"]);
+
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
+    expect(pprofCall).toBeDefined();
+    const cmd = shellCommand(pprofCall!);
+    expect(cmd).toContain("-cum");
+    expect(cmd).toContain("-nodecount=10");
   });
 });

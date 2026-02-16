@@ -37,6 +37,26 @@ func TestPoolAllocations(t *testing.T) {
 	assert.Equal(t, heap, uint64(72))
 }
 
+func BenchmarkBufferPool(b *testing.B) {
+	b.Run("sequential", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			buf := bufferPool.Get()
+			bufferPool.Put(buf)
+		}
+	})
+
+	b.Run("parallel", func(b *testing.B) {
+		b.ReportAllocs()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				buf := bufferPool.Get()
+				bufferPool.Put(buf)
+			}
+		})
+	})
+}
+
 func TestPoolLargeBuffer(t *testing.T) {
 	// create and discard a large buffer
 	bufferPool.Put(make([]byte, maxBufCapacity+1))
