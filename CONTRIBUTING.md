@@ -270,7 +270,6 @@ $ profile merge --dry-run                # Preview what would be merged
 - **Cross-platform.** Profiles collected from Linux production pods work for builds targeting any OS or architecture. The Dockerfile builds multi-arch images (amd64/arm64), and both benefit from the same profiles.
 
 See `profile --help` and `profile <command> --help` for all available flags.
-
 ## Cleaning Up Resources
 
 To clean up all deployed resources and temporary files, run:
