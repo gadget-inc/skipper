@@ -158,10 +158,10 @@ Skipper supports [profile-guided optimization](https://go.dev/doc/pgo) (PGO), ty
 
 There are two profile types:
 
-| Type | Flag | Purpose |
-|------|------|---------|
-| **Heap** | `--type=heap` (default) | Debug memory usage during development |
-| **CPU** | `--type=cpu` | Generate PGO data — collect from **production** |
+| Type     | Flag                    | Purpose                                         |
+| -------- | ----------------------- | ----------------------------------------------- |
+| **Heap** | `--type=heap` (default) | Debug memory usage during development           |
+| **CPU**  | `--type=cpu`            | Generate PGO data — collect from **production** |
 
 > [!NOTE]
 > **Why production profiles?** Development profiles reflect test fixtures and artificial load, not real user traffic. PGO is most effective when the compiler sees the hot paths that matter in production.
@@ -230,28 +230,35 @@ $ profile merge --dry-run                # Preview what would be merged
 > Use the same `--seconds` value for all profiles in a collection round. Different durations skew the merge because longer profiles contribute disproportionately more samples.
 
 1. **Collect controller profiles** from production, spread across all pods:
+
    ```bash
    $ profile fetch --type=cpu --production --spread
    ```
+
    If some pods fail, successful profiles are still saved — re-run for specific pods or proceed with what you have.
 
 2. **Collect router profiles** (can run in parallel from a separate terminal):
+
    ```bash
    $ profile fetch --type=cpu --production --component=router --spread
    ```
 
 3. **Preview and merge:**
+
    ```bash
    $ profile merge --dry-run
    $ profile merge --clean       # --clean removes source profiles after a successful merge
    ```
+
    If `merge` warns that profiles span more than 7 days, delete stale files from `tmp/pprof/production/` and collect fresh ones before merging.
 
 4. **Verify** the merged profiles:
+
    ```bash
    $ direnv exec . go tool pprof -top cmd/controller/default.pgo | head -20
    $ direnv exec . go tool pprof -top cmd/router/default.pgo | head -20
    ```
+
    Check that `Type: cpu`, Duration is roughly `--seconds × pod count`, and the top functions include application or library code (not only `runtime.*`).
 
 5. **Commit** the updated `cmd/*/default.pgo` files — Go automatically uses `default.pgo` when present.

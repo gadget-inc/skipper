@@ -47,7 +47,7 @@ export async function findProfiles(dir: string, pattern: string, regex: RegExp):
 
 export async function mergeProfiles(profiles: string[]): Promise<string> {
   if (profiles.length === 1) return profiles[0]!;
-  const merged = abs("tmp/pprof/merged-diff-base.pb.gz");
+  const merged = abs(`tmp/pprof/merged-diff-base-${globalThis.crypto.randomUUID()}.pb.gz`);
   await $`go tool pprof -proto ${profiles} > ${merged}`;
   return merged;
 }
@@ -423,8 +423,17 @@ export async function merge(argv: string[]) {
     const durations = await Promise.all(
       profiles.map(async (p) => {
         const raw = await $`go tool pprof -raw ${p}`.quiet().text();
-        const match = raw.match(/Duration:\s*([\d.]+)/);
-        return match?.[1] ? parseFloat(match[1]) : null;
+        const match = raw.match(/Duration:\s*(.+)/);
+        if (!match?.[1]) return null;
+        const dur = match[1].trim();
+        let seconds = 0;
+        for (const [, val, unit] of dur.matchAll(/([\d.]+)(h|m|s)/g)) {
+          const n = parseFloat(val!);
+          if (unit === "h") seconds += n * 3600;
+          else if (unit === "m") seconds += n * 60;
+          else seconds += n;
+        }
+        return seconds > 0 ? seconds : null;
       }),
     );
     const uniqueDurations = [...new Set(durations.filter((d): d is number => d !== null))];

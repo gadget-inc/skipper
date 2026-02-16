@@ -28,6 +28,9 @@ export async function $stdout(template: TemplateStringsArray, ...args: unknown[]
 export const workspaceDir = new URL("..", import.meta.url).pathname;
 
 export function abs(...segments: string[]) {
+  if (segments.length > 0 && path.isAbsolute(segments[0]!)) {
+    return path.join(...segments);
+  }
   return path.join(workspaceDir, ...segments);
 }
 

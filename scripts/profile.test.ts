@@ -188,7 +188,7 @@ describe("mergeProfiles", () => {
       "/workspace/tmp/pprof/pod-heap-002.pb.gz",
     ];
     const result = await mergeProfiles(profiles);
-    expect(result).toBe("/workspace/tmp/pprof/merged-diff-base.pb.gz");
+    expect(result).toMatch(/^\/workspace\/tmp\/pprof\/merged-diff-base-[\da-f-]+\.pb\.gz$/);
     expect(mocks.state.shellCalls).toHaveLength(1);
     const cmd = shellCommand(mocks.state.shellCalls[0]!);
     expect(cmd).toContain("go tool pprof -proto");
