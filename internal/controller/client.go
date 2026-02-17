@@ -15,6 +15,7 @@ type Client interface {
 	Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error)
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
+	ReleaseInstance(ctx context.Context, inst *skipper.Instance) error
 	Close() error
 }
 
@@ -66,6 +67,16 @@ const defaultServiceConfig = `{
 				"maxAttempts": 3,
 				"initialBackoff": "0.05s",
 				"maxBackoff": "0.5s",
+				"backoffMultiplier": 2,
+				"retryableStatusCodes": ["UNAVAILABLE"]
+			}
+		},
+		{
+			"name": [{"service": "skipper.ControllerService", "method": "ReleaseInstance"}],
+			"retryPolicy": {
+				"maxAttempts": 2,
+				"initialBackoff": "0.01s",
+				"maxBackoff": "0.05s",
 				"backoffMultiplier": 2,
 				"retryableStatusCodes": ["UNAVAILABLE"]
 			}
@@ -140,6 +151,18 @@ func (c *client) Scale(ctx context.Context, fn *skipper.Function, desiredInstanc
 	}
 
 	return resp.GetInstances(), nil
+}
+
+func (c *client) ReleaseInstance(ctx context.Context, inst *skipper.Instance) error {
+	req := &skipper.ReleaseInstanceRequest{}
+	req.SetInstance(inst)
+
+	_, err := c.client.ReleaseInstance(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to release instance: %w", err)
+	}
+
+	return nil
 }
 
 // Close closes the connection.

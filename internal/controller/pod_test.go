@@ -976,7 +976,7 @@ func TestGetInstances(t *testing.T) {
 			},
 		},
 		{
-			name: "filters out pods with different function",
+			name: "filters out pods with different function identity",
 			setup: func(t *testing.T, state *testState) {
 				// Add pod for the function
 				pod1 := fixture.NewAssignedPod(t, state.fn, nil)
@@ -984,9 +984,9 @@ func TestGetInstances(t *testing.T) {
 				err := state.fakeKubernetes.Tracker().Add(pod1)
 				assert.NilError(t, err)
 
-				// Add pod for different function (different metadata)
+				// Add pod for different function identity (different tenant)
 				fn2 := proto.Clone(state.fn).(*skipper.Function)
-				fn2.SetMetadata("different")
+				fn2.SetTenant("different-tenant")
 				pod2 := fixture.NewAssignedPod(t, fn2, nil)
 				pod2.Name = "pod-2"
 				err = state.fakeKubernetes.Tracker().Add(pod2)
@@ -995,6 +995,27 @@ func TestGetInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 1, "should have 1 instance for this function")
 				assert.Equal(t, "pod-1", state.instances[0].GetName())
+			},
+		},
+		{
+			name: "includes pods with different metadata but same identity",
+			setup: func(t *testing.T, state *testState) {
+				// Add pod for the function
+				pod1 := fixture.NewAssignedPod(t, state.fn, nil)
+				pod1.Name = "pod-1"
+				err := state.fakeKubernetes.Tracker().Add(pod1)
+				assert.NilError(t, err)
+
+				// Add pod with different metadata (same identity)
+				fn2 := proto.Clone(state.fn).(*skipper.Function)
+				fn2.SetMetadata("different")
+				pod2 := fixture.NewAssignedPod(t, fn2, nil)
+				pod2.Name = "pod-2"
+				err = state.fakeKubernetes.Tracker().Add(pod2)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 2, "should have 2 instances (same identity, different metadata)")
 			},
 		},
 		{
@@ -1280,11 +1301,24 @@ func TestGetReadyInstances(t *testing.T) {
 			},
 		},
 		{
-			name: "different metadata",
+			name: "different metadata same identity",
 			setup: func(t *testing.T, state *testState) {
-				// create a pod with different metadata than state.fn
+				// create a pod with different metadata than state.fn (same identity)
 				fn := proto.Clone(state.fn).(*skipper.Function)
 				fn.SetMetadata("different")
+				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				assert.Assert(t, len(state.instances) == 1)
+			},
+		},
+		{
+			name: "different tenant",
+			setup: func(t *testing.T, state *testState) {
+				// create a pod with different tenant (different identity)
+				fn := proto.Clone(state.fn).(*skipper.Function)
+				fn.SetTenant("different-tenant")
 				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				assert.NilError(t, err)
 			},

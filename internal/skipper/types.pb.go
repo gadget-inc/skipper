@@ -277,6 +277,7 @@ type Function struct {
 	xxx_hidden_Tenant      *string                `protobuf:"bytes,3,opt,name=tenant"`
 	xxx_hidden_Metadata    *string                `protobuf:"bytes,4,opt,name=metadata"`
 	xxx_hidden_Scale       *Scale                 `protobuf:"bytes,5,opt,name=scale"`
+	xxx_hidden_Oneshot     bool                   `protobuf:"varint,6,opt,name=oneshot"`
 	XXX_raceDetectHookData protoimpl.RaceDetectHookData
 	XXX_presence           [1]uint32
 	unknownFields          protoimpl.UnknownFields
@@ -355,28 +356,40 @@ func (x *Function) GetScale() *Scale {
 	return nil
 }
 
+func (x *Function) GetOneshot() bool {
+	if x != nil {
+		return x.xxx_hidden_Oneshot
+	}
+	return false
+}
+
 func (x *Function) SetNamespace(v string) {
 	x.xxx_hidden_Namespace = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 6)
 }
 
 func (x *Function) SetDeployment(v string) {
 	x.xxx_hidden_Deployment = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 6)
 }
 
 func (x *Function) SetTenant(v string) {
 	x.xxx_hidden_Tenant = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 6)
 }
 
 func (x *Function) SetMetadata(v string) {
 	x.xxx_hidden_Metadata = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 6)
 }
 
 func (x *Function) SetScale(v *Scale) {
 	x.xxx_hidden_Scale = v
+}
+
+func (x *Function) SetOneshot(v bool) {
+	x.xxx_hidden_Oneshot = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 6)
 }
 
 func (x *Function) HasNamespace() bool {
@@ -414,6 +427,13 @@ func (x *Function) HasScale() bool {
 	return x.xxx_hidden_Scale != nil
 }
 
+func (x *Function) HasOneshot() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
+}
+
 func (x *Function) ClearNamespace() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_Namespace = nil
@@ -438,6 +458,11 @@ func (x *Function) ClearScale() {
 	x.xxx_hidden_Scale = nil
 }
 
+func (x *Function) ClearOneshot() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 5)
+	x.xxx_hidden_Oneshot = false
+}
+
 type Function_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -446,6 +471,7 @@ type Function_builder struct {
 	Tenant     *string
 	Metadata   *string
 	Scale      *Scale
+	Oneshot    *bool
 }
 
 func (b0 Function_builder) Build() *Function {
@@ -453,22 +479,26 @@ func (b0 Function_builder) Build() *Function {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.Namespace != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 6)
 		x.xxx_hidden_Namespace = b.Namespace
 	}
 	if b.Deployment != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 6)
 		x.xxx_hidden_Deployment = b.Deployment
 	}
 	if b.Tenant != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 6)
 		x.xxx_hidden_Tenant = b.Tenant
 	}
 	if b.Metadata != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 6)
 		x.xxx_hidden_Metadata = b.Metadata
 	}
 	x.xxx_hidden_Scale = b.Scale
+	if b.Oneshot != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 6)
+		x.xxx_hidden_Oneshot = *b.Oneshot
+	}
 	return m0
 }
 
@@ -1147,7 +1177,7 @@ const file_types_proto_rawDesc = "" +
 	"\rmax_instances\x18\x02 \x01(\rR\fmaxInstances\x123\n" +
 	"\x16target_cpu_usage_milli\x18\x03 \x01(\rR\x13targetCpuUsageMilli\x125\n" +
 	"\x17target_memory_usage_mib\x18\x04 \x01(\rR\x14targetMemoryUsageMib\x129\n" +
-	"\x19target_in_flight_requests\x18\x05 \x01(\rR\x16targetInFlightRequests\"\xa2\x01\n" +
+	"\x19target_in_flight_requests\x18\x05 \x01(\rR\x16targetInFlightRequests\"\xbc\x01\n" +
 	"\bFunction\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1e\n" +
 	"\n" +
@@ -1155,7 +1185,8 @@ const file_types_proto_rawDesc = "" +
 	"deployment\x12\x16\n" +
 	"\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x1a\n" +
 	"\bmetadata\x18\x04 \x01(\tR\bmetadata\x12$\n" +
-	"\x05scale\x18\x05 \x01(\v2\x0e.skipper.ScaleR\x05scale\"\xc8\x02\n" +
+	"\x05scale\x18\x05 \x01(\v2\x0e.skipper.ScaleR\x05scale\x12\x18\n" +
+	"\aoneshot\x18\x06 \x01(\bR\aoneshot\"\xc8\x02\n" +
 	"\bInstance\x12-\n" +
 	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +

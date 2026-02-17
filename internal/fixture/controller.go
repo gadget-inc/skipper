@@ -13,9 +13,10 @@ import (
 )
 
 type (
-	InstanceHandler  func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error)
-	ScaleHandler     func(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
-	HeartbeatHandler func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
+	InstanceHandler        func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error)
+	ScaleHandler           func(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
+	HeartbeatHandler       func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
+	ReleaseInstanceHandler func(ctx context.Context, inst *skipper.Instance) error
 )
 
 const (
@@ -30,13 +31,15 @@ var (
 )
 
 type MockControllerClient struct {
-	t                  *testing.T
-	instanceHandler    InstanceHandler
-	instanceWasCalled  atomic.Bool
-	scaleHandler       ScaleHandler
-	scaleWasCalled     atomic.Bool
-	heartbeatHandler   HeartbeatHandler
-	heartbeatWasCalled atomic.Bool
+	t                        *testing.T
+	instanceHandler          InstanceHandler
+	instanceWasCalled        atomic.Bool
+	scaleHandler             ScaleHandler
+	scaleWasCalled           atomic.Bool
+	heartbeatHandler         HeartbeatHandler
+	heartbeatWasCalled       atomic.Bool
+	releaseInstanceHandler   ReleaseInstanceHandler
+	releaseInstanceWasCalled atomic.Bool
 }
 
 // var _ controller.Client = &MockControllerClient{} // import cycle: verified by router_test.go usage
@@ -52,6 +55,9 @@ func NewMockControllerClient(t *testing.T) *MockControllerClient {
 		}
 		if mcc.heartbeatHandler != nil && !mcc.heartbeatWasCalled.Load() {
 			t.Fatalf("mcc.Heartbeat was mocked but never called")
+		}
+		if mcc.releaseInstanceHandler != nil && !mcc.releaseInstanceWasCalled.Load() {
+			t.Fatalf("mcc.ReleaseInstance was mocked but never called")
 		}
 	})
 	return mcc
@@ -76,6 +82,19 @@ func (f *MockControllerClient) AllowHeartbeat() {
 		return nil
 	}
 	f.heartbeatWasCalled.Store(true) // Pre-mark as called to skip cleanup check
+}
+
+func (f *MockControllerClient) HandleReleaseInstance(h ReleaseInstanceHandler) {
+	f.releaseInstanceHandler = h
+}
+
+// AllowReleaseInstance permits ReleaseInstance calls without requiring them.
+// Use this when ReleaseInstance may or may not occur depending on timing.
+func (f *MockControllerClient) AllowReleaseInstance() {
+	f.releaseInstanceHandler = func(context.Context, *skipper.Instance) error {
+		return nil
+	}
+	f.releaseInstanceWasCalled.Store(true) // Pre-mark as called to skip cleanup check
 }
 
 // Instance implements controller.Client.
@@ -103,6 +122,15 @@ func (f *MockControllerClient) Heartbeat(ctx context.Context, routerIP string, h
 	}
 	f.heartbeatWasCalled.Store(true)
 	return f.heartbeatHandler(ctx, routerIP, heartbeats, forwardedFor...)
+}
+
+// ReleaseInstance implements controller.Client.
+func (f *MockControllerClient) ReleaseInstance(ctx context.Context, inst *skipper.Instance) error {
+	if f.releaseInstanceHandler == nil {
+		f.t.Fatalf("mcc.ReleaseInstance was called but not mocked")
+	}
+	f.releaseInstanceWasCalled.Store(true)
+	return f.releaseInstanceHandler(ctx, inst)
 }
 
 // Close implements controller.Client.

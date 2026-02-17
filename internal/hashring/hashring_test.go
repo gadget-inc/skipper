@@ -8,14 +8,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"gotest.tools/v3/assert"
 )
 
-// testKey implements RingKey interface for testing
+// testKey implements Hasher interface for testing
 type testKey string
 
-func (k testKey) RingKey() string {
-	return string(k)
+func (k testKey) Hash() uint64 {
+	return xxhash.Sum64String(string(k))
 }
 
 func TestHashRing(t *testing.T) {
@@ -215,8 +216,11 @@ func TestHashRingDistribution(t *testing.T) {
 	}
 }
 
-// checkDistribution tests if keys are evenly distributed across IPs
+// checkDistribution tests if keys are evenly distributed across IPs and logs
+// a chi-squared statistic for comparing distribution quality across hash changes.
 func checkDistribution(t *testing.T, h *HashRing, keys []testKey, allowedDeviationPercent float64) {
+	t.Helper()
+
 	distribution := make(map[string]int)
 
 	// Map keys to IPs and count distribution
@@ -230,6 +234,14 @@ func checkDistribution(t *testing.T, h *HashRing, keys []testKey, allowedDeviati
 	expected := float64(len(keys)) / float64(len(ips))
 	allowedDeviation := expected * (allowedDeviationPercent / 100.0)
 
+	// Chi-squared statistic: sum((observed - expected)^2 / expected)
+	var chiSquared float64
+	for _, count := range distribution {
+		diff := float64(count) - expected
+		chiSquared += (diff * diff) / expected
+	}
+	t.Logf("chi-squared = %.2f (df=%d, expected=%.1f per IP)", chiSquared, len(ips)-1, expected)
+
 	// Check distribution
 	for ip, count := range distribution {
 		deviation := math.Abs(float64(count) - expected)
@@ -239,6 +251,72 @@ func checkDistribution(t *testing.T, h *HashRing, keys []testKey, allowedDeviati
 				ip, count, (deviation/expected)*100, allowedDeviationPercent,
 			)
 		}
+	}
+}
+
+func TestNodeHashAvalanche(t *testing.T) {
+	// Flip a single bit in idx, verify each output bit flips ~50% of the time.
+	// Perfect avalanche: every input bit change flips each output bit with 50% probability.
+	const (
+		trials = 10000
+		minPct = 30.0
+		maxPct = 70.0
+	)
+
+	ip := "10.0.0.1"
+	bitFlips := [32]int{} // count how many times each output bit flipped
+
+	for i := range trials {
+		base := nodeHash(ip, i)
+		// Flip the lowest bit of idx
+		flipped := nodeHash(ip, i^1)
+		diff := base ^ flipped
+		for bit := range 32 {
+			if diff&(1<<bit) != 0 {
+				bitFlips[bit]++
+			}
+		}
+	}
+
+	for bit, count := range bitFlips {
+		pct := float64(count) / float64(trials) * 100
+		if pct < minPct || pct > maxPct {
+			t.Errorf("bit %d flipped %.1f%% of trials (want %.0f-%.0f%%)", bit, pct, minPct, maxPct)
+		}
+	}
+}
+
+func TestNodeHashCollisions(t *testing.T) {
+	// Generate hashes for multiple IPs × 1024 virtual nodes and count collisions.
+	tests := []struct {
+		name          string
+		numIPs        int
+		maxCollisions int
+	}{
+		{"4-ips", 4, 0},
+		{"10-ips", 10, 2},
+		{"20-ips", 20, 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seen := make(map[uint32]struct{})
+			collisions := 0
+			for i := range tt.numIPs {
+				ip := fmt.Sprintf("10.0.%d.%d", i/256, i%256+1)
+				for idx := range 1024 {
+					h := nodeHash(ip, idx)
+					if _, exists := seen[h]; exists {
+						collisions++
+					}
+					seen[h] = struct{}{}
+				}
+			}
+			t.Logf("collisions: %d / %d hashes", collisions, tt.numIPs*1024)
+			if collisions > tt.maxCollisions {
+				t.Errorf("got %d collisions, want at most %d", collisions, tt.maxCollisions)
+			}
+		})
 	}
 }
 
@@ -303,6 +381,23 @@ func BenchmarkHashRingGet(b *testing.B) {
 			}
 		})
 	})
+}
+
+var sinkHash uint32
+
+func BenchmarkGetNodeHash(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		sinkHash = nodeHash("10.0.0.1", 2048)
+	}
+}
+
+func BenchmarkHashRingAdd(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		ring := New()
+		ring.Add("10.0.0.1")
+	}
 }
 
 func randomInternalIP() string {

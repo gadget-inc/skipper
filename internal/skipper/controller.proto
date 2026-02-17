@@ -36,9 +36,16 @@ message ScaleResponse {
   repeated Instance instances = 1;
 }
 
+message ReleaseInstanceRequest {
+  Instance instance = 1;
+}
+
+message ReleaseInstanceResponse {}
+
 // Controller service
 service ControllerService {
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc Scale(ScaleRequest) returns (ScaleResponse);
+  rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse);
 }

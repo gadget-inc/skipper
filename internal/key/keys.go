@@ -28,6 +28,7 @@ var (
 	MinInstances              = uint32Key("min_instances")
 	Name                      = stringKey("name")
 	Namespace                 = stringKey("namespace")
+	Oneshot                   = boolKey("oneshot")
 	Pod                       = podKey("k8s.pod")
 	Port                      = newIdentifier("port")
 	ReadyAt                   = timeKey("ready_at")
