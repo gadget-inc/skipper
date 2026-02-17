@@ -48,7 +48,12 @@ export async function findProfiles(dir: string, pattern: string, regex: RegExp):
 export async function mergeProfiles(profiles: string[]): Promise<string> {
   if (profiles.length === 1) return profiles[0]!;
   const merged = abs(`tmp/pprof/merged-diff-base-${globalThis.crypto.randomUUID()}.pb.gz`);
-  await $`go tool pprof -proto ${profiles} > ${merged}`;
+  try {
+    await $`go tool pprof -proto ${profiles} > ${merged}`;
+  } catch (error) {
+    await rm(merged, { force: true });
+    throw error;
+  }
   return merged;
 }
 
@@ -186,7 +191,7 @@ export async function fetchProfile(argv: string[]) {
       `${progress}Fetching ${flags.values.type} profile for ${chalk.green(pod)}${duration}`,
     );
     const url = `http://localhost:6060/debug/pprof/${endpoint}?${query}`;
-    const tmpFilename = `${filename}.tmp`;
+    const tmpFilename = `${filename}.${globalThis.crypto.randomUUID()}.tmp`;
     try {
       await $`kubectl --context=${context} --namespace=${namespace} exec ${pod} -- curl -sf ${url} > ${tmpFilename}`;
       await rename(tmpFilename, filename);

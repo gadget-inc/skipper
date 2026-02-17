@@ -436,13 +436,12 @@ describe("fetchProfile", () => {
     const curlCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("curl"));
     expect(curlCall).toBeDefined();
     const cmd = shellCommand(curlCall!);
-    expect(cmd).toContain(".pb.gz.tmp");
+    expect(cmd).toMatch(/\.pb\.gz\.[0-9a-f-]+\.tmp/);
 
     expect(mocks.mockRename).toHaveBeenCalledTimes(1);
     const [tmpPath, finalPath] = mocks.mockRename.mock.calls[0]!;
-    expect(tmpPath).toMatch(/\.pb\.gz\.tmp$/);
+    expect(tmpPath).toMatch(/\.pb\.gz\.[0-9a-f-]+\.tmp$/);
     expect(finalPath).toMatch(/\.pb\.gz$/);
-    expect(tmpPath).toBe(`${finalPath}.tmp`);
   });
 
   it("cleans up temp file when fetch fails", async () => {
@@ -451,7 +450,7 @@ describe("fetchProfile", () => {
     await expect(fetchProfile(["my-pod"])).rejects.toThrow("Failed to fetch profile from my-pod");
 
     expect(mocks.mockRm).toHaveBeenCalledTimes(1);
-    expect(mocks.mockRm.mock.calls[0]![0]).toMatch(/\.pb\.gz\.tmp$/);
+    expect(mocks.mockRm.mock.calls[0]![0]).toMatch(/\.pb\.gz\.[0-9a-f-]+\.tmp$/);
     expect(mocks.mockRm.mock.calls[0]![1]).toEqual({ force: true });
   });
 });
