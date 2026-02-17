@@ -276,17 +276,26 @@ export async function fetchProfile(argv: string[]) {
     args.push("-http=:");
   }
 
+  let mergedDiffBase: string | undefined;
+
   if (flags.values.diff && lastBaseProfiles.length > 0) {
     console.log();
     console.log(`Using base profiles:`);
     for (const base of lastBaseProfiles) {
       console.log(`- ${chalk.blue(rel(base))}`);
     }
-    args.push("-diff_base", await mergeProfiles(lastBaseProfiles));
+    mergedDiffBase = await mergeProfiles(lastBaseProfiles);
+    args.push("-diff_base", mergedDiffBase);
   }
 
   console.log();
-  await $`go tool pprof ${args} ${lastFilename}`;
+  try {
+    await $`go tool pprof ${args} ${lastFilename}`;
+  } finally {
+    if (mergedDiffBase && mergedDiffBase !== lastBaseProfiles[0]) {
+      await rm(mergedDiffBase, { force: true });
+    }
+  }
 }
 
 export async function open(argv: string[]) {
@@ -344,13 +353,16 @@ export async function open(argv: string[]) {
 
   const args = [];
 
+  let mergedDiffBase: string | undefined;
+
   if (baseProfiles.length > 0) {
     console.log();
     console.log(`Using base profiles:`);
     for (const base of baseProfiles) {
       console.log(`- ${chalk.blue(rel(base))}`);
     }
-    args.push("-diff_base", await mergeProfiles(baseProfiles));
+    mergedDiffBase = await mergeProfiles(baseProfiles);
+    args.push("-diff_base", mergedDiffBase);
   }
 
   if (flags.values.web) {
@@ -360,7 +372,13 @@ export async function open(argv: string[]) {
   }
 
   console.log();
-  await $`go tool pprof ${args} ${filepath}`;
+  try {
+    await $`go tool pprof ${args} ${filepath}`;
+  } finally {
+    if (mergedDiffBase && mergedDiffBase !== baseProfiles[0]) {
+      await rm(mergedDiffBase, { force: true });
+    }
+  }
 }
 
 const STALENESS_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -423,7 +441,7 @@ export async function merge(argv: string[]) {
     const durations = await Promise.all(
       profiles.map(async (p) => {
         const raw = await $`go tool pprof -raw ${p}`.quiet().text();
-        const match = raw.match(/Duration:\s*(.+)/);
+        const match = raw.match(/Duration:\s*([^,\n]+)/);
         if (!match?.[1]) return null;
         const dur = match[1].trim();
         let seconds = 0;
