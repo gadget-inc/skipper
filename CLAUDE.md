@@ -18,6 +18,15 @@ direnv exec . logs -f                             # Stream logs continuously (fo
 direnv exec . logs -c controller                  # Show controller logs
 direnv exec . logs --errors --since=5m            # Recent errors only
 direnv exec . clean                               # Delete all Kubernetes resources
+direnv exec . script-tests                        # Run tests for scripts/ (vitest)
+direnv exec . profile fetch                       # Fetch heap profile from local controller
+direnv exec . profile fetch -t cpu -p             # Fetch CPU profile from production
+direnv exec . profile fetch -t cpu -p <pod>       # Fetch from a specific production pod
+direnv exec . profile fetch -t cpu -p --spread    # CPU profiles from all production pods
+direnv exec . profile open <file>                 # Open a saved profile in browser
+direnv exec . profile merge                       # Merge CPU profiles into default.pgo
+direnv exec . profile merge --clean               # Merge and remove source profiles
+direnv exec . profile merge --dry-run             # Preview merge without writing
 ```
 
 ## Architecture
