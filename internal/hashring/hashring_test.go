@@ -242,6 +242,69 @@ func checkDistribution(t *testing.T, h *HashRing, keys []testKey, allowedDeviati
 	}
 }
 
+var sinkIP string
+
+func BenchmarkHashRingGet(b *testing.B) {
+	ips4 := []string{"10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"}
+	ips20 := make([]string, 20)
+	for i := range ips20 {
+		ips20[i] = fmt.Sprintf("10.0.%d.%d", i/256, i%256+1)
+	}
+	key := testKey("benchmark-key")
+
+	b.Run("4-ips", func(b *testing.B) {
+		ring := New()
+		for _, ip := range ips4 {
+			ring.Add(ip)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			sinkIP = ring.Get(key)
+		}
+	})
+
+	b.Run("20-ips", func(b *testing.B) {
+		ring := New()
+		for _, ip := range ips20 {
+			ring.Add(ip)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			sinkIP = ring.Get(key)
+		}
+	})
+
+	b.Run("4-ips/parallel", func(b *testing.B) {
+		ring := New()
+		for _, ip := range ips4 {
+			ring.Add(ip)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = ring.Get(key)
+			}
+		})
+	})
+
+	b.Run("20-ips/parallel", func(b *testing.B) {
+		ring := New()
+		for _, ip := range ips20 {
+			ring.Add(ip)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = ring.Get(key)
+			}
+		})
+	})
+}
+
 func randomInternalIP() string {
 	return fmt.Sprintf("10.36.%d.%d", mathrand.Intn(256), mathrand.Intn(256))
 }

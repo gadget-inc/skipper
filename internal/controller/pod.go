@@ -21,7 +21,6 @@ import (
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/go-json-experiment/json"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	v1 "k8s.io/api/core/v1"
@@ -186,16 +185,24 @@ func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Funct
 }
 
 func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
-	assignedPods, err := ctrl.listPods(fn.GetNamespace(), labels.SelectorFromSet(labels.Set{
-		key.Tenant.Label:     fn.GetTenant(),
-		key.Deployment.Label: fn.GetDeployment(),
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("failed to list assigned pods: %w", err)
+	namespaceLister, found := ctrl.namespaceListers[fn.GetNamespace()]
+	if !found {
+		return nil, fmt.Errorf("managed pod lister not started for namespace %s", fn.GetNamespace())
 	}
 
-	instances := make([]*skipper.Instance, 0, len(assignedPods))
-	for _, pod := range assignedPods {
+	hashKey := strconv.FormatUint(fn.Hash(), 10)
+	objs, err := namespaceLister.podIndexer.ByIndex(functionHashIndex, hashKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pods by function hash: %w", err)
+	}
+
+	instances := make([]*skipper.Instance, 0, len(objs))
+	for _, obj := range objs {
+		pod := obj.(*v1.Pod)
+		if !isPodRunning(pod) {
+			continue
+		}
+
 		instance, err := ctrl.instanceFromPod(pod)
 		if err != nil {
 			// Pod failed validation (e.g., malformed timestamp annotation, missing replica set annotation).
@@ -205,11 +212,6 @@ func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Function) 
 			if err != nil {
 				log.Error(ctx, "failed to delete invalid pod", key.Error.Slog(err), key.Pod.Slog(pod))
 			}
-			continue
-		}
-
-		if !proto.Equal(instance.GetFunction(), fn) {
-			// pod is assigned to a different function
 			continue
 		}
 
@@ -341,6 +343,10 @@ func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*skipper.Function, error) 
 		return nil, errors.New("missing function annotation")
 	}
 
+	if fn, ok := ctrl.functionCache.Load(fnJSON); ok {
+		return fn, nil
+	}
+
 	fn := &skipper.Function{}
 	if err := json.Unmarshal([]byte(fnJSON), fn); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
@@ -349,6 +355,7 @@ func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*skipper.Function, error) 
 		return nil, fmt.Errorf("invalid function in pod annotation: %w", err)
 	}
 
+	ctrl.functionCache.Store(fnJSON, fn)
 	return fn, nil
 }
 

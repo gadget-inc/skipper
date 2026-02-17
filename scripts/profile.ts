@@ -498,6 +498,98 @@ export async function merge(argv: string[]) {
   }
 }
 
+export async function analyze(argv: string[]) {
+  const flags = parseArgs({
+    args: argv,
+    options: {
+      mode: { type: "string", default: "top" },
+      function: { type: "string", short: "f" },
+      component: { type: "string", default: "controller", short: "c" },
+      nodecount: { type: "string", default: "20", short: "n" },
+      cum: { type: "boolean", default: false },
+      pgo: { type: "boolean", default: false },
+      "diff-base": { type: "string" },
+      help: { type: "boolean", default: false, short: "h" },
+    },
+    allowPositionals: true,
+  });
+
+  if (flags.values.help) {
+    console.log(dedent`
+      profile analyze [file] [flags]
+
+        Analyze a pprof profile and print text output (no interactive UI).
+
+      Modes:
+        --mode=top       Ranked hotspot list (default)
+        --mode=peek      Callers/callees of a function (requires -f)
+        --mode=source    Source-annotated line-level attribution (requires -f)
+        --mode=diff      Compare two profiles (requires --diff-base)
+
+      Flags:
+        -f, --function=<regex>  Target function regex (required for peek/source)
+        -c, --component=<name>  Component for --pgo (controller, router) (default: controller)
+        -n, --nodecount=<n>     Number of functions to show (default: 20)
+            --cum               Sort by cumulative instead of flat
+            --pgo               Analyze committed default.pgo file
+            --diff-base=<file>  Base profile for diff mode
+        -h, --help              Show this help message.
+    `);
+    process.exit(0);
+  }
+
+  const mode = flags.values.mode!;
+  const validModes = ["top", "peek", "source", "diff"];
+  if (!validModes.includes(mode)) {
+    throw new Error(`Invalid mode: ${mode} (must be one of ${validModes.join(", ")})`);
+  }
+
+  if ((mode === "peek" || mode === "source") && !flags.values.function) {
+    throw new Error(`--function is required for --mode=${mode}`);
+  }
+
+  if (mode === "diff" && !flags.values["diff-base"]) {
+    throw new Error("--diff-base is required for --mode=diff");
+  }
+
+  let filepath: string;
+  if (flags.values.pgo) {
+    filepath = abs(`cmd/${flags.values.component}/default.pgo`);
+  } else if (flags.positionals.length > 0) {
+    filepath = abs(flags.positionals[0]!);
+  } else {
+    throw new Error("No profile provided (use --pgo or pass a file path)");
+  }
+
+  if (!existsSync(filepath)) {
+    throw new Error(
+      `Profile not found: ${flags.values.pgo ? `cmd/${flags.values.component}/default.pgo` : flags.positionals[0]}`,
+    );
+  }
+
+  const args: string[] = [];
+
+  switch (mode) {
+    case "top":
+      args.push(`-top`, `-nodecount=${flags.values.nodecount}`);
+      if (flags.values.cum) args.push("-cum");
+      break;
+    case "peek":
+      args.push(`-peek=${flags.values.function}`);
+      break;
+    case "source":
+      args.push(`-list=${flags.values.function}`);
+      break;
+    case "diff":
+      args.push("-top", `-nodecount=${flags.values.nodecount}`);
+      if (flags.values.cum) args.push("-cum");
+      args.push(`-diff_base=${abs(flags.values["diff-base"]!)}`);
+      break;
+  }
+
+  await $`go tool pprof ${args} ${filepath}`;
+}
+
 // -- Entry point --
 
 if (import.meta.filename === process.argv[1]) {
@@ -507,12 +599,13 @@ if (import.meta.filename === process.argv[1]) {
     console.log(dedent`
       profile <command> [flags]
 
-        Fetch, open, and merge pprof profiles.
+        Fetch, open, merge, and analyze pprof profiles.
 
       Commands:
-        fetch [pod] [flags]   Fetch a pprof profile from a running pod
-        open <file> [flags]   Open a saved profile in go tool pprof
-        merge [flags]         Merge CPU profiles into default.pgo files
+        fetch [pod] [flags]     Fetch a pprof profile from a running pod
+        open <file> [flags]     Open a saved profile in go tool pprof
+        merge [flags]           Merge CPU profiles into default.pgo files
+        analyze [file] [flags]  Analyze a profile and print text output
 
       Run 'profile <command> --help' for command-specific flags.
     `);
@@ -528,6 +621,9 @@ if (import.meta.filename === process.argv[1]) {
       break;
     case "merge":
       await merge(process.argv.slice(3));
+      break;
+    case "analyze":
+      await analyze(process.argv.slice(3));
       break;
     default:
       console.error(`Unknown command: ${subcommand}`);

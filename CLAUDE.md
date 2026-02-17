@@ -27,6 +27,13 @@ direnv exec . profile open <file>                 # Open a saved profile in brow
 direnv exec . profile merge                       # Merge CPU profiles into default.pgo
 direnv exec . profile merge --clean               # Merge and remove source profiles
 direnv exec . profile merge --dry-run             # Preview merge without writing
+direnv exec . profile analyze --pgo               # Top hotspots in committed PGO profile
+direnv exec . profile analyze --pgo --cum         # Sort by cumulative time
+direnv exec . profile analyze --pgo -c router     # Analyze router PGO profile
+direnv exec . profile analyze --pgo --mode=peek -f Hash  # Callers/callees of Hash
+direnv exec . profile analyze --pgo --mode=source -f Hash # Source-annotated view
+direnv exec . profile analyze <file>              # Analyze any .pb.gz profile
+direnv exec . profile analyze --mode=diff --diff-base=before.pb.gz after.pb.gz  # Compare profiles
 ```
 
 ## Architecture

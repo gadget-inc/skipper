@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -30,6 +31,8 @@ import (
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
+const functionHashIndex = "functionHash"
+
 type namespaceLister struct {
 	podIndexer        cache.Indexer
 	podLister         listerv1.PodLister
@@ -49,6 +52,7 @@ type Controller struct {
 	kubernetesMetrics   kubernetesmetrics.Interface
 	namespaceListers    map[string]namespaceLister
 	podMetrics          *xsync.Map[string, metricsv1beta1.PodMetrics] // keyed by "namespace/pod-name"
+	functionCache       *xsync.Map[string, *skipper.Function]         // keyed by raw annotation JSON
 	staleReplacementSem *semaphore.Weighted
 }
 
@@ -63,6 +67,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 		kubernetesMetrics:   kubernetesMetrics,
 		namespaceListers:    make(map[string]namespaceLister, len(cfg.FunctionNamespaces)),
 		podMetrics:          xsync.NewMap[string, metricsv1beta1.PodMetrics](),
+		functionCache:       xsync.NewMap[string, *skipper.Function](),
 		staleReplacementSem: semaphore.NewWeighted(int64(cfg.MaxConcurrentStaleReplacements)),
 	}
 }
@@ -222,6 +227,23 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		))
 		if err != nil {
 			return fmt.Errorf("failed to set pod watch error handler: %w", err)
+		}
+
+		err = podInformer.Informer().GetIndexer().AddIndexers(cache.Indexers{
+			functionHashIndex: func(obj any) ([]string, error) {
+				pod, ok := obj.(*v1.Pod)
+				if !ok {
+					return nil, nil
+				}
+				fn, err := ctrl.functionFromPod(pod)
+				if err != nil {
+					return nil, nil
+				}
+				return []string{strconv.FormatUint(fn.Hash(), 10)}, nil
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add pod indexer: %w", err)
 		}
 
 		replicaSetInformer := informerFactory.Apps().V1().ReplicaSets()

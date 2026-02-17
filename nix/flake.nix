@@ -28,6 +28,18 @@
           pnpm = pkgs.pnpm.override { nodejs = flake.packages.nodejs; };
           stern = pkgs.stern;
           yamllint = pkgs.yamllint;
+          benchstat = pkgs.buildGoModule {
+            pname = "benchstat";
+            version = "0.0.0-unstable-2025-02-16";
+            src = pkgs.fetchFromGitHub {
+              owner = "golang";
+              repo = "perf";
+              rev = "8161c38c6cdca9a67a8635da2ae5c19990171269";
+              hash = "sha256-zDoQjHBB5yKF1h+qOh4CKbB/lzilfaLT8fHp48FnFj8=";
+            };
+            vendorHash = "sha256-kGF184E+rOWncQsvjk1iCpF26/3Ll/IY9CPEh6vhRBQ=";
+            subPackages = [ "cmd/benchstat" ];
+          };
 
           # scripts
           build = pkgs.writeShellScriptBin "build" '' "$WORKSPACE_DIR"/scripts/build.ts "$@" '';
