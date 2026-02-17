@@ -285,7 +285,7 @@ func BenchmarkHashRingGet(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				sinkIP = ring.Get(key)
+				_ = ring.Get(key)
 			}
 		})
 	})
@@ -299,7 +299,7 @@ func BenchmarkHashRingGet(b *testing.B) {
 		b.ResetTimer()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				sinkIP = ring.Get(key)
+				_ = ring.Get(key)
 			}
 		})
 	})
