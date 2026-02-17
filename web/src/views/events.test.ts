@@ -1,39 +1,38 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, expect, it } from "vitest";
 import { makeClusterState, makeEvent } from "../test-helpers.ts";
 import { eventsPage } from "./events.ts";
 
-await describe("eventsPage", async () => {
-  await it("renders empty state", async () => {
+describe("eventsPage", () => {
+  it("renders empty state", async () => {
     const state = makeClusterState({ events: [] });
     const html = await eventsPage(state).text();
-    assert.ok(html.includes("Events"));
-    assert.ok(html.includes("No events"));
+    expect(html).toContain("Events");
+    expect(html).toContain("No events");
   });
 
-  await it("renders events table", async () => {
+  it("renders events table", async () => {
     const state = makeClusterState({ events: [makeEvent({ message: "test event" })] });
     const html = await eventsPage(state).text();
-    assert.ok(html.includes("test event"));
+    expect(html).toContain("test event");
   });
 
-  await it("includes filter controls", async () => {
+  it("includes filter controls", async () => {
     const state = makeClusterState();
     const html = await eventsPage(state).text();
-    assert.ok(html.includes("filter-input"));
-    assert.ok(html.includes("filter-select"));
-    assert.ok(html.includes("Filter by function"));
+    expect(html).toContain("filter-input");
+    expect(html).toContain("filter-select");
+    expect(html).toContain("Filter by function");
   });
 
-  await it("includes HTMX polling for events table", async () => {
+  it("includes HTMX polling for events table", async () => {
     const state = makeClusterState();
     const html = await eventsPage(state).text();
-    assert.ok(html.includes('hx-get="/partials/events"'));
-    assert.ok(html.includes('hx-trigger="every 5s"'));
+    expect(html).toContain('hx-get="/partials/events"');
+    expect(html).toContain('hx-trigger="every 5s"');
   });
 
-  await it("returns correct content-type", () => {
+  it("returns correct content-type", () => {
     const response = eventsPage(makeClusterState());
-    assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8");
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 });

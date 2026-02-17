@@ -55,6 +55,7 @@
           logs = pkgs.writeShellScriptBin "logs" '' "$WORKSPACE_DIR"/scripts/logs.ts "$@" '';
           profile = pkgs.writeShellScriptBin "profile" '' "$WORKSPACE_DIR"/scripts/profile.ts "$@" '';
           script-tests = pkgs.writeShellScriptBin "script-tests" '' pnpm --filter scripts test "$@" '';
+          web-tests = pkgs.writeShellScriptBin "web-tests" '' pnpm --filter web test "$@" '';
           tests = pkgs.writeShellScriptBin "tests" '' "$WORKSPACE_DIR"/scripts/tests.ts "$@" '';
         };
 

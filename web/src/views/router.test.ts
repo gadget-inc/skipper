@@ -1,5 +1,4 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, expect, it } from "vitest";
 import {
   makeClusterState,
   makeSupervisor,
@@ -10,15 +9,15 @@ import { routerPage } from "./router.ts";
 import { create } from "@bufbuild/protobuf";
 import { HeartbeatSchema } from "../gen/types_pb.ts";
 
-await describe("routerPage", async () => {
-  await it("shows not found for unknown router IP", async () => {
+describe("routerPage", () => {
+  it("shows not found for unknown router IP", async () => {
     const state = makeClusterState();
     const html = await routerPage(state, "10.0.0.99").text();
-    assert.ok(html.includes("Router not found"));
-    assert.ok(html.includes("10.0.0.99"));
+    expect(html).toContain("Router not found");
+    expect(html).toContain("10.0.0.99");
   });
 
-  await it("counts functions this router has heartbeats for", async () => {
+  it("counts functions this router has heartbeats for", async () => {
     const hb1 = makeHeartbeatState({ routerIp: "10.0.1.1" });
     const hb2 = makeHeartbeatState({ routerIp: "10.0.1.1" });
     const sup1 = makeSupervisor({ routerHeartbeats: [hb1] });
@@ -28,11 +27,11 @@ await describe("routerPage", async () => {
     });
     const state = makeClusterState({ supervisors: [sup1, sup2] });
     const html = await routerPage(state, "10.0.1.1").text();
-    assert.ok(html.includes(">Functions<"));
-    assert.ok(html.includes(">2<"));
+    expect(html).toContain(">Functions<");
+    expect(html).toContain(">2<");
   });
 
-  await it("aggregates total in-flight across functions", async () => {
+  it("aggregates total in-flight across functions", async () => {
     const hb1 = makeHeartbeatState({
       routerIp: "10.0.1.1",
       heartbeat: create(HeartbeatSchema, { inFlightRequests: 3 }),
@@ -48,32 +47,32 @@ await describe("routerPage", async () => {
     });
     const state = makeClusterState({ supervisors: [sup1, sup2] });
     const html = await routerPage(state, "10.0.1.1").text();
-    assert.ok(html.includes(">Total In-Flight<"));
-    assert.ok(html.includes(">10<"));
+    expect(html).toContain(">Total In-Flight<");
+    expect(html).toContain(">10<");
   });
 
-  await it("renders function rows with links", async () => {
+  it("renders function rows with links", async () => {
     const hb = makeHeartbeatState({ routerIp: "10.0.1.1" });
     const sup = makeSupervisor({ routerHeartbeats: [hb] });
     const state = makeClusterState({ supervisors: [sup] });
     const html = await routerPage(state, "10.0.1.1").text();
-    assert.ok(html.includes('href="/functions/'));
-    assert.ok(html.includes(">web-app</a>"));
+    expect(html).toContain('href="/functions/');
+    expect(html).toContain(">web-app</a>");
   });
 
-  await it("includes HTMX polling", async () => {
+  it("includes HTMX polling", async () => {
     const hb = makeHeartbeatState({ routerIp: "10.0.1.1" });
     const sup = makeSupervisor({ routerHeartbeats: [hb] });
     const state = makeClusterState({ supervisors: [sup] });
     const html = await routerPage(state, "10.0.1.1").text();
-    assert.ok(html.includes('hx-trigger="every 5s"'));
+    expect(html).toContain('hx-trigger="every 5s"');
   });
 
-  await it("returns correct content-type", () => {
+  it("returns correct content-type", () => {
     const hb = makeHeartbeatState({ routerIp: "10.0.1.1" });
     const sup = makeSupervisor({ routerHeartbeats: [hb] });
     const state = makeClusterState({ supervisors: [sup] });
     const response = routerPage(state, "10.0.1.1");
-    assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8");
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 });

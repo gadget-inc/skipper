@@ -1,5 +1,4 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, expect, it } from "vitest";
 import {
   makeClusterState,
   makeSupervisor,
@@ -10,15 +9,15 @@ import { routersPage } from "./routers.ts";
 import { create } from "@bufbuild/protobuf";
 import { HeartbeatSchema } from "../gen/types_pb.ts";
 
-await describe("routersPage", async () => {
-  await it("shows empty message when no routers", async () => {
+describe("routersPage", () => {
+  it("shows empty message when no routers", async () => {
     const state = makeClusterState({ supervisors: [] });
     const html = await routersPage(state).text();
-    assert.ok(html.includes("No routers"));
-    assert.ok(html.includes('class="empty"'));
+    expect(html).toContain("No routers");
+    expect(html).toContain('class="empty"');
   });
 
-  await it("renders unique router IP links", async () => {
+  it("renders unique router IP links", async () => {
     const hb1 = makeHeartbeatState({ routerIp: "10.0.1.1" });
     const hb2 = makeHeartbeatState({ routerIp: "10.0.1.1" });
     const hb3 = makeHeartbeatState({ routerIp: "10.0.1.2" });
@@ -29,13 +28,13 @@ await describe("routersPage", async () => {
     });
     const state = makeClusterState({ supervisors: [sup1, sup2] });
     const html = await routersPage(state).text();
-    assert.ok(html.includes('href="/routers/10.0.1.1"'));
-    assert.ok(html.includes('href="/routers/10.0.1.2"'));
-    assert.ok(html.includes(">10.0.1.1</a>"));
-    assert.ok(html.includes(">10.0.1.2</a>"));
+    expect(html).toContain('href="/routers/10.0.1.1"');
+    expect(html).toContain('href="/routers/10.0.1.2"');
+    expect(html).toContain(">10.0.1.1</a>");
+    expect(html).toContain(">10.0.1.2</a>");
   });
 
-  await it("aggregates function count and in-flight per router", async () => {
+  it("aggregates function count and in-flight per router", async () => {
     const hb1 = makeHeartbeatState({
       routerIp: "10.0.1.1",
       heartbeat: create(HeartbeatSchema, { inFlightRequests: 3 }),
@@ -52,18 +51,18 @@ await describe("routersPage", async () => {
     const state = makeClusterState({ supervisors: [sup1, sup2] });
     const html = await routersPage(state).text();
     // Router 10.0.1.1: 2 functions, 10 in-flight
-    assert.ok(html.includes(">2<"));
-    assert.ok(html.includes(">10<"));
+    expect(html).toContain(">2<");
+    expect(html).toContain(">10<");
   });
 
-  await it("includes HTMX auto-refresh attributes", async () => {
+  it("includes HTMX auto-refresh attributes", async () => {
     const html = await routersPage(makeClusterState()).text();
-    assert.ok(html.includes('hx-get="/routers"'));
-    assert.ok(html.includes('hx-trigger="every 5s"'));
+    expect(html).toContain('hx-get="/routers"');
+    expect(html).toContain('hx-trigger="every 5s"');
   });
 
-  await it("returns correct content-type", () => {
+  it("returns correct content-type", () => {
     const response = routersPage(makeClusterState());
-    assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8");
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 });

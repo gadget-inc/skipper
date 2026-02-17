@@ -1,16 +1,15 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, expect, it } from "vitest";
 import { makeClusterState, makeConfigValue } from "../test-helpers.ts";
 import { configPage } from "./config.ts";
 
-await describe("configPage", async () => {
-  await it("shows empty state when no config values", async () => {
+describe("configPage", () => {
+  it("shows empty state when no config values", async () => {
     const state = makeClusterState({ config: [] });
     const html = await configPage(state).text();
-    assert.ok(html.includes("No configuration values"));
+    expect(html).toContain("No configuration values");
   });
 
-  await it("renders config table with values", async () => {
+  it("renders config table with values", async () => {
     const cv1 = makeConfigValue({
       name: "heartbeat-timeout",
       value: "90s",
@@ -23,14 +22,14 @@ await describe("configPage", async () => {
     });
     const state = makeClusterState({ config: [cv1, cv2] });
     const html = await configPage(state).text();
-    assert.ok(html.includes("heartbeat-timeout"));
-    assert.ok(html.includes("90s"));
-    assert.ok(html.includes("Heartbeat timeout"));
-    assert.ok(html.includes("scale-interval"));
-    assert.ok(html.includes("15s"));
+    expect(html).toContain("heartbeat-timeout");
+    expect(html).toContain("90s");
+    expect(html).toContain("Heartbeat timeout");
+    expect(html).toContain("scale-interval");
+    expect(html).toContain("15s");
   });
 
-  await it("masks sensitive values", async () => {
+  it("masks sensitive values", async () => {
     const cv = makeConfigValue({
       name: "paseto-private-key",
       value: "****",
@@ -38,12 +37,12 @@ await describe("configPage", async () => {
     });
     const state = makeClusterState({ config: [cv] });
     const html = await configPage(state).text();
-    assert.ok(html.includes("****"));
-    assert.ok(!html.includes("actual-key"));
+    expect(html).toContain("****");
+    expect(html).not.toContain("actual-key");
   });
 
-  await it("returns correct content-type", () => {
+  it("returns correct content-type", () => {
     const response = configPage(makeClusterState());
-    assert.equal(response.headers.get("content-type"), "text/html; charset=utf-8");
+    expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
   });
 });

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node --no-warnings --experimental-transform-types src/server.ts",
-    "test": "node --no-warnings --experimental-transform-types --test 'src/**/*.test.ts'"
+    "test": "vitest"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.0.0",
@@ -16,6 +16,7 @@
   },
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "^2.0.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

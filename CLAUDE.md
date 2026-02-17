@@ -19,6 +19,7 @@ direnv exec . logs -c controller                  # Show controller logs
 direnv exec . logs --errors --since=5m            # Recent errors only
 direnv exec . clean                               # Delete all Kubernetes resources
 direnv exec . script-tests                        # Run tests for scripts/ (vitest)
+direnv exec . web-tests                           # Run web UI tests (vitest)
 direnv exec . profile fetch                       # Fetch heap profile from local controller
 direnv exec . profile fetch -t cpu -p             # Fetch CPU profile from production
 direnv exec . profile fetch -t cpu -p <pod>       # Fetch from a specific production pod

@@ -1,5 +1,4 @@
-import { describe, it, mock } from "node:test";
-import assert from "node:assert/strict";
+import { describe, expect, it, vi } from "vitest";
 import {
   makeClusterState,
   makeInstance,
@@ -11,41 +10,41 @@ import { healthIndicators, computeHealthIssues } from "./health.ts";
 import { create } from "@bufbuild/protobuf";
 import { HeartbeatSchema } from "../../gen/types_pb.ts";
 
-await describe("healthIndicators", async () => {
-  await it("shows all healthy when no issues", () => {
+describe("healthIndicators", () => {
+  it("shows all healthy when no issues", () => {
     const state = makeClusterState();
     const html = healthIndicators(state);
-    assert.ok(html.includes("health-dot-green"));
-    assert.ok(html.includes("All healthy"));
+    expect(html).toContain("health-dot-green");
+    expect(html).toContain("All healthy");
   });
 
-  await it("shows stuck instances in red", () => {
-    mock.timers.enable({ apis: ["Date"] });
-    mock.timers.setTime(Date.now());
+  it("shows stuck instances in red", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now());
 
     const inst = makeInstance({ readyAt: undefined, assignedAt: makeTimestamp(-120_000) }); // 2 min ago, no ready
     const sup = makeSupervisor({ instances: [inst] });
     const state = makeClusterState({ supervisors: [sup] });
     const html = healthIndicators(state);
-    assert.ok(html.includes("health-dot-red"));
-    assert.ok(html.includes("Stuck instances"));
-    assert.ok(html.includes("badge-red"));
+    expect(html).toContain("health-dot-red");
+    expect(html).toContain("Stuck instances");
+    expect(html).toContain("badge-red");
 
-    mock.timers.reset();
+    vi.useRealTimers();
   });
 
-  await it("shows functions waiting for pods in yellow", () => {
+  it("shows functions waiting for pods in yellow", () => {
     const inst = makeInstance({ readyAt: undefined, assignedAt: makeTimestamp(-5_000) }); // 5s ago, not stuck yet
     const sup = makeSupervisor({ instances: [inst] });
     const state = makeClusterState({ supervisors: [sup] });
     const html = healthIndicators(state);
-    assert.ok(html.includes("Functions waiting for pods"));
-    assert.ok(html.includes("health-dot-yellow"));
+    expect(html).toContain("Functions waiting for pods");
+    expect(html).toContain("health-dot-yellow");
   });
 
-  await it("shows stale heartbeats in yellow", () => {
-    mock.timers.enable({ apis: ["Date"] });
-    mock.timers.setTime(Date.now());
+  it("shows stale heartbeats in yellow", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now());
 
     const hb = makeHeartbeatState({
       heartbeat: create(HeartbeatSchema, {
@@ -56,27 +55,27 @@ await describe("healthIndicators", async () => {
     const sup = makeSupervisor({ routerHeartbeats: [hb] });
     const state = makeClusterState({ supervisors: [sup] });
     const html = healthIndicators(state);
-    assert.ok(html.includes("Stale heartbeats"));
-    assert.ok(html.includes("health-dot-yellow"));
+    expect(html).toContain("Stale heartbeats");
+    expect(html).toContain("health-dot-yellow");
 
-    mock.timers.reset();
+    vi.useRealTimers();
   });
 
-  await it("shows stale instances in yellow", () => {
+  it("shows stale instances in yellow", () => {
     const inst = makeInstance({ replicaSet: "old-rs" });
     const sup = makeSupervisor({ instances: [inst], activeReplicaSet: "new-rs" });
     const state = makeClusterState({ supervisors: [sup] });
     const html = healthIndicators(state);
-    assert.ok(html.includes("Stale instances"));
-    assert.ok(html.includes("health-dot-yellow"));
+    expect(html).toContain("Stale instances");
+    expect(html).toContain("health-dot-yellow");
   });
 
-  await it("does not show stale instances when on active replica set", () => {
+  it("does not show stale instances when on active replica set", () => {
     const inst = makeInstance({ replicaSet: "active-rs" });
     const sup = makeSupervisor({ instances: [inst], activeReplicaSet: "active-rs" });
     const state = makeClusterState({ supervisors: [sup] });
     const issues = computeHealthIssues(state);
     const staleIssue = issues.find((i) => i.label === "Stale instances");
-    assert.equal(staleIssue, undefined);
+    expect(staleIssue).toBeUndefined();
   });
 });
