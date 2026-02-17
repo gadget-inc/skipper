@@ -456,6 +456,7 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*ski
 			err := s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
+				return false // Keep in slice, retry next iteration
 			}
 			s.ctrl.events.add(s.fn, skipper.EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP, skipper.EventSeverity_EVENT_SEVERITY_WARN, fmt.Sprintf("terminated stuck instance %s", instance.GetName()))
 			return true // Remove from slice
@@ -521,7 +522,6 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*ski
 		}
 
 		log.Info(ctx, "replacing stale instance")
-		s.ctrl.events.add(s.fn, skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT, skipper.EventSeverity_EVENT_SEVERITY_INFO, fmt.Sprintf("replacing stale instance %s on replica set %s", instance.GetName(), instance.GetReplicaSet()))
 
 		// Assign a new pod from the active replica set (temporarily exceeding max instances).
 		// Use a closure with defer to ensure the semaphore is released even if assignPod panics.
@@ -534,6 +534,8 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, instances []*ski
 			log.Error(ctx, "failed to assign replacement pod for stale instance", key.Error.Slog(assignErr))
 			continue
 		}
+
+		s.ctrl.events.add(s.fn, skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT, skipper.EventSeverity_EVENT_SEVERITY_INFO, fmt.Sprintf("replacing stale instance %s on replica set %s", instance.GetName(), instance.GetReplicaSet()))
 
 		// Increment the counter to account for the newly assigned pod. This ensures
 		// we don't exceed maxInstances+1 when processing multiple stale instances.
