@@ -531,6 +531,13 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*ski
 // stale instance is kept and scale() will handle cleanup on subsequent
 // iterations.
 func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Function, instances []*skipper.Instance, currentTotalInstances int) {
+	// Oneshot functions assign a fresh pod per request — replacing a stale
+	// instance would create a pod that serves nothing while the original
+	// continues processing its in-flight request.
+	if fn.GetOneshot() {
+		return
+	}
+
 	namespaceLister, ok := s.ctrl.namespaceListers[fn.GetNamespace()]
 	if !ok {
 		log.Warn(ctx, "namespace lister not found for function namespace", key.Namespace.Slog(fn.GetNamespace()))

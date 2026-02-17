@@ -2621,6 +2621,35 @@ func TestReplaceStaleInstances(t *testing.T) {
 				assert.Assert(t, availablePods >= 1, "should have at least 1 available pod")
 			},
 		},
+		{
+			// Oneshot functions assign a fresh pod per request, so stale replacement
+			// would create a pod that serves nothing. Verify it's skipped entirely.
+			name: "skips replacement for oneshot functions",
+			setup: func(t *testing.T, state *testState) {
+				state.fn.SetOneshot(true)
+
+				// Create an assigned pod on the old replica set
+				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+
+				// Create a stale replica set (scaled to 0)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet.Status.Replicas = 0
+				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
+
+				// Add a new replica set with an available pod (should NOT be used)
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				// Stale instance should be kept — no replacement attempted
+				assert.Assert(t, len(instances) == 1, "expected 1 instance, got %d", len(instances))
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				// Original assigned pod + untouched available pod
+				assert.Assert(t, len(pods.Items) == 2, "expected 2 pods (1 assigned + 1 available), got %d", len(pods.Items))
+			},
+		},
 	}
 
 	for _, tc := range testCases {
