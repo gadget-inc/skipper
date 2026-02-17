@@ -562,7 +562,9 @@ export async function analyze(argv: string[]) {
   }
 
   if (!existsSync(filepath)) {
-    throw new Error(`Profile not found: ${flags.values.pgo ? `cmd/${flags.values.component}/default.pgo` : flags.positionals[0]}`);
+    throw new Error(
+      `Profile not found: ${flags.values.pgo ? `cmd/${flags.values.component}/default.pgo` : flags.positionals[0]}`,
+    );
   }
 
   const args: string[] = [];

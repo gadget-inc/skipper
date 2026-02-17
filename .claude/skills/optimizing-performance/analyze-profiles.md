@@ -42,16 +42,17 @@ profile analyze --pgo --mode=source -f FunctionName
 
 Each hotspot typically falls into one of these categories:
 
-| Category | Signals | Typical Fix |
-|----------|---------|-------------|
-| Allocation reduction | `runtime.mallocgc` in callees, high alloc counts | Object pooling, pre-allocation, reducing copies |
-| Algorithm improvement | High flat% in a single function | Better data structures, caching, algorithmic change |
+| Category               | Signals                                               | Typical Fix                                                |
+| ---------------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
+| Allocation reduction   | `runtime.mallocgc` in callees, high alloc counts      | Object pooling, pre-allocation, reducing copies            |
+| Algorithm improvement  | High flat% in a single function                       | Better data structures, caching, algorithmic change        |
 | Concurrency bottleneck | Lock contention in peek view, `sync.Mutex` in callees | Sharding, lock-free structures, reducing critical sections |
-| Hot loop | High iteration count in source view | Loop hoisting, batching, early exits |
+| Hot loop               | High iteration count in source view                   | Loop hoisting, batching, early exits                       |
 
 ### 5. Report findings
 
 Summarize the top 5 hotspots with:
+
 - Function name and package
 - Flat% and cum% from the profile
 - Classification (from step 4)

@@ -11,13 +11,13 @@ Default mode. Shows a ranked list of functions by resource consumption.
     1.20s 30.00% 30.00%      1.50s 37.50%  github.com/gadget-inc/skipper/internal/hashring.(*HashRing).Get
 ```
 
-| Column | Meaning |
-|--------|---------|
-| **flat** | Time spent directly in this function (excluding callees) |
-| **flat%** | flat as percentage of total profile duration |
-| **sum%** | Running sum of flat% (cumulative down the list) |
-| **cum** | Time spent in this function including all callees |
-| **cum%** | cum as percentage of total profile duration |
+| Column    | Meaning                                                  |
+| --------- | -------------------------------------------------------- |
+| **flat**  | Time spent directly in this function (excluding callees) |
+| **flat%** | flat as percentage of total profile duration             |
+| **sum%**  | Running sum of flat% (cumulative down the list)          |
+| **cum**   | Time spent in this function including all callees        |
+| **cum%**  | cum as percentage of total profile duration              |
 
 **Reading tip**: High flat% = the function itself is expensive. High cum% with low flat% = the function calls expensive things.
 

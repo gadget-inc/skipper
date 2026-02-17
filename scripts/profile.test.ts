@@ -950,12 +950,16 @@ describe("analyze", () => {
 
   it("throws when profile file does not exist", async () => {
     mocks.mockExistsSync.mockReturnValueOnce(false);
-    await expect(analyze(["tmp/missing.pb.gz"])).rejects.toThrow("Profile not found: tmp/missing.pb.gz");
+    await expect(analyze(["tmp/missing.pb.gz"])).rejects.toThrow(
+      "Profile not found: tmp/missing.pb.gz",
+    );
   });
 
   it("throws when --pgo profile does not exist", async () => {
     mocks.mockExistsSync.mockReturnValueOnce(false);
-    await expect(analyze(["--pgo"])).rejects.toThrow("Profile not found: cmd/controller/default.pgo");
+    await expect(analyze(["--pgo"])).rejects.toThrow(
+      "Profile not found: cmd/controller/default.pgo",
+    );
   });
 
   it("uses -top and -nodecount=20 in default top mode", async () => {
@@ -1015,7 +1019,13 @@ describe("analyze", () => {
   });
 
   it("diff mode respects --cum and --nodecount", async () => {
-    await analyze(["--mode=diff", "--diff-base=tmp/before.pb.gz", "--cum", "--nodecount=10", "tmp/after.pb.gz"]);
+    await analyze([
+      "--mode=diff",
+      "--diff-base=tmp/before.pb.gz",
+      "--cum",
+      "--nodecount=10",
+      "tmp/after.pb.gz",
+    ]);
 
     const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
     expect(pprofCall).toBeDefined();
