@@ -54,6 +54,7 @@ type Controller struct {
 	podMetrics          *xsync.Map[string, metricsv1beta1.PodMetrics] // keyed by "namespace/pod-name"
 	functionCache       *xsync.Map[string, *skipper.Function]         // keyed by raw annotation JSON
 	staleReplacementSem *semaphore.Weighted
+	events              *eventLog
 }
 
 func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
@@ -69,6 +70,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 		podMetrics:          xsync.NewMap[string, metricsv1beta1.PodMetrics](),
 		functionCache:       xsync.NewMap[string, *skipper.Function](),
 		staleReplacementSem: semaphore.NewWeighted(int64(cfg.MaxConcurrentStaleReplacements)),
+		events:              &eventLog{},
 	}
 }
 

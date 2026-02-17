@@ -1,0 +1,76 @@
+<%-
+web_image_name ||= "skipper-web"
+web_image_tag ||= "latest"
+web_port ||= 3000
+web_node_port ||= 31022
+controller_host ||= "#{namespace}-controller.#{namespace}.svc.cluster.local"
+controller_port ||= 50051
+-%>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: <%= namespace %>-web
+  labels:
+    app.kubernetes.io/name: skipper
+    app.kubernetes.io/component: web
+    app.kubernetes.io/instance: <%= namespace %>
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skipper
+      app.kubernetes.io/component: web
+      app.kubernetes.io/instance: <%= namespace %>
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skipper
+        app.kubernetes.io/component: web
+        app.kubernetes.io/instance: <%= namespace %>
+    spec:
+      containers:
+        - name: web
+          image: <%= web_image_name %>:<%= web_image_tag %>
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: <%= web_port %>
+          env:
+            - name: PORT
+              value: "<%= web_port %>"
+            - name: CONTROLLER_HOST
+              value: "<%= controller_host %>"
+            - name: CONTROLLER_PORT
+              value: "<%= controller_port %>"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 10
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: <%= namespace %>-web
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: skipper
+    app.kubernetes.io/component: web
+    app.kubernetes.io/instance: <%= namespace %>
+  ports:
+    - port: 80
+      targetPort: http
+      nodePort: <%= web_node_port %>

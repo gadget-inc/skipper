@@ -128,6 +128,8 @@ GET_UNASSIGNED_POD:
 		return nil, err
 	}
 
+	ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_POD_ASSIGNED, skipper.EventSeverity_EVENT_SEVERITY_INFO, fmt.Sprintf("assigned pod %s", assignedPod.Name))
+
 	// annotate the pod as ready
 	patches = []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + now.UTC().Format(time.RFC3339) + `" }]`)
 	assignedPod, err = ctrl.patchPod(ctx, assignedPod.Namespace, assignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})

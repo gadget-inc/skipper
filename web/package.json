@@ -1,0 +1,21 @@
+{
+  "name": "web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --no-warnings --experimental-transform-types src/server.ts",
+    "test": "node --no-warnings --experimental-transform-types --test 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.0.0",
+    "@connectrpc/connect": "^2.0.0",
+    "@connectrpc/connect-node": "^2.0.0",
+    "@remix-run/fetch-router": "^0.16.0",
+    "@remix-run/node-fetch-server": "^0.13.0"
+  },
+  "devDependencies": {
+    "@bufbuild/protoc-gen-es": "^2.0.0",
+    "typescript": "^5.9.3"
+  }
+}

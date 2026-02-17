@@ -31,7 +31,7 @@ const flags = parseArgs({
     },
     development: { type: "boolean", default: !isCI },
     help: { type: "boolean", default: false, short: "h" },
-    only: { type: "string", default: "controller,router,fixtures,metrics-server,otel-lgtm" },
+    only: { type: "string", default: "controller,router,fixtures,web,metrics-server,otel-lgtm" },
     otel: { type: "boolean", default: !isCI },
     test: { type: "boolean", default: true },
   },
@@ -110,7 +110,7 @@ if (components.has("fixtures")) {
   }
 }
 
-if (components.has("controller") || components.has("router")) {
+if (components.has("controller") || components.has("router") || components.has("web")) {
   if (flags.values.development) {
     await deployKraneNamespace("skipper-development", {
       controller_image_name: "skipper-controller",
@@ -121,6 +121,8 @@ if (components.has("controller") || components.has("router")) {
       unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
       router_node_port: 31020,
       controller_node_port: 31021,
+      web_image_tag: await currentImageTag(),
+      web_node_port: 31022,
       env: {
         SKIPPER_TELEMETRY: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",

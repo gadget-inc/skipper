@@ -1,6 +1,7 @@
 packages:
   - fixtures/*
   - scripts
+  - web
 
 onlyBuiltDependencies:
   - esbuild

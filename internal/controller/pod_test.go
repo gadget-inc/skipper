@@ -56,6 +56,7 @@ func TestAssignPod(t *testing.T) {
 		fn             *skipper.Function
 		cfg            *Config
 		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
 		instance       *skipper.Instance
 	}
 
@@ -184,6 +185,37 @@ func TestAssignPod(t *testing.T) {
 				assert.Assert(t, len(pods.Items) == 0)
 			},
 		},
+		{
+			// Successful assignment should record a POD_ASSIGNED event
+			name: "records pod assigned event on success",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+				assert.Assert(t, len(events) == 1, "expected 1 event, got %d", len(events))
+				assert.Assert(t, events[0].GetType() == skipper.EventType_EVENT_TYPE_POD_ASSIGNED)
+				assert.Assert(t, events[0].GetSeverity() == skipper.EventSeverity_EVENT_SEVERITY_INFO)
+			},
+		},
+		{
+			// Failed assignment should not record a POD_ASSIGNED event
+			name:        "does not record pod assigned event on failure",
+			errContains: "assign request failed",
+			setup: func(t *testing.T, state *testState) {
+				errorHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("internal server error"))
+				})
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, errorHandler))
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+				for _, event := range events {
+					assert.Assert(t, event.GetType() != skipper.EventType_EVENT_TYPE_POD_ASSIGNED, "should not record POD_ASSIGNED event on failure")
+				}
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -205,12 +237,12 @@ func TestAssignPod(t *testing.T) {
 				cfg = testConfig()
 			}
 
-			ctrl := New(cfg, nil, state.fakeKubernetes, nil)
+			state.ctrl = New(cfg, nil, state.fakeKubernetes, nil)
 
-			err := ctrl.startInformers(ctx)
+			err := state.ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			state.instance, err = ctrl.assignPod(ctx, state.fn)
+			state.instance, err = state.ctrl.assignPod(ctx, state.fn)
 			if tc.errContains != "" {
 				assert.ErrorContains(t, err, tc.errContains)
 			} else if tc.err != nil {

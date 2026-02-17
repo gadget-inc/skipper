@@ -17,7 +17,7 @@ const flags = parseArgs({
     help: { type: "boolean", default: false },
     kind: { type: "boolean", default: isCI },
     load: { type: "boolean", default: true },
-    only: { type: "string", default: "controller,router,fixtures" },
+    only: { type: "string", default: "controller,router,fixtures,web" },
     provenance: { type: "boolean", default: false },
     push: { type: "boolean", default: false },
   },
@@ -91,6 +91,36 @@ if (buildController || buildRouter) {
     if (buildRouter) {
       await $`kind load docker-image ${routerImageName}:${flags.values.tag}`;
     }
+  }
+}
+
+if (components.has("web")) {
+  const webImageName = flags.values.registry
+    ? `${flags.values.registry}/skipper-web`
+    : "skipper-web";
+  const webBuildFlags = [
+    `--file=${abs("web/Dockerfile")}`,
+    `--platform=${flags.values.platform}`,
+    `--tag=${webImageName}:${flags.values.tag}`,
+    `--build-arg=NODE_VERSION=${process.version.slice(1)}`,
+  ];
+
+  if (flags.values.load) {
+    webBuildFlags.push("--load");
+  }
+
+  if (flags.values.push) {
+    webBuildFlags.push("--push");
+  }
+
+  if (!flags.values.provenance) {
+    webBuildFlags.push("--provenance=false");
+  }
+
+  await $({ verbose: true })`docker buildx build . ${webBuildFlags}`;
+
+  if (flags.values.kind) {
+    await $`kind load docker-image ${webImageName}:${flags.values.tag}`;
   }
 }
 
