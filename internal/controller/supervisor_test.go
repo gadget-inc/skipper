@@ -36,7 +36,7 @@ func TestSupervisor(t *testing.T) {
 				fn := fixture.NewFunction(t)
 				supervisor := ctrl.supervisor(fn)
 				assert.Assert(t, supervisor != nil)
-				assert.Assert(t, proto.Equal(supervisor.fn, fn))
+				assert.Assert(t, proto.Equal(supervisor.fn.Load(), fn))
 			},
 		},
 		{
@@ -125,7 +125,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
 				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
 				assert.Assert(t, ok)
-				assert.Assert(t, proto.Equal(supervisor.fn, state.fn))
+				assert.Assert(t, proto.Equal(supervisor.fn.Load(), state.fn))
 			},
 		},
 		{
@@ -160,7 +160,26 @@ func TestDiscoverSupervisors(t *testing.T) {
 				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
 				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
 				assert.Assert(t, ok)
-				assert.Assert(t, proto.Equal(supervisor.fn, state.fn))
+				assert.Assert(t, proto.Equal(supervisor.fn.Load(), state.fn))
+			},
+		},
+		{
+			name: "does not regress supervisor to stale pod annotation spec",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+
+				// Pre-create supervisor and update its spec via the heartbeat/RPC path
+				updatedFn := proto.Clone(state.fn).(*skipper.Function)
+				updatedFn.SetMetadata("new-metadata")
+				state.ctrl.supervisor(updatedFn)
+			},
+			check: func(t *testing.T, state *testState) {
+				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
+				assert.Assert(t, ok)
+				// The supervisor should retain the updated spec, not regress to
+				// the stale spec from the pod annotation.
+				assert.Equal(t, supervisor.fn.Load().GetMetadata(), "new-metadata")
 			},
 		},
 		{
@@ -293,13 +312,13 @@ func TestScale(t *testing.T) {
 			},
 		},
 		{
-			// Metadata mismatch: assigned pod has different metadata, can't be reused
-			name:             "ignores pods with different metadata",
+			// Identity mismatch: assigned pod has different tenant, can't be reused
+			name:             "ignores pods with different identity",
 			desiredInstances: 1,
 			err:              context.DeadlineExceeded,
 			setup: func(t *testing.T, state *testState) {
 				fn := proto.Clone(state.fn).(*skipper.Function)
-				fn.SetMetadata("different")
+				fn.SetTenant("different-tenant")
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
@@ -654,7 +673,7 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	// Verify supervisor was created
 	supervisor, ok := ctrl.supervisors.Load(fn.Hash())
 	assert.Assert(t, ok, "supervisor should exist even when not responsible")
-	assert.Assert(t, proto.Equal(supervisor.fn, fn))
+	assert.Assert(t, proto.Equal(supervisor.fn.Load(), fn))
 
 	// Add a heartbeat so we don't scale to 0
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
@@ -1442,7 +1461,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 				instanceTime = tc.instances[0].GetAssignedAt().AsTime()
 			}
 
-			combined := supervisor.combinedHeartbeat(tc.instances)
+			combined := supervisor.combinedHeartbeat(fn, tc.instances)
 
 			// Verify in-flight requests sum
 			assert.Equal(t, tc.expectedInFlightRequests, combined.GetInFlightRequests())
@@ -1965,10 +1984,10 @@ func TestSupervisorLifecycle(t *testing.T) {
 			ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 
 			supervisor := &Supervisor{
-				fn:               fn,
 				ctrl:             ctrl,
 				routerHeartbeats: nil, // not needed for lifecycle tests
 			}
+			supervisor.fn.Store(fn)
 
 			tc.setup(t, supervisor)
 			tc.check(t, supervisor)
@@ -2235,6 +2254,30 @@ func TestReplaceStaleInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// ensure the stale instance was replaced
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+				assert.Assert(t, len(instances) == 1)
+			},
+		},
+		{
+			// Function staleness: instance has same identity but different metadata/scale
+			name: "replaces instance with stale function spec",
+			setup: func(t *testing.T, state *testState) {
+				// Create an assigned pod with the old function spec (different metadata)
+				oldFn := proto.Clone(state.fn).(*skipper.Function)
+				oldFn.SetMetadata("old-metadata")
+				assignedPod := fixture.NewAssignedPod(t, oldFn, nil)
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+
+				// Create the current (active) replica set
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// Add a new available pod for replacement
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				// The stale-function instance should be replaced
 				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
@@ -2578,6 +2621,35 @@ func TestReplaceStaleInstances(t *testing.T) {
 				assert.Assert(t, availablePods >= 1, "should have at least 1 available pod")
 			},
 		},
+		{
+			// Oneshot functions assign a fresh pod per request, so stale replacement
+			// would create a pod that serves nothing. Verify it's skipped entirely.
+			name: "skips replacement for oneshot functions",
+			setup: func(t *testing.T, state *testState) {
+				state.fn.SetOneshot(true)
+
+				// Create an assigned pod on the old replica set
+				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+
+				// Create a stale replica set (scaled to 0)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet.Status.Replicas = 0
+				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
+
+				// Add a new replica set with an available pod (should NOT be used)
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				// Stale instance should be kept — no replacement attempted
+				assert.Assert(t, len(instances) == 1, "expected 1 instance, got %d", len(instances))
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				// Original assigned pod + untouched available pod
+				assert.Assert(t, len(pods.Items) == 2, "expected 2 pods (1 assigned + 1 available), got %d", len(pods.Items))
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -2608,7 +2680,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			}
 
 			supervisor := state.ctrl.supervisor(state.fn)
-			supervisor.replaceStaleInstances(ctx, instances, len(instances))
+			supervisor.replaceStaleInstances(ctx, state.fn, instances, len(instances))
 
 			// Fetch fresh instances to check results
 			finalInstances, err := state.ctrl.getInstances(ctx, state.fn)
@@ -2722,7 +2794,7 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 			}
 
 			supervisor := ctrl.supervisor(fn)
-			supervisor.replaceStaleInstances(ctx, instances, len(instances))
+			supervisor.replaceStaleInstances(ctx, fn, instances, len(instances))
 		}(functions[i])
 	}
 
@@ -2773,7 +2845,7 @@ func TestReplaceStaleInstancesNamespaceListerNotFound(t *testing.T) {
 	}
 
 	// Call replaceStaleInstances - should return void and do nothing
-	supervisor.replaceStaleInstances(ctx, instances, len(instances))
+	supervisor.replaceStaleInstances(ctx, fnInUnknownNamespace, instances, len(instances))
 
 	// Verify no pods were created in the unknown namespace
 	pods, err := fakeKubernetes.CoreV1().Pods("unknown-namespace").List(ctx, metav1.ListOptions{})
@@ -2848,7 +2920,7 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 	// Before the fix: len(readyInstances)=1 < maxInstances+1=3, so it would try to replace
 	// After the fix: we explicitly pass 3 total, so it correctly skips replacement
 	supervisor := ctrl.supervisor(fn)
-	supervisor.replaceStaleInstances(ctx, readyInstances, len(allInstances))
+	supervisor.replaceStaleInstances(ctx, fn, readyInstances, len(allInstances))
 
 	// Verify instances in cluster haven't changed (stale one kept)
 	// Verify no new pods were assigned (total should still be 3 assigned + 1 available)
@@ -3182,7 +3254,7 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	}.Build())
 
 	// Verify the scaling decision would request 1 instance
-	heartbeat := supervisor.combinedHeartbeat(instances)
+	heartbeat := supervisor.combinedHeartbeat(fn, instances)
 	scalingDecision := calculateDesiredInstances(ctx, cfg, heartbeat, instances)
 	assert.Assert(t, scalingDecision.GetDesiredInstances() == 1,
 		"expected scaling decision of 1 instance, got %d", scalingDecision.GetDesiredInstances())
@@ -3373,4 +3445,579 @@ func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
 	}, poll.WithDelay(100*time.Millisecond), poll.WithTimeout(2*time.Second))
 
 	assert.ErrorIs(t, supervisor.ctx.Err(), context.Canceled)
+}
+
+func TestUpdateFunction(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		check func(*testing.T)
+	}{
+		{
+			name: "updates function when identity matches but spec differs",
+			check: func(t *testing.T) {
+				fn := fixture.NewFunction(t)
+				s := &Supervisor{}
+				s.fn.Store(fn)
+
+				// Create updated function with same identity but different metadata
+				updatedFn := proto.Clone(fn).(*skipper.Function)
+				updatedFn.SetMetadata("new-metadata")
+
+				assert.Assert(t, fn.Hash() == updatedFn.Hash(), "identity hashes should match")
+				assert.Assert(t, !proto.Equal(fn, updatedFn), "protos should differ")
+
+				s.updateFunction(updatedFn)
+
+				assert.Assert(t, proto.Equal(s.fn.Load(), updatedFn), "function should be updated")
+			},
+		},
+		{
+			name: "updates function when identity matches but scale differs",
+			check: func(t *testing.T) {
+				fn := fixture.NewFunction(t)
+				s := &Supervisor{}
+				s.fn.Store(fn)
+
+				// Create updated function with same identity but different scale
+				updatedFn := proto.Clone(fn).(*skipper.Function)
+				updatedFn.GetScale().SetMaxInstances(99)
+
+				assert.Assert(t, fn.Hash() == updatedFn.Hash(), "identity hashes should match")
+
+				s.updateFunction(updatedFn)
+
+				assert.Assert(t, proto.Equal(s.fn.Load(), updatedFn), "function should be updated")
+				assert.Equal(t, s.fn.Load().GetScale().GetMaxInstances(), uint32(99))
+			},
+		},
+		{
+			name: "no-op when protos are equal",
+			check: func(t *testing.T) {
+				fn := fixture.NewFunction(t)
+				s := &Supervisor{}
+				s.fn.Store(fn)
+
+				// Pass the exact same function
+				sameFn := proto.Clone(fn).(*skipper.Function)
+
+				s.updateFunction(sameFn)
+
+				// Should still be the original pointer (not swapped)
+				assert.Assert(t, s.fn.Load() == fn, "pointer should not change when protos are equal")
+			},
+		},
+		{
+			name: "no-op when identity differs",
+			check: func(t *testing.T) {
+				fn := fixture.NewFunction(t)
+				s := &Supervisor{}
+				s.fn.Store(fn)
+
+				// Create function with different identity
+				differentFn := fixture.NewFunction(t)
+				differentFn.SetDeployment("other-deployment")
+
+				assert.Assert(t, fn.Hash() != differentFn.Hash(), "identity hashes should differ")
+
+				s.updateFunction(differentFn)
+
+				assert.Assert(t, s.fn.Load() == fn, "pointer should not change when identity differs")
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.check(t)
+		})
+	}
+}
+
+// TestSupervisorFunctionUpdateViaHeartbeat verifies the end-to-end path:
+// a supervisor is created with an initial function spec, then receives an
+// updated spec (same identity, different metadata) through the heartbeat
+// handler. The supervisor's function should update atomically, and existing
+// instances with the old spec should become stale in the next converge.
+func TestSupervisorFunctionUpdateViaHeartbeat(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.SetMetadata("old-metadata")
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+
+	// Create supervisor with the old function spec
+	supervisor := ctrl.supervisor(fn)
+	assert.Assert(t, proto.Equal(supervisor.fn.Load(), fn))
+
+	// Create updated function with same identity but different metadata
+	updatedFn := proto.Clone(fn).(*skipper.Function)
+	updatedFn.SetMetadata("new-metadata")
+	assert.Assert(t, fn.Hash() == updatedFn.Hash(), "identity hashes should match")
+
+	// Simulate the heartbeat path: ctrl.supervisor(updatedFn) calls updateFunction
+	returnedSupervisor := ctrl.supervisor(updatedFn)
+
+	// Should return the same supervisor (same identity hash)
+	assert.Assert(t, returnedSupervisor == supervisor, "should return same supervisor instance")
+
+	// The supervisor's function should now reflect the updated spec
+	assert.Assert(t, proto.Equal(supervisor.fn.Load(), updatedFn), "supervisor function should be updated")
+	assert.Equal(t, supervisor.fn.Load().GetMetadata(), "new-metadata")
+
+	// Now verify that existing instances with the old spec are detected as stale.
+	// Create an assigned pod with the old function spec.
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+	assignedPod := fixture.NewAssignedPod(t, fn, nil)
+	fakeKubernetes.Tracker().Add(assignedPod)
+
+	// Add an available pod for replacement
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, updatedFn, nil))
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Get instances — they carry the old function spec from the pod annotation
+	instances, err := ctrl.getInstances(ctx, updatedFn)
+	assert.NilError(t, err)
+	assert.Assert(t, len(instances) == 1)
+
+	// The instance's function spec should differ from the supervisor's current spec
+	assert.Assert(t, !proto.Equal(instances[0].GetFunction(), updatedFn),
+		"instance should have old function spec")
+
+	// replaceStaleInstances should detect and replace the stale instance
+	supervisor.replaceStaleInstances(ctx, updatedFn, instances, len(instances))
+
+	// Verify the stale instance was replaced
+	finalInstances, err := ctrl.getInstances(ctx, updatedFn)
+	assert.NilError(t, err)
+	assert.Assert(t, len(finalInstances) == 1, "should have 1 instance after replacement")
+	assert.Assert(t, proto.Equal(finalInstances[0].GetFunction(), updatedFn),
+		"replacement instance should have updated function spec")
+}
+
+// TestGetReadyInstanceOneshotAssignsPod verifies that getReadyInstance for
+// oneshot functions calls assignPod directly, returning a unique pod per request
+// via assignPod's atomic test-and-set.
+func TestGetReadyInstanceOneshotAssignsPod(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.SetOneshot(true)
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// Add two available (unassigned) pods for assignment
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	s := ctrl.supervisor(fn)
+
+	// Each call should assign a fresh pod
+	inst1, err := s.getReadyInstance(ctx, nil)
+	assert.NilError(t, err)
+	assert.Assert(t, inst1 != nil)
+
+	inst2, err := s.getReadyInstance(ctx, nil)
+	assert.NilError(t, err)
+	assert.Assert(t, inst2 != nil)
+
+	assert.Assert(t, inst1.GetName() != inst2.GetName(),
+		"oneshot should return different instances: got %s and %s", inst1.GetName(), inst2.GetName())
+}
+
+// TestConvergeOneshotSafetyNetOnly verifies that the converge loop does not
+// perform active scaling for oneshot functions when heartbeats are active.
+func TestConvergeOneshotSafetyNetOnly(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.SetOneshot(true)
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// Create 3 assigned pods (simulating 3 active oneshot requests)
+	for range 3 {
+		fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+	}
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	s := ctrl.supervisor(fn)
+
+	// Send a heartbeat with only 1 in-flight request — for a non-oneshot
+	// function, converge would try to scale down. For oneshot, it should not.
+	s.heartbeat("10.0.0.1", skipper.Heartbeat_builder{
+		Function:         fn,
+		Timestamp:        timestamppb.Now(),
+		InFlightRequests: proto.Uint32(1),
+	}.Build())
+
+	err = s.converge(ctx)
+	assert.NilError(t, err)
+
+	// All 3 pods should still exist — converge must not scale down oneshot pods
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	})
+	assert.NilError(t, err)
+	assert.Equal(t, len(pods.Items), 3, "converge should not delete active oneshot pods")
+}
+
+func TestCalculateDesiredInstancesOneshot(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.HeartbeatTimeout = 30 * time.Second
+
+	testCases := []struct {
+		name                     string
+		heartbeat                *skipper.Heartbeat
+		instances                []*skipper.Instance
+		expectedDesiredInstances uint32
+		expectedUnclampedDesired uint32
+		expectedReason           skipper.ScaleReason
+	}{
+		{
+			name: "oneshot scales to in-flight count",
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Oneshot: proto.Bool(true),
+					Scale: skipper.Scale_builder{
+						MinInstances: proto.Uint32(0),
+						MaxInstances: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(5),
+			}.Build(),
+			instances: []*skipper.Instance{
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.Now(),
+				}.Build(),
+			},
+			expectedDesiredInstances: 5,
+			expectedUnclampedDesired: 5,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS,
+		},
+		{
+			name: "oneshot with zero in-flight desires zero",
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Oneshot: proto.Bool(true),
+					Scale: skipper.Scale_builder{
+						MinInstances: proto.Uint32(0),
+						MaxInstances: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(0),
+			}.Build(),
+			instances: []*skipper.Instance{
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.Now(),
+				}.Build(),
+			},
+			expectedDesiredInstances: 0,
+			expectedUnclampedDesired: 0,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS,
+		},
+		{
+			name: "oneshot heartbeat timeout scales to zero",
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Oneshot: proto.Bool(true),
+					Scale: skipper.Scale_builder{
+						MinInstances: proto.Uint32(0),
+						MaxInstances: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now().Add(-cfg.HeartbeatTimeout - time.Second)),
+				InFlightRequests: proto.Uint32(5),
+			}.Build(),
+			instances: []*skipper.Instance{
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.Now(),
+				}.Build(),
+			},
+			expectedDesiredInstances: 0,
+			expectedUnclampedDesired: 0,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT,
+		},
+		{
+			name: "oneshot respects max instances clamping",
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Oneshot: proto.Bool(true),
+					Scale: skipper.Scale_builder{
+						MinInstances: proto.Uint32(0),
+						MaxInstances: proto.Uint32(3),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(10),
+			}.Build(),
+			instances: []*skipper.Instance{
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.Now(),
+				}.Build(),
+			},
+			expectedDesiredInstances: 3,
+			expectedUnclampedDesired: 10,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS,
+		},
+		{
+			name: "oneshot respects min instances clamping",
+			heartbeat: skipper.Heartbeat_builder{
+				Function: skipper.Function_builder{
+					Oneshot: proto.Bool(true),
+					Scale: skipper.Scale_builder{
+						MinInstances: proto.Uint32(3),
+						MaxInstances: proto.Uint32(10),
+					}.Build(),
+				}.Build(),
+				Timestamp:        timestamppb.New(time.Now()),
+				InFlightRequests: proto.Uint32(1),
+			}.Build(),
+			instances: []*skipper.Instance{
+				skipper.Instance_builder{
+					ReadyAt: timestamppb.Now(),
+				}.Build(),
+			},
+			expectedDesiredInstances: 3,
+			expectedUnclampedDesired: 1,
+			expectedReason:           skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
+
+			assert.Equal(t, tc.expectedDesiredInstances, decision.GetDesiredInstances())
+			assert.Equal(t, tc.expectedUnclampedDesired, decision.GetUnclampedDesiredInstances())
+			assert.Equal(t, tc.expectedReason, decision.GetReason())
+		})
+	}
+}
+
+// TestReleaseInstanceRejectsInvalidRequest verifies that the ReleaseInstance RPC
+// returns InvalidArgument when the instance name or namespace is missing.
+func TestReleaseInstanceRejectsInvalidRequest(t *testing.T) {
+	t.Parallel()
+
+	ctrl := New(testConfig(), nil, fake.NewClientset(fixture.NewControllerPod()), nil)
+	server := NewServer(ctrl)
+
+	testCases := []struct {
+		name     string
+		instance *skipper.Instance
+	}{
+		{
+			name:     "empty instance",
+			instance: &skipper.Instance{},
+		},
+		{
+			name: "missing namespace",
+			instance: skipper.Instance_builder{
+				Name: proto.String("pod-1"),
+			}.Build(),
+		},
+		{
+			name: "missing name",
+			instance: skipper.Instance_builder{
+				Function: skipper.Function_builder{
+					Namespace: proto.String("ns-1"),
+				}.Build(),
+			}.Build(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := server.ReleaseInstance(t.Context(), skipper.ReleaseInstanceRequest_builder{
+				Instance: tc.instance,
+			}.Build())
+			assert.ErrorContains(t, err, "missing instance name or namespace")
+		})
+	}
+}
+
+// TestReleaseInstanceDeletesPod verifies that the ReleaseInstance RPC deletes
+// the specified pod. It should be idempotent (not error if pod is already gone).
+func TestReleaseInstanceDeletesPod(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.SetOneshot(true)
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	pod := fixture.NewAssignedPod(t, fn, nil)
+	fakeKubernetes.Tracker().Add(pod)
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	server := NewServer(ctrl)
+
+	inst := &skipper.Instance{}
+	inst.SetName(pod.Name)
+	inst.SetFunction(fn)
+
+	// Release the pod
+	_, err = server.ReleaseInstance(ctx, skipper.ReleaseInstanceRequest_builder{
+		Instance: inst,
+	}.Build())
+	assert.NilError(t, err)
+
+	// Verify the pod was deleted
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{})
+	assert.NilError(t, err)
+	// Only the controller pod should remain
+	for _, p := range pods.Items {
+		assert.Assert(t, p.Name != pod.Name, "released pod should be deleted")
+	}
+
+	// Calling again should be idempotent (pod already deleted)
+	_, err = server.ReleaseInstance(ctx, skipper.ReleaseInstanceRequest_builder{
+		Instance: inst,
+	}.Build())
+	assert.NilError(t, err)
+}
+
+// TestOneshotTerminationAfterHeartbeatTimeout verifies the end-to-end path for
+// oneshot functions: after the heartbeat expires, converge deletes orphaned
+// pods and the supervisor is removed from the controller's map.
+func TestOneshotTerminationAfterHeartbeatTimeout(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.SetOneshot(true)
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+
+	cfg := testConfig()
+	cfg.ScaleInterval = 50 * time.Millisecond
+	cfg.HeartbeatTimeout = 100 * time.Millisecond
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	// Create supervisor without starting its loop (ctrl.ctx is nil)
+	s := ctrl.supervisor(fn)
+
+	// Add an expired heartbeat to trigger cleanup
+	s.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
+		Function:         fn,
+		Timestamp:        timestamppb.New(time.Now().Add(-cfg.HeartbeatTimeout - time.Second)),
+		InFlightRequests: proto.Uint32(0),
+	}.Build())
+
+	// Start the supervisor loop
+	ctrl.ctx = ctx
+	s.start(ctx)
+
+	// Wait for heartbeat timeout to trigger cleanup and supervisor removal
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		_, exists := ctrl.supervisors.Load(fn.Hash())
+		if !exists {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for supervisor to be removed from map")
+	}, poll.WithDelay(100*time.Millisecond), poll.WithTimeout(5*time.Second))
+
+	// Verify the pod was deleted
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(pods.Items) == 0, "oneshot pod should be deleted after heartbeat timeout")
+
+	// Verify the supervisor was stopped
+	assert.ErrorIs(t, s.ctx.Err(), context.Canceled)
+}
+
+// TestOneshotProtectionPeriodPreventsOrphanDeletion verifies that a freshly
+// restarted controller does not delete active oneshot pods during the
+// protection period. Without this protection, combinedHeartbeat falls back
+// to instance assigned_at when router heartbeats haven't arrived yet. For
+// long-running oneshot requests (assigned longer ago than HeartbeatTimeout),
+// this would incorrectly trigger heartbeat_timeout and delete active pods.
+func TestOneshotProtectionPeriodPreventsOrphanDeletion(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fn.SetOneshot(true)
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// Create an assigned pod that was assigned long ago (older than HeartbeatTimeout).
+	// This simulates a long-running oneshot request.
+	pod := fixture.NewAssignedPod(t, fn, nil)
+	assignedAt := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+	pod.Annotations[key.AssignedAt.Annotation] = assignedAt
+	fakeKubernetes.Tracker().Add(pod)
+
+	cfg := testConfig()
+	cfg.HeartbeatTimeout = 90 * time.Second
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	// Controller just started — within HeartbeatTimeout protection period
+	ctrl.setStartedAt(time.Now())
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	s := ctrl.supervisor(fn)
+
+	// No router heartbeats stored — simulates restart with empty heartbeat state.
+	// combinedHeartbeat will fall back to assigned_at (2 hours ago), which exceeds
+	// HeartbeatTimeout and would trigger SCALE_REASON_HEARTBEAT_TIMEOUT.
+
+	err = s.converge(ctx)
+	assert.NilError(t, err)
+
+	// Pod must still exist — protection period should prevent deletion
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	})
+	assert.NilError(t, err)
+	assert.Equal(t, len(pods.Items), 1, "oneshot pod should survive during protection period")
 }

@@ -22,6 +22,7 @@ message Function {
   string tenant = 3;
   string metadata = 4;
   Scale scale = 5;
+  bool oneshot = 6;
 }
 
 message Instance {

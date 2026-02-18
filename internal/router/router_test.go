@@ -2546,3 +2546,123 @@ func TestRapidRequestsDuringShutdownWindow(t *testing.T) {
 	// but all that started should have completed
 	t.Logf("requests: started=%d completed=%d failures=%d", started, completed, failures)
 }
+
+func TestOneshotReleasesInstance(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	fn.SetOneshot(true)
+
+	instance := fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+	})
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return instance, nil
+	})
+
+	released := make(chan struct{})
+	mcc.HandleReleaseInstance(func(ctx context.Context, inst *skipper.Instance) error {
+		assert.Equal(t, inst.GetName(), instance.GetName())
+		assert.Equal(t, inst.GetFunction().GetNamespace(), fn.GetNamespace())
+		close(released)
+		return nil
+	})
+
+	rw := httptest.NewRecorder()
+	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+
+	router := New(testConfig(), mcc)
+	router.ServeHTTP(rw, req)
+
+	assert.Assert(t, rw.Code == http.StatusOK)
+
+	select {
+	case <-released:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for ReleaseInstance to be called")
+	}
+}
+
+func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	fn.SetOneshot(true)
+
+	successInstance := fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusOK)
+	})
+
+	failingInstance1 := &skipper.Instance{}
+	failingInstance1.SetFunction(fn)
+	failingInstance1.SetName("failing-1")
+	failingInstance1.SetAddr("127.0.0.1:1")
+
+	failingInstance2 := &skipper.Instance{}
+	failingInstance2.SetFunction(fn)
+	failingInstance2.SetName("failing-2")
+	failingInstance2.SetAddr("127.0.0.1:2")
+
+	callCount := 0
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		callCount++
+		switch callCount {
+		case 1:
+			return failingInstance1, nil
+		case 2:
+			return failingInstance2, nil
+		default:
+			return successInstance, nil
+		}
+	})
+
+	var mu sync.Mutex
+	releasedNames := make(map[string]bool)
+	allReleased := make(chan struct{})
+	mcc.HandleReleaseInstance(func(ctx context.Context, inst *skipper.Instance) error {
+		mu.Lock()
+		defer mu.Unlock()
+		releasedNames[inst.GetName()] = true
+		if len(releasedNames) == 3 {
+			close(allReleased)
+		}
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.MaxRoundTripAttempts = 4
+	router := New(cfg, mcc)
+
+	originalTransport := router.roundTripper
+	roundTripCount := 0
+	router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		roundTripCount++
+		if roundTripCount <= 2 {
+			return nil, &net.OpError{Op: "dial", Err: errors.New("connection refused")}
+		}
+		return originalTransport.RoundTrip(req)
+	})
+
+	rw := httptest.NewRecorder()
+	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+	router.ServeHTTP(rw, req)
+
+	assert.Assert(t, rw.Code == http.StatusOK)
+
+	select {
+	case <-allReleased:
+	case <-time.After(5 * time.Second):
+		mu.Lock()
+		t.Fatalf("timed out waiting for all instances to be released, got: %v", releasedNames)
+		mu.Unlock()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Assert(t, releasedNames["failing-1"], "first failed instance should be released")
+	assert.Assert(t, releasedNames["failing-2"], "second failed instance should be released")
+	assert.Assert(t, releasedNames[successInstance.GetName()], "successful instance should be released")
+}

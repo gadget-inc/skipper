@@ -1,50 +1,36 @@
 package skipper
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/maphash"
 	"log/slog"
 	"net/http"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
 )
 
-// hashSeed is a fixed seed for deterministic hashing within a process.
-var hashSeed = maphash.MakeSeed()
-
 // FunctionHash is a unique identifier for a Function, suitable for use as a map key.
 type FunctionHash = uint64
 
-// Hash returns a hash of all Function fields, suitable for use as a map key.
+// Hash returns a hash of the function's identity fields (namespace, deployment,
+// tenant, oneshot), suitable for use as a map key. Metadata and scale fields are
+// excluded so that changes to those fields don't create a new function identity.
 func (f *Function) Hash() FunctionHash {
-	var h maphash.Hash
-	h.SetSeed(hashSeed)
-	h.WriteString(f.GetNamespace())
-	h.WriteByte(0) // null byte separator to prevent collisions (e.g., "ab"+"cd" vs "abc"+"d")
-	h.WriteString(f.GetDeployment())
-	h.WriteByte(0)
-	h.WriteString(f.GetTenant())
-	h.WriteByte(0)
-	h.WriteString(f.GetMetadata())
-	var buf [4]byte
-	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetMinInstances())
-	h.Write(buf[:])
-	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetMaxInstances())
-	h.Write(buf[:])
-	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetTargetCpuUsageMilli())
-	h.Write(buf[:])
-	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetTargetMemoryUsageMib())
-	h.Write(buf[:])
-	binary.LittleEndian.PutUint32(buf[:], f.GetScale().GetTargetInFlightRequests())
-	h.Write(buf[:])
+	h := xxhash.New()
+	_, _ = h.WriteString(f.GetNamespace())
+	_, _ = h.Write([]byte{0})
+	_, _ = h.WriteString(f.GetDeployment())
+	_, _ = h.Write([]byte{0})
+	_, _ = h.WriteString(f.GetTenant())
+	_, _ = h.Write([]byte{0})
+	if f.GetOneshot() {
+		_, _ = h.Write([]byte{1})
+	} else {
+		_, _ = h.Write([]byte{0})
+	}
 	return h.Sum64()
-}
-
-func (f *Function) RingKey() string {
-	return f.GetNamespace() + f.GetDeployment() + f.GetTenant()
 }
 
 var _ slog.LogValuer = (*Function)(nil)
@@ -55,6 +41,7 @@ func (f *Function) LogValue() slog.Value {
 		key.Deployment.Slog(f.GetDeployment()),
 		key.Tenant.Slog(f.GetTenant()),
 		key.Metadata.Slog(f.GetMetadata()),
+		key.Oneshot.Slog(f.GetOneshot()),
 		key.Scale.Slog(f.GetScale()),
 	)
 }

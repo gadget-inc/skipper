@@ -33,6 +33,10 @@ func logValuerKey(name string) Key[slog.LogValuer] {
 	})
 }
 
+func boolKey(name string) Key[bool] {
+	return newKey(name, func(id Identifier, v bool) slog.Attr { return slog.Bool(id.Name, v) })
+}
+
 func stringKey(name string) Key[string] {
 	return newKey(name, func(id Identifier, v string) slog.Attr { return slog.String(id.Name, v) })
 }

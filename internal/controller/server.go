@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -92,6 +94,29 @@ func (s *Server) Heartbeat(ctx context.Context, req *skipper.HeartbeatRequest) (
 	}
 
 	return &skipper.HeartbeatResponse{}, nil
+}
+
+func (s *Server) ReleaseInstance(ctx context.Context, req *skipper.ReleaseInstanceRequest) (*skipper.ReleaseInstanceResponse, error) {
+	inst := req.GetInstance()
+	name := inst.GetName()
+	namespace := inst.GetFunction().GetNamespace()
+	if name == "" || namespace == "" {
+		return nil, status.Error(codes.InvalidArgument, "missing instance name or namespace")
+	}
+
+	ctx = telemetry.With(ctx, key.Instance.Attr(inst))
+
+	err := s.ctrl.deletePod(ctx, namespace, name, metav1.DeleteOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return &skipper.ReleaseInstanceResponse{}, nil
+		}
+		log.Error(ctx, "failed to release instance", key.Error.Slog(err))
+		return nil, status.Errorf(codes.Internal, "failed to release instance: %v", err)
+	}
+
+	log.Info(ctx, "released instance")
+	return &skipper.ReleaseInstanceResponse{}, nil
 }
 
 func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper.ScaleResponse, error) {

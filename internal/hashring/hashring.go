@@ -1,11 +1,8 @@
 package hashring
 
 import (
-	"hash/crc32"
-	"hash/fnv"
 	"maps"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
@@ -20,8 +17,8 @@ type HashRing struct {
 	waitTime     time.Duration     // Time to wait for the hash ring to be populated
 }
 
-type RingKey interface {
-	RingKey() string
+type Hasher interface {
+	Hash() uint64
 }
 
 type RingOption func(*HashRing)
@@ -41,7 +38,7 @@ func New(opts ...RingOption) *HashRing {
 	h := &HashRing{
 		ips:          make(map[uint32]string),
 		hashes:       []uint32{},
-		virtualNodes: 4096, // Number of virtual nodes per IP, increase for better distribution
+		virtualNodes: 1024, // Number of virtual nodes per IP, increase for better distribution
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -49,20 +46,35 @@ func New(opts ...RingOption) *HashRing {
 	return h
 }
 
-// getNodeHash generates different hash values for the same node
-// using the FNV hash and CRC32 hash to create better distribution
-func (h *HashRing) getNodeHash(ip string, idx int) uint32 {
-	// Use FNV hash for the key with a virtual node number
-	key := ip + ":" + strconv.Itoa(idx)
+const (
+	fnvOffset32 = uint32(2166136261)
+	fnvPrime32  = uint32(16777619)
+)
 
-	// Generate primary hash using FNV
-	fnvHash := fnv.New32a()
-	fnvHash.Write([]byte(key))
-	primaryHash := fnvHash.Sum32()
+// nodeHash generates different hash values for the same node using FNV-1a
+// for the input bytes followed by a murmur3 fmix32 avalanche finalizer.
+func nodeHash(ip string, idx int) uint32 {
+	// FNV-1a: hash ip + separator + index as raw big-endian uint16
+	hash := fnvOffset32
+	for i := range len(ip) {
+		hash ^= uint32(ip[i])
+		hash *= fnvPrime32
+	}
+	hash ^= uint32(':')
+	hash *= fnvPrime32
+	hash ^= uint32(byte(idx >> 8))
+	hash *= fnvPrime32
+	hash ^= uint32(byte(idx))
+	hash *= fnvPrime32
 
-	// Generate the final hash using CRC32
-	keyWithHash := key + ":" + strconv.FormatUint(uint64(primaryHash), 16)
-	return crc32.ChecksumIEEE([]byte(keyWithHash))
+	// murmur3 fmix32: proper avalanche finalizer
+	hash ^= hash >> 16
+	hash *= 0x85ebca6b
+	hash ^= hash >> 13
+	hash *= 0xc2b2ae35
+	hash ^= hash >> 16
+
+	return hash
 }
 
 // Add adds an IP to the hash ring.
@@ -78,7 +90,7 @@ func (h *HashRing) Add(ip string) {
 
 	// Create multiple virtual nodes per IP
 	for i := range h.virtualNodes {
-		hash := h.getNodeHash(ip, i)
+		hash := nodeHash(ip, i)
 
 		// Skip if this hash already exists
 		if _, exists := h.ips[hash]; exists {
@@ -134,7 +146,7 @@ func (h *HashRing) Remove(ip string) {
 // Example:
 //
 //	ip := ring.Get("my-cache-key")
-func (h *HashRing) Get(value RingKey) string {
+func (h *HashRing) Get(value Hasher) string {
 	rt := h.mu.RLock()
 
 	if len(h.hashes) == 0 {
@@ -157,8 +169,9 @@ func (h *HashRing) Get(value RingKey) string {
 
 	defer h.mu.RUnlock(rt)
 
-	// Compute the hash of the key
-	hash := crc32.ChecksumIEEE([]byte(value.RingKey()))
+	// XOR-fold the 64-bit hash to 32-bit for the ring
+	v := value.Hash()
+	hash := uint32(v ^ (v >> 32))
 
 	// Use binary search to find the first hash that is greater than or equal to the key's hash
 	index, found := slices.BinarySearch(h.hashes, hash)
