@@ -90,3 +90,31 @@ func (msg *ScaleResponse) UnmarshalJSON(b []byte) error {
 		DiscardUnknown: true,
 	}.Unmarshal(b, msg)
 }
+
+// MarshalJSON implements json.Marshaler
+func (msg *ReleaseInstanceRequest) MarshalJSON() ([]byte, error) {
+	return protojson.MarshalOptions{
+		UseProtoNames: true,
+	}.Marshal(msg)
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (msg *ReleaseInstanceRequest) UnmarshalJSON(b []byte) error {
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
+}
+
+// MarshalJSON implements json.Marshaler
+func (msg *ReleaseInstanceResponse) MarshalJSON() ([]byte, error) {
+	return protojson.MarshalOptions{
+		UseProtoNames: true,
+	}.Marshal(msg)
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (msg *ReleaseInstanceResponse) UnmarshalJSON(b []byte) error {
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
+}

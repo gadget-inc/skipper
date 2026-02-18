@@ -16,6 +16,7 @@
 		"function.deployment": "test",
 		"function.metadata": "test",
 		"function.namespace": "test",
+		"function.oneshot": false,
 		"function.scale.max_instances": 42,
 		"function.scale.min_instances": 42,
 		"function.scale.target_cpu_usage_milli": 42,
@@ -115,6 +116,7 @@
 			"deployment": "test",
 			"metadata": "test",
 			"namespace": "test",
+			"oneshot": false,
 			"scale": {
 				"max_instances": 42,
 				"min_instances": 42,

@@ -157,7 +157,21 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return newHeartbeat, xsync.UpdateOp
 	})
 
-	r.reverseProxy.ServeHTTP(rw, req.WithContext(withFunction(ctx, fn)))
+	reqCtx := withFunction(ctx, fn)
+
+	// For oneshot functions, track the assigned instance so we can release it after the request.
+	var instResult *instanceResult
+	if fn.GetOneshot() {
+		instResult = &instanceResult{}
+		reqCtx = withInstanceResult(reqCtx, instResult)
+	}
+
+	r.reverseProxy.ServeHTTP(rw, req.WithContext(reqCtx))
+
+	// After the response is sent for a oneshot function, release the instance.
+	if instResult != nil && instResult.instance != nil {
+		r.releaseInstance(instResult.instance)
+	}
 }
 
 func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -206,6 +220,11 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		ctx = telemetry.With(ctx, key.Instance.Attr(instance))
 
+		// Store the instance for oneshot release after the request completes.
+		if ir := instanceResultFromContext(ctx); ir != nil {
+			ir.instance = instance
+		}
+
 		req := req.WithContext(ctx)
 		req.URL.Scheme = "http"
 		req.URL.Host = instance.GetAddr()
@@ -222,6 +241,12 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			if netOpErr.Op == "dial" {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Slog(err))
 				excludedInstanceNameSet[instance.GetName()] = struct{}{} // exclude this instance from future requests in case it's the problem
+				// For oneshot functions, release the failed instance immediately
+				// to prevent pod leaks when retrying.
+				if ir := instanceResultFromContext(ctx); ir != nil {
+					ir.instance = nil
+					r.releaseInstance(instance)
+				}
 				continue
 			}
 		}
@@ -289,6 +314,18 @@ func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
 
 		pr.Out.Header["Forwarded"] = []string{forwarded}
 	}
+}
+
+// releaseInstance deletes a oneshot pod in a fire-and-forget goroutine.
+// It uses a background context because the request context may already be done.
+func (r *Router) releaseInstance(inst *skipper.Instance) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := r.ctrl.ReleaseInstance(ctx, inst); err != nil {
+			log.Warn(ctx, "failed to release oneshot instance", key.Error.Slog(err), key.Instance.Slog(inst))
+		}
+	}()
 }
 
 func (r *Router) calculateBackoff(attempt int) time.Duration {
