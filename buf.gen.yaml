@@ -13,3 +13,4 @@ plugins:
     opt:
       - paths=source_relative
       - orig_name=true
+      - allow_unknown=true

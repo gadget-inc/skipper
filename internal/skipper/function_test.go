@@ -348,6 +348,11 @@ func TestFunctionFromHeader(t *testing.T) {
 			header: `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`,
 			wantFn: validFn,
 		},
+		{
+			name:   "unknown fields are ignored",
+			header: `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","nonce":"abc123","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`,
+			wantFn: validFn,
+		},
 	}
 
 	for _, tc := range tests {
