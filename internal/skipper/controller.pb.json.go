@@ -16,7 +16,9 @@ func (msg *GetInstanceRequest) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler
 func (msg *GetInstanceRequest) UnmarshalJSON(b []byte) error {
-	return protojson.UnmarshalOptions{}.Unmarshal(b, msg)
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
 }
 
 // MarshalJSON implements json.Marshaler
@@ -28,7 +30,9 @@ func (msg *GetInstanceResponse) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler
 func (msg *GetInstanceResponse) UnmarshalJSON(b []byte) error {
-	return protojson.UnmarshalOptions{}.Unmarshal(b, msg)
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
 }
 
 // MarshalJSON implements json.Marshaler
@@ -40,7 +44,9 @@ func (msg *HeartbeatRequest) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler
 func (msg *HeartbeatRequest) UnmarshalJSON(b []byte) error {
-	return protojson.UnmarshalOptions{}.Unmarshal(b, msg)
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
 }
 
 // MarshalJSON implements json.Marshaler
@@ -52,7 +58,9 @@ func (msg *HeartbeatResponse) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler
 func (msg *HeartbeatResponse) UnmarshalJSON(b []byte) error {
-	return protojson.UnmarshalOptions{}.Unmarshal(b, msg)
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
 }
 
 // MarshalJSON implements json.Marshaler
@@ -64,7 +72,9 @@ func (msg *ScaleRequest) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler
 func (msg *ScaleRequest) UnmarshalJSON(b []byte) error {
-	return protojson.UnmarshalOptions{}.Unmarshal(b, msg)
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
 }
 
 // MarshalJSON implements json.Marshaler
@@ -76,7 +86,9 @@ func (msg *ScaleResponse) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler
 func (msg *ScaleResponse) UnmarshalJSON(b []byte) error {
-	return protojson.UnmarshalOptions{}.Unmarshal(b, msg)
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
 }
 
 // MarshalJSON implements json.Marshaler
@@ -88,7 +100,9 @@ func (msg *ReleaseInstanceRequest) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler
 func (msg *ReleaseInstanceRequest) UnmarshalJSON(b []byte) error {
-	return protojson.UnmarshalOptions{}.Unmarshal(b, msg)
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
 }
 
 // MarshalJSON implements json.Marshaler
@@ -100,5 +114,7 @@ func (msg *ReleaseInstanceResponse) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler
 func (msg *ReleaseInstanceResponse) UnmarshalJSON(b []byte) error {
-	return protojson.UnmarshalOptions{}.Unmarshal(b, msg)
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
 }
