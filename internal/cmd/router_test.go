@@ -18,6 +18,9 @@ import (
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"gotest.tools/v3/assert"
 	"gotest.tools/v3/poll"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 )
 
 func TestRouterHeadlessHostFallback(t *testing.T) {
@@ -78,9 +81,11 @@ func TestDefaultNewControllerClient(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name                string
-		serviceHost         string
-		headlessServiceHost string
+		name                          string
+		serviceHost                   string
+		headlessServiceHost           string
+		controllerNamespace           string
+		controllerHeadlessServiceName string
 	}{
 		{
 			name:        "creates client",
@@ -91,6 +96,16 @@ func TestDefaultNewControllerClient(t *testing.T) {
 			serviceHost:         "controller",
 			headlessServiceHost: "controller-headless",
 		},
+		{
+			name:                "only namespace set falls through to DNS",
+			serviceHost:         "controller",
+			controllerNamespace: "skipper",
+		},
+		{
+			name:                          "only headless service name set falls through to DNS",
+			serviceHost:                   "controller",
+			controllerHeadlessServiceName: "controller-headless",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -100,12 +115,90 @@ func TestDefaultNewControllerClient(t *testing.T) {
 			cfg := &router.Config{
 				ControllerServiceHost:         tc.serviceHost,
 				ControllerHeadlessServiceHost: tc.headlessServiceHost,
+				ControllerNamespace:           tc.controllerNamespace,
+				ControllerHeadlessServiceName: tc.controllerHeadlessServiceName,
 				ControllerPort:                50051,
 			}
 
-			client, err := defaultNewControllerClient(cfg)
+			deps := &RouterDeps{}
+			deps.applyDefaults()
+			client, err := deps.NewControllerClient(cfg)
 			assert.NilError(t, err)
 			assert.Assert(t, client != nil)
+		})
+	}
+}
+
+func TestDefaultNewControllerClientWithEndpointSliceResolver(t *testing.T) {
+	t.Parallel()
+
+	deps := &RouterDeps{
+		LoadKubeConfig: func() (*rest.Config, error) {
+			return &rest.Config{}, nil
+		},
+		NewK8sClient: func(_ *rest.Config) (kubernetes.Interface, error) {
+			return fake.NewSimpleClientset(), nil //nolint:staticcheck // NewClientset isn't generated for discovery/v1
+		},
+	}
+	deps.applyDefaults()
+
+	cfg := &router.Config{
+		ControllerNamespace:           "skipper",
+		ControllerHeadlessServiceName: "controller-headless",
+		ControllerPort:                50051,
+	}
+
+	client, err := deps.NewControllerClient(cfg)
+	assert.NilError(t, err)
+	assert.Assert(t, client != nil)
+}
+
+func TestDefaultNewControllerClientDepsErrors(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		loadKubeConfig func() (*rest.Config, error)
+		newK8sClient   func(*rest.Config) (kubernetes.Interface, error)
+		wantErr        string
+	}{
+		{
+			name: "LoadKubeConfig error propagates",
+			loadKubeConfig: func() (*rest.Config, error) {
+				return nil, errors.New("no kubeconfig found")
+			},
+			wantErr: "no kubeconfig found",
+		},
+		{
+			name: "NewK8sClient error propagates",
+			loadKubeConfig: func() (*rest.Config, error) {
+				return &rest.Config{}, nil
+			},
+			newK8sClient: func(_ *rest.Config) (kubernetes.Interface, error) {
+				return nil, errors.New("invalid config")
+			},
+			wantErr: "invalid config",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			deps := &RouterDeps{
+				LoadKubeConfig: tc.loadKubeConfig,
+				NewK8sClient:   tc.newK8sClient,
+			}
+			deps.applyDefaults()
+
+			cfg := &router.Config{
+				ControllerNamespace:           "skipper",
+				ControllerHeadlessServiceName: "controller-headless",
+				ControllerPort:                50051,
+			}
+
+			_, err := deps.NewControllerClient(cfg)
+			assert.ErrorContains(t, err, tc.wantErr)
 		})
 	}
 }

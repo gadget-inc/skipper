@@ -63,6 +63,13 @@ var kubeLintConfigs = []bindingConfig{
 		},
 	},
 	{
+		name: "service-spec-override",
+		bindings: map[string]any{
+			"controller_service_spec": map[string]any{"clusterIP": "10.0.0.100"},
+			"router_service_spec":     map[string]any{"type": "NodePort"},
+		},
+	},
+	{
 		name: "controller-affinity-override",
 		bindings: map[string]any{
 			"controller_affinity": map[string]any{

@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/resolver"
 )
 
 // Client is the interface for communicating with a controller.
@@ -94,6 +95,27 @@ func NewClient(host string, port int) (Client, error) {
 	// (from a headless service) and load balance across them.
 	target := fmt.Sprintf("dns:///%s:%d", host, port)
 	conn, err := grpc.NewClient(target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithDefaultServiceConfig(defaultServiceConfig),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection: %w", err)
+	}
+
+	return &client{
+		conn:   conn,
+		client: skipper.NewControllerServiceClient(conn),
+	}, nil
+}
+
+// NewClientWithResolver creates a new client using a custom gRPC resolver.Builder
+// for service discovery. This enables zone-aware routing via EndpointSlice-based
+// resolution instead of DNS.
+func NewClientWithResolver(builder resolver.Builder) (Client, error) {
+	target := fmt.Sprintf("%s:///controller", builder.Scheme())
+	conn, err := grpc.NewClient(target,
+		grpc.WithResolvers(builder),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		grpc.WithDefaultServiceConfig(defaultServiceConfig),

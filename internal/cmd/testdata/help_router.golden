@@ -5,6 +5,8 @@ Usage:
 
 Flags:
       --controller-headless-service-host string   The hostname of the headless controller service. Falls back to controller-service-host if not set. (env SKIPPER_CONTROLLER_HEADLESS_SERVICE_HOST)
+      --controller-headless-service-name string   The name of the headless controller service. Required for zone-aware routing. (env SKIPPER_CONTROLLER_HEADLESS_SERVICE_NAME)
+      --controller-namespace string               The namespace of the controller service. Required for zone-aware routing. (env SKIPPER_CONTROLLER_NAMESPACE)
       --controller-port int                       The port the controller service listens on. (env SKIPPER_CONTROLLER_PORT) (default 50051)
       --controller-service-host string            The hostname of the controller service. (env SKIPPER_CONTROLLER_SERVICE_HOST)
       --heartbeat-interval duration               The interval at which to send heartbeats to the controller. (env SKIPPER_HEARTBEAT_INTERVAL) (default 5s)
@@ -32,3 +34,4 @@ Flags:
       --telemetry-prometheus-port int             The port for the Prometheus metrics endpoint. (env SKIPPER_TELEMETRY_PROMETHEUS_PORT) (default 9090)
       --telemetry-shutdown-timeout duration       The timeout for shutting down the telemetry. (env SKIPPER_TELEMETRY_SHUTDOWN_TIMEOUT) (default 5s)
       --telemetry-trace                           Whether to enable tracing if telemetry is enabled. (env SKIPPER_TELEMETRY_TRACE) (default true)
+      --zone string                               The availability zone this router runs in. Used for zone-aware routing. (env SKIPPER_ZONE)
