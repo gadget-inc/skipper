@@ -16,12 +16,45 @@
           # dependencies
           buf = pkgs.buf;
           git = pkgs.git;
-          go = pkgs.go_1_25;
+          go = pkgs.go_1_26;
           gofumpt = pkgs.gofumpt;
           golangci-lint = pkgs.golangci-lint;
           gotestsum = pkgs.gotestsum;
           graphviz = pkgs.graphviz;
-          krane = pkgs.krane;
+          # Override krane to add the csv gem, which Ruby 3.4 removed from
+          # default gems. Krane's bindings_parser.rb requires csv but the
+          # upstream gemset doesn't declare it. We must patch the Gemfile,
+          # Gemfile.lock, and gemset so Bundler can resolve csv at runtime.
+          # TODO: remove when upstream krane gemset includes csv
+          krane = pkgs.krane.override {
+            bundlerApp = args: pkgs.bundlerApp (args // {
+              gemdir = null; # forces bundled-common to use explicit gemfile/lockfile/gemset
+              gemfile = pkgs.writeText "Gemfile" ''
+                source 'https://rubygems.org'
+                gem 'krane'
+                gem 'csv'
+              '';
+              lockfile = pkgs.writeText "Gemfile.lock" (
+                builtins.replaceStrings
+                  [ "  specs:\n" "\nDEPENDENCIES\n  krane\n" ]
+                  [ "  specs:\n    csv (3.3.5)\n" "\nDEPENDENCIES\n  csv\n  krane\n" ]
+                  (builtins.readFile "${args.gemdir}/Gemfile.lock")
+              );
+              gemset = (import "${args.gemdir}/gemset.nix") // {
+                csv = {
+                  groups = [ "default" ];
+                  platforms = [ ];
+                  source = {
+                    remotes = [ "https://rubygems.org" ];
+                    # nix-prefetch-url https://rubygems.org/gems/csv-3.3.5.gem
+                    sha256 = "0gz7r2kazwwwyrwi95hbnhy54kwkfac5swh2gy5p5vw36fn38lbf";
+                    type = "gem";
+                  };
+                  version = "3.3.5";
+                };
+              };
+            });
+          };
           kube-linter = pkgs.kube-linter;
           kubectl = pkgs.kubectl;
           nodejs = pkgs.nodejs_24;

@@ -166,6 +166,13 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		reqCtx = withInstanceResult(reqCtx, instResult)
 	}
 
+	// Go 1.26's ReverseProxy wraps the body with a noopCloseReader that
+	// doesn't propagate Close to the underlying body. We close it here to
+	// ensure cleanup. Safe to double-close if future Go versions revert.
+	if req.Body != nil && req.Body != http.NoBody {
+		defer req.Body.Close()
+	}
+
 	r.reverseProxy.ServeHTTP(rw, req.WithContext(reqCtx))
 
 	// After the response is sent for a oneshot function, release the instance.
@@ -181,9 +188,14 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	if req.Body != nil && req.Body != http.NoBody {
-		// wrap the request body with io.NopCloser to prevent the
-		// underlying http.RoundTripper from closing it on dial errors,
-		// allowing the body to be reused between retry attempts
+		// Wrap the request body to prevent the underlying http.RoundTripper
+		// from closing it on dial errors, allowing reuse between retries.
+		//
+		// This is especially important with Go 1.26+: ReverseProxy wraps
+		// the body with a noopCloseReader whose Close sets an atomic flag
+		// that makes subsequent Read calls return an error. Without this
+		// NopCloser layer, a transport Close on dial failure would poison
+		// the noopCloseReader and break retry attempts.
 		originalBody := req.Body
 		req.Body = io.NopCloser(originalBody)
 		defer func() { req.Body = originalBody }()
