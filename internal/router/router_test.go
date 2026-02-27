@@ -2666,3 +2666,46 @@ func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
 	assert.Assert(t, releasedNames["failing-2"], "second failed instance should be released")
 	assert.Assert(t, releasedNames[successInstance.GetName()], "successful instance should be released")
 }
+
+// TestBodyClosedAfterServeHTTP verifies that the request body is closed after
+// ServeHTTP returns, even when the transport does NOT close it. Go 1.26's
+// ReverseProxy wraps the body with a noopCloseReader that doesn't propagate
+// Close to the underlying body, so the router's explicit defer req.Body.Close()
+// is necessary to ensure cleanup.
+func TestBodyClosedAfterServeHTTP(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	expectedBody := "request-body-content"
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+
+	router := New(testConfig(), mcc)
+
+	// Replace the round tripper with one that reads the body but does NOT
+	// close it, simulating Go 1.26's noopCloseReader behavior where the
+	// ReverseProxy no longer propagates Close to the original body.
+	router.roundTripper = roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		// Drain the body but intentionally skip req.Body.Close()
+		_, _ = io.ReadAll(req.Body)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
+	req := fixture.NewFunctionRequest(t, fn, http.MethodPost, "/", body)
+	rw := httptest.NewRecorder()
+
+	router.ServeHTTP(rw, req)
+
+	assert.Assert(t, rw.Code == http.StatusOK, "expected 200, got %d", rw.Code)
+	assert.Assert(t, body.closed, "expected body to be closed after ServeHTTP returns; the defer req.Body.Close() in ServeHTTP should close it even when the transport does not")
+}
