@@ -210,9 +210,9 @@ func TestFunctionFromHeader(t *testing.T) {
 }
 
 func TestFunctionHeaderCacheBounded(t *testing.T) {
-	// Fill a fresh cache beyond its capacity and confirm it stays bounded.
+	// Fill cache beyond capacity and confirm it stays bounded.
 	cap := 8
-	c := newLRUCache[string, *Function](cap)
+	c := newFunctionHeaderCache(cap)
 
 	fn := Function_builder{
 		Namespace:  proto.String("ns"),
@@ -222,17 +222,17 @@ func TestFunctionHeaderCacheBounded(t *testing.T) {
 	}.Build()
 
 	for i := range cap + 10 {
-		c.store(fmt.Sprintf("key-%d", i), fn)
+		c.Add(fmt.Sprintf("key-%d", i), fn)
 	}
 
-	assert.Equal(t, len(c.items), cap, "cache must not exceed its capacity")
+	assert.Equal(t, c.Len(), cap, "cache must not exceed its capacity")
 }
 
 func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 	// Verify that the oldest (least recently used) entry is evicted when the
 	// cache is full and a new entry is inserted.
 	cap := 3
-	c := newLRUCache[string, *Function](cap)
+	c := newFunctionHeaderCache(cap)
 
 	fn := Function_builder{
 		Namespace:  proto.String("ns"),
@@ -243,27 +243,76 @@ func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 
 	// Fill to capacity: key-0, key-1, key-2 (key-0 is LRU).
 	for i := range cap {
-		c.store(fmt.Sprintf("key-%d", i), fn)
+		c.Add(fmt.Sprintf("key-%d", i), fn)
 	}
 
 	// Access key-0 to make it recently used; key-1 becomes LRU.
-	_, ok := c.load("key-0")
+	_, ok := c.Get("key-0")
 	assert.Assert(t, ok, "key-0 should be present before eviction")
 
 	// Insert a new key; key-1 (LRU) should be evicted.
-	c.store("key-new", fn)
+	c.Add("key-new", fn)
 
-	_, stillThere := c.load("key-1")
+	_, stillThere := c.Get("key-1")
 	assert.Assert(t, !stillThere, "key-1 (LRU) should have been evicted")
 
-	_, ok0 := c.load("key-0")
+	_, ok0 := c.Get("key-0")
 	assert.Assert(t, ok0, "key-0 (recently used) should still be present")
 
-	_, ok2 := c.load("key-2")
+	_, ok2 := c.Get("key-2")
 	assert.Assert(t, ok2, "key-2 should still be present")
 
-	_, okNew := c.load("key-new")
+	_, okNew := c.Get("key-new")
 	assert.Assert(t, okNew, "key-new should be present")
+}
+
+func TestFunctionFromHeaderCacheIdentity(t *testing.T) {
+	// FunctionFromHeader must return the same pointer for repeated calls with
+	// the same header value.
+	header := `{"namespace":"id-ns","deployment":"id-deploy","tenant":"id-tenant","scale":{"min_instances":1,"max_instances":5}}`
+
+	req1 := httptest.NewRequest("GET", "/", nil)
+	req1.Header.Set(key.Function.Header, header)
+	fn1, err := FunctionFromHeader(req1)
+	assert.NilError(t, err)
+
+	req2 := httptest.NewRequest("GET", "/", nil)
+	req2.Header.Set(key.Function.Header, header)
+	fn2, err := FunctionFromHeader(req2)
+	assert.NilError(t, err)
+
+	assert.Assert(t, fn1 == fn2, "same header must return the same pointer (cache identity)")
+}
+
+func TestFunctionHeaderCacheConcurrentAccess(t *testing.T) {
+	// Verify concurrent reads and writes don't panic or corrupt the cache.
+	t.Parallel()
+
+	c := newFunctionHeaderCache(16)
+
+	fn := Function_builder{
+		Namespace:  proto.String("ns"),
+		Deployment: proto.String("deploy"),
+		Tenant:     proto.String("tenant"),
+		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
+	}.Build()
+
+	done := make(chan struct{})
+	for g := range 8 {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			for i := range 200 {
+				key := fmt.Sprintf("key-%d-%d", g, i%20)
+				c.Add(key, fn)
+				c.Get(key)
+			}
+		}()
+	}
+	for range 8 {
+		<-done
+	}
+
+	assert.Assert(t, c.Len() <= 16, "cache must not exceed its capacity under contention")
 }
 
 // Ensure xxhash import is used by benchmarks

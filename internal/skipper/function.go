@@ -1,16 +1,15 @@
 package skipper
 
 import (
-	"container/list"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sync"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 // functionHeaderCacheMaxSize is the maximum number of distinct header values
@@ -19,62 +18,16 @@ import (
 // so 4096 is generous for any realistic fleet size.
 const functionHeaderCacheMaxSize = 4096
 
-// lruCache is a simple, mutex-protected LRU cache.
-type lruCache[K comparable, V any] struct {
-	mu    sync.Mutex
-	cap   int
-	items map[K]*list.Element
-	order *list.List // front = most recently used
+// functionHeaderCache is a bounded LRU cache of parsed Function pointers,
+// keyed by the raw header string to avoid redundant JSON unmarshalling.
+type functionHeaderCacheType = lru.Cache[string, *Function]
+
+func newFunctionHeaderCache(capacity int) *functionHeaderCacheType {
+	c, _ := lru.New[string, *Function](capacity)
+	return c
 }
 
-type lruEntry[K comparable, V any] struct {
-	key K
-	val V
-}
-
-func newLRUCache[K comparable, V any](capacity int) *lruCache[K, V] {
-	return &lruCache[K, V]{
-		cap:   capacity,
-		items: make(map[K]*list.Element, capacity),
-		order: list.New(),
-	}
-}
-
-// load returns the cached value and true, or the zero value and false.
-func (c *lruCache[K, V]) load(key K) (V, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if el, ok := c.items[key]; ok {
-		c.order.MoveToFront(el)
-		return el.Value.(*lruEntry[K, V]).val, true
-	}
-	var zero V
-	return zero, false
-}
-
-// store adds or updates a key, evicting the least recently used entry if the
-// cache is at capacity.
-func (c *lruCache[K, V]) store(key K, val V) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if el, ok := c.items[key]; ok {
-		c.order.MoveToFront(el)
-		el.Value.(*lruEntry[K, V]).val = val
-		return
-	}
-	if len(c.items) >= c.cap {
-		// Evict the least recently used entry (back of the list).
-		lru := c.order.Back()
-		if lru != nil {
-			c.order.Remove(lru)
-			delete(c.items, lru.Value.(*lruEntry[K, V]).key)
-		}
-	}
-	el := c.order.PushFront(&lruEntry[K, V]{key: key, val: val})
-	c.items[key] = el
-}
-
-var functionHeaderCache = newLRUCache[string, *Function](functionHeaderCacheMaxSize)
+var functionHeaderCache = newFunctionHeaderCache(functionHeaderCacheMaxSize)
 
 // FunctionHash is a unique identifier for a Function, suitable for use as a map key.
 type FunctionHash = uint64
@@ -149,7 +102,7 @@ func FunctionFromHeader(req *http.Request) (*Function, error) {
 	}
 
 	headerVal := header[0]
-	if fn, ok := functionHeaderCache.load(headerVal); ok {
+	if fn, ok := functionHeaderCache.Get(headerVal); ok {
 		return fn, nil
 	}
 
@@ -162,6 +115,6 @@ func FunctionFromHeader(req *http.Request) (*Function, error) {
 		return nil, err
 	}
 
-	functionHeaderCache.store(headerVal, fn)
+	functionHeaderCache.Add(headerVal, fn)
 	return fn, nil
 }
