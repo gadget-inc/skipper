@@ -51,7 +51,7 @@ GET_UNASSIGNED_POD:
 	}
 
 	var port string
-	port, err = portFromPod(unassignedPod)
+	port, err = ctrl.portFromPod(unassignedPod)
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +281,10 @@ func (ctrl *Controller) deletePod(ctx context.Context, namespace, name string, o
 	}
 
 	if exists {
+		if pod, ok := podObj.(*v1.Pod); ok {
+			ctrl.portCache.Delete(pod.UID)
+		}
+
 		err = namespaceLister.podIndexer.Delete(podObj)
 		if err != nil {
 			if pod, ok := podObj.(*v1.Pod); ok {
@@ -375,7 +379,7 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
 	}
 
-	port, err := portFromPod(pod)
+	port, err := ctrl.portFromPod(pod)
 	if err != nil {
 		return nil, err
 	}
@@ -412,7 +416,13 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 	return instance, nil
 }
 
-func portFromPod(pod *v1.Pod) (string, error) {
+func (ctrl *Controller) portFromPod(pod *v1.Pod) (string, error) {
+	if pod.UID != "" {
+		if cached, ok := ctrl.portCache.Load(pod.UID); ok {
+			return cached, nil
+		}
+	}
+
 	port := pod.Annotations[key.Port.Annotation]
 	if port == "" {
 		// no port annotation, grab the first port from the first container
@@ -434,6 +444,10 @@ func portFromPod(pod *v1.Pod) (string, error) {
 	}
 	if port == "" {
 		return "", fmt.Errorf("failed to get port for pod %s", pod.Name)
+	}
+
+	if pod.UID != "" {
+		ctrl.portCache.Store(pod.UID, port)
 	}
 	return port, nil
 }

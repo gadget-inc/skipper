@@ -31,7 +31,8 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod
 	assert.NilError(t, err)
 	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Annotation])
 
-	port, err := portFromPod(&pod)
+	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
+	port, err := ctrl.portFromPod(&pod)
 	assert.NilError(t, err)
 
 	assert.Assert(t, instance.GetName() == pod.Name)
@@ -547,7 +548,8 @@ func TestPortFromPod(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			port, err := portFromPod(tc.pod)
+			ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
+			port, err := ctrl.portFromPod(tc.pod)
 			if tc.wantErr {
 				assert.Assert(t, err != nil)
 			} else {

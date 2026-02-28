@@ -22,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	listerappsv1 "k8s.io/client-go/listers/apps/v1"
@@ -53,6 +54,7 @@ type Controller struct {
 	namespaceListers    map[string]namespaceLister
 	podMetrics          *xsync.Map[string, metricsv1beta1.PodMetrics] // keyed by "namespace/pod-name"
 	functionCache       *xsync.Map[string, *skipper.Function]         // keyed by raw annotation JSON
+	portCache           *xsync.Map[types.UID, string]                 // keyed by pod UID
 	staleReplacementSem *semaphore.Weighted
 }
 
@@ -68,6 +70,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 		namespaceListers:    make(map[string]namespaceLister, len(cfg.FunctionNamespaces)),
 		podMetrics:          xsync.NewMap[string, metricsv1beta1.PodMetrics](),
 		functionCache:       xsync.NewMap[string, *skipper.Function](),
+		portCache:           xsync.NewMap[types.UID, string](),
 		staleReplacementSem: semaphore.NewWeighted(int64(cfg.MaxConcurrentStaleReplacements)),
 	}
 }
