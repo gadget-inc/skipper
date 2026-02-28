@@ -211,7 +211,7 @@ export async function fetchProfile(argv: string[]) {
       pods.map((pod, i) => fetchOnePod(pod, `[${i + 1}/${pods.length}] `)),
     );
 
-    const failedPods: string[] = [];
+    let failedPods: string[] = [];
     let successCount = 0;
 
     for (let i = 0; i < results.length; i++) {
@@ -225,8 +225,29 @@ export async function fetchProfile(argv: string[]) {
       }
     }
 
-    if (successCount === 0) {
-      throw new Error(`All ${pods.length} fetch(es) failed`);
+    // Retry failed pods sequentially — concurrent kubectl exec streams often get
+    // connection-reset by the API server under contention.
+    if (failedPods.length > 0) {
+      console.log();
+      if (successCount === 0) {
+        console.log("All concurrent fetches failed. Retrying sequentially...");
+      } else {
+        console.log(`Retrying ${failedPods.length} failed pod(s) sequentially...`);
+      }
+      const stillFailed: string[] = [];
+      for (const pod of failedPods) {
+        try {
+          await fetchOnePod(pod, `[retry] `);
+          successCount++;
+        } catch (error) {
+          stillFailed.push(pod);
+          console.error(chalk.red(`Retry failed: ${pod}: ${shortReason(error)}`));
+        }
+      }
+      if (successCount === 0) {
+        throw new Error(`All ${pods.length} fetch(es) failed`);
+      }
+      failedPods = stillFailed;
     }
 
     if (failedPods.length > 0) {
