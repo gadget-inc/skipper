@@ -136,6 +136,12 @@ func (f *Function) SetHeader(r *http.Request) {
 	r.Header[key.Function.Header] = []string{string(fnJSON)}
 }
 
+// FunctionFromHeader parses the function identity from the request header.
+// The returned *Function is shared across all callers that present the same
+// header value — it is cached to avoid redundant JSON unmarshalling. Callers
+// MUST treat the returned pointer as immutable; mutating any field would
+// silently corrupt the cache entry and affect every concurrent request that
+// shares that pointer.
 func FunctionFromHeader(req *http.Request) (*Function, error) {
 	header, ok := req.Header[key.Function.Header]
 	if !ok || len(header) == 0 {
