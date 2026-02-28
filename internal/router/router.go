@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"slices"
 	"strconv"
 	"time"
 
@@ -191,7 +189,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		defer func() { req.Body = originalBody }()
 	}
 
-	excludedInstanceNameSet := make(map[string]struct{})
+	var excludedInstanceNames []string
 	getInstanceDuration := time.Duration(0)
 	attempt := 0
 
@@ -209,7 +207,6 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 		}
 
-		excludedInstanceNames := slices.Collect(maps.Keys(excludedInstanceNameSet))
 		ctx := telemetry.With(req.Context(), key.Attempt.Attr(attempt), key.ExcludeInstanceNames.Attr(excludedInstanceNames))
 
 		getInstanceStart := time.Now()
@@ -242,7 +239,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		if errors.As(err, &netOpErr) {
 			if netOpErr.Op == "dial" {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Slog(err))
-				excludedInstanceNameSet[instance.GetName()] = struct{}{} // exclude this instance from future requests in case it's the problem
+				excludedInstanceNames = append(excludedInstanceNames, instance.GetName()) // exclude this instance from future attempts
 				// For oneshot functions, release the failed instance immediately
 				// to prevent pod leaks when retrying.
 				if ir := instanceResultFromContext(ctx); ir != nil {
