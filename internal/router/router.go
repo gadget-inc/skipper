@@ -9,9 +9,9 @@ import (
 	"math"
 	"math/rand/v2"
 	"net"
-	"slices"
 	"net/http"
 	"net/http/httputil"
+	"slices"
 	"strconv"
 	"time"
 
@@ -241,8 +241,8 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			if netOpErr.Op == "dial" {
 				log.Warn(ctx, "failed to connect to instance", key.Error.Slog(err))
 				if !slices.Contains(excludedInstanceNames, instance.GetName()) {
-				excludedInstanceNames = append(excludedInstanceNames, instance.GetName()) // exclude this instance from future attempts
-			}
+					excludedInstanceNames = append(excludedInstanceNames, instance.GetName()) // exclude this instance from future attempts
+				}
 				// For oneshot functions, release the failed instance immediately
 				// to prevent pod leaks when retrying.
 				if ir := instanceResultFromContext(ctx); ir != nil {
