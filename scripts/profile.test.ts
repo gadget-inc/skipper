@@ -556,9 +556,33 @@ describe("fetchProfile --spread", () => {
     await expect(fetchProfile(["--spread"])).rejects.toThrow("Failed to list pods");
   });
 
-  it("continues fetching remaining pods when one fails", async () => {
+  it("retries failed pods sequentially and counts them as succeeded", async () => {
     mocks.state.shellTextReturn = "pod-a\npod-b\npod-c";
-    mocks.state.shellThrowOnCallNumbers = [2]; // pod-b's fetch call
+    // call 0: list, 1: pod-a, 2: pod-b (fail), 3: pod-c, 4: pod-b retry (succeeds)
+    mocks.state.shellThrowOnCallNumbers = [2];
+    const logSpy = vi.spyOn(console, "log");
+
+    await fetchProfile(["--spread"]);
+
+    const summaryLog = logSpy.mock.calls.find(
+      (args) => typeof args[0] === "string" && args[0].includes("Fetched"),
+    );
+    expect(summaryLog).toBeDefined();
+    expect(summaryLog![0]).toContain("Fetched 3/3 profile(s)");
+
+    const retryingLog = logSpy.mock.calls.find(
+      (args) => typeof args[0] === "string" && args[0].includes("Retrying"),
+    );
+    expect(retryingLog).toBeDefined();
+    expect(retryingLog![0]).toContain("1 failed pod(s) sequentially");
+
+    logSpy.mockRestore();
+  });
+
+  it("shows retry commands when retry also fails", async () => {
+    mocks.state.shellTextReturn = "pod-a\npod-b\npod-c";
+    // call 0: list, 1: pod-a, 2: pod-b (fail), 3: pod-c, 4: pod-b retry (fail)
+    mocks.state.shellThrowOnCallNumbers = [2, 4];
     const logSpy = vi.spyOn(console, "log");
     const errorSpy = vi.spyOn(console, "error");
 
@@ -579,7 +603,7 @@ describe("fetchProfile --spread", () => {
 
     // Should print retry command
     const retryLog = logSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Retry"),
+      (args) => typeof args[0] === "string" && args[0].includes("Retry failed pods:"),
     );
     expect(retryLog).toBeDefined();
 
@@ -589,7 +613,8 @@ describe("fetchProfile --spread", () => {
 
   it("prints retry commands for failed pods with correct flags", async () => {
     mocks.state.shellTextReturn = "pod-a\npod-b\npod-c";
-    mocks.state.shellThrowOnCallNumbers = [1, 3]; // pod-a and pod-c fail
+    // call 0: list, 1: pod-a (fail), 2: pod-b, 3: pod-c (fail), 4: pod-a retry (fail), 5: pod-c retry (fail)
+    mocks.state.shellThrowOnCallNumbers = [1, 3, 4, 5];
     const logSpy = vi.spyOn(console, "log");
 
     await fetchProfile(["--spread", "--type=cpu", "--production", "--seconds=60"]);
@@ -629,9 +654,32 @@ describe("fetchProfile --spread", () => {
     errorSpy.mockRestore();
   });
 
-  it("throws when all spread fetches fail", async () => {
+  it("recovers when all concurrent fetches fail but retries succeed", async () => {
     mocks.state.shellTextReturn = "pod-a\npod-b";
+    // call 0: list, 1: pod-a (fail), 2: pod-b (fail), 3: pod-a retry (ok), 4: pod-b retry (ok)
     mocks.state.shellThrowOnCallNumbers = [1, 2];
+    const logSpy = vi.spyOn(console, "log");
+
+    await fetchProfile(["--spread"]);
+
+    const retryingLog = logSpy.mock.calls.find(
+      (args) => typeof args[0] === "string" && args[0].includes("All concurrent fetches failed"),
+    );
+    expect(retryingLog).toBeDefined();
+
+    const summaryLog = logSpy.mock.calls.find(
+      (args) => typeof args[0] === "string" && args[0].includes("Fetched"),
+    );
+    expect(summaryLog).toBeDefined();
+    expect(summaryLog![0]).toContain("Fetched 2/2 profile(s)");
+
+    logSpy.mockRestore();
+  });
+
+  it("throws when all spread fetches fail including retries", async () => {
+    mocks.state.shellTextReturn = "pod-a\npod-b";
+    // call 0: list, 1: pod-a (fail), 2: pod-b (fail), 3: pod-a retry (fail), 4: pod-b retry (fail)
+    mocks.state.shellThrowOnCallNumbers = [1, 2, 3, 4];
     await expect(fetchProfile(["--spread"])).rejects.toThrow("All 2 fetch(es) failed");
   });
 });

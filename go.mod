@@ -6,6 +6,7 @@ require (
 	aidanwoods.dev/go-paseto v1.6.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-json-experiment/json v0.0.0-20251027170946-4849db3c2f7e
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/common v0.67.5
 	github.com/puzpuzpuz/xsync/v4 v4.4.0

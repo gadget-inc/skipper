@@ -9,7 +9,25 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
+
+// functionHeaderCacheMaxSize is the maximum number of distinct header values
+// retained in the parse cache. Each entry holds one parsed *Function. The
+// router sees at most one distinct header per active function × scale variant,
+// so 4096 is generous for any realistic fleet size.
+const functionHeaderCacheMaxSize = 4096
+
+// functionHeaderCache is a bounded LRU cache of parsed Function pointers,
+// keyed by the raw header string to avoid redundant JSON unmarshalling.
+type functionHeaderCacheType = lru.Cache[string, *Function]
+
+func newFunctionHeaderCache(capacity int) *functionHeaderCacheType {
+	c, _ := lru.New[string, *Function](capacity)
+	return c
+}
+
+var functionHeaderCache = newFunctionHeaderCache(functionHeaderCacheMaxSize)
 
 // FunctionHash is a unique identifier for a Function, suitable for use as a map key.
 type FunctionHash = uint64
@@ -71,16 +89,25 @@ func (f *Function) SetHeader(r *http.Request) {
 	r.Header[key.Function.Header] = []string{string(fnJSON)}
 }
 
+// FunctionFromHeader parses the function identity from the request header.
+// The returned *Function is shared across all callers that present the same
+// header value — it is cached to avoid redundant JSON unmarshalling. Callers
+// MUST treat the returned pointer as immutable; mutating any field would
+// silently corrupt the cache entry and affect every concurrent request that
+// shares that pointer.
 func FunctionFromHeader(req *http.Request) (*Function, error) {
-	fn := &Function{}
-
 	header, ok := req.Header[key.Function.Header]
 	if !ok || len(header) == 0 {
 		return nil, errors.New("missing " + key.Function.Header)
 	}
 
-	err := json.Unmarshal([]byte(header[0]), fn)
-	if err != nil {
+	headerVal := header[0]
+	if fn, ok := functionHeaderCache.Get(headerVal); ok {
+		return fn, nil
+	}
+
+	fn := &Function{}
+	if err := json.Unmarshal([]byte(headerVal), fn); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal %s header: %w", key.Function.Header, err)
 	}
 
@@ -88,5 +115,6 @@ func FunctionFromHeader(req *http.Request) (*Function, error) {
 		return nil, err
 	}
 
+	functionHeaderCache.Add(headerVal, fn)
 	return fn, nil
 }

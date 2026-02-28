@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
@@ -71,16 +70,7 @@ func (s *Server) Heartbeat(ctx context.Context, req *skipper.HeartbeatRequest) (
 	log.Trace(ctx, "received heartbeats", key.Count.Slog(len(heartbeats)))
 
 	// Forward heartbeats to other controllers
-	seen := append(slices.Clone(req.GetForwardedFor()), s.ctrl.config.PodIP)
-
-	var targets []string
-	for _, ip := range s.ctrl.ring.List() {
-		if !slices.Contains(seen, ip) {
-			targets = append(targets, ip)
-		}
-	}
-
-	forwardedFor := slices.Concat(seen, targets)
+	targets, forwardedFor := heartbeatTargets(s.ctrl.ring.List(), req.GetForwardedFor(), s.ctrl.config.PodIP)
 
 	for _, controllerIP := range targets {
 		go func() {

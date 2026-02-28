@@ -400,7 +400,7 @@ func TestControllerHealthCheck(t *testing.T) {
 
 	// Health should NOT return SERVING while informers are blocked
 	var notServing bool
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		resp, err := healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
 		if err != nil {
 			st, ok := status.FromError(err)
@@ -425,7 +425,7 @@ func TestControllerHealthCheck(t *testing.T) {
 
 	// Health should transition to SERVING after the controller is ready
 	var resp *healthgrpc.HealthCheckResponse
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		resp, err = healthClient.Check(ctx, &healthgrpc.HealthCheckRequest{})
 		if err == nil && resp.Status == healthgrpc.HealthCheckResponse_SERVING {
 			break

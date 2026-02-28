@@ -294,27 +294,32 @@ func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
 	}
 
 	if pr.Out.Header["Forwarded"], exists = pr.In.Header["Forwarded"]; !exists {
-		var forwarded string
+		buf := getForwardedBuf()
 
 		for i, host := range pr.Out.Header["X-Forwarded-For"] {
 			if i > 0 {
-				forwarded += ", "
+				buf.WriteString(", ")
 			}
-			forwarded += "for="
+			buf.WriteString("for=")
 			if ip := net.ParseIP(host); ip == nil || ip.To4() != nil {
 				// non-IPv6 addresses can be written as is
-				forwarded += host
+				buf.WriteString(host)
 			} else {
 				// IPv6 addresses must be enclosed in square brackets
 				// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Forwarded#transitioning_from_x-forwarded-for_to_forwarded
-				forwarded += `"[` + host + `]"`
+				buf.WriteString(`"[`)
+				buf.WriteString(host)
+				buf.WriteString(`]"`)
 			}
 		}
 
-		forwarded += ";host=" + pr.Out.Header["X-Forwarded-Host"][0]
-		forwarded += ";proto=" + pr.Out.Header["X-Forwarded-Proto"][0]
+		buf.WriteString(";host=")
+		buf.WriteString(pr.Out.Header["X-Forwarded-Host"][0])
+		buf.WriteString(";proto=")
+		buf.WriteString(pr.Out.Header["X-Forwarded-Proto"][0])
 
-		pr.Out.Header["Forwarded"] = []string{forwarded}
+		pr.Out.Header["Forwarded"] = []string{buf.String()}
+		putForwardedBuf(buf)
 	}
 }
 

@@ -320,6 +320,68 @@ func TestNodeHashCollisions(t *testing.T) {
 	}
 }
 
+func TestListCacheInvalidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		setup  func(*HashRing)
+		action func(*HashRing)
+		want   []string
+	}{
+		{
+			name: "add invalidates cache",
+			setup: func(h *HashRing) {
+				h.Add("10.0.0.1")
+				h.Add("10.0.0.2")
+				_ = h.List() // populate cache
+			},
+			action: func(h *HashRing) {
+				h.Add("10.0.0.3")
+			},
+			want: []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"},
+		},
+		{
+			name: "remove invalidates cache",
+			setup: func(h *HashRing) {
+				h.Add("10.0.0.1")
+				h.Add("10.0.0.2")
+				h.Add("10.0.0.3")
+				_ = h.List() // populate cache
+			},
+			action: func(h *HashRing) {
+				h.Remove("10.0.0.2")
+			},
+			want: []string{"10.0.0.1", "10.0.0.3"},
+		},
+		{
+			name: "stable ring returns identical results",
+			setup: func(h *HashRing) {
+				h.Add("10.0.0.1")
+				h.Add("10.0.0.2")
+				h.Add("10.0.0.3")
+			},
+			action: func(h *HashRing) {
+				// no mutation
+			},
+			want: []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := New()
+			tt.setup(h)
+			tt.action(h)
+			got := h.List()
+			assert.DeepEqual(t, got, tt.want)
+			// Second call should return identical result
+			assert.DeepEqual(t, h.List(), tt.want)
+		})
+	}
+}
+
 var sinkIP string
 
 func BenchmarkHashRingGet(b *testing.B) {
@@ -398,6 +460,71 @@ func BenchmarkHashRingAdd(b *testing.B) {
 		ring := New()
 		ring.Add("10.0.0.1")
 	}
+}
+
+var sinkList []string
+
+func BenchmarkHashRingList(b *testing.B) {
+	ips4 := []string{"10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"}
+	ips20 := make([]string, 20)
+	for i := range ips20 {
+		ips20[i] = fmt.Sprintf("10.0.%d.%d", i/256, i%256+1)
+	}
+
+	b.Run("stable/4-ips", func(b *testing.B) {
+		ring := New()
+		for _, ip := range ips4 {
+			ring.Add(ip)
+		}
+		_ = ring.List() // warm the cache
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			sinkList = ring.List()
+		}
+	})
+
+	b.Run("stable/20-ips", func(b *testing.B) {
+		ring := New()
+		for _, ip := range ips20 {
+			ring.Add(ip)
+		}
+		_ = ring.List() // warm the cache
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			sinkList = ring.List()
+		}
+	})
+
+	b.Run("after-mutation", func(b *testing.B) {
+		ring := New()
+		for _, ip := range ips4 {
+			ring.Add(ip)
+		}
+		_ = ring.List() // warm the cache
+		ring.Add("10.0.0.5")
+		b.ReportAllocs()
+		b.ResetTimer()
+		for b.Loop() {
+			sinkList = ring.List()
+		}
+	})
+
+	b.Run("parallel", func(b *testing.B) {
+		ring := New()
+		for _, ip := range ips4 {
+			ring.Add(ip)
+		}
+		_ = ring.List() // warm the cache
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = ring.List()
+			}
+		})
+	})
 }
 
 func randomInternalIP() string {

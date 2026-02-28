@@ -4021,3 +4021,45 @@ func TestOneshotProtectionPeriodPreventsOrphanDeletion(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Equal(t, len(pods.Items), 1, "oneshot pod should survive during protection period")
 }
+
+var sinkRecommendation Recommendation
+
+func BenchmarkRecordRecommendation(b *testing.B) {
+	cfg := testConfig()
+
+	// Build a 300-entry stabilization window spanning the full HPADownscaleStabilization
+	// period. The oldest entries sit right at the expiry boundary so each call to
+	// recordRecommendation trims a handful and appends one — matching steady-state
+	// production behavior.
+	makeWindow := func() []Recommendation {
+		window := make([]Recommendation, 300)
+		now := time.Now()
+		interval := cfg.HPADownscaleStabilization / 300
+		for i := range window {
+			window[i] = Recommendation{
+				DesiredInstances: uint32(3 + i%5),
+				Timestamp:        now.Add(-cfg.HPADownscaleStabilization + time.Duration(i)*interval),
+			}
+		}
+		return window
+	}
+
+	b.Run("with_300_entries", func(b *testing.B) {
+		b.ReportAllocs()
+		template := makeWindow()
+		s := &Supervisor{ctrl: &Controller{config: cfg}}
+		for b.Loop() {
+			s.stabilizationWindow = append(s.stabilizationWindow[:0], template...)
+			sinkRecommendation = s.recordRecommendation(5)
+		}
+	})
+
+	b.Run("empty", func(b *testing.B) {
+		b.ReportAllocs()
+		s := &Supervisor{ctrl: &Controller{config: cfg}}
+		for b.Loop() {
+			s.stabilizationWindow = s.stabilizationWindow[:0]
+			sinkRecommendation = s.recordRecommendation(5)
+		}
+	})
+}
