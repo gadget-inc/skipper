@@ -345,7 +345,7 @@ func TestRouterMultipleConcurrentRequestsDrain(t *testing.T) {
 		err  error
 	}
 	results := make(chan result, numRequests)
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		go func() {
 			req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
 			fn.SetHeader(req)
@@ -361,7 +361,7 @@ func TestRouterMultipleConcurrentRequestsDrain(t *testing.T) {
 	}
 
 	// Wait for all requests to start
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		select {
 		case <-requestsStarted:
 		case <-time.After(5 * time.Second):
@@ -380,7 +380,7 @@ func TestRouterMultipleConcurrentRequestsDrain(t *testing.T) {
 	close(requestsCanFinish)
 
 	// Verify all requests completed successfully
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		select {
 		case r := <-results:
 			assert.NilError(t, r.err, "request %d failed", i)
@@ -784,7 +784,7 @@ func TestRouterClientClosedAfterAllRequestsDrain(t *testing.T) {
 
 	// Start multiple requests
 	results := make(chan error, numRequests)
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		go func() {
 			req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
 			fn.SetHeader(req)
@@ -794,7 +794,7 @@ func TestRouterClientClosedAfterAllRequestsDrain(t *testing.T) {
 	}
 
 	// Wait for all requests to start
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		<-requestsStarted
 	}
 
@@ -808,7 +808,7 @@ func TestRouterClientClosedAfterAllRequestsDrain(t *testing.T) {
 	}
 
 	// Complete requests one by one, checking client is not closed until all are done
-	for i := 0; i < numRequests-1; i++ {
+	for i := range numRequests - 1 {
 		close(requestsCanFinish[i])
 		<-results // Wait for this request to complete
 

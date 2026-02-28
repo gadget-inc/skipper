@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1798,10 +1800,8 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 	poll.WaitOn(t, func(t poll.LogT) poll.Result {
 		inFlightMu.Lock()
 		defer inFlightMu.Unlock()
-		for _, count := range inFlightCounts {
-			if count == uint32(numRequests) {
-				return poll.Success()
-			}
+		if slices.Contains(inFlightCounts, uint32(numRequests)) {
+			return poll.Success()
 		}
 		return poll.Continue("waiting for heartbeat with %d in-flight, recordings so far: %v", numRequests, inFlightCounts)
 	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(5*time.Second))
@@ -2708,4 +2708,52 @@ func TestBodyClosedAfterServeHTTP(t *testing.T) {
 
 	assert.Assert(t, rw.Code == http.StatusOK, "expected 200, got %d", rw.Code)
 	assert.Assert(t, body.closed, "expected body to be closed after ServeHTTP returns; the defer req.Body.Close() in ServeHTTP should close it even when the transport does not")
+}
+
+func BenchmarkRewriteRequestHeaders(b *testing.B) {
+	b.Run("no existing headers", func(b *testing.B) {
+		in := httptest.NewRequest(http.MethodGet, "/", nil)
+		in.Host = "tenant.example.com"
+		in.RemoteAddr = "192.0.2.1:12345"
+		out := &http.Request{Header: make(http.Header)}
+		pr := &httputil.ProxyRequest{In: in, Out: out}
+
+		b.ReportAllocs()
+		for b.Loop() {
+			out.Header = make(http.Header)
+			rewriteRequestHeaders(pr)
+		}
+	})
+
+	b.Run("with forwarded-for chain", func(b *testing.B) {
+		in := httptest.NewRequest(http.MethodGet, "/", nil)
+		in.Host = "tenant.example.com"
+		in.RemoteAddr = "192.0.2.1:12345"
+		in.Header["X-Forwarded-For"] = []string{"203.0.113.50", "198.51.100.25", "10.0.0.1"}
+		in.Header.Set("X-Forwarded-Host", "original.example.com")
+		in.Header.Set("X-Forwarded-Proto", "https")
+		out := &http.Request{Header: make(http.Header)}
+		pr := &httputil.ProxyRequest{In: in, Out: out}
+
+		b.ReportAllocs()
+		for b.Loop() {
+			out.Header = make(http.Header)
+			rewriteRequestHeaders(pr)
+		}
+	})
+
+	b.Run("ipv6", func(b *testing.B) {
+		in := httptest.NewRequest(http.MethodGet, "/", nil)
+		in.Host = "tenant.example.com"
+		in.RemoteAddr = "[2001:db8::1]:12345"
+		in.Header.Set("X-Forwarded-For", "2001:db8::1")
+		out := &http.Request{Header: make(http.Header)}
+		pr := &httputil.ProxyRequest{In: in, Out: out}
+
+		b.ReportAllocs()
+		for b.Loop() {
+			out.Header = make(http.Header)
+			rewriteRequestHeaders(pr)
+		}
+	})
 }
