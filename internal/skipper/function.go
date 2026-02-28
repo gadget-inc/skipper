@@ -9,7 +9,10 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/go-json-experiment/json"
+	"github.com/puzpuzpuz/xsync/v4"
 )
+
+var functionHeaderCache = xsync.NewMap[string, *Function]()
 
 // FunctionHash is a unique identifier for a Function, suitable for use as a map key.
 type FunctionHash = uint64
@@ -72,15 +75,18 @@ func (f *Function) SetHeader(r *http.Request) {
 }
 
 func FunctionFromHeader(req *http.Request) (*Function, error) {
-	fn := &Function{}
-
 	header, ok := req.Header[key.Function.Header]
 	if !ok || len(header) == 0 {
 		return nil, errors.New("missing " + key.Function.Header)
 	}
 
-	err := json.Unmarshal([]byte(header[0]), fn)
-	if err != nil {
+	headerVal := header[0]
+	if fn, ok := functionHeaderCache.Load(headerVal); ok {
+		return fn, nil
+	}
+
+	fn := &Function{}
+	if err := json.Unmarshal([]byte(headerVal), fn); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal %s header: %w", key.Function.Header, err)
 	}
 
@@ -88,5 +94,6 @@ func FunctionFromHeader(req *http.Request) (*Function, error) {
 		return nil, err
 	}
 
+	functionHeaderCache.Store(headerVal, fn)
 	return fn, nil
 }

@@ -222,9 +222,16 @@ func (s *Supervisor) recordRecommendation(desiredInstances uint32) Recommendatio
 		DesiredInstances: desiredInstances,
 		Timestamp:        now,
 	})
-	s.stabilizationWindow = slices.DeleteFunc(s.stabilizationWindow, func(r Recommendation) bool {
-		return r.Timestamp.Before(cutoff)
-	})
+	// Entries are appended chronologically, so expired ones are at the front.
+	// Find the first non-expired entry and trim in a single copy instead of
+	// scanning the entire slice with DeleteFunc.
+	cutIdx := 0
+	for cutIdx < len(s.stabilizationWindow) && s.stabilizationWindow[cutIdx].Timestamp.Before(cutoff) {
+		cutIdx++
+	}
+	if cutIdx > 0 {
+		s.stabilizationWindow = slices.Delete(s.stabilizationWindow, 0, cutIdx)
+	}
 	return slices.MaxFunc(s.stabilizationWindow, func(a, b Recommendation) int {
 		return cmp.Compare(a.DesiredInstances, b.DesiredInstances)
 	})

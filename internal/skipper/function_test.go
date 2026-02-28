@@ -1,7 +1,10 @@
 package skipper
 
 import (
+	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cespare/xxhash/v2"
@@ -208,3 +211,43 @@ func TestFunctionFromHeader(t *testing.T) {
 
 // Ensure xxhash import is used by benchmarks
 var _ = xxhash.New
+
+var sinkFunction *Function
+
+func BenchmarkFunctionFromHeader(b *testing.B) {
+	const validHeader = `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`
+
+	b.Run("cache_hit", func(b *testing.B) {
+		b.ReportAllocs()
+
+		// Pre-warm the cache.
+		warmReq := httptest.NewRequest(http.MethodGet, "/", nil)
+		warmReq.Header.Set(key.Function.Header, validHeader)
+		if _, err := FunctionFromHeader(warmReq); err != nil {
+			b.Fatal(err)
+		}
+
+		b.RunParallel(func(pb *testing.PB) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set(key.Function.Header, validHeader)
+			for pb.Next() {
+				sinkFunction, _ = FunctionFromHeader(req)
+			}
+		})
+	})
+
+	b.Run("cache_miss", func(b *testing.B) {
+		b.ReportAllocs()
+
+		var counter atomic.Int64
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				n := counter.Add(1)
+				header := fmt.Sprintf(`{"namespace":"test-ns","deployment":"test-deploy","tenant":"tenant-%d","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`, n)
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
+				req.Header.Set(key.Function.Header, header)
+				sinkFunction, _ = FunctionFromHeader(req)
+			}
+		})
+	})
+}
