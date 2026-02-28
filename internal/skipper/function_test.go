@@ -209,6 +209,63 @@ func TestFunctionFromHeader(t *testing.T) {
 	}
 }
 
+func TestFunctionHeaderCacheBounded(t *testing.T) {
+	// Fill a fresh cache beyond its capacity and confirm it stays bounded.
+	cap := 8
+	c := newLRUCache[string, *Function](cap)
+
+	fn := Function_builder{
+		Namespace:  proto.String("ns"),
+		Deployment: proto.String("deploy"),
+		Tenant:     proto.String("tenant"),
+		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
+	}.Build()
+
+	for i := range cap + 10 {
+		c.store(fmt.Sprintf("key-%d", i), fn)
+	}
+
+	assert.Equal(t, len(c.items), cap, "cache must not exceed its capacity")
+}
+
+func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
+	// Verify that the oldest (least recently used) entry is evicted when the
+	// cache is full and a new entry is inserted.
+	cap := 3
+	c := newLRUCache[string, *Function](cap)
+
+	fn := Function_builder{
+		Namespace:  proto.String("ns"),
+		Deployment: proto.String("deploy"),
+		Tenant:     proto.String("tenant"),
+		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
+	}.Build()
+
+	// Fill to capacity: key-0, key-1, key-2 (key-0 is LRU).
+	for i := range cap {
+		c.store(fmt.Sprintf("key-%d", i), fn)
+	}
+
+	// Access key-0 to make it recently used; key-1 becomes LRU.
+	_, ok := c.load("key-0")
+	assert.Assert(t, ok, "key-0 should be present before eviction")
+
+	// Insert a new key; key-1 (LRU) should be evicted.
+	c.store("key-new", fn)
+
+	_, stillThere := c.load("key-1")
+	assert.Assert(t, !stillThere, "key-1 (LRU) should have been evicted")
+
+	_, ok0 := c.load("key-0")
+	assert.Assert(t, ok0, "key-0 (recently used) should still be present")
+
+	_, ok2 := c.load("key-2")
+	assert.Assert(t, ok2, "key-2 should still be present")
+
+	_, okNew := c.load("key-new")
+	assert.Assert(t, okNew, "key-new should be present")
+}
+
 // Ensure xxhash import is used by benchmarks
 var _ = xxhash.New
 
