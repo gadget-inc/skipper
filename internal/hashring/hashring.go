@@ -3,6 +3,7 @@ package hashring
 import (
 	"maps"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/puzpuzpuz/xsync/v4"
@@ -10,11 +11,12 @@ import (
 
 // HashRing represents a thread-safe consistent hash ring of IPs.
 type HashRing struct {
-	ips          map[uint32]string // Map from hash to ip
-	hashes       []uint32          // Sorted list of hashes
-	mu           xsync.RBMutex     // Read-Write mutex to protect concurrent access
-	virtualNodes int               // Number of virtual nodes per IP
-	waitTime     time.Duration     // Time to wait for the hash ring to be populated
+	ips          map[uint32]string        // Map from hash to ip
+	hashes       []uint32                 // Sorted list of hashes
+	sortedIPs    atomic.Pointer[[]string] // Cached List() result; nil means dirty
+	mu           xsync.RBMutex            // Read-Write mutex to protect concurrent access
+	virtualNodes int                      // Number of virtual nodes per IP
+	waitTime     time.Duration            // Time to wait for the hash ring to be populated
 }
 
 type Hasher interface {
@@ -106,6 +108,9 @@ func (h *HashRing) Add(ip string) {
 
 	// Sort the hashes to maintain the ring order
 	slices.Sort(h.hashes)
+
+	// Invalidate the cached List() result
+	h.sortedIPs.Store(nil)
 }
 
 // Remove removes an IP from the hash ring.
@@ -137,6 +142,9 @@ func (h *HashRing) Remove(ip string) {
 			h.hashes = slices.Delete(h.hashes, index, index+1)
 		}
 	}
+
+	// Invalidate the cached List() result
+	h.sortedIPs.Store(nil)
 }
 
 // Get returns the IP responsible for the given key.
@@ -191,8 +199,21 @@ func (h *HashRing) Get(value Hasher) string {
 // List returns a sorted slice of all the IPs in the hash ring.
 //
 // This method is safe for concurrent use by multiple goroutines.
+// The result is cached and invalidated when the ring is mutated.
 func (h *HashRing) List() []string {
+	if cached := h.sortedIPs.Load(); cached != nil {
+		return *cached
+	}
+
 	rt := h.mu.RLock()
 	defer h.mu.RUnlock(rt)
-	return slices.Compact(slices.Sorted(maps.Values(h.ips)))
+
+	// Double-check after acquiring the read lock.
+	if cached := h.sortedIPs.Load(); cached != nil {
+		return *cached
+	}
+
+	result := slices.Compact(slices.Sorted(maps.Values(h.ips)))
+	h.sortedIPs.Store(&result)
+	return result
 }
