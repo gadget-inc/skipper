@@ -515,11 +515,11 @@ func TestHeartbeats(t *testing.T) {
 	assert.Assert(t, rw.Code == http.StatusOK)
 	assert.Assert(t, rw.Body.String() == "Hello, "+fn.GetTenant())
 
-	heartbeat, ok := router.heartbeats.Load(fn.Hash())
+	state, ok := router.heartbeats.Load(fn.Hash())
 	assert.Assert(t, ok)
-	assert.Assert(t, proto.Equal(heartbeat.GetFunction(), fn))
-	assert.Assert(t, heartbeat.GetTimestamp().AsTime().After(testStartTime))
-	assert.Assert(t, heartbeat.GetInFlightRequests() == 0) // ensure the number of in-flight requests is 0 now that the request is complete
+	assert.Assert(t, proto.Equal(state.fn, fn))
+	assert.Assert(t, state.lastActiveTime().After(testStartTime))
+	assert.Assert(t, state.inFlight.Load() == 0) // ensure the number of in-flight requests is 0 now that the request is complete
 }
 
 func TestRetries(t *testing.T) {
@@ -1060,9 +1060,9 @@ func TestConcurrentRequestsSameFunction(t *testing.T) {
 	assert.Assert(t, maxInFlight > 1, "expected concurrent execution, but max in-flight was %d", maxInFlight)
 
 	// Verify in-flight count is back to 0
-	heartbeat, ok := router.heartbeats.Load(fn.Hash())
+	state, ok := router.heartbeats.Load(fn.Hash())
 	if ok {
-		assert.Assert(t, heartbeat.GetInFlightRequests() == 0, "expected 0 in-flight requests, got %d", heartbeat.GetInFlightRequests())
+		assert.Assert(t, state.inFlight.Load() == 0, "expected 0 in-flight requests, got %d", state.inFlight.Load())
 	}
 }
 
@@ -2162,9 +2162,9 @@ func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 	}
 
 	// Verify in-flight count returns to 0
-	heartbeat, ok := router.heartbeats.Load(fn.Hash())
+	state, ok := router.heartbeats.Load(fn.Hash())
 	if ok {
-		assert.Assert(t, heartbeat.GetInFlightRequests() == 0, "expected 0 in-flight requests, got %d", heartbeat.GetInFlightRequests())
+		assert.Assert(t, state.inFlight.Load() == 0, "expected 0 in-flight requests, got %d", state.inFlight.Load())
 	}
 }
 
@@ -2246,11 +2246,11 @@ func TestZeroInFlightAfterAllRequestsComplete(t *testing.T) {
 	}
 
 	// Verify in-flight count is exactly 0
-	heartbeat, ok := router.heartbeats.Load(fn.Hash())
+	state, ok := router.heartbeats.Load(fn.Hash())
 	if ok {
-		assert.Assert(t, heartbeat.GetInFlightRequests() == 0,
+		assert.Assert(t, state.inFlight.Load() == 0,
 			"expected exactly 0 in-flight requests after all requests complete, got %d",
-			heartbeat.GetInFlightRequests())
+			state.inFlight.Load())
 	}
 }
 
