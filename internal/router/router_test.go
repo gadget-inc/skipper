@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -2756,4 +2757,40 @@ func BenchmarkRewriteRequestHeaders(b *testing.B) {
 			rewriteRequestHeaders(pr)
 		}
 	})
+}
+
+var sinkStrings []string
+
+func BenchmarkExcludedInstances(b *testing.B) {
+	names := []string{
+		"pod-abc12345-x7k2q",
+		"pod-def67890-m3n8p",
+		"pod-ghi24680-r5t1w",
+		"pod-jkl13579-y9v4s",
+		"pod-mno97531-b6h2j",
+	}
+
+	for _, n := range []int{1, 3, 5} {
+		b.Run(fmt.Sprintf("slice/n=%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				var excluded []string
+				for i := range n {
+					excluded = append(excluded, names[i])
+				}
+				sinkStrings = excluded
+			}
+		})
+
+		b.Run(fmt.Sprintf("map/n=%d", n), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				excluded := make(map[string]struct{})
+				for i := range n {
+					excluded[names[i]] = struct{}{}
+				}
+				sinkStrings = slices.Collect(maps.Keys(excluded))
+			}
+		})
+	}
 }

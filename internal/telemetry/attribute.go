@@ -10,10 +10,17 @@ import (
 )
 
 func With(ctx context.Context, attrs ...key.Attr) context.Context {
-	slogAttrs := make([]slog.Attr, 0, len(attrs))
-	otelAttrs := make([]attribute.KeyValue, 0, len(attrs))
+	// Pre-compute exact OTel attribute count to avoid slice regrowth
+	// (each key.Attr can expand to multiple OTel attributes for groups).
+	otelCount := 0
 	for _, attr := range attrs {
-		slogAttrs = append(slogAttrs, attr.Slog)
+		otelCount += len(attr.Otel)
+	}
+
+	slogAttrs := make([]slog.Attr, len(attrs))
+	otelAttrs := make([]attribute.KeyValue, 0, otelCount)
+	for i, attr := range attrs {
+		slogAttrs[i] = attr.Slog
 		otelAttrs = append(otelAttrs, attr.Otel...)
 	}
 	ctx = log.With(ctx, slogAttrs...)
