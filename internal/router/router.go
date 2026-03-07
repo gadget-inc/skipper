@@ -96,8 +96,9 @@ func (r *Router) Start(ctx context.Context) {
 			if time.Since(state.lastActiveTime()) > r.config.HeartbeatInterval*3 {
 				r.heartbeats.Delete(fnHash) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
-				heartbeats = append(heartbeats, state.toProto()) // materialise proto only when sending
-				heartbeatsTotal.WithLabelValues(state.fn.Load().GetDeployment()).Inc()
+				hb := state.toProto() // materialise proto only when sending
+				heartbeats = append(heartbeats, hb)
+				heartbeatsTotal.WithLabelValues(hb.GetFunction().GetDeployment()).Inc()
 			}
 		}
 

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/skipper"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -28,8 +27,8 @@ func newHeartbeatState(fn *skipper.Function) *heartbeatState {
 // updateFunction replaces the stored function if the new one differs. This
 // prevents heartbeats from sending stale metadata after upstream changes.
 func (s *heartbeatState) updateFunction(fn *skipper.Function) {
-	if old := s.fn.Load(); !proto.Equal(old, fn) {
-		s.fn.CompareAndSwap(old, fn)
+	if s.fn.Load() != fn {
+		s.fn.Store(fn)
 	}
 }
 
