@@ -520,7 +520,7 @@ func TestHeartbeats(t *testing.T) {
 
 	state, ok := router.heartbeats.Load(fn.Hash())
 	assert.Assert(t, ok)
-	assert.Assert(t, proto.Equal(state.fn, fn))
+	assert.Assert(t, proto.Equal(state.fn.Load(), fn))
 	assert.Assert(t, state.lastActiveTime().After(testStartTime))
 	assert.Assert(t, state.inFlight.Load() == 0) // ensure the number of in-flight requests is 0 now that the request is complete
 }

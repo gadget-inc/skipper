@@ -12,15 +12,24 @@ import (
 // using atomic operations, avoiding per-request protobuf allocations. The
 // proto is materialised only when the heartbeat sender needs to transmit.
 type heartbeatState struct {
-	fn         *skipper.Function
+	fn         atomic.Pointer[skipper.Function]
 	inFlight   atomic.Int32
 	lastActive atomic.Int64 // UnixNano
 }
 
 func newHeartbeatState(fn *skipper.Function) *heartbeatState {
-	s := &heartbeatState{fn: fn}
+	s := &heartbeatState{}
+	s.fn.Store(fn)
 	s.lastActive.Store(time.Now().UnixNano())
 	return s
+}
+
+// updateFunction replaces the stored function if the new one differs. This
+// prevents heartbeats from sending stale metadata after upstream changes.
+func (s *heartbeatState) updateFunction(fn *skipper.Function) {
+	if s.fn.Load() != fn {
+		s.fn.Store(fn)
+	}
 }
 
 func (s *heartbeatState) touch() {
@@ -33,7 +42,7 @@ func (s *heartbeatState) lastActiveTime() time.Time {
 
 func (s *heartbeatState) toProto() *skipper.Heartbeat {
 	hb := &skipper.Heartbeat{}
-	hb.SetFunction(s.fn)
+	hb.SetFunction(s.fn.Load())
 	hb.SetTimestamp(timestamppb.New(s.lastActiveTime()))
 	hb.SetInFlightRequests(uint32(max(s.inFlight.Load(), 0)))
 	return hb

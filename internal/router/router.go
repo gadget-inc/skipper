@@ -95,8 +95,9 @@ func (r *Router) Start(ctx context.Context) {
 			if time.Since(state.lastActiveTime()) > r.config.HeartbeatInterval*3 {
 				r.heartbeats.Delete(fnHash) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
-				heartbeats = append(heartbeats, state.toProto()) // materialise proto only when sending
-				heartbeatsTotal.WithLabelValues(state.fn.GetDeployment()).Inc()
+				hb := state.toProto() // materialise proto only when sending
+				heartbeats = append(heartbeats, hb)
+				heartbeatsTotal.WithLabelValues(hb.GetFunction().GetDeployment()).Inc()
 			}
 		}
 
@@ -124,9 +125,12 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	requestsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
 	// get or create the heartbeat state for this function
-	state, _ := r.heartbeats.LoadOrCompute(fn.Hash(), func() (*heartbeatState, bool) {
+	state, loaded := r.heartbeats.LoadOrCompute(fn.Hash(), func() (*heartbeatState, bool) {
 		return newHeartbeatState(fn), false
 	})
+	if loaded {
+		state.updateFunction(fn)
+	}
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
