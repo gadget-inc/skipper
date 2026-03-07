@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/fixture"
+	"github.com/gadget-inc/skipper/internal/skipper"
 	"google.golang.org/protobuf/proto"
 	"gotest.tools/v3/assert"
 )
@@ -68,6 +69,52 @@ func TestHeartbeatStateToProto(t *testing.T) {
 		"expected non-zero timestamp")
 	assert.Assert(t, time.Since(hb.GetTimestamp().AsTime()) < time.Second,
 		"timestamp should be recent")
+}
+
+func TestHeartbeatStateUpdateFunctionOnMetadataChange(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	state := newHeartbeatState(fn)
+
+	// Create a function with the same identity but different metadata.
+	updatedFn := proto.Clone(fn).(*skipper.Function)
+	updatedFn.SetMetadata("updated-metadata")
+
+	// Precondition: same hash, different proto.
+	assert.Equal(t, fn.Hash(), updatedFn.Hash())
+	assert.Assert(t, !proto.Equal(fn, updatedFn))
+
+	// Update the function on the heartbeat state.
+	state.updateFunction(updatedFn)
+
+	// The heartbeat should now carry the updated function.
+	hb := state.toProto()
+	assert.Assert(t, proto.Equal(hb.GetFunction(), updatedFn),
+		"heartbeat should send the updated function, not the stale one")
+}
+
+func TestHeartbeatStateConcurrentUpdateFunction(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	state := newHeartbeatState(fn)
+
+	updatedFn := proto.Clone(fn).(*skipper.Function)
+	updatedFn.SetMetadata("concurrent-metadata")
+
+	const goroutines = 100
+	var wg sync.WaitGroup
+	for range goroutines {
+		wg.Go(func() {
+			state.updateFunction(updatedFn)
+			_ = state.toProto() // concurrent read
+		})
+	}
+	wg.Wait()
+
+	hb := state.toProto()
+	assert.Assert(t, proto.Equal(hb.GetFunction(), updatedFn))
 }
 
 func TestHeartbeatStateToProtoClampNegative(t *testing.T) {
