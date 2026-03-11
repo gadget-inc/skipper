@@ -33,7 +33,7 @@ async function ensureDir(): Promise<void> {
   await mkdir(COMMENTS_DIR, { recursive: true });
 }
 
-async function readComments(page: string): Promise<Comment[]> {
+async function loadComments(page?: string): Promise<Comment[]> {
   await ensureDir();
   const files = await readdir(COMMENTS_DIR);
   const comments: Comment[] = [];
@@ -42,21 +42,7 @@ async function readComments(page: string): Promise<Comment[]> {
     if (!file.endsWith(".json")) continue;
     const raw = await readFile(join(COMMENTS_DIR, file), "utf-8");
     const comment = JSON.parse(raw) as Comment;
-    if (comment.page === page) comments.push(comment);
-  }
-
-  return comments;
-}
-
-async function readAllComments(): Promise<Comment[]> {
-  await ensureDir();
-  const files = await readdir(COMMENTS_DIR);
-  const comments: Comment[] = [];
-
-  for (const file of files) {
-    if (!file.endsWith(".json")) continue;
-    const raw = await readFile(join(COMMENTS_DIR, file), "utf-8");
-    comments.push(JSON.parse(raw) as Comment);
+    if (page === undefined || comment.page === page) comments.push(comment);
   }
 
   comments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -71,7 +57,7 @@ function addMiddleware(server: ViteDevServer): void {
 
     if (req.method === "GET") {
       const page = url.searchParams.get("page");
-      const promise = page ? readComments(page) : readAllComments();
+      const promise = loadComments(page ?? undefined);
 
       void promise
         .then((comments) => {
