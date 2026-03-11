@@ -603,14 +603,18 @@ async function showAllCommentsPanel(focusId?: string): Promise<void> {
           cursor: pointer; font-size: 12px;
         `;
         delBtn.addEventListener("click", async () => {
-          await deleteComment(c.id);
-          renderHighlights();
-          // Refresh the panel contents
-          const refreshed = await fetchAllComments();
-          renderBadge(refreshed.length);
-          // Re-render panel
-          panel.remove();
-          await showAllCommentsPanel();
+          try {
+            await deleteComment(c.id);
+            renderHighlights();
+            // Refresh the panel contents
+            const refreshed = await fetchAllComments();
+            renderBadge(refreshed.length);
+            // Re-render panel
+            panel.remove();
+            await showAllCommentsPanel();
+          } catch (err) {
+            console.error("Failed to delete comment:", err);
+          }
         });
 
         const footerRight = document.createElement("div");
@@ -670,10 +674,16 @@ async function showAllCommentsPanel(focusId?: string): Promise<void> {
             if (!newText) return;
             saveBtn.disabled = true;
             saveBtn.textContent = "Saving\u2026";
-            await updateComment(c.id, newText);
-            renderHighlights();
-            panel.remove();
-            await showAllCommentsPanel(c.id);
+            try {
+              await updateComment(c.id, newText);
+              renderHighlights();
+              panel.remove();
+              await showAllCommentsPanel(c.id);
+            } catch (err) {
+              console.error("Failed to save comment:", err);
+              saveBtn.disabled = false;
+              saveBtn.textContent = "Save";
+            }
           });
 
           textarea.addEventListener("keydown", (ev) => {

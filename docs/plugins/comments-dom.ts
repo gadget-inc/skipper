@@ -102,7 +102,7 @@ export function clearHighlights(container: Element): void {
 // --- Commentable zones ---
 
 /** CSS selectors for each commentable zone. */
-export const ZONE_SELECTORS: Record<string, string> = {
+const ZONE_SELECTORS: Record<string, string> = {
   content: ".sl-markdown-content",
   title: "h1#_top",
   sidebar: "#starlight__sidebar",
