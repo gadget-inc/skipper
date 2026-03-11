@@ -77,10 +77,6 @@ function themeColors(): Record<string, string> {
 
 const page = window.location.pathname;
 
-async function fetchComments(): Promise<void> {
-  const res = await fetch(`/api/comments?page=${encodeURIComponent(page)}`);
-  comments = normalizeComments(await res.json()) as Comment[];
-}
 
 async function createComment(data: Omit<Comment, "id" | "page" | "createdAt">): Promise<Comment> {
   const res = await fetch("/api/comments", {
@@ -300,7 +296,7 @@ function openCommentForm(zone: string): void {
     } catch (err) {
       console.error("Failed to save comment:", err);
       save.disabled = false;
-      save.textContent = "Save";
+      save.textContent = "Comment \u2318\u21b5";
     }
   });
 
@@ -839,7 +835,8 @@ document.addEventListener("keydown", (e) => {
 // --- Init ---
 
 async function init(): Promise<void> {
-  const [, allComments] = await Promise.all([fetchComments(), fetchAllComments()]);
+  const allComments = await fetchAllComments();
+  comments = allComments.filter((c) => c.page === page);
   renderHighlights();
   renderBadge(allComments.length);
 
