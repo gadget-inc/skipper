@@ -379,6 +379,80 @@ describe("comments plugin middleware", () => {
     }));
 
   // -------------------------------------------------------------------------
+  // POST — path-traversal id sanitization
+  // -------------------------------------------------------------------------
+
+  it("POST uses commentPath() so a crafted id cannot escape the comments directory", () =>
+    new Promise<void>((resolve, reject) => {
+      mocks.writeFile.mockResolvedValue(undefined);
+
+      const req = makeReq("POST", "/api/comments");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      sendBody(req, {
+        page: "/docs/intro",
+        selectedText: "hello",
+        contextBefore: "",
+        contextAfter: "",
+        comment: "evil",
+      });
+
+      setTimeout(() => {
+        try {
+          expect(res.statusCode).toBe(201);
+          expect(mocks.writeFile).toHaveBeenCalledOnce();
+          const [calledPath] = mocks.writeFile.mock.calls[0] as [string];
+          expect(calledPath).not.toContain("..");
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
+  // POST — extra fields are not persisted
+  // -------------------------------------------------------------------------
+
+  it("POST only persists expected Comment fields, dropping extra client-supplied fields", () =>
+    new Promise<void>((resolve, reject) => {
+      mocks.writeFile.mockResolvedValue(undefined);
+
+      const req = makeReq("POST", "/api/comments");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      sendBody(req, {
+        page: "/docs/intro",
+        selectedText: "hello",
+        contextBefore: "",
+        contextAfter: "",
+        comment: "legit",
+        __proto__: { polluted: true },
+        extraField: "should not appear",
+      });
+
+      setTimeout(() => {
+        try {
+          expect(res.statusCode).toBe(201);
+          expect(mocks.writeFile).toHaveBeenCalledOnce();
+          const [, written] = mocks.writeFile.mock.calls[0] as [string, string];
+          const stored = JSON.parse(written) as Record<string, unknown>;
+          expect(stored).not.toHaveProperty("extraField");
+          expect(stored).not.toHaveProperty("__proto__");
+          expect(stored.page).toBe("/docs/intro");
+          expect(stored.comment).toBe("legit");
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
   // POST — malformed JSON body
   // -------------------------------------------------------------------------
 

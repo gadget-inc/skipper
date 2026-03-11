@@ -85,15 +85,18 @@ function addMiddleware(server: ViteDevServer): void {
         }
 
         const comment: Comment = {
-          ...data,
+          page: data.page,
+          zone: data.zone,
+          selectedText: data.selectedText,
+          contextBefore: data.contextBefore,
+          contextAfter: data.contextAfter,
+          comment: data.comment,
           id: randomUUID(),
           createdAt: new Date().toISOString(),
         };
 
         void ensureDir()
-          .then(() =>
-            writeFile(join(COMMENTS_DIR, `${comment.id}.json`), JSON.stringify(comment, null, 2)),
-          )
+          .then(() => writeFile(commentPath(comment.id), JSON.stringify(comment, null, 2)))
           .then(() => {
             res.writeHead(201, { "content-type": "application/json" });
             res.end(JSON.stringify(comment));
