@@ -652,4 +652,245 @@ describe("comments plugin middleware", () => {
         }
       }, 20);
     }));
+
+  // -------------------------------------------------------------------------
+  // S-1. GET — non-.json files alongside .json files are skipped
+  // -------------------------------------------------------------------------
+
+  it("GET skips non-.json files in the comments directory", () =>
+    new Promise<void>((resolve, reject) => {
+      const comment = {
+        id: "abc",
+        page: "/foo",
+        selectedText: "",
+        contextBefore: "",
+        contextAfter: "",
+        comment: "hello",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+
+      mocks.readdir.mockResolvedValue(["abc.json", ".gitkeep", "README.md"]);
+      mocks.readFile.mockResolvedValue(JSON.stringify(comment));
+
+      const req = makeReq("GET", "/api/comments");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      setTimeout(() => {
+        try {
+          expect(res.statusCode).toBe(200);
+          const body = JSON.parse(res.body) as (typeof comment)[];
+          expect(body).toHaveLength(1);
+          expect(body[0].id).toBe("abc");
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
+  // S-2. GET — empty comments directory returns empty array
+  // -------------------------------------------------------------------------
+
+  it("GET returns empty array for empty comments directory", () =>
+    new Promise<void>((resolve, reject) => {
+      mocks.readdir.mockResolvedValue([]);
+
+      const req = makeReq("GET", "/api/comments");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      setTimeout(() => {
+        try {
+          expect(res.statusCode).toBe(200);
+          const body = JSON.parse(res.body) as unknown[];
+          expect(body).toEqual([]);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
+  // S-3. DELETE — non-ENOENT filesystem error returns 500
+  // -------------------------------------------------------------------------
+
+  it("DELETE responds 500 for non-ENOENT filesystem errors", () =>
+    new Promise<void>((resolve, reject) => {
+      mocks.unlink.mockRejectedValue(
+        Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }),
+      );
+
+      const req = makeReq("DELETE", "/api/comments?id=abc123");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      setTimeout(() => {
+        try {
+          expect(res.statusCode).toBe(500);
+          const body = JSON.parse(res.body) as { error: string };
+          expect(body.error).toMatch(/EPERM/);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
+  // S-4. commentPath sanitization — path-traversal id in PATCH
+  // -------------------------------------------------------------------------
+
+  it("PATCH sanitizes path-traversal characters in the id before reading", () =>
+    new Promise<void>((resolve, reject) => {
+      const sanitizedId = "etcpasswd"; // "../../etc/passwd" with non-alphanumeric stripped
+      const existing = {
+        id: sanitizedId,
+        page: "/docs/intro",
+        selectedText: "hello",
+        contextBefore: "",
+        contextAfter: "",
+        comment: "original",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+      mocks.readFile.mockResolvedValue(JSON.stringify(existing));
+      mocks.writeFile.mockResolvedValue(undefined);
+
+      const req = makeReq("PATCH", "/api/comments?id=../../etc/passwd");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      sendBody(req, { comment: "updated" });
+
+      setTimeout(() => {
+        try {
+          const [calledPath] = mocks.readFile.mock.calls[0] as [string];
+          expect(calledPath).not.toContain("..");
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
+  // S-5. commentPath sanitization — path-traversal id in DELETE
+  // -------------------------------------------------------------------------
+
+  it("DELETE sanitizes path-traversal characters in the id before unlinking", () =>
+    new Promise<void>((resolve, reject) => {
+      mocks.unlink.mockResolvedValue(undefined);
+
+      const req = makeReq("DELETE", "/api/comments?id=../secret");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      setTimeout(() => {
+        try {
+          const [calledPath] = mocks.unlink.mock.calls[0] as [string];
+          expect(calledPath).not.toContain("..");
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
+  // S-6. POST — body arriving in multiple chunks
+  // -------------------------------------------------------------------------
+
+  it("POST assembles a body that arrives in multiple chunks", () =>
+    new Promise<void>((resolve, reject) => {
+      mocks.writeFile.mockResolvedValue(undefined);
+
+      const req = makeReq("POST", "/api/comments");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      const payload = JSON.stringify({
+        page: "/docs/chunked",
+        selectedText: "chunked text",
+        contextBefore: "",
+        contextAfter: "",
+        comment: "assembled",
+      });
+      const mid = Math.floor(payload.length / 2);
+      req.emit("data", Buffer.from(payload.slice(0, mid)));
+      req.emit("data", Buffer.from(payload.slice(mid)));
+      req.emit("end");
+
+      setTimeout(() => {
+        try {
+          expect(res.statusCode).toBe(201);
+          const body = JSON.parse(res.body) as { comment: string; page: string };
+          expect(body.comment).toBe("assembled");
+          expect(body.page).toBe("/docs/chunked");
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
+  // S-7. PATCH — body arriving in multiple chunks
+  // -------------------------------------------------------------------------
+
+  it("PATCH assembles a body that arrives in multiple chunks", () =>
+    new Promise<void>((resolve, reject) => {
+      const existing = {
+        id: "abc123",
+        page: "/docs/intro",
+        selectedText: "hello",
+        contextBefore: "",
+        contextAfter: "",
+        comment: "old text",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+      mocks.readFile.mockResolvedValue(JSON.stringify(existing));
+      mocks.writeFile.mockResolvedValue(undefined);
+
+      const req = makeReq("PATCH", "/api/comments?id=abc123");
+      const res = makeRes();
+
+      middleware(req, res, () => reject(new Error("next() should not be called")));
+
+      const payload = JSON.stringify({ comment: "multi-chunk update" });
+      const mid = Math.floor(payload.length / 2);
+      req.emit("data", Buffer.from(payload.slice(0, mid)));
+      req.emit("data", Buffer.from(payload.slice(mid)));
+      req.emit("end");
+
+      setTimeout(() => {
+        try {
+          expect(res.statusCode).toBe(200);
+          const body = JSON.parse(res.body) as { comment: string };
+          expect(body.comment).toBe("multi-chunk update");
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      }, 20);
+    }));
+
+  // -------------------------------------------------------------------------
+  // S-8. Plugin metadata
+  // -------------------------------------------------------------------------
+
+  it("exports a plugin with name 'docs-comments' and apply 'serve'", async () => {
+    vi.resetModules();
+    const mod = await import("./comments.js");
+    const plugin = mod.default() as { name: string; apply: string };
+    expect(plugin.name).toBe("docs-comments");
+    expect(plugin.apply).toBe("serve");
+  });
 });

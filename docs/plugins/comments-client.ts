@@ -10,7 +10,7 @@ import {
 } from "./comments-dom.ts";
 import { normalizeComments, badgeText, relativeTime } from "./comments-utils.ts";
 
-interface Comment {
+export interface Comment {
   id: string;
   page: string;
   zone?: string;
@@ -21,16 +21,21 @@ interface Comment {
   createdAt: string;
 }
 
-const CONTAINER_ID = "docs-comments-container";
+export const CONTAINER_ID = "docs-comments-container";
 
 // --- State ---
 
 let comments: Comment[] = [];
 
+/** @internal For testing only — reset module state. */
+export function _resetState(initial: Comment[] = []): void {
+  comments = initial;
+}
+
 // --- Helpers ---
 
 /** Return Primer color tokens matching the current Starlight theme. */
-function themeColors(): Record<string, string> {
+export function themeColors(): Record<string, string> {
   const dark = document.documentElement.dataset.theme === "dark";
   return dark
     ? {
@@ -75,9 +80,11 @@ function themeColors(): Record<string, string> {
 
 // --- API ---
 
-const page = window.location.pathname;
+export const page = window.location.pathname;
 
-async function createComment(data: Omit<Comment, "id" | "page" | "createdAt">): Promise<Comment> {
+export async function createComment(
+  data: Omit<Comment, "id" | "page" | "createdAt">,
+): Promise<Comment> {
   const res = await fetch("/api/comments", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -89,7 +96,7 @@ async function createComment(data: Omit<Comment, "id" | "page" | "createdAt">): 
   return comment;
 }
 
-async function deleteComment(id: string): Promise<void> {
+export async function deleteComment(id: string): Promise<void> {
   const res = await fetch(`/api/comments?id=${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
@@ -97,7 +104,7 @@ async function deleteComment(id: string): Promise<void> {
   comments = comments.filter((c) => c.id !== id);
 }
 
-async function updateComment(id: string, newText: string): Promise<Comment> {
+export async function updateComment(id: string, newText: string): Promise<Comment> {
   const res = await fetch(`/api/comments?id=${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
@@ -109,7 +116,7 @@ async function updateComment(id: string, newText: string): Promise<Comment> {
   return updated;
 }
 
-async function fetchAllComments(): Promise<Comment[]> {
+export async function fetchAllComments(): Promise<Comment[]> {
   const res = await fetch("/api/comments");
   if (!res.ok) throw new Error(`Failed to fetch comments: ${res.status}`);
   const data: unknown = await res.json();
@@ -118,7 +125,7 @@ async function fetchAllComments(): Promise<Comment[]> {
 
 // --- Highlighting ---
 
-function renderHighlights(): void {
+export function renderHighlights(): void {
   const containers = getCommentableContainers();
   for (const { zone, el } of containers) {
     clearHighlights(el);
@@ -131,12 +138,12 @@ function renderHighlights(): void {
 
 let selectionButton: HTMLButtonElement | null = null;
 
-function removeSelectionButton(): void {
+export function removeSelectionButton(): void {
   selectionButton?.remove();
   selectionButton = null;
 }
 
-function showSelectionButton(zone: string): void {
+export function showSelectionButton(zone: string): void {
   removeSelectionButton();
   const t = themeColors();
 
@@ -165,7 +172,7 @@ function showSelectionButton(zone: string): void {
 
 // --- UI: Comment form ---
 
-function openCommentForm(zone: string): void {
+export function openCommentForm(zone: string): void {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed) return;
 
@@ -310,7 +317,7 @@ function openCommentForm(zone: string): void {
 
 // --- UI: Comment popover on highlight click ---
 
-function showCommentPopover(commentId: string, target: Element): void {
+export function showCommentPopover(commentId: string, target: Element): void {
   // Remove any existing popover
   document.getElementById("docs-comment-popover")?.remove();
 
@@ -458,9 +465,9 @@ function showCommentPopover(commentId: string, target: Element): void {
 
 // --- UI: All Comments panel ---
 
-const ALL_COMMENTS_PANEL_ID = "docs-all-comments-panel";
+export const ALL_COMMENTS_PANEL_ID = "docs-all-comments-panel";
 
-async function showAllCommentsPanel(focusId?: string): Promise<void> {
+export async function showAllCommentsPanel(focusId?: string): Promise<void> {
   // Remove existing panel
   document.getElementById(ALL_COMMENTS_PANEL_ID)?.remove();
 
@@ -724,7 +731,7 @@ async function showAllCommentsPanel(focusId?: string): Promise<void> {
 
 // --- UI: Comment count badge ---
 
-function renderBadge(totalCount: number): void {
+export function renderBadge(totalCount: number): void {
   document.getElementById("docs-comment-badge")?.remove();
 
   const text = badgeText(totalCount);
@@ -834,7 +841,7 @@ document.addEventListener("keydown", (e) => {
 
 // --- Init ---
 
-async function init(): Promise<void> {
+export async function init(): Promise<void> {
   const allComments = await fetchAllComments();
   comments = allComments.filter((c) => c.page === page);
   renderHighlights();

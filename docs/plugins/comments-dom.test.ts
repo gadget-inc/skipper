@@ -291,6 +291,84 @@ describe("applyHighlights", () => {
   });
 });
 
+describe("wrapRange — fallback (extractContents) branch", () => {
+  it("falls back to extractContents when surroundContents would throw", () => {
+    // Build a range that crosses element boundaries: surroundContents throws
+    // when the range partially intersects an element. We simulate this by
+    // mocking surroundContents on the Range prototype for one call only.
+    const container = html("<p>Hello <strong>bold</strong> world</p>");
+    const textNode = container.querySelector("strong")!.firstChild as Text;
+
+    // Build a TextRange for "bold" inside <strong>
+    const entry = { node: textNode, start: 0, end: 4 };
+
+    // Temporarily make surroundContents throw to force the fallback path
+    // eslint-disable-next-line typescript-eslint/unbound-method -- intentional monkey-patch for test
+    const orig = Range.prototype.surroundContents;
+    Range.prototype.surroundContents = () => {
+      throw new Error("HierarchyRequestError");
+    };
+
+    let mark: HTMLElement;
+    try {
+      mark = wrapRange(entry, "fb-comment");
+    } finally {
+      Range.prototype.surroundContents = orig;
+    }
+
+    expect(mark!.textContent).toBe("bold");
+    expect(mark!.dataset.commentId).toBe("fb-comment");
+    // Verify the mark is in the document
+    expect(container.querySelector(`.${HIGHLIGHT_CLASS}`)).not.toBeNull();
+  });
+});
+
+describe("clearHighlights — mark with mixed element+text children", () => {
+  it("re-inserts mixed child nodes and removes the mark", () => {
+    // Build a mark that has both a text node and an element child,
+    // then verify clearHighlights unwraps it correctly.
+    const container = document.createElement("div");
+    const p = document.createElement("p");
+    container.appendChild(p);
+
+    const before = document.createTextNode("before ");
+    const mark = document.createElement("mark");
+    mark.className = HIGHLIGHT_CLASS;
+    const em = document.createElement("em");
+    em.textContent = "italic";
+    mark.appendChild(em);
+    mark.appendChild(document.createTextNode(" text"));
+    const after = document.createTextNode(" after");
+
+    p.appendChild(before);
+    p.appendChild(mark);
+    p.appendChild(after);
+
+    clearHighlights(container);
+
+    expect(container.querySelectorAll(`.${HIGHLIGHT_CLASS}`)).toHaveLength(0);
+    expect(container.textContent).toBe("before italic text after");
+    // Original em element should still be present
+    expect(container.querySelector("em")).not.toBeNull();
+  });
+});
+
+describe("applyHighlights — re-applying on already-highlighted text", () => {
+  it("does not double-wrap text that is already inside a highlight mark", () => {
+    const container = html("<p>Hello world and more</p>");
+
+    applyHighlights(container, [{ id: "c1", selectedText: "world" }]);
+    // Now apply again with a different comment ID targeting the same text
+    applyHighlights(container, [{ id: "c2", selectedText: "world" }]);
+
+    const marks = container.querySelectorAll(`.${HIGHLIGHT_CLASS}`);
+    // Only one mark should exist — the guard prevents double-wrapping
+    expect(marks).toHaveLength(1);
+    expect((marks[0] as HTMLElement).dataset.commentId).toBe("c1");
+    expect(container.textContent).toBe("Hello world and more");
+  });
+});
+
 describe("clearHighlights", () => {
   it("removes highlights and restores original text", () => {
     const container = html("<p>Hello world</p>");

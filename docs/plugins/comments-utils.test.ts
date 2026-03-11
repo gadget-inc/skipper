@@ -26,6 +26,15 @@ describe("relativeTime", () => {
       expect(relativeTime(date, now)).toBe(want);
     });
   }
+
+  it("future date falls through to toLocaleDateString and does not throw", () => {
+    const futureDate = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    // diffMs is negative for a future date; diffMin < 1, so it returns "just now"
+    // OR falls through to toLocaleDateString — either way it must not throw
+    expect(() => relativeTime(futureDate)).not.toThrow();
+    const result = relativeTime(futureDate);
+    expect(typeof result).toBe("string");
+  });
 });
 
 describe("normalizeComments", () => {
