@@ -17,6 +17,9 @@ direnv exec . logs                                # Show recent logs and exit
 direnv exec . logs -f                             # Stream logs continuously (follow)
 direnv exec . logs -c controller                  # Show controller logs
 direnv exec . logs --errors --since=5m            # Recent errors only
+direnv exec . docs                                # Start docs dev server
+direnv exec . docs build                          # Build docs site
+direnv exec . docs preview                        # Preview built docs
 direnv exec . clean                               # Delete all Kubernetes resources
 direnv exec . script-tests                        # Run tests for scripts/ (vitest)
 direnv exec . profile fetch                       # Fetch heap profile from local controller
@@ -54,7 +57,7 @@ Skipper is a Kubernetes controller that turns deployments into a pool of functio
 
 ### Key Internal Packages
 
-- `internal/hashring/`: Consistent hashing for deterministic routing (4096 virtual nodes per IP)
+- `internal/hashring/`: Consistent hashing for deterministic routing (1024 virtual nodes per IP)
 - `internal/key/`: Type-safe structured logging keys with OpenTelemetry conversion
 - `internal/telemetry/`: OTLP tracing and Prometheus metrics
 - `internal/config/`: Declarative flag binding with struct tags

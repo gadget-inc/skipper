@@ -26,7 +26,6 @@ type Config struct {
 	HPATolerance                   float64          `flag:"hpa-tolerance" description:"The usage ratio tolerance for the HPA algorithm." default:"0.1"`
 	HPAInitialReadinessDelay       time.Duration    `flag:"hpa-initial-readiness-delay" description:"The initial readiness delay for the HPA algorithm." default:"30s"`
 	HPADownscaleStabilization      time.Duration    `flag:"hpa-downscale-stabilization" description:"The stabilization window for downscaling in the HPA algorithm." default:"90s"`
-	AvailableReplicaDivisor        float32          `flag:"available-replica-divisor" description:"The divisor for the number of available replicas needed to terminate a stale instance." default:"1.2"`
 	HashRingWaitTime               time.Duration    `flag:"hash-ring-wait-time" description:"How long to wait for the controller to populate its hash ring." default:"10s"`
 	FunctionNamespaces             []string         `flag:"function-namespaces" description:"The namespaces where functions can be invoked." required:"true"`
 	FunctionAssignPath             string           `flag:"function-assign-path" description:"The path used to assign a function to a pod." default:"/__skipper/assign"`
@@ -37,9 +36,6 @@ type Config struct {
 
 // Validate validates the configuration.
 func (c *Config) Validate() error {
-	if c.AvailableReplicaDivisor <= 1 {
-		return errors.New("available replica divisor must be greater than 1")
-	}
 	if c.MaxConcurrentStaleReplacements < 1 {
 		return errors.New("max concurrent stale replacements must be at least 1")
 	}
