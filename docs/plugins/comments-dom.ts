@@ -79,9 +79,9 @@ export function applyHighlights(container: Element, comments: HighlightComment[]
   for (const comment of comments) {
     const ranges = findTextIn(container, comment.selectedText);
     if (!ranges) continue;
-    // Skip if the matched text is already inside a highlight mark
-    if (ranges[0].node.parentElement?.closest(`.${HIGHLIGHT_CLASS}`)) continue;
     for (const entry of ranges) {
+      // Skip if this text node is already inside a highlight mark
+      if (entry.node.parentElement?.closest(`.${HIGHLIGHT_CLASS}`)) continue;
       wrapRange(entry, comment.id);
     }
   }
