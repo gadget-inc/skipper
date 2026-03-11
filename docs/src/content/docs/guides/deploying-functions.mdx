@@ -3,7 +3,7 @@ title: Deploying Functions
 description: How to deploy workloads that Skipper can discover, assign, and manage.
 ---
 
-A function is a unit of work backed by a Kubernetes deployment that Skipper discovers and manages. Deployments are pooled — when a tenant needs a function, Skipper dynamically assigns a pod from the pool, so one deployment can serve multiple tenants simultaneously. Callers route requests to functions by including the `x-skipper-function` HTTP header.
+A function is a unit of work backed by a Kubernetes deployment that Skipper discovers and manages. Deployments are pooled — when a tenant needs a function, Skipper dynamically assigns a pod from the pool, so one deployment can serve multiple tenants simultaneously. Callers route requests to functions by including the `X-Skipper-Function` HTTP header.
 
 ## Function discovery
 
@@ -23,7 +23,7 @@ A function is uniquely identified by four fields: **namespace**, **deployment**,
 
 Metadata and scale configuration are deliberately excluded from the identity. Changing a function's scaling targets or metadata does not create a new identity -- the existing instances continue serving.
 
-Callers address functions by including these identity fields in the `x-skipper-function` HTTP header on each request to the router. See [Routing and Proxying](/skipper/guides/routing/) for the full header format and request flow.
+Callers address functions by including these identity fields in the `X-Skipper-Function` HTTP header on each request to the router. See [Routing and Proxying](/skipper/guides/routing/) for the full header format and request flow.
 
 ## Pod assignment
 

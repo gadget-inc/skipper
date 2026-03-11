@@ -3,7 +3,7 @@ title: Routing and Proxying
 description: How Skipper routes HTTP and WebSocket traffic to function instances.
 ---
 
-## The X-Skipper-Function header
+## The `X-Skipper-Function` header
 
 Every request to the router must include an `X-Skipper-Function` header containing a JSON-encoded Function protobuf:
 
@@ -22,11 +22,9 @@ Every request to the router must include an `X-Skipper-Function` header containi
 }
 ```
 
-The `metadata` field is an opaque string passed to the pod via the `X-Skipper-Function` header when the controller assigns it. Use it for arbitrary data your application needs at runtime (configuration values, version tags, etc.).
+The `metadata` field is an opaque string delivered to the pod during assignment. Use it for arbitrary data your application needs at runtime (configuration values, version tags, etc.).
 
 The router returns 400 if the header is missing. The only exception is `GET /healthz`, which returns 200 without requiring the header.
-
-The header is stripped before proxying to the backend pod.
 
 ## Request flow
 
