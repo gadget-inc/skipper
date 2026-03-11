@@ -236,7 +236,9 @@
       const tolDisplay = (tol * 100) % 1 === 0 ? (tol * 100).toFixed(0) : (tol * 100).toFixed(1);
 
       const tolPass = diff <= tol;
-      const desired = tolPass ? n : Math.max(1, Math.ceil(n * ratio));
+      const rawDesired = Math.ceil(n * ratio);
+      const floorApplied = !tolPass && rawDesired < 1;
+      const desired = tolPass ? n : Math.max(1, rawDesired);
 
       let verdict: string;
       let verdictClass: string;
@@ -268,9 +270,9 @@
         : `<div class="calc-step">` +
             `<div class="calc-step-main">` +
               `<span class="calc-label">Desired instances</span>` +
-              `<span class="calc-value">⌈${n} × ${pctDisplay}%⌉ = ${desired}</span>` +
+              `<span class="calc-value">${floorApplied ? `max(1, ⌈${n} × ${pctDisplay}%⌉)` : `⌈${n} × ${pctDisplay}%⌉`} = ${desired}</span>` +
             `</div>` +
-            `<div class="calc-hint">${pctDisplay}% utilization means ${pctDisplay}% of ${n} instances are needed</div>` +
+            `<div class="calc-hint">${floorApplied ? `⌈${n} × ${pctDisplay}%⌉ = 0, but at least 1 instance is required` : `${pctDisplay}% utilization means ${pctDisplay}% of ${n} instances are needed`}</div>` +
           `</div>`;
 
       result.innerHTML = [
