@@ -88,15 +88,17 @@ async function createComment(data: Omit<Comment, "id" | "page" | "createdAt">): 
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ ...data, page }),
   });
+  if (!res.ok) throw new Error(`Failed to create comment: ${res.status}`);
   const comment = (await res.json()) as Comment;
   comments.push(comment);
   return comment;
 }
 
 async function deleteComment(id: string): Promise<void> {
-  await fetch(`/api/comments?id=${encodeURIComponent(id)}`, {
+  const res = await fetch(`/api/comments?id=${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+  if (!res.ok) throw new Error(`Failed to delete comment: ${res.status}`);
   comments = comments.filter((c) => c.id !== id);
 }
 
@@ -106,6 +108,7 @@ async function updateComment(id: string, newText: string): Promise<Comment> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ comment: newText }),
   });
+  if (!res.ok) throw new Error(`Failed to update comment: ${res.status}`);
   const updated = (await res.json()) as Comment;
   comments = comments.map((c) => (c.id === id ? updated : c));
   return updated;
@@ -140,9 +143,6 @@ function removeSelectionButton(): void {
 function showSelectionButton(zone: string): void {
   removeSelectionButton();
   const t = themeColors();
-
-  const content = document.querySelector(".sl-markdown-content");
-  if (!content) return;
 
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
