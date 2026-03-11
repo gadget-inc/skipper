@@ -77,7 +77,6 @@ function themeColors(): Record<string, string> {
 
 const page = window.location.pathname;
 
-
 async function createComment(data: Omit<Comment, "id" | "page" | "createdAt">): Promise<Comment> {
   const res = await fetch("/api/comments", {
     method: "POST",

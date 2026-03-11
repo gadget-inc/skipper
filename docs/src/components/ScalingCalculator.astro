@@ -236,7 +236,7 @@
       const tolDisplay = (tol * 100) % 1 === 0 ? (tol * 100).toFixed(0) : (tol * 100).toFixed(1);
 
       const tolPass = diff <= tol;
-      const desired = tolPass ? n : Math.ceil(n * ratio);
+      const desired = tolPass ? n : Math.max(1, Math.ceil(n * ratio));
 
       let verdict: string;
       let verdictClass: string;

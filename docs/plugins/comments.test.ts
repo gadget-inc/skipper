@@ -612,7 +612,9 @@ describe("comments plugin middleware", () => {
 
   it("DELETE responds 404 when comment does not exist", () =>
     new Promise<void>((resolve, reject) => {
-      const enoent = Object.assign(new Error("ENOENT: no such file or directory"), { code: "ENOENT" });
+      const enoent = Object.assign(new Error("ENOENT: no such file or directory"), {
+        code: "ENOENT",
+      });
       mocks.unlink.mockRejectedValue(enoent);
 
       const req = makeReq("DELETE", "/api/comments?id=ghost");
