@@ -123,17 +123,6 @@ func TestControllerCommandConfigValidation(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "invalid available-replica-divisor fails validation",
-			args: []string{
-				"--namespace=test",
-				"--pod-ip=10.0.0.1",
-				"--paseto-private-key=" + testPasetoPrivateKeyPEM,
-				"--function-namespaces=default",
-				"--available-replica-divisor=0.5",
-			},
-			wantErr: "available replica divisor must be greater than 1",
-		},
-		{
 			name: "invalid max-concurrent-stale-replacements fails validation",
 			args: []string{
 				"--namespace=test",

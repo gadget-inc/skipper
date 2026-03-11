@@ -4,7 +4,6 @@ Usage:
   controller [flags]
 
 Flags:
-      --available-replica-divisor float         The divisor for the number of available replicas needed to terminate a stale instance. (env SKIPPER_AVAILABLE_REPLICA_DIVISOR) (default 1.2)
       --function-assign-path string             The path used to assign a function to a pod. (env SKIPPER_FUNCTION_ASSIGN_PATH) (default "/__skipper/assign")
       --function-assign-timeout duration        The timeout for assigning a function to a pod. (env SKIPPER_FUNCTION_ASSIGN_TIMEOUT) (default 30s)
       --function-namespaces strings             The namespaces where functions can be invoked. (env SKIPPER_FUNCTION_NAMESPACES)

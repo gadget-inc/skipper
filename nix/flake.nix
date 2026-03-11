@@ -78,6 +78,8 @@
           build = pkgs.writeShellScriptBin "build" '' "$WORKSPACE_DIR"/scripts/build.ts "$@" '';
           clean = pkgs.writeShellScriptBin "clean" '' "$WORKSPACE_DIR"/scripts/clean.ts "$@" '';
           deploy = pkgs.writeShellScriptBin "deploy" '' "$WORKSPACE_DIR"/scripts/deploy.ts "$@" '';
+          docs = pkgs.writeShellScriptBin "docs" '' "$WORKSPACE_DIR"/scripts/docs.ts "$@" '';
+          docs-tests = pkgs.writeShellScriptBin "docs-tests" '' pnpm --filter docs test "$@" '';
           echo-load-test = pkgs.writeShellScriptBin "echo-load-test" '' "$WORKSPACE_DIR"/scripts/echo-load-test.ts "$@" '';
           echo-request = pkgs.writeShellScriptBin "echo-request" '' "$WORKSPACE_DIR"/scripts/echo-request.ts "$@" '';
           echo-websocket = pkgs.writeShellScriptBin "echo-websocket" '' "$WORKSPACE_DIR"/scripts/echo-websocket.ts "$@" '';

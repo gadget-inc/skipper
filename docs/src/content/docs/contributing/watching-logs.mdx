@@ -1,0 +1,27 @@
+---
+title: Watching Logs
+description: Stream and filter logs from Skipper pods during development.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The `logs` command streams logs from Skipper pods running in your local Kubernetes cluster.
+
+```bash
+logs                           # All pods, current logs
+logs -f                        # Stream continuously
+logs -c controller             # Controller only
+logs -c router --level=warn    # Router warnings and errors
+logs --grep="trace_id=<id>"    # Filter by trace ID
+logs --errors --since=5m       # Recent errors
+```
+
+See `logs --help` for all available flags including output formats and filtering options.
+
+<Aside>
+By default, `logs` shows current logs and exits. Use `-f` or `--follow` to stream continuously.
+</Aside>
+
+## Log format
+
+Skipper emits structured JSON logs by default. Each log line includes contextual fields that accumulate through the call chain. See [Observability](/skipper/guides/observability/) for details on log format, trace correlation, and the available Prometheus metrics.

@@ -20,20 +20,6 @@ func TestConfigValidate(t *testing.T) {
 			modify: func(c *Config) {},
 		},
 		{
-			name: "available replica divisor equals 1",
-			modify: func(c *Config) {
-				c.AvailableReplicaDivisor = 1
-			},
-			wantErr: "available replica divisor must be greater than 1",
-		},
-		{
-			name: "available replica divisor less than 1",
-			modify: func(c *Config) {
-				c.AvailableReplicaDivisor = 0.5
-			},
-			wantErr: "available replica divisor must be greater than 1",
-		},
-		{
 			name: "max concurrent stale replacements is 0",
 			modify: func(c *Config) {
 				c.MaxConcurrentStaleReplacements = 0

@@ -1,0 +1,83 @@
+---
+title: Routing and Proxying
+description: How Skipper routes HTTP and WebSocket traffic to function instances.
+---
+
+## The x-skipper-function header
+
+Every request to the router must include an `x-skipper-function` header containing a JSON-encoded Function protobuf:
+
+```json
+{
+  "namespace": "production",
+  "deployment": "my-app",
+  "tenant": "tenant-123",
+  "metadata": "v2",
+  "scale": {
+    "min_instances": 1,
+    "max_instances": 10,
+    "target_cpu_usage_milli": 500
+  },
+  "oneshot": false
+}
+```
+
+The router returns 400 if the header is missing. The only exception is `GET /healthz`, which returns 200 without requiring the header.
+
+The header is stripped before proxying to the backend pod.
+
+## Request flow
+
+1. Router extracts the function from the `x-skipper-function` header.
+2. Creates or updates heartbeat state for the function.
+3. Marks the function as active. A shared background loop sends heartbeats for all active functions every 5 seconds (configurable via `--heartbeat-interval`).
+4. Queries the controller via gRPC `GetInstance` RPC for an instance address.
+5. Sets the request URL to `http://<instance-addr>`.
+6. Proxies the request to the backend pod.
+7. For oneshot functions: calls `ReleaseInstance` after the response completes.
+
+## Retry logic
+
+Failed requests are retried with up to 6 total attempts (configurable via `--max-round-trip-attempts`) with exponential backoff and jitter:
+
+- Minimum backoff: 100ms
+- Maximum backoff: 5s
+- Only dial errors trigger retries (connection refused, host unreachable)
+- TLS errors, timeouts, and other failures are not retried
+
+On each retry, the failed instance is excluded so the controller returns a different pod. The request body is preserved across retries.
+
+## Header rewriting
+
+When proxying to backend pods, the router rewrites headers:
+
+| Header               | Value                                                         |
+| -------------------- | ------------------------------------------------------------- |
+| `x-skipper-function` | Removed                                                       |
+| `Host`               | Preserved from original request                               |
+| `X-Forwarded-For`    | From incoming header, or `RemoteAddr` if absent               |
+| `X-Forwarded-Host`   | From incoming header, or request `Host` if absent             |
+| `X-Forwarded-Proto`  | From incoming header, or `https`/`http` based on TLS presence |
+| `Forwarded`          | RFC 7239 format with proper IPv6 quoting                      |
+
+## WebSocket support
+
+WebSocket connections are proxied transparently. The standard HTTP upgrade mechanism handles the protocol switch -- no special configuration is needed.
+
+The function remains marked as active for the duration of the WebSocket session, so heartbeats continue keeping the pods alive in the controller.
+
+## HTTP transport configuration
+
+The router's HTTP transport is tuned for proxying workloads:
+
+| Setting                 | Value                                                    |
+| ----------------------- | -------------------------------------------------------- |
+| Dial timeout            | 2s                                                       |
+| Keep-alive              | 30s                                                      |
+| Protocol                | HTTP/2 attempted (falls back to HTTP/1.1 if unsupported) |
+| Max idle connections    | 100                                                      |
+| Idle connection timeout | 90s                                                      |
+| TLS handshake timeout   | 10s                                                      |
+| Compression             | Disabled (no `Accept-Encoding` sent)                     |
+
+The transport is wrapped with OpenTelemetry instrumentation for distributed tracing.
