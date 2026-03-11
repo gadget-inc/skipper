@@ -111,6 +111,7 @@ async function updateComment(id: string, newText: string): Promise<Comment> {
 
 async function fetchAllComments(): Promise<Comment[]> {
   const res = await fetch("/api/comments");
+  if (!res.ok) throw new Error(`Failed to fetch comments: ${res.status}`);
   const data: unknown = await res.json();
   return normalizeComments(data) as Comment[];
 }
