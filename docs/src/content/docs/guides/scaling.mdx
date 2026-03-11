@@ -9,20 +9,15 @@ Only one controller replica handles scaling for a given function; others track s
 
 ## Scaling metrics
 
-Three metrics drive scaling decisions. The maximum wins:
+Three metrics can drive scaling: **in-flight requests**, **CPU usage**, and **memory usage**. Each is enabled by setting its target to a non-zero value in the function's scale config. When multiple metrics are enabled, each produces a recommendation and the highest one wins.
 
-1. **In-flight requests** — enabled when `target_in_flight_requests > 0`
-   ```
-   desired = ⌈current × (avg_inflight / target)⌉
-   ```
-2. **CPU usage** — enabled when `target_cpu_usage_milli > 0`
-   ```
-   desired = ⌈current × (avg_cpu / target)⌉
-   ```
-3. **Memory usage** — enabled when `target_memory_usage_mib > 0`
-   ```
-   desired = ⌈current × (avg_memory / target)⌉
-   ```
+The formula is the same for all three:
+
+```
+desired = ⌈current_instances × (average_usage / target)⌉
+```
+
+If average usage equals the target, the ratio is 1 and nothing changes. Above the target, the ratio exceeds 1 and instances are added. Below the target, instances are removed.
 
 Functions always maintain at least 1 instance. The only way a function scales to 0 is when no heartbeat has been received within the timeout window — see [Heartbeats and Lifecycle](/skipper/guides/heartbeats-and-lifecycle/) for details. Oneshot functions behave differently — they scale 1:1 with in-flight requests and have no minimum instance floor. See [Oneshot function scaling](#oneshot-function-scaling) for details.
 
@@ -55,51 +50,13 @@ When some instances lack metrics, the algorithm adjusts conservatively:
 
 If the adjusted ratio changes direction or crosses the tolerance band, the result is a no-op.
 
-## Examples
+## Try it: scaling calculator
 
-### Within tolerance (no scaling)
+Drag the sliders to see how the autoscaler responds to different load scenarios. The formula is the same for CPU, memory, and in-flight requests — only the metric and target change.
 
-Given `target_cpu = 200m` and `current_instances = 5`:
+import ScalingCalculator from '../../../components/ScalingCalculator.astro'
 
-```
-total CPU across instances = 1050m
-average  = 1050m / 5 = 210m
-ratio    = 210m / 200m = 1.05
-
-|1.05 − 1.0| = 0.05 ≤ 0.1 (tolerance) → no change
-```
-
-The ratio is close enough to the target that no scaling action is taken.
-
-### Scale down
-
-Given `target_cpu = 200m` and `current_instances = 8`:
-
-```
-total CPU across instances = 600m
-average  = 600m / 8 = 75m
-ratio    = 75m / 200m = 0.375
-
-|0.375 − 1.0| = 0.625 > 0.1 (tolerance) → scale down
-
-desired  = ⌈8 × 0.375⌉ = 3 instances
-```
-
-Usage is well below the target, so the autoscaler reduces the instance count.
-
-### Scale up
-
-Given `target_cpu = 100m` and `current_instances = 10`:
-
-```
-total CPU across instances = 1500m
-average  = 1500m / 10 = 150m
-ratio    = 150m / 100m = 1.5
-
-|1.5 − 1.0| = 0.5 > 0.1 (tolerance) → scale up
-
-desired  = ⌈10 × 1.5⌉ = 15 instances
-```
+<ScalingCalculator />
 
 In all cases, the result is clamped to `[min_instances, max_instances]`.
 

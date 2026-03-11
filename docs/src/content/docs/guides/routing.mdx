@@ -3,9 +3,9 @@ title: Routing and Proxying
 description: How Skipper routes HTTP and WebSocket traffic to function instances.
 ---
 
-## The x-skipper-function header
+## The X-Skipper-Function header
 
-Every request to the router must include an `x-skipper-function` header containing a JSON-encoded Function protobuf:
+Every request to the router must include an `X-Skipper-Function` header containing a JSON-encoded Function protobuf:
 
 ```json
 {
@@ -22,13 +22,15 @@ Every request to the router must include an `x-skipper-function` header containi
 }
 ```
 
+The `metadata` field is an opaque string passed to the pod via the `X-Skipper-Function` header when the controller assigns it. Use it for arbitrary data your application needs at runtime (configuration values, version tags, etc.).
+
 The router returns 400 if the header is missing. The only exception is `GET /healthz`, which returns 200 without requiring the header.
 
 The header is stripped before proxying to the backend pod.
 
 ## Request flow
 
-1. Router extracts the function from the `x-skipper-function` header.
+1. Router extracts the function from the `X-Skipper-Function` header.
 2. Creates or updates heartbeat state for the function.
 3. Marks the function as active. A shared background loop sends heartbeats for all active functions every 5 seconds (configurable via `--heartbeat-interval`).
 4. Queries the controller via gRPC `GetInstance` RPC for an instance address.
@@ -42,8 +44,8 @@ Failed requests are retried with up to 6 total attempts (configurable via `--max
 
 - Minimum backoff: 100ms
 - Maximum backoff: 5s
-- Only dial errors trigger retries (connection refused, host unreachable)
-- TLS errors, timeouts, and other failures are not retried
+- Only dial errors trigger retries (connection refused, host unreachable, dial timeout)
+- TLS errors, response timeouts, and other non-dial failures are not retried
 
 On each retry, the failed instance is excluded so the controller returns a different pod. The request body is preserved across retries.
 
@@ -53,7 +55,7 @@ When proxying to backend pods, the router rewrites headers:
 
 | Header               | Value                                                         |
 | -------------------- | ------------------------------------------------------------- |
-| `x-skipper-function` | Removed                                                       |
+| `X-Skipper-Function` | Removed                                                       |
 | `Host`               | Preserved from original request                               |
 | `X-Forwarded-For`    | From incoming header, or `RemoteAddr` if absent               |
 | `X-Forwarded-Host`   | From incoming header, or request `Host` if absent             |
