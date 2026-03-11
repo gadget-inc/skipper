@@ -37,7 +37,7 @@ Each active function gets its own `Supervisor` (`internal/controller/supervisor.
 
 A supervisor's converge loop runs on a timer (`--scale-interval`, default 15s) and on each tick:
 
-1. Checks hash ring ownership -- if this controller is no longer responsible, the supervisor stops itself.
+1. Checks hash ring ownership -- if this controller is no longer responsible, the supervisor skips scaling but continues tracking recommendations.
 2. Collects metrics -- CPU, memory, and in-flight request counts from router heartbeats.
 3. Computes a scaling recommendation using an HPA-inspired algorithm that evaluates each metric independently and takes the highest recommendation.
 4. Applies a stabilization window for downscale decisions to avoid flapping.

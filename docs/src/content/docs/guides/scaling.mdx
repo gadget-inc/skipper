@@ -9,7 +9,7 @@ Only one controller replica handles scaling for a given function; others track s
 
 ## Scaling metrics
 
-Three metrics can drive scaling: **in-flight requests**, **CPU usage**, and **memory usage**. Each is enabled by setting its target to a non-zero value in the function's scale config. When multiple metrics are enabled, each produces a recommendation and the highest one wins.
+Three metrics can drive scaling: **CPU usage**, **memory usage**, and **in-flight requests**. Each is enabled by setting its target to a non-zero value in the function's scale config. When multiple metrics are enabled, each produces a recommendation and the highest one wins.
 
 The formula is the same for all three:
 
