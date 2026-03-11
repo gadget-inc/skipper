@@ -283,19 +283,25 @@ function openCommentForm(zone: string): void {
     save.disabled = true;
     save.textContent = "Saving\u2026";
 
-    const created = await createComment({
-      selectedText,
-      contextBefore,
-      contextAfter,
-      comment: text,
-      zone: zone || "content",
-    });
+    try {
+      const created = await createComment({
+        selectedText,
+        contextBefore,
+        contextAfter,
+        comment: text,
+        zone: zone || "content",
+      });
 
-    overlay.remove();
-    renderHighlights();
-    const all = await fetchAllComments();
-    renderBadge(all.length);
-    await showAllCommentsPanel(created.id);
+      overlay.remove();
+      renderHighlights();
+      const all = await fetchAllComments();
+      renderBadge(all.length);
+      await showAllCommentsPanel(created.id);
+    } catch (err) {
+      console.error("Failed to save comment:", err);
+      save.disabled = false;
+      save.textContent = "Save";
+    }
   });
 
   actions.appendChild(cancel);
@@ -359,7 +365,12 @@ function showCommentPopover(commentId: string, target: Element): void {
     background: ${t.dangerMuted}; color: ${t.dangerFg}; cursor: pointer; font-size: 12px;
   `;
   del.addEventListener("click", async () => {
-    await deleteComment(commentId);
+    try {
+      await deleteComment(commentId);
+    } catch (err) {
+      console.error("Failed to save comment:", err);
+      return;
+    }
     popover.remove();
     renderHighlights();
     void fetchAllComments().then((all) => renderBadge(all.length));
@@ -418,9 +429,15 @@ function showCommentPopover(commentId: string, target: Element): void {
       if (!newText) return;
       saveEdit.disabled = true;
       saveEdit.textContent = "Saving\u2026";
-      await updateComment(commentId, newText);
-      popover.remove();
-      showCommentPopover(commentId, target);
+      try {
+        await updateComment(commentId, newText);
+        popover.remove();
+        showCommentPopover(commentId, target);
+      } catch (err) {
+        console.error("Failed to save comment:", err);
+        saveEdit.disabled = false;
+        saveEdit.textContent = "Save";
+      }
     });
 
     textarea.addEventListener("keydown", (e) => {
