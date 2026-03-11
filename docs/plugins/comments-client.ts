@@ -90,7 +90,7 @@ async function createComment(data: Omit<Comment, "id" | "page" | "createdAt">): 
   });
   if (!res.ok) throw new Error(`Failed to create comment: ${res.status}`);
   const comment = (await res.json()) as Comment;
-  comments.push(comment);
+  comments.unshift(comment);
   return comment;
 }
 

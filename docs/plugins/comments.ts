@@ -167,9 +167,18 @@ function addMiddleware(server: ViteDevServer): void {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({ deleted: id }));
         })
-        .catch(() => {
-          res.writeHead(404, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "not found" }));
+        .catch((err: unknown) => {
+          if (
+            typeof err === "object" &&
+            err !== null &&
+            (err as NodeJS.ErrnoException).code === "ENOENT"
+          ) {
+            res.writeHead(404, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "not found" }));
+          } else {
+            res.writeHead(500, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: String(err) }));
+          }
         });
       return;
     }

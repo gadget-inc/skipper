@@ -244,6 +244,9 @@
       if (tolPass) {
         verdict = `no change — ${n} instances (within tolerance)`;
         verdictClass = "no-change";
+      } else if (desired === n) {
+        verdict = `no change — ${n} instances (ratio within rounding)`;
+        verdictClass = "no-change";
       } else if (ratio > 1.0) {
         verdict = `scale up: ${n} → ${desired} instances (+${desired - n})`;
         verdictClass = "scale-up";
