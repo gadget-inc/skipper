@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "docs/**"
+      - ".github/workflows/docs.yaml"
   workflow_dispatch:
 
 permissions:
