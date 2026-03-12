@@ -56,6 +56,10 @@ export async function runScripts(argv: string[]) {
   await $nothrow`pnpm --filter scripts test ${argv}`;
 }
 
+export async function runE2e(argv: string[]) {
+  await $nothrow`pnpm --filter e2e test ${argv}`;
+}
+
 export async function runAll() {
   await runGo([]);
   await runDocs([]);
@@ -69,7 +73,8 @@ Subcommands:
   go [flags] [./path/...]    Run Go tests (gotestsum)
   docs [args]                Run docs tests (pnpm --filter docs)
   scripts [args]             Run script tests (pnpm --filter scripts)
-  all                        Run go + docs + scripts`);
+  e2e [args]                 Run e2e tests (pnpm --filter e2e)
+  all                        Run go + docs + scripts (not e2e)`);
   process.exitCode = 1;
 }
 
@@ -86,6 +91,9 @@ if (import.meta.filename === process.argv[1]) {
       break;
     case "scripts":
       await runScripts(rest);
+      break;
+    case "e2e":
+      await runE2e(rest);
       break;
     case "all":
       await runAll();

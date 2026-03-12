@@ -1,0 +1,120 @@
+{{define "content"}} {{if not .Found}}
+<div class="text-center py-8 text-fg-muted">Instance not found: {{.Name}}</div>
+{{else}} {{$inst := .Instance}} {{$fn := .Supervisor.GetFunction}}
+<div data-on-interval__duration.5000ms="@get('/sse/instance/{{pathEscape .Name}}')">
+  <div class="page-header">
+    <div class="breadcrumb">
+      <a href="/functions">Functions</a><span class="separator">/</span><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a
+      ><span class="separator">/</span>{{.Name}}
+    </div>
+    <h1>{{.Name}} {{instanceStateBadge $inst .Supervisor.GetActiveReplicaSet}}</h1>
+  </div>
+  <div id="instance-detail">{{template "instance-detail" .}}</div>
+</div>
+{{end}} {{end}} {{define "instance-detail"}} {{$inst := .Instance}} {{$fn := .Supervisor.GetFunction}} {{template "lifecycle-timeline"
+$inst}}
+
+<div class="detail-layout">
+  <div class="detail-sidebar">
+    <div class="stat-card stat-card-success">
+      <div class="stat-label">Status</div>
+      <div class="mt-1">{{instanceStateBadge $inst .Supervisor.GetActiveReplicaSet}}</div>
+    </div>
+    <div class="stat-card stat-card-muted">
+      <div class="stat-label">Address</div>
+      <div class="stat-value-sm">{{$inst.GetAddr}}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">CPU</div>
+      <div class="stat-value">{{$inst.GetCpuUsageMilli}}m</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Memory</div>
+      <div class="stat-value">{{$inst.GetMemoryUsageMib}}Mi</div>
+    </div>
+  </div>
+
+  <div>
+    <h2>Details</h2>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr>
+            <td class="text-fg-muted">ReplicaSet</td>
+            <td class="font-mono">{{$inst.GetReplicaSet}}</td>
+          </tr>
+          <tr>
+            <td class="text-fg-muted">Assigned</td>
+            <td>{{timeAgo $inst.GetAssignedAt}}</td>
+          </tr>
+          <tr>
+            <td class="text-fg-muted">Ready</td>
+            <td>{{if isReady $inst}}{{timeAgo $inst.GetReadyAt}}{{else}}—{{end}}</td>
+          </tr>
+          <tr>
+            <td class="text-fg-muted">Function</td>
+            <td><a href="{{functionPath $fn}}">{{functionKey $fn}}</a></td>
+          </tr>
+          <tr>
+            <td class="text-fg-muted">Responsible Controller</td>
+            <td>
+              <a href="/controllers/{{pathEscape .Supervisor.GetResponsibleControllerIp}}">{{.Supervisor.GetResponsibleControllerIp}}</a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{end}} {{define "lifecycle-timeline"}} {{$assigned := .HasAssignedAt}} {{$ready := .HasReadyAt}}
+<div class="flex items-center mb-6 p-4 bg-bg-muted rounded-lg shadow-sm">
+  <div class="flex flex-col items-center gap-1 min-w-[80px]">
+    {{if not $assigned}}
+    <div class="w-3 h-3 rounded-full bg-border border-2 border-bg shrink-0"></div>
+    {{else}}
+    <div class="w-3 h-3 rounded-full bg-success border-2 border-bg shrink-0"></div>
+    {{end}}
+    <div class="text-[11px] text-fg-muted uppercase">Assigned</div>
+  </div>
+  {{if and $assigned $ready}}
+  <div class="flex-1 h-0.5 bg-success min-w-[40px]"></div>
+  {{else}}
+  <div class="flex-1 h-0.5 bg-border min-w-[40px]"></div>
+  {{end}}
+  <div class="text-[11px] text-fg-muted text-center px-2">
+    {{if and $assigned $ready}}{{durationBetween .GetAssignedAt .GetReadyAt}}{{else}}…{{end}}
+  </div>
+  {{if and $assigned $ready}}
+  <div class="flex-1 h-0.5 bg-success min-w-[40px]"></div>
+  {{else}}
+  <div class="flex-1 h-0.5 bg-border min-w-[40px]"></div>
+  {{end}}
+  <div class="flex flex-col items-center gap-1 min-w-[80px]">
+    {{if not $ready}}
+    <div class="w-3 h-3 rounded-full bg-border border-2 border-bg shrink-0"></div>
+    {{else}}
+    <div class="w-3 h-3 rounded-full bg-success border-2 border-bg shrink-0"></div>
+    {{end}}
+    <div class="text-[11px] text-fg-muted uppercase">Ready</div>
+  </div>
+  {{if $ready}}
+  <div class="flex-1 h-0.5 bg-success min-w-[40px]"></div>
+  {{else}}
+  <div class="flex-1 h-0.5 bg-border min-w-[40px]"></div>
+  {{end}}
+  <div class="text-[11px] text-fg-muted text-center px-2">{{if $ready}}{{timeAgo .GetReadyAt}}{{else}}…{{end}}</div>
+  {{if $ready}}
+  <div class="flex-1 h-0.5 bg-success min-w-[40px]"></div>
+  {{else}}
+  <div class="flex-1 h-0.5 bg-border min-w-[40px]"></div>
+  {{end}}
+  <div class="flex flex-col items-center gap-1 min-w-[80px]">
+    {{if not $ready}}
+    <div class="w-3 h-3 rounded-full bg-border border-2 border-bg shrink-0"></div>
+    {{else}}
+    <div class="w-3 h-3 rounded-full bg-success border-2 border-bg shrink-0"></div>
+    {{end}}
+    <div class="text-[11px] text-fg-muted uppercase">Serving</div>
+  </div>
+</div>
+{{end}}

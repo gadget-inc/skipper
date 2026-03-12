@@ -16,7 +16,7 @@ $.cwd = abs();
 const flags = parseArgs({
   args: process.argv.slice(2),
   options: {
-    only: { type: "string", default: "controller,router,docs" },
+    only: { type: "string", default: "controller,router,tailwind,docs" },
     help: { type: "boolean", default: false, short: "h" },
   },
 });
@@ -29,11 +29,12 @@ if (flags.values.help) {
       dev [flags]
 
     Flags:
-          --only <string>  Components to run (default: controller,router,docs)
+          --only <string>  Components to run (default: controller,router,tailwind,docs)
       -h, --help           Show this help message
 
     Local endpoints:
       Controller gRPC: 127.0.0.1:50051
+      Web UI:          http://127.0.0.1:8080
       Router:          http://127.0.0.1:8081
       Docs:            http://localhost:4321
 
@@ -84,6 +85,7 @@ if (components.has("controller")) {
     SKIPPER_POD_IP: "127.0.0.1",
     SKIPPER_PASETO_PRIVATE_KEY: pasetoKey,
     SKIPPER_FUNCTION_NAMESPACES: "skipper-development-fixtures,skipper-test-fixtures",
+    SKIPPER_WEB_TEMPLATE_DIR: abs("internal/web"),
     SKIPPER_SINGLE_CONTROLLER_MODE: "true",
     SKIPPER_HOST: "127.0.0.1",
     SKIPPER_LOG_FORMAT: "text",
@@ -110,6 +112,12 @@ if (components.has("router")) {
   processes.push(watchAndRun("router", () => $({ env })`go run ./cmd/router`, goWatcher, ac.signal));
 }
 
+if (components.has("tailwind")) {
+  const input = abs("internal/web/static/input.css");
+  const output = abs("internal/web/static/css/output.css");
+  processes.push($({ signal: ac.signal })`pnpm exec tailwindcss -i ${input} -o ${output} --watch`.exitCode.catch(() => {}));
+}
+
 if (components.has("docs")) {
   processes.push(
     $({ signal: ac.signal, cwd: abs("docs") })`pnpm astro dev`.exitCode.catch((error) => {
@@ -121,6 +129,7 @@ if (components.has("docs")) {
 // Print active endpoints
 if (components.has("controller")) {
   console.log("Controller gRPC: 127.0.0.1:50051");
+  console.log("Web UI:          http://127.0.0.1:8080");
 }
 if (components.has("router")) {
   console.log("Router:          http://127.0.0.1:8081");

@@ -71,6 +71,7 @@ export default defineConfig({
             { label: "Getting Started", link: "/contributing/getting-started/" },
             { label: "Building and Deploying", link: "/contributing/building-and-deploying/" },
             { label: "Testing and Linting", link: "/contributing/testing/" },
+            { label: "Web UI", link: "/contributing/web-ui/" },
             { label: "Watching Logs", link: "/contributing/watching-logs/" },
             { label: "Profiling and PGO", link: "/contributing/profiling/" },
             { label: "Contribution Workflow", link: "/contributing/workflow/" },

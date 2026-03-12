@@ -22,6 +22,8 @@ RUN go mod download && go mod verify
 # Build controller
 FROM deps AS build-controller
 COPY . .
+RUN pnpm install --frozen-lockfile
+RUN pnpm exec tailwindcss --input internal/web/static/input.css --output internal/web/static/css/output.css --minify
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/controller ./cmd/controller
 

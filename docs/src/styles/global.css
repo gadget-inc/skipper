@@ -2,6 +2,7 @@
 @import "@astrojs/starlight-tailwind";
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
+@import "../../../styles/primer.css";
 
 /* Primer-based neutral gray scale and GitHub blue accent.
    The Starlight-Tailwind bridge reads these Tailwind scales and maps them
@@ -32,9 +33,8 @@
   --color-accent-900: #0d419d;
   --color-accent-950: #0c2d6b;
 
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
-  --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  --font-sans: var(--primer-font-sans);
+  --font-mono: var(--primer-font-mono);
 }
 
 /* Primer font stacks for Starlight */

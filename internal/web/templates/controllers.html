@@ -1,0 +1,54 @@
+{{define "content"}}
+<div data-on-interval__duration.5000ms="@get('/sse/controllers')">
+  <div class="page-header">
+    <h1>Controllers</h1>
+  </div>
+
+  {{if .State.GetControllerIps}}
+  <div id="ring-distribution">{{template "ring-distribution" .}}</div>
+  {{end}}
+
+  <div id="controllers-table" class="table-wrap">{{template "controllers-table" .}}</div>
+</div>
+{{end}} {{define "ring-distribution"}} {{if .RingDistribution}}
+<div class="mb-8">
+  <h2>
+    Ring Distribution{{if .RingImbalanced}}
+    <span class="badge badge-yellow">imbalanced</span>{{end}}
+  </h2>
+  <div class="mb-4">
+    {{range .RingDistribution}}
+    <div class="flex items-center gap-3 mb-1 text-[13px] font-mono">
+      <div class="min-w-[120px] text-fg-muted">{{.IP}}</div>
+      <div class="flex-1 h-5 bg-bg rounded overflow-hidden">
+        <div class="h-full bg-accent rounded transition-[width] duration-300" style="width: {{.Pct}}%"></div>
+      </div>
+      <div class="min-w-[30px] text-right tabular">{{.Count}}</div>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}} {{end}} {{define "controllers-table"}} {{if not .State.GetControllerIps}}
+<div class="text-center py-8 text-fg-muted">No controllers</div>
+{{else}}
+<table>
+  <thead>
+    <tr>
+      <th>IP</th>
+      <th>Self</th>
+      <th>Functions</th>
+      <th>Instances</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .ControllerRows}}
+    <tr>
+      <td class="font-mono"><a href="/controllers/{{pathEscape .IP}}">{{.IP}}</a></td>
+      <td>{{if .IsSelf}}<span class="badge badge-green">self</span>{{end}}</td>
+      <td class="tabular">{{.Functions}}</td>
+      <td class="tabular">{{.ReadyInstances}}/{{.TotalInstances}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}} {{end}}

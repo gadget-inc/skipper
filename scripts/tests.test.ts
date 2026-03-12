@@ -57,7 +57,7 @@ vi.mock("node:fs/promises", async (importOriginal: () => Promise<Record<string, 
 
 // -- Import module under test --
 
-import { printUsage, runAll, runDocs, runGo, runScripts } from "./tests.ts";
+import { printUsage, runAll, runDocs, runE2e, runGo, runScripts } from "./tests.ts";
 
 // -- Helpers --
 
@@ -179,7 +179,7 @@ describe("runGo", () => {
   });
 });
 
-// ---- runDocs / runScripts ----
+// ---- runDocs / runScripts / runE2e ----
 
 describe("runDocs", () => {
   it("passes args through to pnpm filter", async () => {
@@ -199,6 +199,17 @@ describe("runScripts", () => {
     expect(mocks.state.nothrowCalls.length).toBeGreaterThanOrEqual(1);
     const cmd = shellCommand(mocks.state.nothrowCalls[0]!);
     expect(cmd).toContain("--filter scripts test");
+    expect(cmd).toContain("--watch");
+  });
+});
+
+describe("runE2e", () => {
+  it("passes args through to pnpm filter", async () => {
+    await runE2e(["--watch"]);
+
+    expect(mocks.state.nothrowCalls.length).toBeGreaterThanOrEqual(1);
+    const cmd = shellCommand(mocks.state.nothrowCalls[0]!);
+    expect(cmd).toContain("--filter e2e test");
     expect(cmd).toContain("--watch");
   });
 });

@@ -21,5 +21,6 @@ See the [Contributing section](docs/src/content/docs/contributing/) in the docs 
 - [Building and Deploying](docs/src/content/docs/contributing/building-and-deploying.mdx) — deploy scripts, fixture smoke tests, cleanup
 - [Testing, Linting, and Code Generation](docs/src/content/docs/contributing/testing.mdx) — test commands, linting, code generation
 - [Watching Logs](docs/src/content/docs/contributing/watching-logs.mdx) — stream and filter pod logs
+- [Web UI](docs/src/content/docs/contributing/web-ui.mdx) — dev mode, available routes, live-reload
 - [Profiling and PGO](docs/src/content/docs/contributing/profiling.mdx) — collect profiles, generate PGO data
 - [Contribution Workflow](docs/src/content/docs/contributing/workflow.mdx) — PRs, CI, Docker image builds
