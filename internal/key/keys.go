@@ -27,6 +27,7 @@ var (
 	Namespace                 = stringKey("namespace")
 	Oneshot                   = boolKey("oneshot")
 	Pod                       = podKey("k8s.pod")
+	PodIP                     = stringKey("pod_ip")
 	Port                      = newNames("port")
 	ReadyAt                   = timeKey("ready_at")
 	ReadyInstances            = intKey("ready_instances")

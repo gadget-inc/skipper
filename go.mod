@@ -45,7 +45,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/procfs v0.19.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

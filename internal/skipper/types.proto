@@ -61,4 +61,61 @@ message ScaleDecision {
   uint32 unclamped_desired_instances = 2;
   ScaleReason reason = 3;
   repeated ScaleMetric metrics = 4;
+  reserved 5;
+  reserved timestamp;
+}
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_SCALE_UP = 1;
+  EVENT_TYPE_SCALE_DOWN = 2;
+  EVENT_TYPE_POD_ASSIGNED = 3;
+  EVENT_TYPE_POD_DELETED = 4;
+  EVENT_TYPE_STALE_REPLACEMENT = 5;
+  EVENT_TYPE_HEARTBEAT_TIMEOUT = 6;
+  EVENT_TYPE_STUCK_INSTANCE_CLEANUP = 7;
+}
+
+enum EventSeverity {
+  EVENT_SEVERITY_UNSPECIFIED = 0;
+  EVENT_SEVERITY_INFO = 1;
+  EVENT_SEVERITY_WARN = 2;
+}
+
+message Event {
+  google.protobuf.Timestamp timestamp = 1;
+  Function function = 2;
+  EventType type = 3;
+  string message = 4;
+  EventSeverity severity = 5;
+}
+
+message ConfigValue {
+  string name = 1;
+  string value = 2;
+  string description = 3;
+}
+
+message HeartbeatState {
+  string router_ip = 1;
+  Heartbeat heartbeat = 2;
+}
+
+message SupervisorState {
+  Function function = 1;
+  repeated Instance instances = 2;
+  repeated HeartbeatState router_heartbeats = 3;
+  reserved 4, 6;
+  reserved last_scale_decision, scale_history;
+  string responsible_controller_ip = 5;
+  string active_replica_set = 7;
+}
+
+message ClusterState {
+  string pod_ip = 1;
+  google.protobuf.Timestamp started_at = 2;
+  repeated string controller_ips = 3;
+  repeated SupervisorState supervisors = 4;
+  repeated Event events = 5;
+  repeated ConfigValue config = 6;
 }

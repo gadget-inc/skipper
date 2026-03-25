@@ -42,10 +42,17 @@ message ReleaseInstanceRequest {
 
 message ReleaseInstanceResponse {}
 
+message GetClusterStateRequest {}
+
+message GetClusterStateResponse {
+  ClusterState cluster_state = 1;
+}
+
 // Controller service
 service ControllerService {
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
   rpc Scale(ScaleRequest) returns (ScaleResponse);
   rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse);
+  rpc GetClusterState(GetClusterStateRequest) returns (GetClusterStateResponse);
 }
