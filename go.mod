@@ -1,6 +1,6 @@
 module github.com/gadget-inc/skipper
 
-go 1.25.5
+go 1.26.0
 
 require (
 	aidanwoods.dev/go-paseto v1.6.0

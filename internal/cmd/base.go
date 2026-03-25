@@ -40,12 +40,13 @@ func (c *BaseConfig) Init(cmd *cobra.Command) (cleanup func(), err error) {
 		return nil, err
 	}
 
-	log.Init(c.Log)
+	closeLog := log.Init(c.Log)
 	shutdownTelemetry := telemetry.Init(cmd.Context(), c.Telemetry, cmd.Name())
 	shutdownPprof := pprof.Init(cmd.Context(), c.Pprof)
 
 	return func() {
 		shutdownTelemetry()
 		shutdownPprof()
+		closeLog()
 	}, nil
 }

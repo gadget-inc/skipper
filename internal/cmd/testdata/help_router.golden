@@ -10,6 +10,9 @@ Flags:
       --heartbeat-interval duration               The interval at which to send heartbeats to the controller. (env SKIPPER_HEARTBEAT_INTERVAL) (default 5s)
   -h, --help                                      help for router
       --host string                               The hostname the router listens on. (env SKIPPER_HOST) (default "0.0.0.0")
+      --log-file string                           Path to a log file. When set, logs are written to both stderr and this file. (env SKIPPER_LOG_FILE)
+      --log-file-format string                    Log format for the file output. Defaults to --log-format. (json, text) (env SKIPPER_LOG_FILE_FORMAT)
+      --log-file-level string                     Log level for the file output. Defaults to --log-level. (trace, debug, info, warn, error) (env SKIPPER_LOG_FILE_LEVEL)
       --log-format string                         The log format to use. (json, text) (env SKIPPER_LOG_FORMAT) (default "json")
       --log-level                                 The log level to use. (trace, debug, info, warn, error) (env SKIPPER_LOG_LEVEL) (default INFO)
       --max-round-trip-attempts int               The maximum number of attempts to proxy a request to a function. (env SKIPPER_MAX_ROUND_TRIP_ATTEMPTS) (default 6)
