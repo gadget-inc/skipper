@@ -74,8 +74,15 @@ func (f *Function) Validate() error {
 	if f.GetTenant() == "" {
 		return errors.New("missing tenant")
 	}
-	if f.GetScale() == nil {
+	scale := f.GetScale()
+	if scale == nil {
 		return errors.New("missing scale")
+	}
+	if scale.GetMaxInstances() < 1 {
+		return errors.New("scale.max_instances must be >= 1")
+	}
+	if scale.GetMinInstances() > scale.GetMaxInstances() {
+		return fmt.Errorf("scale.min_instances (%d) must be <= scale.max_instances (%d)", scale.GetMinInstances(), scale.GetMaxInstances())
 	}
 	return nil
 }

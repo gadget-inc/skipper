@@ -178,6 +178,16 @@ func TestFunctionFromHeader(t *testing.T) {
 			wantErr: "missing scale",
 		},
 		{
+			name:    "zero max instances",
+			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"min_instances":0,"max_instances":0}}`,
+			wantErr: "scale.max_instances must be >= 1",
+		},
+		{
+			name:    "min greater than max",
+			header:  `{"namespace":"n","deployment":"d","tenant":"t","scale":{"min_instances":5,"max_instances":3}}`,
+			wantErr: "scale.min_instances (5) must be <= scale.max_instances (3)",
+		},
+		{
 			name:   "valid function with scale",
 			header: `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`,
 			wantFn: validFn,
