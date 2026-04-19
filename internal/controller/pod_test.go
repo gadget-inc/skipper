@@ -24,6 +24,7 @@ import (
 )
 
 func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod v1.Pod) {
+	t.Helper()
 	assert.Assert(t, instance.GetFunction().GetDeployment() == pod.Labels[key.Deployment.Label])
 	assert.Assert(t, instance.GetFunction().GetTenant() == pod.Labels[key.Tenant.Label])
 
@@ -40,6 +41,31 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod
 	assert.Assert(t, instance.GetReplicaSet() == pod.Annotations[key.ReplicaSet.Annotation])
 	assert.Assert(t, instance.GetAssignedAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Annotation])
 	assert.Assert(t, instance.GetReadyAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Annotation])
+}
+
+// listAssignedPods lists pods and waits for the ready-at annotation to be
+// persisted — assignPod returns before its async ready-at patch completes,
+// so tests that read the pod back from the apiserver need to poll.
+func listAssignedPods(t *testing.T, client *fake.Clientset, namespace string, expected int) []v1.Pod {
+	t.Helper()
+	var items []v1.Pod
+	poll.WaitOn(t, func(_ poll.LogT) poll.Result {
+		pods, err := client.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			return poll.Error(err)
+		}
+		if len(pods.Items) != expected {
+			return poll.Continue("expected %d pods, got %d", expected, len(pods.Items))
+		}
+		for _, pod := range pods.Items {
+			if pod.Annotations[key.ReadyAt.Annotation] == "" {
+				return poll.Continue("pod %s missing ready-at annotation", pod.Name)
+			}
+		}
+		items = pods.Items
+		return poll.Success()
+	}, poll.WithTimeout(2*time.Second), poll.WithDelay(10*time.Millisecond))
+	return items
 }
 
 func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
@@ -74,10 +100,8 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{})
-				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == 1)
-				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
+				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
+				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
 			},
 		},
 		{
@@ -101,10 +125,8 @@ func TestAssignPod(t *testing.T) {
 				}()
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{})
-				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == 1)
-				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
+				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
+				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
 			},
 		},
 		{
@@ -144,10 +166,8 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{})
-				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == 1)
-				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
+				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
+				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
 			},
 		},
 		{
@@ -159,10 +179,8 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.instance.GetFunction().GetNamespace()).List(t.Context(), metav1.ListOptions{})
-				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == 1)
-				ensureInstanceIsAssignedToPod(t, state.instance, pods.Items[0])
+				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
+				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
 			},
 		},
 		{

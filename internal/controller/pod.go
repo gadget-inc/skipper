@@ -128,12 +128,29 @@ GET_UNASSIGNED_POD:
 		return nil, err
 	}
 
-	// annotate the pod as ready
-	patches = []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + now.UTC().Format(time.RFC3339) + `" }]`)
-	assignedPod, err = ctrl.patchPod(ctx, assignedPod.Namespace, assignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
-	if err != nil {
-		return nil, fmt.Errorf("failed to patch pod as ready: %w", err)
+	// Populate ready-at on a deep copy of the assigned pod so instanceFromPod
+	// sees it. The apiserver patch runs asynchronously below — readers that
+	// matter for routing (scaleWithoutLock's direct append, oneshot's
+	// single-use path) consume this in-memory value; other readers (informer
+	// cache, stuck cleanup, HPA CPU) tolerate a brief delay. We deep-copy
+	// because patchPod already inserted assignedPod into the informer
+	// indexer, and informer background goroutines iterate its annotations.
+	assignedPod = assignedPod.DeepCopy()
+	if assignedPod.Annotations == nil {
+		assignedPod.Annotations = map[string]string{}
 	}
+	readyAtStr := now.UTC().Format(time.RFC3339)
+	assignedPod.Annotations[key.ReadyAt.Annotation] = readyAtStr
+
+	go func() {
+		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ctrl.config.FunctionAssignTimeout)
+		defer cancel()
+
+		patches := []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + readyAtStr + `" }]`)
+		if err := ctrl.patchPodWithRetry(asyncCtx, assignedPod.Namespace, assignedPod.Name, patches); err != nil {
+			log.Error(asyncCtx, "failed to persist ready-at annotation", key.Error.Slog(err), key.Pod.Slog(assignedPod))
+		}
+	}()
 
 	instance, err = ctrl.instanceFromPod(assignedPod)
 	return
@@ -258,6 +275,38 @@ func (ctrl *Controller) patchPod(ctx context.Context, namespace, name string, pa
 
 	ctrl.updatePodCache(ctx, pod)
 	return pod, nil
+}
+
+// patchPodWithRetry applies a JSON patch with exponential backoff. It stops
+// early if the pod is gone or ctx is cancelled. Callers should use this for
+// best-effort background patches where a transient apiserver error shouldn't
+// drop the update.
+func (ctrl *Controller) patchPodWithRetry(ctx context.Context, namespace, name string, patches []byte) error {
+	const maxAttempts = 5
+	backoff := 50 * time.Millisecond
+	opts := metav1.PatchOptions{FieldManager: key.Controller.Label}
+
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		_, lastErr = ctrl.patchPod(ctx, namespace, name, types.JSONPatchType, patches, opts)
+		if lastErr == nil {
+			return nil
+		}
+		if apierrors.IsNotFound(lastErr) {
+			// pod is gone (e.g., oneshot release) — nothing to persist to
+			return nil
+		}
+		if attempt == maxAttempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+	}
+	return lastErr
 }
 
 // deletePod deletes a pod via the Kubernetes API and removes it from the informer cache.
