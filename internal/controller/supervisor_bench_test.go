@@ -19,40 +19,60 @@ var (
 
 // BenchmarkConvergeTelemetry measures the per-converge cost of building span
 // attributes on the Supervisor.converge hot path: a cached-identity *Function
-// and a fresh *Heartbeat per tick, both routed through telemetry.With.
+// and a per-tick *Heartbeat, both routed through telemetry.With.
 //
-// Baseline (Phase 1, bac5b83, Apple M4 Pro, -count=6 median):
+// FunctionAttr and HeartbeatAttr isolate the Attr() cost by priming the
+// pointer (Function cache hit, Heartbeat pre-built); Combined rebuilds the
+// Heartbeat each iteration to reflect the full converge tick.
 //
-//	BenchmarkConvergeTelemetry/FunctionAttr-14      1000000    1059 ns/op    2232 B/op    26 allocs/op
-//	BenchmarkConvergeTelemetry/HeartbeatAttr-14     4414580     272 ns/op     448 B/op     9 allocs/op
-//	BenchmarkConvergeTelemetry/Combined-14           713140    1720 ns/op    3800 B/op    41 allocs/op
+// Measured on Apple M4 Pro with -benchmem -count=6 medians. Baseline runs
+// the former key.Function.Attr / key.Heartbeat.Attr path; "after" runs the
+// memoized fn.Attr() / direct-to-OTel hb.Attr() path.
 //
-// Phase 5 targets: FunctionAttr drops to 0 allocs/op after first call (cache
-// hit); HeartbeatAttr drops >=50% (direct-to-OTel construction).
+//	Baseline:
+//	  FunctionAttr-14         1000000    1141 ns/op    2232 B/op    26 allocs/op
+//	  HeartbeatAttr-14        5003590     242 ns/op     320 B/op     7 allocs/op
+//	  Combined-14              680533    1800 ns/op    3800 B/op    41 allocs/op
+//
+//	After:
+//	  FunctionAttr-14       178902222     6.75 ns/op      0 B/op     0 allocs/op
+//	  HeartbeatAttr-14        9819922      126 ns/op    232 B/op     3 allocs/op
+//	  Combined-14             2611962      461 ns/op   1480 B/op    11 allocs/op
+//
+// Allocation reductions: FunctionAttr 26->0 (100%), HeartbeatAttr 7->3
+// (57%), Combined 41->11 (73%).
 func BenchmarkConvergeTelemetry(b *testing.B) {
 	fn := fixture.NewFunction(b)
 	ctx := context.Background()
 
 	b.Run("FunctionAttr", func(b *testing.B) {
+		// Prime the cache so we measure the steady-state converge path where
+		// the Function pointer has already been seen.
+		_ = fn.Attr()
 		b.ReportAllocs()
 		for b.Loop() {
-			sinkAttr = key.Function.Attr(fn)
+			sinkAttr = fn.Attr()
 		}
 	})
 
 	b.Run("HeartbeatAttr", func(b *testing.B) {
+		// Pre-build hb so the sub-bench isolates the Attr() cost from the
+		// tick's message allocation (timestamppb + Heartbeat struct). The
+		// Combined sub-bench below still rebuilds per iteration to reflect
+		// the full converge loop.
+		hb := newBenchHeartbeat(fn)
 		b.ReportAllocs()
 		for b.Loop() {
-			hb := newBenchHeartbeat(fn)
-			sinkAttr = key.Heartbeat.Attr(hb)
+			sinkAttr = hb.Attr()
 		}
 	})
 
 	b.Run("Combined", func(b *testing.B) {
+		_ = fn.Attr()
 		b.ReportAllocs()
 		for b.Loop() {
 			hb := newBenchHeartbeat(fn)
-			sinkCtx = telemetry.With(ctx, key.Function.Attr(fn), key.Heartbeat.Attr(hb))
+			sinkCtx = telemetry.With(ctx, fn.Attr(), hb.Attr())
 		}
 	})
 }
