@@ -27,7 +27,7 @@ var (
 //
 // Measured on Apple M4 Pro with -benchmem -count=6 medians. Baseline runs
 // the former key.Function.Attr / key.Heartbeat.Attr path; "after" runs the
-// memoized fn.Attr() / direct-to-OTel hb.Attr() path.
+// weak-memoized fn.Attr() / direct-to-OTel hb.Attr() path.
 //
 //	Baseline:
 //	  FunctionAttr-14         1000000    1141 ns/op    2232 B/op    26 allocs/op
@@ -35,12 +35,12 @@ var (
 //	  Combined-14              680533    1800 ns/op    3800 B/op    41 allocs/op
 //
 //	After:
-//	  FunctionAttr-14       178902222     6.75 ns/op      0 B/op     0 allocs/op
-//	  HeartbeatAttr-14        9819922      126 ns/op    232 B/op     3 allocs/op
-//	  Combined-14             2611962      461 ns/op   1480 B/op    11 allocs/op
+//	  FunctionAttr-14        97354860    12.2 ns/op      0 B/op     0 allocs/op
+//	  HeartbeatAttr-14       10018592     120 ns/op    232 B/op     3 allocs/op
+//	  Combined-14             2598534     460 ns/op   1480 B/op    11 allocs/op
 //
-// Allocation reductions: FunctionAttr 26->0 (100%), HeartbeatAttr 7->3
-// (57%), Combined 41->11 (73%).
+// Allocation reductions (the whole point -- GC was the bottleneck):
+// FunctionAttr 26->0 (100%), HeartbeatAttr 7->3 (57%), Combined 41->11 (73%).
 func BenchmarkConvergeTelemetry(b *testing.B) {
 	fn := fixture.NewFunction(b)
 	ctx := context.Background()
