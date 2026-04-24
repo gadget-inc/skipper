@@ -1,7 +1,6 @@
 package key
 
 import (
-	"log/slog"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -11,20 +10,12 @@ import (
 	"gotest.tools/v3/poll"
 )
 
-type memoTestVal struct {
-	name string
-}
-
-func (v *memoTestVal) LogValue() slog.Value {
-	return slog.StringValue(v.name)
-}
-
 func TestMemoizedReturnsEquivalentAttr(t *testing.T) {
 	t.Parallel()
 	k := logValuerKey("memo-test")
-	attr := Memoized(func(v *memoTestVal) Attr { return k.Attr(v) })
+	attr := Memoized(func(v *testLogValuer) Attr { return k.Attr(v) })
 
-	v := &memoTestVal{name: "hello"}
+	v := &testLogValuer{name: "hello"}
 	got1 := attr(v)
 	got2 := attr(v)
 	want := k.Attr(v)
@@ -37,12 +28,12 @@ func TestMemoizedSkipsBuildOnCacheHit(t *testing.T) {
 	t.Parallel()
 	var builds atomic.Int64
 	k := logValuerKey("memo-count")
-	attr := Memoized(func(v *memoTestVal) Attr {
+	attr := Memoized(func(v *testLogValuer) Attr {
 		builds.Add(1)
 		return k.Attr(v)
 	})
 
-	v := &memoTestVal{name: "hit"}
+	v := &testLogValuer{name: "hit"}
 	for range 10 {
 		_ = attr(v)
 	}
@@ -53,11 +44,11 @@ func TestMemoizedCacheShrinksAfterGC(t *testing.T) {
 	// Insert entries for N distinct pointers, drop references, GC. Entries
 	// must be released -- otherwise the cache leaks one per pointer parsed.
 	k := logValuerKey("memo-gc")
-	c := &memoizedCache[memoTestVal]{build: func(v *memoTestVal) Attr { return k.Attr(v) }}
+	c := &memoizedCache[testLogValuer]{build: func(v *testLogValuer) Attr { return k.Attr(v) }}
 
 	const n = 100
 	for range n {
-		v := &memoTestVal{name: "gc"}
+		v := &testLogValuer{name: "gc"}
 		_ = c.attr(v)
 	}
 	assert.Equal(t, c.size(), n, "cache should have one entry per distinct pointer")
@@ -74,8 +65,8 @@ func TestMemoizedCacheShrinksAfterGC(t *testing.T) {
 
 func BenchmarkMemoizedHit(b *testing.B) {
 	k := logValuerKey("memo-bench")
-	attr := Memoized(func(v *memoTestVal) Attr { return k.Attr(v) })
-	v := &memoTestVal{name: "bench"}
+	attr := Memoized(func(v *testLogValuer) Attr { return k.Attr(v) })
+	v := &testLogValuer{name: "bench"}
 	_ = attr(v) // prime
 	b.ReportAllocs()
 	for b.Loop() {

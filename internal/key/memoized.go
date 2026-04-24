@@ -7,18 +7,16 @@ import (
 	"weak"
 )
 
-// Memoized wraps build in a weak per-pointer cache. The returned closure
-// returns the same Attr for the same *T across calls, paying the build cost
-// once per pointer. Entries are released automatically when *T becomes
-// unreachable, so the cache's resident set tracks the live *T population.
+// Memoized memoizes build per-pointer with a weak cache; entries are
+// released once *T becomes unreachable.
 //
-// The Attr cache is safe precisely because Key.Attr pre-resolves its
-// slog.Value -- the cached Attr never pins the source *T. Build closures
-// that construct an Attr by other means MUST preserve the same property
-// (no LogValuer or any-boxed *T in the returned slog.Attr), otherwise the
-// weak ref and cleanup cannot free *T.
+// Correctness requirement: the Attr returned by build MUST NOT retain *T
+// (no LogValuer or any-boxed *T in the slog.Attr). Key.Attr guarantees
+// this, so building via key.Function.Attr (etc.) is safe. Custom builders
+// that forget to Resolve() a LogValuer would defeat the weak ref and keep
+// *T alive forever.
 //
-// Uses the canonical weak-cache idiom from
+// Follows the canonical Go 1.24 weak-cache idiom:
 // https://go.dev/blog/cleanups-and-weak.
 func Memoized[T any](build func(*T) Attr) func(*T) Attr {
 	c := &memoizedCache[T]{build: build}
@@ -48,13 +46,7 @@ func (m *memoizedCache[T]) attr(v *T) Attr {
 	built := m.build(v)
 	entry := &memoizedEntry[T]{weak: weak.Make(v), attr: &built}
 	if actual, loaded := m.cache.LoadOrStore(k, entry); loaded {
-		if prior := actual.(*memoizedEntry[T]); prior.weak.Value() == v {
-			return *prior.attr
-		}
-		// Defensive: a concurrent inserter's weak ref resolves to something
-		// other than v. This shouldn't be reachable while v is alive at k,
-		// but overwrite rather than return a mismatched Attr.
-		m.cache.Store(k, entry)
+		return *actual.(*memoizedEntry[T]).attr
 	}
 	runtime.AddCleanup(v, func(k uintptr) {
 		m.cache.CompareAndDelete(k, entry)

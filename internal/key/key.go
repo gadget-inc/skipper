@@ -30,9 +30,8 @@ func (k Key[V]) Otel(v V) []attribute.KeyValue {
 // logging and tracing contexts.
 //
 // The slog.Value is resolved eagerly so the returned Attr never retains a
-// LogValuer's underlying pointer. This keeps the Attr safe to cache (see
-// key.Memoized) without leaking the source value past its natural lifetime,
-// and it saves the re-resolution cost at every subsequent log emit.
+// LogValuer's underlying pointer, keeping the Attr safe to cache (see
+// key.Memoized) without leaking the source value past its natural lifetime.
 func (k Key[V]) Attr(v V) Attr {
 	slogAttr := k.toSlogAttr(v)
 	slogAttr.Value = slogAttr.Value.Resolve()
