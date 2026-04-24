@@ -8,19 +8,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// Pre-flattened OTel keys matching what appendOtelAttrs would produce when
-// walking the heartbeat LogValue group. Extracted so Attr() avoids string
-// concat on every converge tick.
 var (
 	heartbeatTimestampOtelKey        = attribute.Key(key.Heartbeat.Name + "." + key.Timestamp.Name)
 	heartbeatInFlightRequestsOtelKey = attribute.Key(key.Heartbeat.Name + "." + key.InFlightRequests.Name)
 )
 
 // Attr returns the telemetry Attr for this heartbeat, built directly against
-// the OTel attribute API so the converge hot path skips the
-// slog.GroupValue -> appendOtelAttrs detour.
-//
-// The Slog field preserves the LogValue group shape so log output is
+// OTel so the converge hot path skips the slog.GroupValue -> appendOtelAttrs
+// detour. The Slog field preserves the LogValue group shape so log output is
 // unchanged.
 func (h *Heartbeat) Attr() key.Attr {
 	ts := h.GetTimestamp().AsTime()
