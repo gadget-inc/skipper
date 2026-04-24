@@ -19,7 +19,7 @@ const (
 	FunctionDeployment = "test"
 )
 
-func NewFunction(t *testing.T) *skipper.Function {
+func NewFunction(t testing.TB) *skipper.Function {
 	t.Helper()
 	return skipper.Function_builder{
 		Tenant:     proto.String("tenant-" + uuid.NewString()[:8]),
