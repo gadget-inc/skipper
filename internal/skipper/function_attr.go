@@ -56,15 +56,13 @@ func (f *Function) Attr() key.Attr {
 	built.Slog = slog.Attr{Key: built.Slog.Key, Value: built.Slog.Value.Resolve()}
 
 	entry := &functionAttrEntry{fn: weak.Make(f), attr: &built}
-	actual, loaded := functionAttrCache.LoadOrStore(k, entry)
-	if loaded {
-		// Another goroutine installed an entry first; return its Attr to
-		// match the canonical pattern (last writer wins is avoided).
+	if actual, loaded := functionAttrCache.LoadOrStore(k, entry); loaded {
 		if prior := actual.(*functionAttrEntry); prior.fn.Value() == f {
 			return *prior.attr
 		}
-		// The winner's weak ref already points at a different (or GC'd)
-		// Function -- overwrite with our fresh entry.
+		// Defensive: a concurrent inserter's weak ref resolves to something
+		// other than f. This shouldn't be reachable while f is alive at k,
+		// but overwrite rather than return a mismatched Attr.
 		functionAttrCache.Store(k, entry)
 	}
 	runtime.AddCleanup(f, func(k uintptr) {

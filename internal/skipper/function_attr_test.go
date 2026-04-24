@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
 	"gotest.tools/v3/assert"
+	"gotest.tools/v3/poll"
 )
 
 func TestFunctionAttrEquivalence(t *testing.T) {
@@ -126,16 +127,14 @@ func TestFunctionAttrCacheShrinksAfterGC(t *testing.T) {
 		t.Fatalf("expected %d new entries pre-GC, got %d", n, diff)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
+	poll.WaitOn(t, func(poll.LogT) poll.Result {
 		runtime.GC()
-		runtime.Gosched()
-		if functionAttrCacheSize() <= start {
-			return
+		size := functionAttrCacheSize()
+		if size <= start {
+			return poll.Success()
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Errorf("cache did not shrink after GC: size=%d, started at %d", functionAttrCacheSize(), start)
+		return poll.Continue("cache size %d, started at %d", size, start)
+	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(2*time.Second))
 }
 
 func functionAttrCacheSize() int {
