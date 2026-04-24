@@ -35,9 +35,9 @@ var (
 //	  Combined-14              680533    1800 ns/op    3800 B/op    41 allocs/op
 //
 //	After:
-//	  FunctionAttr-14        97354860    12.2 ns/op      0 B/op     0 allocs/op
-//	  HeartbeatAttr-14       10018592     120 ns/op    232 B/op     3 allocs/op
-//	  Combined-14             2598534     460 ns/op   1480 B/op    11 allocs/op
+//	  FunctionAttr-14        75659461    15.8 ns/op      0 B/op     0 allocs/op
+//	  HeartbeatAttr-14       10000000     119 ns/op    232 B/op     3 allocs/op
+//	  Combined-14             2620000     453 ns/op   1480 B/op    11 allocs/op
 //
 // Allocation reductions (the whole point -- GC was the bottleneck):
 // FunctionAttr 26->0 (100%), HeartbeatAttr 7->3 (57%), Combined 41->11 (73%).

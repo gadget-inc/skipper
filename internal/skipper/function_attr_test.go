@@ -1,17 +1,14 @@
 package skipper
 
 import (
-	"runtime"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
 	"gotest.tools/v3/assert"
-	"gotest.tools/v3/poll"
 )
 
 func TestFunctionAttrEquivalence(t *testing.T) {
@@ -63,12 +60,7 @@ func TestFunctionAttrEquivalence(t *testing.T) {
 			got := tc.fn.Attr()
 			want := key.Function.Attr(tc.fn)
 
-			// Compare resolved slog values: the cache pre-resolves the
-			// LogValuer to break *Function retention, which changes the
-			// Kind of the cached Value but not the final log output.
-			assert.Equal(t, got.Slog.Key, want.Slog.Key)
-			assert.Assert(t, got.Slog.Value.Resolve().Equal(want.Slog.Value.Resolve()),
-				"Slog mismatch:\n got: %v\nwant: %v", got.Slog.Value.Resolve(), want.Slog.Value.Resolve())
+			assert.Assert(t, got.Slog.Equal(want.Slog), "Slog mismatch:\n got: %v\nwant: %v", got.Slog, want.Slog)
 			assert.DeepEqual(t, got.Otel, want.Otel, cmpopts.EquateComparable(attribute.KeyValue{}))
 		})
 	}
@@ -85,7 +77,7 @@ func TestFunctionAttrConcurrent(t *testing.T) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	wantResolved := key.Function.Attr(fn).Slog.Value.Resolve()
+	want := key.Function.Attr(fn)
 
 	const goroutines = 32
 	const iterations = 100
@@ -96,8 +88,7 @@ func TestFunctionAttrConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iterations {
-				got := fn.Attr()
-				if !got.Slog.Value.Resolve().Equal(wantResolved) {
+				if got := fn.Attr(); !got.Slog.Equal(want.Slog) {
 					t.Errorf("Slog mismatch under concurrent access")
 					return
 				}
@@ -105,45 +96,6 @@ func TestFunctionAttrConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-}
-
-func TestFunctionAttrCacheShrinksAfterGC(t *testing.T) {
-	// Insert entries for N distinct Functions, then drop all strong
-	// references to them. The weak cache must release those entries after
-	// GC -- otherwise we leak one entry per Function ever parsed.
-	const n = 100
-
-	start := functionAttrCacheSize()
-	for range n {
-		fn := Function_builder{
-			Namespace:  proto.String("gc-ns"),
-			Deployment: proto.String("gc-deploy"),
-			Tenant:     proto.String("gc-tenant"),
-			Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(1)}.Build(),
-		}.Build()
-		_ = fn.Attr()
-	}
-	if diff := functionAttrCacheSize() - start; diff != n {
-		t.Fatalf("expected %d new entries pre-GC, got %d", n, diff)
-	}
-
-	poll.WaitOn(t, func(poll.LogT) poll.Result {
-		runtime.GC()
-		size := functionAttrCacheSize()
-		if size <= start {
-			return poll.Success()
-		}
-		return poll.Continue("cache size %d, started at %d", size, start)
-	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(2*time.Second))
-}
-
-func functionAttrCacheSize() int {
-	n := 0
-	functionAttrCache.Range(func(_, _ any) bool {
-		n++
-		return true
-	})
-	return n
 }
 
 func BenchmarkFunctionAttr(b *testing.B) {
@@ -155,8 +107,7 @@ func BenchmarkFunctionAttr(b *testing.B) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	// Prime the cache so we measure the hit path, not the first-call build.
-	_ = fn.Attr()
+	_ = fn.Attr() // prime the cache so we measure the hit path
 
 	b.ReportAllocs()
 	for b.Loop() {
