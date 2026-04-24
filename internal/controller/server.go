@@ -40,7 +40,7 @@ func (s *Server) GetInstance(ctx context.Context, req *skipper.GetInstanceReques
 		return nil, status.Errorf(codes.InvalidArgument, "invalid function: %v", err)
 	}
 
-	ctx = telemetry.With(ctx, key.Function.Attr(fn))
+	ctx = telemetry.With(ctx, fn.Attr())
 
 	excludeNames := req.GetExcludeInstanceNames()
 
@@ -115,7 +115,7 @@ func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper
 		return nil, status.Errorf(codes.InvalidArgument, "invalid function: %v", err)
 	}
 
-	ctx = telemetry.With(ctx, key.Function.Attr(fn))
+	ctx = telemetry.With(ctx, fn.Attr())
 
 	desiredInstances := req.GetDesiredInstances()
 	reason := req.GetReason()
