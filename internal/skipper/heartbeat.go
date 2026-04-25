@@ -10,18 +10,18 @@ import (
 
 var _ slog.LogValuer = (*Heartbeat)(nil)
 
-const heartbeatName = "heartbeat"
-
 // HeartbeatKey is the typed telemetry key for a Heartbeat. Heartbeats mutate
-// per converge tick, so HeartbeatKey is uncached -- pointer-keyed memoization
-// would never hit. WithOtel routes Attr's OTel construction directly to
-// (*Heartbeat).otelAttrs so the converge hot path skips the slog.GroupValue
-// -> appendOtelAttrs detour.
-var HeartbeatKey = key.New(heartbeatName, (*Heartbeat).LogValue, key.WithOtel((*Heartbeat).otelAttrs))
+// per converge tick so pointer-keyed memoization would never hit; the OTel
+// override (via OtelAttrs) lets the converge hot path skip the slog walk.
+var HeartbeatKey = key.NewLogAndOtel[*Heartbeat]("heartbeat")
 
+// Pre-computed OTel keys for the OtelAttrs path. The literal "heartbeat" is
+// duplicated from HeartbeatKey above because referencing HeartbeatKey.Name
+// here would create an init cycle (HeartbeatKey -> OtelAttrs body ->
+// these keys -> HeartbeatKey).
 var (
-	heartbeatTimestampOtelKey        = attribute.Key(heartbeatName + "." + key.Timestamp.Name)
-	heartbeatInFlightRequestsOtelKey = attribute.Key(heartbeatName + "." + key.InFlightRequests.Name)
+	heartbeatTimestampOtelKey        = attribute.Key("heartbeat." + key.Timestamp.Name)
+	heartbeatInFlightRequestsOtelKey = attribute.Key("heartbeat." + key.InFlightRequests.Name)
 )
 
 func (h *Heartbeat) LogValue() slog.Value {
@@ -31,10 +31,10 @@ func (h *Heartbeat) LogValue() slog.Value {
 	)
 }
 
-// otelAttrs builds OTel attributes directly, bypassing the slog -> OTel walk.
-// Wired in via key.WithOtel on HeartbeatKey to keep the converge hot path
-// allocation-light.
-func (h *Heartbeat) otelAttrs() []attribute.KeyValue {
+// OtelAttrs is consumed by HeartbeatKey via [key.NewLogAndOtel]. The method
+// is exported so the constructor's interface constraint can reference it
+// from internal/key.
+func (h *Heartbeat) OtelAttrs() []attribute.KeyValue {
 	return []attribute.KeyValue{
 		{Key: heartbeatTimestampOtelKey, Value: attribute.StringValue(h.GetTimestamp().AsTime().Format(time.RFC3339))},
 		{Key: heartbeatInFlightRequestsOtelKey, Value: attribute.Int64Value(int64(h.GetInFlightRequests()))},

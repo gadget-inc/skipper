@@ -8,9 +8,7 @@ import (
 
 var _ slog.LogValuer = (*Scale)(nil)
 
-// ScaleKey is the typed telemetry key for a Scale. Scale isn't on a hot path,
-// so ScaleKey is uncached.
-var ScaleKey = key.New("scale", (*Scale).LogValue)
+var ScaleKey = key.NewLogValuer[*Scale]("scale")
 
 func (s *Scale) LogValue() slog.Value {
 	return slog.GroupValue(
@@ -24,10 +22,8 @@ func (s *Scale) LogValue() slog.Value {
 
 var _ slog.LogValuer = (*ScaleDecision)(nil)
 
-// ScaleDecisionKey is the typed telemetry key for a ScaleDecision.
-var ScaleDecisionKey = key.New("scale_decision", (*ScaleDecision).LogValue)
+var ScaleDecisionKey = key.NewLogValuer[*ScaleDecision]("scale_decision")
 
-// LogValue implements slog.LogValuer for structured logging.
 func (sd *ScaleDecision) LogValue() slog.Value {
 	var metricAttrs []slog.Attr
 	for _, metric := range sd.GetMetrics() {

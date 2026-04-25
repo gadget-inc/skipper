@@ -44,8 +44,7 @@ func (k *Key[V]) Attr(v V) Attr {
 	return k.buildAttr(v)
 }
 
-// buildAttr constructs an Attr without consulting the cache. NewCached uses it
-// as the build-on-miss function for its weak-pointer cache.
+// buildAttr is the cache-miss path; NewCached wires it as memoizedCache.build.
 func (k *Key[V]) buildAttr(v V) Attr {
 	slogAttr := k.toSlogAttr(v)
 	slogAttr.Value = slogAttr.Value.Resolve()

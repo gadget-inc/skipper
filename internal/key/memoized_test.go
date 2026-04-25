@@ -1,7 +1,6 @@
 package key
 
 import (
-	"log/slog"
 	"runtime"
 	"testing"
 	"time"
@@ -13,8 +12,8 @@ import (
 func TestMemoizedCacheShrinksAfterGC(t *testing.T) {
 	// Insert entries for N distinct pointers, drop references, GC. Entries
 	// must be released -- otherwise the cache leaks one per pointer parsed.
-	k := New("memo-gc", func(v *testLogValuer) slog.Value { return v.LogValue() })
-	c := &memoizedCache[testLogValuer]{build: func(v *testLogValuer) Attr { return k.Attr(v) }}
+	k := New("memo-gc", (*testLogValuer).LogValue)
+	c := &memoizedCache[testLogValuer]{build: k.Attr}
 
 	const n = 100
 	for range n {
@@ -34,7 +33,7 @@ func TestMemoizedCacheShrinksAfterGC(t *testing.T) {
 }
 
 func BenchmarkMemoizedHit(b *testing.B) {
-	k := NewCached("memo-bench", func(v *testLogValuer) slog.Value { return v.LogValue() })
+	k := NewCached("memo-bench", (*testLogValuer).LogValue)
 	v := &testLogValuer{name: "bench"}
 	_ = k.Attr(v) // prime
 	b.ReportAllocs()

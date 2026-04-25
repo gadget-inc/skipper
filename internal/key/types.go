@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 )
@@ -54,6 +55,30 @@ func NewCached[T any](name string, valueOf func(*T) slog.Value, opts ...Option[*
 	c := &memoizedCache[T]{build: k.buildAttr}
 	k.cache = c.attr
 	return k
+}
+
+// NewLogValuer creates a typed Key from a type that implements
+// [slog.LogValuer]. Equivalent to [New] with valueOf set to T.LogValue,
+// without the (*T).LogValue method-value boilerplate at the call site.
+func NewLogValuer[T slog.LogValuer](name string, opts ...Option[T]) *Key[T] {
+	return New(name, func(v T) slog.Value { return v.LogValue() }, opts...)
+}
+
+// NewLogAndOtel creates a typed Key for a type that exposes both a
+// [slog.LogValuer] LogValue method and a direct OTel-attribute path via an
+// OtelAttrs method. Equivalent to:
+//
+//	key.New(name, T.LogValue, key.WithOtel(T.OtelAttrs))
+//
+// without the (*T).Method method-value boilerplate.
+func NewLogAndOtel[T interface {
+	LogValue() slog.Value
+	OtelAttrs() []attribute.KeyValue
+}](name string) *Key[T] {
+	return New(name,
+		func(v T) slog.Value { return v.LogValue() },
+		WithOtel(func(v T) []attribute.KeyValue { return v.OtelAttrs() }),
+	)
 }
 
 func boolKey(name string) *Key[bool] {

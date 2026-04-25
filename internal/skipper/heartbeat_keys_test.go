@@ -13,9 +13,8 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-// TestHeartbeatKeyEquivalence pins HeartbeatKey's WithOtel-driven Attr to the
-// canonical (slog-walk) construction path so the direct-to-OTel optimization
-// cannot silently drift the span attribute output.
+// TestHeartbeatKeyEquivalence pins the WithOtel-driven path's output to the
+// uncached slog-walk path so the direct-to-OTel override cannot drift.
 func TestHeartbeatKeyEquivalence(t *testing.T) {
 	t.Parallel()
 

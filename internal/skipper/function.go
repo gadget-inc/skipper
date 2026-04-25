@@ -53,12 +53,8 @@ func (f *Function) Hash() FunctionHash {
 
 var _ slog.LogValuer = (*Function)(nil)
 
-// FunctionKey is the typed telemetry key for a Function. Attr is per-pointer
-// memoized via a weak cache so the converge hot path stays allocation-free
-// once a Function has been seen at least once.
-//
-// Callers MUST treat the returned Attr as immutable; it is shared across all
-// concurrent readers of the same Function pointer.
+// FunctionKey's Attr is shared across all concurrent readers of the same
+// Function pointer; treat the returned Attr as immutable.
 var FunctionKey = key.NewCached("function", (*Function).LogValue)
 
 func (f *Function) LogValue() slog.Value {
