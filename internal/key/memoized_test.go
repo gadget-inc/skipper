@@ -3,43 +3,12 @@ package key
 import (
 	"log/slog"
 	"runtime"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"gotest.tools/v3/assert"
 	"gotest.tools/v3/poll"
 )
-
-func TestMemoizedReturnsEquivalentAttr(t *testing.T) {
-	t.Parallel()
-	k := New("memo-test", func(v *testLogValuer) slog.Value { return v.LogValue() })
-	attr := memoized(func(v *testLogValuer) Attr { return k.Attr(v) })
-
-	v := &testLogValuer{name: "hello"}
-	got1 := attr(v)
-	got2 := attr(v)
-	want := k.Attr(v)
-
-	assert.Assert(t, got1.Slog.Equal(want.Slog))
-	assert.Assert(t, got1.Slog.Equal(got2.Slog), "second call should return equivalent Attr")
-}
-
-func TestMemoizedSkipsBuildOnCacheHit(t *testing.T) {
-	t.Parallel()
-	var builds atomic.Int64
-	k := New("memo-count", func(v *testLogValuer) slog.Value { return v.LogValue() })
-	attr := memoized(func(v *testLogValuer) Attr {
-		builds.Add(1)
-		return k.Attr(v)
-	})
-
-	v := &testLogValuer{name: "hit"}
-	for range 10 {
-		_ = attr(v)
-	}
-	assert.Equal(t, builds.Load(), int64(1), "builder should fire once per pointer")
-}
 
 func TestMemoizedCacheShrinksAfterGC(t *testing.T) {
 	// Insert entries for N distinct pointers, drop references, GC. Entries
@@ -65,13 +34,12 @@ func TestMemoizedCacheShrinksAfterGC(t *testing.T) {
 }
 
 func BenchmarkMemoizedHit(b *testing.B) {
-	k := New("memo-bench", func(v *testLogValuer) slog.Value { return v.LogValue() })
-	attr := memoized(func(v *testLogValuer) Attr { return k.Attr(v) })
+	k := NewCached("memo-bench", func(v *testLogValuer) slog.Value { return v.LogValue() })
 	v := &testLogValuer{name: "bench"}
-	_ = attr(v) // prime
+	_ = k.Attr(v) // prime
 	b.ReportAllocs()
 	for b.Loop() {
-		sinkAttr = attr(v)
+		sinkAttr = k.Attr(v)
 	}
 }
 

@@ -7,20 +7,16 @@ import (
 	"weak"
 )
 
-// memoized memoizes build per-pointer with a weak cache; entries are
-// released once *T becomes unreachable.
+// memoizedCache memoizes Attr per-pointer with a weak cache; entries are
+// released once *T becomes unreachable. NewCached is the public entry
+// point -- it constructs a typed Key and wires this cache automatically.
 //
-// The public entry point is [NewCached] -- it constructs a typed Key and
-// wires this cache automatically. Callers shouldn't reach for memoized
-// directly; the contract on build (must not retain *T) lives inside
-// (*Key[V]).buildAttr, which Key.Attr's eager Resolve() guarantees.
+// Correctness requirement: the Attr returned by build MUST NOT retain *T
+// (no LogValuer or any-boxed *T in the slog.Attr). NewCached guarantees
+// this via Key.buildAttr's eager Resolve().
 //
 // Follows the canonical Go 1.24 weak-cache idiom:
 // https://go.dev/blog/cleanups-and-weak.
-func memoized[T any](build func(*T) Attr) func(*T) Attr {
-	c := &memoizedCache[T]{build: build}
-	return c.attr
-}
 
 type memoizedEntry[T any] struct {
 	weak weak.Pointer[T]

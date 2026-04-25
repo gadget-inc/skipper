@@ -2,14 +2,11 @@ package key
 
 import (
 	"log/slog"
-	"runtime"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"gotest.tools/v3/assert"
-	"gotest.tools/v3/poll"
 )
 
 func TestNew_BasicShapes(t *testing.T) {
@@ -70,33 +67,6 @@ func TestNewCached_PerPointerMemoized(t *testing.T) {
 	other := &testLogValuer{name: "other"}
 	_ = k.Attr(other)
 	assert.Equal(t, builds.Load(), int64(2), "valueOf fires for each distinct pointer")
-}
-
-func TestNewCached_CacheShrinksAfterGC(t *testing.T) {
-	// NewCached wires its build path through memoizedCache. Mirror
-	// TestMemoizedCacheShrinksAfterGC's setup using a NewCached key's
-	// buildAttr to confirm the wired cache participates in the same
-	// weak-pointer + cleanup machinery.
-	k := NewCached("memo-gc", func(v *testLogValuer) slog.Value {
-		return slog.StringValue(v.name)
-	})
-	c := &memoizedCache[testLogValuer]{build: k.buildAttr}
-
-	const n = 100
-	for range n {
-		v := &testLogValuer{name: "gc"}
-		_ = c.attr(v)
-	}
-	assert.Equal(t, c.size(), n, "cache should have one entry per distinct pointer")
-
-	poll.WaitOn(t, func(poll.LogT) poll.Result {
-		runtime.GC()
-		if size := c.size(); size == 0 {
-			return poll.Success()
-		} else {
-			return poll.Continue("cache size %d", size)
-		}
-	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(2*time.Second))
 }
 
 func TestWithOtel_OverridesOtelKeepsSlog(t *testing.T) {
