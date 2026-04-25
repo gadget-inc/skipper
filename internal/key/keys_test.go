@@ -38,7 +38,7 @@ func TestKeys(t *testing.T) {
 		key.Duration.Attr(fakeDuration),
 		key.Error.Attr(fakeError),
 		key.ExcludeInstanceNames.Attr(fakeStringSlice),
-		key.Function.Attr(fakeFunction),
+		skipper.FunctionKey.Attr(fakeFunction),
 		key.GetInstanceDurationMs.Attr(fakeDuration),
 		key.Heartbeat.Attr(fakeHeartbeat),
 		key.InFlightRequests.Attr(fakeUint32),

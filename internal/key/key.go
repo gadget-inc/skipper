@@ -16,14 +16,14 @@ type Key[V any] struct {
 
 // Slog returns a slog.Attr for use in logging calls.
 // This is the most efficient method when only logging is needed.
-func (k Key[V]) Slog(v V) slog.Attr {
+func (k *Key[V]) Slog(v V) slog.Attr {
 	return k.toSlogAttr(v)
 }
 
 // Otel returns OpenTelemetry attributes for use in span creation.
 // Groups are flattened using dot notation. This is efficient when only
 // tracing attributes are needed without logging.
-func (k Key[V]) Otel(v V) []attribute.KeyValue {
+func (k *Key[V]) Otel(v V) []attribute.KeyValue {
 	if k.otelOverride != nil {
 		return k.otelOverride(v)
 	}
@@ -37,7 +37,7 @@ func (k Key[V]) Otel(v V) []attribute.KeyValue {
 // The slog.Value is resolved eagerly so the returned Attr never retains a
 // LogValuer's underlying pointer, keeping the Attr safe to cache (see
 // NewCached) without leaking the source value past its natural lifetime.
-func (k Key[V]) Attr(v V) Attr {
+func (k *Key[V]) Attr(v V) Attr {
 	if k.cache != nil {
 		return k.cache(v)
 	}
@@ -46,7 +46,7 @@ func (k Key[V]) Attr(v V) Attr {
 
 // buildAttr constructs an Attr without consulting the cache. NewCached uses it
 // as the build-on-miss function for its weak-pointer cache.
-func (k Key[V]) buildAttr(v V) Attr {
+func (k *Key[V]) buildAttr(v V) Attr {
 	slogAttr := k.toSlogAttr(v)
 	slogAttr.Value = slogAttr.Value.Resolve()
 	if k.otelOverride != nil {

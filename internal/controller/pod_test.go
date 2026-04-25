@@ -30,7 +30,7 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod
 
 	fnJSON, err := json.Marshal(instance.GetFunction())
 	assert.NilError(t, err)
-	assert.Assert(t, string(fnJSON) == pod.Annotations[key.Function.Annotation])
+	assert.Assert(t, string(fnJSON) == pod.Annotations[skipper.FunctionKey.Annotation])
 
 	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
 	port, err := ctrl.portFromPod(&pod)
@@ -70,7 +70,7 @@ func listAssignedPods(t *testing.T, client *fake.Clientset, namespace string, ex
 
 func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
 	assert.Assert(t, pod.Labels[key.Tenant.Label] == "")
-	assert.Assert(t, pod.Annotations[key.Function.Annotation] == "")
+	assert.Assert(t, pod.Annotations[skipper.FunctionKey.Annotation] == "")
 	assert.Assert(t, pod.Annotations[key.ReplicaSet.Annotation] == "")
 	assert.Assert(t, pod.Annotations[key.AssignedAt.Annotation] == "")
 	assert.Assert(t, pod.Annotations[key.ReadyAt.Annotation] == "")
@@ -596,7 +596,7 @@ func TestFunctionFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						key.Function.Annotation: string(fnJSON),
+						skipper.FunctionKey.Annotation: string(fnJSON),
 					},
 				},
 			},
@@ -623,7 +623,7 @@ func TestFunctionFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						key.Function.Annotation: "not valid json",
+						skipper.FunctionKey.Annotation: "not valid json",
 					},
 				},
 			},
@@ -634,7 +634,7 @@ func TestFunctionFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						key.Function.Annotation: `{"namespace":"","deployment":"","tenant":""}`,
+						skipper.FunctionKey.Annotation: `{"namespace":"","deployment":"","tenant":""}`,
 					},
 				},
 			},
@@ -683,10 +683,10 @@ func TestInstanceFromPod(t *testing.T) {
 						key.Deployment.Label: fn.GetDeployment(),
 					},
 					Annotations: map[string]string{
-						key.Function.Annotation:   string(fnJSON),
-						key.ReplicaSet.Annotation: "test-replicaset",
-						key.AssignedAt.Annotation: "2024-01-01T00:00:00Z",
-						key.ReadyAt.Annotation:    "2024-01-01T00:00:01Z",
+						skipper.FunctionKey.Annotation: string(fnJSON),
+						key.ReplicaSet.Annotation:      "test-replicaset",
+						key.AssignedAt.Annotation:      "2024-01-01T00:00:00Z",
+						key.ReadyAt.Annotation:         "2024-01-01T00:00:01Z",
 					},
 				},
 				Status: v1.PodStatus{
@@ -731,7 +731,7 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						key.Function.Annotation: "not valid json",
+						skipper.FunctionKey.Annotation: "not valid json",
 					},
 				},
 			},
@@ -743,7 +743,7 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						key.Function.Annotation: `{"namespace":"","deployment":"","tenant":""}`,
+						skipper.FunctionKey.Annotation: `{"namespace":"","deployment":"","tenant":""}`,
 					},
 				},
 			},
@@ -755,7 +755,7 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						key.Function.Annotation: string(fnJSON),
+						skipper.FunctionKey.Annotation: string(fnJSON),
 					},
 				},
 			},
@@ -767,9 +767,9 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						key.Function.Annotation:   string(fnJSON),
-						key.ReplicaSet.Annotation: "test-replicaset",
-						key.AssignedAt.Annotation: "not-a-timestamp",
+						skipper.FunctionKey.Annotation: string(fnJSON),
+						key.ReplicaSet.Annotation:      "test-replicaset",
+						key.AssignedAt.Annotation:      "not-a-timestamp",
 					},
 				},
 			},
@@ -781,10 +781,10 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						key.Function.Annotation:   string(fnJSON),
-						key.ReplicaSet.Annotation: "test-replicaset",
-						key.AssignedAt.Annotation: "2024-01-01T00:00:00Z",
-						key.ReadyAt.Annotation:    "not-a-timestamp",
+						skipper.FunctionKey.Annotation: string(fnJSON),
+						key.ReplicaSet.Annotation:      "test-replicaset",
+						key.AssignedAt.Annotation:      "2024-01-01T00:00:00Z",
+						key.ReadyAt.Annotation:         "not-a-timestamp",
 					},
 				},
 				Status: v1.PodStatus{
@@ -808,10 +808,10 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						key.Function.Annotation:   string(fnJSON),
-						key.ReplicaSet.Annotation: "test-replicaset",
-						key.AssignedAt.Annotation: "2024-01-01T00:00:00Z",
-						key.ReadyAt.Annotation:    "2024-01-01T00:00:01Z",
+						skipper.FunctionKey.Annotation: string(fnJSON),
+						key.ReplicaSet.Annotation:      "test-replicaset",
+						key.AssignedAt.Annotation:      "2024-01-01T00:00:00Z",
+						key.ReadyAt.Annotation:         "2024-01-01T00:00:01Z",
 					},
 				},
 				Status: v1.PodStatus{

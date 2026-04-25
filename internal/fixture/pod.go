@@ -129,10 +129,10 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 				key.Tenant.Label:     fn.GetTenant(),
 			},
 			Annotations: map[string]string{
-				key.Function.Annotation:   string(fnJSON),
-				key.ReplicaSet.Annotation: CurrentReplicaSetName(fn),
-				key.AssignedAt.Annotation: time.Now().UTC().Format(time.RFC3339),
-				key.ReadyAt.Annotation:    time.Now().UTC().Format(time.RFC3339),
+				skipper.FunctionKey.Annotation: string(fnJSON),
+				key.ReplicaSet.Annotation:      CurrentReplicaSetName(fn),
+				key.AssignedAt.Annotation:      time.Now().UTC().Format(time.RFC3339),
+				key.ReadyAt.Annotation:         time.Now().UTC().Format(time.RFC3339),
 			},
 		},
 		Status: v1.PodStatus{

@@ -27,7 +27,7 @@ var (
 //
 // Measured on Apple M4 Pro with -benchmem -count=6 medians. Baseline runs
 // the former key.Function.Attr / key.Heartbeat.Attr path; "after" runs the
-// weak-memoized fn.Attr() / direct-to-OTel hb.Attr() path.
+// weak-memoized FunctionKey.Attr / direct-to-OTel hb.Attr() path.
 //
 //	Baseline:
 //	  FunctionAttr-14         1000000    1141 ns/op    2232 B/op    26 allocs/op
@@ -48,10 +48,10 @@ func BenchmarkConvergeTelemetry(b *testing.B) {
 	b.Run("FunctionAttr", func(b *testing.B) {
 		// Prime the cache so we measure the steady-state converge path where
 		// the Function pointer has already been seen.
-		_ = fn.Attr()
+		_ = skipper.FunctionKey.Attr(fn)
 		b.ReportAllocs()
 		for b.Loop() {
-			sinkAttr = fn.Attr()
+			sinkAttr = skipper.FunctionKey.Attr(fn)
 		}
 	})
 
@@ -68,11 +68,11 @@ func BenchmarkConvergeTelemetry(b *testing.B) {
 	})
 
 	b.Run("Combined", func(b *testing.B) {
-		_ = fn.Attr()
+		_ = skipper.FunctionKey.Attr(fn)
 		b.ReportAllocs()
 		for b.Loop() {
 			hb := newBenchHeartbeat(fn)
-			sinkCtx = telemetry.With(ctx, fn.Attr(), hb.Attr())
+			sinkCtx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn), hb.Attr())
 		}
 	})
 }

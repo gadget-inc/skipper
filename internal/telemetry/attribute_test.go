@@ -34,7 +34,7 @@ func BenchmarkWith(b *testing.B) {
 
 	b.Run("3 attrs with groups", func(b *testing.B) {
 		b.ReportAllocs()
-		a1 := key.Function.Attr(fn)
+		a1 := skipper.FunctionKey.Attr(fn)
 		a2 := key.Namespace.Attr("bench-ns")
 		a3 := key.Attempt.Attr(1)
 		ctx := context.Background()
@@ -45,7 +45,7 @@ func BenchmarkWith(b *testing.B) {
 
 	b.Run("5 attrs with groups", func(b *testing.B) {
 		b.ReportAllocs()
-		a1 := key.Function.Attr(fn)
+		a1 := skipper.FunctionKey.Attr(fn)
 		a2 := key.Namespace.Attr("bench-ns")
 		a3 := key.Attempt.Attr(1)
 		a4 := key.Request.Attr(req)

@@ -281,7 +281,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 
 	// 1. Calculate scaling decision
 	heartbeat := s.combinedHeartbeat(fn, instances)
-	ctx = telemetry.With(ctx, fn.Attr(), heartbeat.Attr())
+	ctx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn), heartbeat.Attr())
 
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
 

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/gadget-inc/skipper/internal/key"
 	"google.golang.org/protobuf/proto"
 	"gotest.tools/v3/assert"
 )
@@ -125,12 +124,12 @@ func TestFunctionFromHeader(t *testing.T) {
 		{
 			name:    "missing header",
 			header:  "",
-			wantErr: "missing " + key.Function.Header,
+			wantErr: "missing " + FunctionKey.Header,
 		},
 		{
 			name:    "invalid JSON",
 			header:  "{invalid json}",
-			wantErr: "failed to unmarshal " + key.Function.Header + " header:",
+			wantErr: "failed to unmarshal " + FunctionKey.Header + " header:",
 		},
 		{
 			name:    "missing namespace",
@@ -203,7 +202,7 @@ func TestFunctionFromHeader(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/", nil)
 			if tc.header != "" {
-				req.Header.Set(key.Function.Header, tc.header)
+				req.Header.Set(FunctionKey.Header, tc.header)
 			}
 
 			fn, err := FunctionFromHeader(req)
@@ -282,12 +281,12 @@ func TestFunctionFromHeaderCacheIdentity(t *testing.T) {
 	header := `{"namespace":"id-ns","deployment":"id-deploy","tenant":"id-tenant","scale":{"min_instances":1,"max_instances":5}}`
 
 	req1 := httptest.NewRequest("GET", "/", nil)
-	req1.Header.Set(key.Function.Header, header)
+	req1.Header.Set(FunctionKey.Header, header)
 	fn1, err := FunctionFromHeader(req1)
 	assert.NilError(t, err)
 
 	req2 := httptest.NewRequest("GET", "/", nil)
-	req2.Header.Set(key.Function.Header, header)
+	req2.Header.Set(FunctionKey.Header, header)
 	fn2, err := FunctionFromHeader(req2)
 	assert.NilError(t, err)
 
@@ -338,14 +337,14 @@ func BenchmarkFunctionFromHeader(b *testing.B) {
 
 		// Pre-warm the cache.
 		warmReq := httptest.NewRequest(http.MethodGet, "/", nil)
-		warmReq.Header.Set(key.Function.Header, validHeader)
+		warmReq.Header.Set(FunctionKey.Header, validHeader)
 		if _, err := FunctionFromHeader(warmReq); err != nil {
 			b.Fatal(err)
 		}
 
 		b.RunParallel(func(pb *testing.PB) {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			req.Header.Set(key.Function.Header, validHeader)
+			req.Header.Set(FunctionKey.Header, validHeader)
 			for pb.Next() {
 				sinkFunction, _ = FunctionFromHeader(req)
 			}
@@ -361,7 +360,7 @@ func BenchmarkFunctionFromHeader(b *testing.B) {
 				n := counter.Add(1)
 				header := fmt.Sprintf(`{"namespace":"test-ns","deployment":"test-deploy","tenant":"tenant-%d","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`, n)
 				req := httptest.NewRequest(http.MethodGet, "/", nil)
-				req.Header.Set(key.Function.Header, header)
+				req.Header.Set(FunctionKey.Header, header)
 				sinkFunction, _ = FunctionFromHeader(req)
 			}
 		})

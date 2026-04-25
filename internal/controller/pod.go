@@ -66,11 +66,11 @@ GET_UNASSIGNED_POD:
 	patches := []byte(`[
 		{ "op": "test", "path": "/metadata/ownerReferences/0/kind", "value": "ReplicaSet" },
 		{ "op": "test", "path": "` + key.Tenant.PatchLabel + `", "value": null },
-		{ "op": "test", "path": "` + key.Function.PatchAnnotation + `", "value": null },
+		{ "op": "test", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": null },
 		{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
 		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
 		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.GetTenant() + `" },
-		{ "op": "add", "path": "` + key.Function.PatchAnnotation + `", "value": ` + strconv.Quote(string(fnJSON)) + ` },
+		{ "op": "add", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": ` + strconv.Quote(string(fnJSON)) + ` },
 		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
 	]`)
 
@@ -391,7 +391,7 @@ func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*skipper.Function, error) 
 		return nil, errors.New("pod is nil")
 	}
 
-	fnJSON, ok := pod.Annotations[key.Function.Annotation]
+	fnJSON, ok := pod.Annotations[skipper.FunctionKey.Annotation]
 	if !ok {
 		return nil, errors.New("missing function annotation")
 	}

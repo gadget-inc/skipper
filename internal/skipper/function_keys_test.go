@@ -11,17 +11,19 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-func TestFunctionAttrEquivalence(t *testing.T) {
+// TestFunctionKeyEquivalence pins FunctionKey's cached output to the
+// canonical (uncached) construction path so caching cannot silently drift the
+// span attribute keys/values away from what (*Function).LogValue produces.
+func TestFunctionKeyEquivalence(t *testing.T) {
 	t.Parallel()
+
+	uncached := key.New("function", (*Function).LogValue)
 
 	testCases := []struct {
 		name string
 		fn   *Function
 	}{
-		{
-			name: "fully populated",
-			fn:   testFunction,
-		},
+		{name: "fully populated", fn: testFunction},
 		{
 			name: "minimal required fields",
 			fn: Function_builder{
@@ -57,8 +59,8 @@ func TestFunctionAttrEquivalence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := tc.fn.Attr()
-			want := key.Function.Attr(tc.fn)
+			got := FunctionKey.Attr(tc.fn)
+			want := uncached.Attr(tc.fn)
 
 			assert.Assert(t, got.Slog.Equal(want.Slog), "Slog mismatch:\n got: %v\nwant: %v", got.Slog, want.Slog)
 			assert.DeepEqual(t, got.Otel, want.Otel, cmpopts.EquateComparable(attribute.KeyValue{}))
@@ -66,7 +68,7 @@ func TestFunctionAttrEquivalence(t *testing.T) {
 	}
 }
 
-func TestFunctionAttrConcurrent(t *testing.T) {
+func TestFunctionKeyConcurrent(t *testing.T) {
 	t.Parallel()
 
 	fn := Function_builder{
@@ -77,7 +79,7 @@ func TestFunctionAttrConcurrent(t *testing.T) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	want := key.Function.Attr(fn)
+	want := FunctionKey.Attr(fn)
 
 	const goroutines = 32
 	const iterations = 100
@@ -88,7 +90,7 @@ func TestFunctionAttrConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iterations {
-				if got := fn.Attr(); !got.Slog.Equal(want.Slog) {
+				if got := FunctionKey.Attr(fn); !got.Slog.Equal(want.Slog) {
 					t.Errorf("Slog mismatch under concurrent access")
 					return
 				}
@@ -98,7 +100,7 @@ func TestFunctionAttrConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
-func BenchmarkFunctionAttr(b *testing.B) {
+func BenchmarkFunctionKeyAttr(b *testing.B) {
 	fn := Function_builder{
 		Namespace:  proto.String("bench-ns"),
 		Deployment: proto.String("bench-deploy"),
@@ -107,11 +109,11 @@ func BenchmarkFunctionAttr(b *testing.B) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	_ = fn.Attr() // prime the cache so we measure the hit path
+	_ = FunctionKey.Attr(fn) // prime the cache so we measure the hit path
 
 	b.ReportAllocs()
 	for b.Loop() {
-		sinkAttrResult = fn.Attr()
+		sinkAttrResult = FunctionKey.Attr(fn)
 	}
 }
 

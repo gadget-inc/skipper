@@ -189,7 +189,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 
 				// create an assigned pod with invalid function annotation JSON
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
-				pod.Annotations[key.Function.Annotation] = "not valid json"
+				pod.Annotations[skipper.FunctionKey.Annotation] = "not valid json"
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {

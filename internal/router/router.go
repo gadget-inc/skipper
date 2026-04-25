@@ -121,7 +121,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), fn.Attr())
+	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), skipper.FunctionKey.Attr(fn))
 	requestsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
 	// get or create the heartbeat state for this function
@@ -274,7 +274,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
-	delete(pr.Out.Header, key.Function.Header)
+	delete(pr.Out.Header, skipper.FunctionKey.Header)
 
 	pr.Out.Host = pr.In.Host
 

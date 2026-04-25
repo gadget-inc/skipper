@@ -15,7 +15,6 @@ var (
 	Error                     = errorKey("error")
 	ExcludeInstanceNames      = stringSliceKey("exclude_instance_names")
 	ForwardedFor              = newIdentifier("forwarded_for")
-	Function                  = logValuerKey("function")
 	GetInstanceDurationMs     = durationKey("get_instance_duration_ms")
 	Heartbeat                 = logValuerKey("heartbeat")
 	InFlightRequests          = uint32Key("in_flight_requests")
