@@ -1,6 +1,7 @@
 package key
 
 import (
+	"log/slog"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -12,8 +13,8 @@ import (
 
 func TestMemoizedReturnsEquivalentAttr(t *testing.T) {
 	t.Parallel()
-	k := logValuerKey("memo-test")
-	attr := Memoized(func(v *testLogValuer) Attr { return k.Attr(v) })
+	k := New("memo-test", func(v *testLogValuer) slog.Value { return v.LogValue() })
+	attr := memoized(func(v *testLogValuer) Attr { return k.Attr(v) })
 
 	v := &testLogValuer{name: "hello"}
 	got1 := attr(v)
@@ -27,8 +28,8 @@ func TestMemoizedReturnsEquivalentAttr(t *testing.T) {
 func TestMemoizedSkipsBuildOnCacheHit(t *testing.T) {
 	t.Parallel()
 	var builds atomic.Int64
-	k := logValuerKey("memo-count")
-	attr := Memoized(func(v *testLogValuer) Attr {
+	k := New("memo-count", func(v *testLogValuer) slog.Value { return v.LogValue() })
+	attr := memoized(func(v *testLogValuer) Attr {
 		builds.Add(1)
 		return k.Attr(v)
 	})
@@ -43,7 +44,7 @@ func TestMemoizedSkipsBuildOnCacheHit(t *testing.T) {
 func TestMemoizedCacheShrinksAfterGC(t *testing.T) {
 	// Insert entries for N distinct pointers, drop references, GC. Entries
 	// must be released -- otherwise the cache leaks one per pointer parsed.
-	k := logValuerKey("memo-gc")
+	k := New("memo-gc", func(v *testLogValuer) slog.Value { return v.LogValue() })
 	c := &memoizedCache[testLogValuer]{build: func(v *testLogValuer) Attr { return k.Attr(v) }}
 
 	const n = 100
@@ -64,8 +65,8 @@ func TestMemoizedCacheShrinksAfterGC(t *testing.T) {
 }
 
 func BenchmarkMemoizedHit(b *testing.B) {
-	k := logValuerKey("memo-bench")
-	attr := Memoized(func(v *testLogValuer) Attr { return k.Attr(v) })
+	k := New("memo-bench", func(v *testLogValuer) slog.Value { return v.LogValue() })
+	attr := memoized(func(v *testLogValuer) Attr { return k.Attr(v) })
 	v := &testLogValuer{name: "bench"}
 	_ = attr(v) // prime
 	b.ReportAllocs()

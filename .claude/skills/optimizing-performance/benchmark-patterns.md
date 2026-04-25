@@ -63,7 +63,7 @@ func BenchmarkFunctionFromHeader(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		req := httptest.NewRequest("GET", "/", nil)
-		req.Header.Set(key.Function.Header, header)
+		req.Header.Set(skipper.FunctionKey.Header, header)
 		_, _ = FunctionFromHeader(req)
 	}
 }

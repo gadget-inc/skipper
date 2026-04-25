@@ -46,21 +46,14 @@ func New[T any](name string, valueOf func(T) slog.Value, opts ...Option[T]) *Key
 
 // NewCached creates a typed Key for pointer values whose Attr is memoized
 // per pointer via a weak cache. Cache entries shrink automatically once *T
-// becomes unreachable (see [Memoized]).
+// becomes unreachable.
 //
 // Use NewCached for keys whose values are long-lived pointers reused across
 // many calls. For values with no pointer identity worth caching, use [New].
 func NewCached[T any](name string, valueOf func(*T) slog.Value, opts ...Option[*T]) *Key[*T] {
 	k := New(name, valueOf, opts...)
-	k.cache = Memoized(k.buildAttr)
+	k.cache = memoized(k.buildAttr)
 	return k
-}
-
-// logValuerKey creates a Key specialized for slog.LogValuer types.
-func logValuerKey(name string) Key[slog.LogValuer] {
-	return newKey(name, func(id Identifier, v slog.LogValuer) slog.Attr {
-		return slog.Any(id.Name, v)
-	})
 }
 
 func boolKey(name string) Key[bool] {
