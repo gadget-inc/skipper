@@ -9,7 +9,9 @@ import (
 // Key is a typed key for creating structured log and telemetry attributes.
 type Key[V any] struct {
 	Identifier
-	toSlogAttr func(v V) slog.Attr
+	toSlogAttr   func(v V) slog.Attr
+	otelOverride func(v V) []attribute.KeyValue
+	cache        func(v V) Attr
 }
 
 // Slog returns a slog.Attr for use in logging calls.
@@ -22,6 +24,9 @@ func (k Key[V]) Slog(v V) slog.Attr {
 // Groups are flattened using dot notation. This is efficient when only
 // tracing attributes are needed without logging.
 func (k Key[V]) Otel(v V) []attribute.KeyValue {
+	if k.otelOverride != nil {
+		return k.otelOverride(v)
+	}
 	return slogAttrToOtelAttrs(k.Slog(v))
 }
 
@@ -31,14 +36,23 @@ func (k Key[V]) Otel(v V) []attribute.KeyValue {
 //
 // The slog.Value is resolved eagerly so the returned Attr never retains a
 // LogValuer's underlying pointer, keeping the Attr safe to cache (see
-// key.Memoized) without leaking the source value past its natural lifetime.
+// NewCached) without leaking the source value past its natural lifetime.
 func (k Key[V]) Attr(v V) Attr {
+	if k.cache != nil {
+		return k.cache(v)
+	}
+	return k.buildAttr(v)
+}
+
+// buildAttr constructs an Attr without consulting the cache. NewCached uses it
+// as the build-on-miss function for its weak-pointer cache.
+func (k Key[V]) buildAttr(v V) Attr {
 	slogAttr := k.toSlogAttr(v)
 	slogAttr.Value = slogAttr.Value.Resolve()
-	return Attr{
-		Slog: slogAttr,
-		Otel: slogAttrToOtelAttrs(slogAttr),
+	if k.otelOverride != nil {
+		return Attr{Slog: slogAttr, Otel: k.otelOverride(v)}
 	}
+	return Attr{Slog: slogAttr, Otel: slogAttrToOtelAttrs(slogAttr)}
 }
 
 // Attr holds a pre-computed slog attribute and its OTel equivalent

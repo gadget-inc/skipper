@@ -26,6 +26,36 @@ func newKey[V any](name string, toSlogAttr func(Identifier, V) slog.Attr) Key[V]
 	}
 }
 
+// New creates a typed Key whose slog representation comes from valueOf.
+// Apply options like [WithOtel] for direct OTel construction. The returned
+// pointer ensures any internal state (e.g. an [Option]-supplied override) is
+// shared across copies of the Key.
+func New[T any](name string, valueOf func(T) slog.Value, opts ...Option[T]) *Key[T] {
+	id := newIdentifier(name)
+	k := &Key[T]{
+		Identifier: id,
+		toSlogAttr: func(v T) slog.Attr {
+			return slog.Attr{Key: id.Name, Value: valueOf(v)}
+		},
+	}
+	for _, opt := range opts {
+		opt(k)
+	}
+	return k
+}
+
+// NewCached creates a typed Key for pointer values whose Attr is memoized
+// per pointer via a weak cache. Cache entries shrink automatically once *T
+// becomes unreachable (see [Memoized]).
+//
+// Use NewCached for keys whose values are long-lived pointers reused across
+// many calls. For values with no pointer identity worth caching, use [New].
+func NewCached[T any](name string, valueOf func(*T) slog.Value, opts ...Option[*T]) *Key[*T] {
+	k := New(name, valueOf, opts...)
+	k.cache = Memoized(k.buildAttr)
+	return k
+}
+
 // logValuerKey creates a Key specialized for slog.LogValuer types.
 func logValuerKey(name string) Key[slog.LogValuer] {
 	return newKey(name, func(id Identifier, v slog.LogValuer) slog.Attr {
