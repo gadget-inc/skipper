@@ -68,7 +68,7 @@ func (f *Function) LogValue() slog.Value {
 		key.Tenant.Slog(f.GetTenant()),
 		key.Metadata.Slog(f.GetMetadata()),
 		key.Oneshot.Slog(f.GetOneshot()),
-		key.Scale.Slog(f.GetScale()),
+		ScaleKey.Slog(f.GetScale()),
 	)
 }
 

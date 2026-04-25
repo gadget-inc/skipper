@@ -8,6 +8,11 @@ import (
 
 var _ slog.LogValuer = (*Instance)(nil)
 
+// InstanceKey is the typed telemetry key for an Instance. Instances arrive
+// fresh from each ctrl.GetInstance RPC response, so pointer-keyed caching
+// would never hit -- InstanceKey is uncached.
+var InstanceKey = key.New("instance", (*Instance).LogValue)
+
 func (instance *Instance) LogValue() slog.Value {
 	return slog.GroupValue(
 		key.Name.Slog(instance.GetName()),

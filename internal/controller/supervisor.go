@@ -281,7 +281,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 
 	// 1. Calculate scaling decision
 	heartbeat := s.combinedHeartbeat(fn, instances)
-	ctx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn), heartbeat.Attr())
+	ctx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn), skipper.HeartbeatKey.Attr(heartbeat))
 
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
 
@@ -316,7 +316,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		for _, inst := range instances {
 			err := s.ctrl.deletePod(ctx, inst.GetFunction().GetNamespace(), inst.GetName(), metav1.DeleteOptions{})
 			if err != nil {
-				log.Error(ctx, "failed to delete orphaned oneshot pod", key.Error.Slog(err), key.Instance.Slog(inst))
+				log.Error(ctx, "failed to delete orphaned oneshot pod", key.Error.Slog(err), skipper.InstanceKey.Slog(inst))
 			}
 		}
 		return nil
@@ -420,7 +420,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 	})
 
 	ctx = log.With(ctx,
-		key.ScaleDecision.Slog(decision),
+		skipper.ScaleDecisionKey.Slog(decision),
 		key.ReadyInstances.Slog(len(readyInstances)),
 		key.UnreadyInstances.Slog(len(unreadyInstances)),
 	)
@@ -508,7 +508,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*skipper.Instance) []*skipper.Instance {
 	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
 		if !instance.HasReadyAt() && time.Since(instance.GetAssignedAt().AsTime()) > s.ctrl.config.FunctionAssignTimeout*2 {
-			ctx := log.With(ctx, key.Instance.Slog(instance))
+			ctx := log.With(ctx, skipper.InstanceKey.Slog(instance))
 			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err := s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
@@ -554,7 +554,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Func
 	for _, instance := range instances {
 		replicaSet, err := namespaceLister.replicaSetLister.ReplicaSets(fn.GetNamespace()).Get(instance.GetReplicaSet())
 		if err != nil {
-			log.Warn(ctx, "failed to get replica set for instance", key.Error.Slog(err), key.Instance.Slog(instance))
+			log.Warn(ctx, "failed to get replica set for instance", key.Error.Slog(err), skipper.InstanceKey.Slog(instance))
 			continue
 		}
 
@@ -566,7 +566,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Func
 		}
 
 		// Instance is stale - scale up first to ensure a replacement, then terminate
-		ctx := log.With(ctx, key.Instance.Slog(instance))
+		ctx := log.With(ctx, skipper.InstanceKey.Slog(instance))
 
 		// Check if we're already at maxInstances+1 to prevent unbounded pod creation.
 		// This can happen if a previous iteration assigned a replacement but failed

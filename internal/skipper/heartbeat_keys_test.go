@@ -13,8 +13,13 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-func TestHeartbeatAttrEquivalence(t *testing.T) {
+// TestHeartbeatKeyEquivalence pins HeartbeatKey's WithOtel-driven Attr to the
+// canonical (slog-walk) construction path so the direct-to-OTel optimization
+// cannot silently drift the span attribute output.
+func TestHeartbeatKeyEquivalence(t *testing.T) {
 	t.Parallel()
+
+	uncached := key.New("heartbeat", (*Heartbeat).LogValue)
 
 	testCases := []struct {
 		name string
@@ -46,15 +51,14 @@ func TestHeartbeatAttrEquivalence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := tc.hb.Attr()
-			want := key.Heartbeat.Attr(tc.hb)
+			got := HeartbeatKey.Attr(tc.hb)
+			want := uncached.Attr(tc.hb)
 
-			// Slog must resolve to the same logged output.
 			assert.Assert(t, got.Slog.Value.Resolve().Equal(want.Slog.Value.Resolve()),
 				"Slog mismatch:\n got: %v\nwant: %v", got.Slog.Value.Resolve(), want.Slog.Value.Resolve())
 			assert.Equal(t, got.Slog.Key, want.Slog.Key)
 
-			// Otel: compare order-insensitive since the source doesn't guarantee order.
+			// Otel order isn't guaranteed by either path -- compare order-insensitive.
 			gotOtel := append([]attribute.KeyValue(nil), got.Otel...)
 			wantOtel := append([]attribute.KeyValue(nil), want.Otel...)
 			sort.Slice(gotOtel, func(i, j int) bool { return gotOtel[i].Key < gotOtel[j].Key })
@@ -64,23 +68,14 @@ func TestHeartbeatAttrEquivalence(t *testing.T) {
 	}
 }
 
-func BenchmarkHeartbeatAttr(b *testing.B) {
+func BenchmarkHeartbeatKeyAttr(b *testing.B) {
 	hb := Heartbeat_builder{
 		Timestamp:        timestamppb.New(time.Unix(1700000000, 0)),
 		InFlightRequests: proto.Uint32(42),
 	}.Build()
 
-	b.Run("method", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			sinkAttrResult = hb.Attr()
-		}
-	})
-
-	b.Run("key_based", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			sinkAttrResult = key.Heartbeat.Attr(hb)
-		}
-	})
+	b.ReportAllocs()
+	for b.Loop() {
+		sinkAttrResult = HeartbeatKey.Attr(hb)
+	}
 }

@@ -26,8 +26,9 @@ var (
 // Heartbeat each iteration to reflect the full converge tick.
 //
 // Measured on Apple M4 Pro with -benchmem -count=6 medians. Baseline runs
-// the former key.Function.Attr / key.Heartbeat.Attr path; "after" runs the
-// weak-memoized FunctionKey.Attr / direct-to-OTel hb.Attr() path.
+// the former centralized key.Function.Attr / key.Heartbeat.Attr path; "after"
+// runs the typed FunctionKey.Attr (weak-memoized) / HeartbeatKey.Attr
+// (direct-to-OTel via WithOtel) path.
 //
 //	Baseline:
 //	  FunctionAttr-14         1000000    1141 ns/op    2232 B/op    26 allocs/op
@@ -56,14 +57,14 @@ func BenchmarkConvergeTelemetry(b *testing.B) {
 	})
 
 	b.Run("HeartbeatAttr", func(b *testing.B) {
-		// Pre-build hb so the sub-bench isolates the Attr() cost from the
+		// Pre-build hb so the sub-bench isolates the Attr cost from the
 		// tick's message allocation (timestamppb + Heartbeat struct). The
 		// Combined sub-bench below still rebuilds per iteration to reflect
 		// the full converge loop.
 		hb := newBenchHeartbeat(fn)
 		b.ReportAllocs()
 		for b.Loop() {
-			sinkAttr = hb.Attr()
+			sinkAttr = skipper.HeartbeatKey.Attr(hb)
 		}
 	})
 
@@ -72,7 +73,7 @@ func BenchmarkConvergeTelemetry(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			hb := newBenchHeartbeat(fn)
-			sinkCtx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn), hb.Attr())
+			sinkCtx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn), skipper.HeartbeatKey.Attr(hb))
 		}
 	})
 }
