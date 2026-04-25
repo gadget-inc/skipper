@@ -32,16 +32,11 @@ func newKey[V any](name string, toSlogAttr func(Identifier, V) slog.Attr) *Key[V
 }
 
 // New creates a typed Key whose slog representation comes from valueOf.
-// The slog.Attr key is fixed to the Identifier's name. Apply options like
-// [WithOtel] for direct OTel construction.
-func New[T any](name string, valueOf func(T) slog.Value, opts ...Option[T]) *Key[T] {
-	k := newKey(name, func(id Identifier, v T) slog.Attr {
+// The slog.Attr key is fixed to the Identifier's name.
+func New[T any](name string, valueOf func(T) slog.Value) *Key[T] {
+	return newKey(name, func(id Identifier, v T) slog.Attr {
 		return slog.Attr{Key: id.Name, Value: valueOf(v)}
 	})
-	for _, opt := range opts {
-		opt(k)
-	}
-	return k
 }
 
 // NewCached creates a typed Key for pointer values whose Attr is memoized
@@ -50,35 +45,31 @@ func New[T any](name string, valueOf func(T) slog.Value, opts ...Option[T]) *Key
 //
 // Use NewCached for keys whose values are long-lived pointers reused across
 // many calls. For values with no pointer identity worth caching, use [New].
-func NewCached[T any](name string, valueOf func(*T) slog.Value, opts ...Option[*T]) *Key[*T] {
-	k := New(name, valueOf, opts...)
+func NewCached[T any](name string, valueOf func(*T) slog.Value) *Key[*T] {
+	k := New(name, valueOf)
 	c := &memoizedCache[T]{build: k.buildAttr}
 	k.cache = c.attr
 	return k
 }
 
 // NewLogValuer creates a typed Key from a type that implements
-// [slog.LogValuer]. Equivalent to [New] with valueOf set to T.LogValue,
-// without the (*T).LogValue method-value boilerplate at the call site.
-func NewLogValuer[T slog.LogValuer](name string, opts ...Option[T]) *Key[T] {
-	return New(name, func(v T) slog.Value { return v.LogValue() }, opts...)
+// [slog.LogValuer], without the (*T).LogValue method-value boilerplate at
+// the call site.
+func NewLogValuer[T slog.LogValuer](name string) *Key[T] {
+	return New(name, func(v T) slog.Value { return v.LogValue() })
 }
 
 // NewLogAndOtel creates a typed Key for a type that exposes both a
 // [slog.LogValuer] LogValue method and a direct OTel-attribute path via an
-// OtelAttrs method. Equivalent to:
-//
-//	key.New(name, T.LogValue, key.WithOtel(T.OtelAttrs))
-//
-// without the (*T).Method method-value boilerplate.
+// OtelAttrs method. The OtelAttrs method bypasses the slog -> OTel walk on
+// hot paths.
 func NewLogAndOtel[T interface {
 	LogValue() slog.Value
 	OtelAttrs() []attribute.KeyValue
 }](name string) *Key[T] {
-	return New(name,
-		func(v T) slog.Value { return v.LogValue() },
-		WithOtel(func(v T) []attribute.KeyValue { return v.OtelAttrs() }),
-	)
+	k := New(name, func(v T) slog.Value { return v.LogValue() })
+	k.otelOverride = func(v T) []attribute.KeyValue { return v.OtelAttrs() }
+	return k
 }
 
 func boolKey(name string) *Key[bool] {

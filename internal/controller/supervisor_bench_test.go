@@ -28,7 +28,7 @@ var (
 // Measured on Apple M4 Pro with -benchmem -count=6 medians. Baseline runs
 // the former centralized key.Function.Attr / key.Heartbeat.Attr path; "after"
 // runs the typed FunctionKey.Attr (weak-memoized) / HeartbeatKey.Attr
-// (direct-to-OTel via WithOtel) path.
+// (direct-to-OTel via OtelAttrs) path.
 //
 //	Baseline:
 //	  FunctionAttr-14         1000000    1141 ns/op    2232 B/op    26 allocs/op

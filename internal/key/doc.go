@@ -27,8 +27,10 @@
 //   - [NewCached] -- per-pointer memoized key, for long-lived pointers reused
 //     across many calls. Cache entries shrink automatically once the source
 //     pointer becomes unreachable.
-//   - [WithOtel] -- option that overrides Otel attribute construction so a
-//     key can emit []attribute.KeyValue directly, bypassing the slog walk.
+//   - [NewLogValuer] -- shorthand for a key whose source type implements
+//     slog.LogValuer; saves the (*T).LogValue method-value boilerplate.
+//   - [NewLogAndOtel] -- shorthand for a key whose source type implements
+//     both LogValue and an OtelAttrs() override that bypasses the slog walk.
 //
 // # Usage
 //
