@@ -11,6 +11,20 @@ import (
 	"gotest.tools/v3/assert"
 )
 
+// Compile-time type assertions for the typed domain keys. If any of these
+// fail to compile, callers can pass the wrong concrete type to .Attr,
+// .Slog, or .Otel without a build error -- exactly the regression this
+// branch's typed-key shape is meant to prevent. The test suite running
+// in CI gates the property; widening or changing a key's V breaks the
+// build immediately.
+var (
+	_ *key.Key[*Function]      = FunctionKey
+	_ *key.Key[*Heartbeat]     = HeartbeatKey
+	_ *key.Key[*Instance]      = InstanceKey
+	_ *key.Key[*Scale]         = ScaleKey
+	_ *key.Key[*ScaleDecision] = ScaleDecisionKey
+)
+
 // TestFunctionKeyEquivalence pins FunctionKey's cached output to the
 // canonical (uncached) construction path so caching cannot silently drift the
 // span attribute keys/values away from what (*Function).LogValue produces.
