@@ -87,7 +87,9 @@ jobs:
       - name: Watch and persist logs
         env:
           SKIPPER_KUBECTL_CONTEXT: kind-kind
-        run: nohup logs &
+        run: |
+          mkdir -p tmp/logs
+          nohup logs -f >tmp/logs/cluster.log 2>&1 &
 
       - name: Run tests
         run: tests
