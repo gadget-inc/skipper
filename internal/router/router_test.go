@@ -50,40 +50,40 @@ func TestBadRequest(t *testing.T) {
 		{
 			name:          "missing function header",
 			setupHeader:   func(req *http.Request) {},
-			expectedError: "missing " + key.Function.Header,
+			expectedError: "missing " + skipper.FunctionKey.Header,
 		},
 		{
 			name: "malformed json",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(key.Function.Header, "not valid json")
+				req.Header.Set(skipper.FunctionKey.Header, "not valid json")
 			},
-			expectedError: "failed to unmarshal " + key.Function.Header + " header",
+			expectedError: "failed to unmarshal " + skipper.FunctionKey.Header + " header",
 		},
 		{
 			name: "missing namespace",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(key.Function.Header, `{"deployment":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+				req.Header.Set(skipper.FunctionKey.Header, `{"deployment":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
 			},
 			expectedError: "missing namespace",
 		},
 		{
 			name: "missing deployment",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(key.Function.Header, `{"namespace":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+				req.Header.Set(skipper.FunctionKey.Header, `{"namespace":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
 			},
 			expectedError: "missing deployment",
 		},
 		{
 			name: "missing tenant",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(key.Function.Header, `{"namespace":"test","deployment":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+				req.Header.Set(skipper.FunctionKey.Header, `{"namespace":"test","deployment":"test","scale":{"minInstances":0,"maxInstances":5}}`)
 			},
 			expectedError: "missing tenant",
 		},
 		{
 			name: "missing scale",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(key.Function.Header, `{"namespace":"test","deployment":"test","tenant":"test"}`)
+				req.Header.Set(skipper.FunctionKey.Header, `{"namespace":"test","deployment":"test","tenant":"test"}`)
 			},
 			expectedError: "missing scale",
 		},

@@ -8,6 +8,8 @@ import (
 
 var _ slog.LogValuer = (*Scale)(nil)
 
+var ScaleKey = key.New("scale", (*Scale).LogValue)
+
 func (s *Scale) LogValue() slog.Value {
 	return slog.GroupValue(
 		key.MinInstances.Slog(s.GetMinInstances()),
@@ -20,7 +22,8 @@ func (s *Scale) LogValue() slog.Value {
 
 var _ slog.LogValuer = (*ScaleDecision)(nil)
 
-// LogValue implements slog.LogValuer for structured logging.
+var ScaleDecisionKey = key.New("scale_decision", (*ScaleDecision).LogValue)
+
 func (sd *ScaleDecision) LogValue() slog.Value {
 	var metricAttrs []slog.Attr
 	for _, metric := range sd.GetMetrics() {

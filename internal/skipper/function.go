@@ -53,6 +53,10 @@ func (f *Function) Hash() FunctionHash {
 
 var _ slog.LogValuer = (*Function)(nil)
 
+// FunctionKey's Attr is shared across all concurrent readers of the same
+// Function pointer; treat the returned Attr as immutable.
+var FunctionKey = key.NewCached("function", (*Function).LogValue)
+
 func (f *Function) LogValue() slog.Value {
 	return slog.GroupValue(
 		key.Namespace.Slog(f.GetNamespace()),
@@ -60,7 +64,7 @@ func (f *Function) LogValue() slog.Value {
 		key.Tenant.Slog(f.GetTenant()),
 		key.Metadata.Slog(f.GetMetadata()),
 		key.Oneshot.Slog(f.GetOneshot()),
-		key.Scale.Slog(f.GetScale()),
+		ScaleKey.Slog(f.GetScale()),
 	)
 }
 
@@ -93,7 +97,7 @@ func (f *Function) SetHeader(r *http.Request) {
 		// this should never happen
 		panic(fmt.Errorf("failed to marshal function: %w", err))
 	}
-	r.Header[key.Function.Header] = []string{string(fnJSON)}
+	r.Header[FunctionKey.Header] = []string{string(fnJSON)}
 }
 
 // FunctionFromHeader parses the function identity from the request header.
@@ -103,9 +107,9 @@ func (f *Function) SetHeader(r *http.Request) {
 // silently corrupt the cache entry and affect every concurrent request that
 // shares that pointer.
 func FunctionFromHeader(req *http.Request) (*Function, error) {
-	header, ok := req.Header[key.Function.Header]
+	header, ok := req.Header[FunctionKey.Header]
 	if !ok || len(header) == 0 {
-		return nil, errors.New("missing " + key.Function.Header)
+		return nil, errors.New("missing " + FunctionKey.Header)
 	}
 
 	headerVal := header[0]
@@ -115,7 +119,7 @@ func FunctionFromHeader(req *http.Request) (*Function, error) {
 
 	fn := &Function{}
 	if err := json.Unmarshal([]byte(headerVal), fn); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal %s header: %w", key.Function.Header, err)
+		return nil, fmt.Errorf("failed to unmarshal %s header: %w", FunctionKey.Header, err)
 	}
 
 	if err := fn.Validate(); err != nil {

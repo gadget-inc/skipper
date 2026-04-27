@@ -121,7 +121,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), fn.Attr())
+	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), skipper.FunctionKey.Attr(fn))
 	requestsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
 	// get or create the heartbeat state for this function
@@ -222,7 +222,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			continue
 		}
 
-		ctx = telemetry.With(ctx, key.Instance.Attr(instance))
+		ctx = telemetry.With(ctx, skipper.InstanceKey.Attr(instance))
 
 		// Store the instance for oneshot release after the request completes.
 		if ir := instanceResultFromContext(ctx); ir != nil {
@@ -274,7 +274,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
-	delete(pr.Out.Header, key.Function.Header)
+	delete(pr.Out.Header, skipper.FunctionKey.Header)
 
 	pr.Out.Host = pr.In.Host
 
@@ -334,7 +334,7 @@ func (r *Router) releaseInstance(inst *skipper.Instance) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := r.ctrl.ReleaseInstance(ctx, inst); err != nil {
-			log.Warn(ctx, "failed to release oneshot instance", key.Error.Slog(err), key.Instance.Slog(inst))
+			log.Warn(ctx, "failed to release oneshot instance", key.Error.Slog(err), skipper.InstanceKey.Slog(inst))
 		}
 	}()
 }

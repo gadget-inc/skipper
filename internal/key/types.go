@@ -11,51 +11,79 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 )
 
-// newKey creates a Key with the given name and slog attribute converter.
-func newKey[V any](name string, toSlogAttr func(Identifier, V) slog.Attr) Key[V] {
-	id := newIdentifier(name)
-	return Key[V]{
-		Identifier: id,
+// newKey creates a Key with a custom slog.Attr builder. Reserved for primitive
+// helpers that need to vary the attribute's key (e.g. a "_ms" suffix) or
+// suppress the attribute on a nil input. For the typical case where the
+// slog.Attr key is the Names.Name and the value comes from a
+// slog.Value-returning function, use [New] instead.
+func newKey[V any](name string, toSlogAttr func(Names, V) slog.Attr) *Key[V] {
+	n := newNames(name)
+	return &Key[V]{
+		Names: n,
 		toSlogAttr: func(value V) slog.Attr {
-			return toSlogAttr(id, value)
+			return toSlogAttr(n, value)
 		},
 	}
 }
 
-// logValuerKey creates a Key specialized for slog.LogValuer types.
-func logValuerKey(name string) Key[slog.LogValuer] {
-	return newKey(name, func(id Identifier, v slog.LogValuer) slog.Attr {
-		return slog.Any(id.Name, v)
+// New creates a typed Key whose slog representation comes from valueOf.
+// The slog.Attr key is fixed to the Names.Name.
+func New[T any](name string, valueOf func(T) slog.Value) *Key[T] {
+	return newKey(name, func(n Names, v T) slog.Attr {
+		return slog.Attr{Key: n.Name, Value: valueOf(v)}
 	})
 }
 
-func boolKey(name string) Key[bool] {
-	return newKey(name, func(id Identifier, v bool) slog.Attr { return slog.Bool(id.Name, v) })
+// NewCached creates a typed Key for pointer values whose Attr is memoized
+// per pointer via a weak cache. Cache entries shrink automatically once *T
+// becomes unreachable.
+//
+// Use NewCached for keys whose values are long-lived pointers reused across
+// many calls. For values with no pointer identity worth caching, use [New].
+func NewCached[T any](name string, valueOf func(*T) slog.Value) *Key[*T] {
+	k := New(name, valueOf)
+	c := &memoizedCache[T]{build: k.buildAttr}
+	k.cache = c.attr
+	return k
 }
 
-func stringKey(name string) Key[string] {
-	return newKey(name, func(id Identifier, v string) slog.Attr { return slog.String(id.Name, v) })
+// NewWithOtel creates a typed Key whose OTel attributes come from a direct
+// otelOf function instead of the default slog -> OTel walk. Used on hot paths
+// where the slog walk's allocation cost is measurable.
+func NewWithOtel[T any](name string, valueOf func(T) slog.Value, otelOf func(T) []attribute.KeyValue) *Key[T] {
+	k := New(name, valueOf)
+	k.otelOverride = otelOf
+	return k
 }
 
-func intKey(name string) Key[int] {
-	return newKey(name, func(id Identifier, v int) slog.Attr { return slog.Int(id.Name, v) })
+func boolKey(name string) *Key[bool] {
+	return newKey(name, func(n Names, v bool) slog.Attr { return slog.Bool(n.Name, v) })
 }
 
-func uint32Key(name string) Key[uint32] {
-	return newKey(name, func(id Identifier, v uint32) slog.Attr { return slog.Int(id.Name, int(v)) })
+func stringKey(name string) *Key[string] {
+	return newKey(name, func(n Names, v string) slog.Attr { return slog.String(n.Name, v) })
 }
 
-func stringSliceKey(name string) Key[[]string] {
-	return newKey(name, func(id Identifier, v []string) slog.Attr { return slog.Any(id.Name, v) })
+func intKey(name string) *Key[int] {
+	return newKey(name, func(n Names, v int) slog.Attr { return slog.Int(n.Name, v) })
 }
 
-func durationKey(name string) Key[time.Duration] {
-	return newKey(name, func(id Identifier, v time.Duration) slog.Attr {
-		name := id.Name
+func uint32Key(name string) *Key[uint32] {
+	return newKey(name, func(n Names, v uint32) slog.Attr { return slog.Int(n.Name, int(v)) })
+}
+
+func stringSliceKey(name string) *Key[[]string] {
+	return newKey(name, func(n Names, v []string) slog.Attr { return slog.Any(n.Name, v) })
+}
+
+func durationKey(name string) *Key[time.Duration] {
+	return newKey(name, func(n Names, v time.Duration) slog.Attr {
+		name := n.Name
 		if !strings.HasSuffix(name, "_ms") {
 			name += "_ms"
 		}
@@ -63,21 +91,21 @@ func durationKey(name string) Key[time.Duration] {
 	})
 }
 
-func timeKey(name string) Key[time.Time] {
-	return newKey(name, func(id Identifier, v time.Time) slog.Attr { return slog.Time(id.Name, v) })
+func timeKey(name string) *Key[time.Time] {
+	return newKey(name, func(n Names, v time.Time) slog.Attr { return slog.Time(n.Name, v) })
 }
 
-func errorKey(name string) Key[error] {
-	return newKey(name, func(id Identifier, err error) slog.Attr {
+func errorKey(name string) *Key[error] {
+	return newKey(name, func(n Names, err error) slog.Attr {
 		if err == nil {
 			return slog.Attr{}
 		}
-		return slog.Any(id.Name, err)
+		return slog.Any(n.Name, err)
 	})
 }
 
-func mapStringStringKey(name string) Key[map[string]string] {
-	return newKey(name, func(id Identifier, value map[string]string) slog.Attr {
+func mapStringStringKey(name string) *Key[map[string]string] {
+	return newKey(name, func(n Names, value map[string]string) slog.Attr {
 		if value == nil {
 			return slog.Attr{}
 		}
@@ -85,12 +113,12 @@ func mapStringStringKey(name string) Key[map[string]string] {
 		for mapKey, mapValue := range value {
 			attrs = append(attrs, slog.String(mapKey, mapValue))
 		}
-		return slog.GroupAttrs(id.Name, attrs...)
+		return slog.GroupAttrs(n.Name, attrs...)
 	})
 }
 
-func requestKey(name string) Key[*http.Request] {
-	return newKey(name, func(id Identifier, req *http.Request) slog.Attr {
+func requestKey(name string) *Key[*http.Request] {
+	return newKey(name, func(n Names, req *http.Request) slog.Attr {
 		if req == nil {
 			return slog.Attr{}
 		}
@@ -106,7 +134,7 @@ func requestKey(name string) Key[*http.Request] {
 		}
 
 		return slog.GroupAttrs(
-			id.Name,
+			n.Name,
 			slog.String("method", req.Method),
 			slog.Int64("body.size", req.ContentLength),
 			contentTypeAttr,
@@ -115,8 +143,8 @@ func requestKey(name string) Key[*http.Request] {
 	})
 }
 
-func responseKey(name string) Key[*http.Response] {
-	return newKey(name, func(id Identifier, resp *http.Response) slog.Attr {
+func responseKey(name string) *Key[*http.Response] {
+	return newKey(name, func(n Names, resp *http.Response) slog.Attr {
 		if resp == nil {
 			return slog.Attr{}
 		}
@@ -132,7 +160,7 @@ func responseKey(name string) Key[*http.Response] {
 		}
 
 		return slog.GroupAttrs(
-			id.Name,
+			n.Name,
 			slog.Int("status_code", resp.StatusCode),
 			slog.Int64("body.size", resp.ContentLength),
 			contentTypeAttr,
@@ -141,8 +169,8 @@ func responseKey(name string) Key[*http.Response] {
 	})
 }
 
-func podKey(name string) Key[*v1.Pod] {
-	return newKey(name, func(id Identifier, pod *v1.Pod) slog.Attr {
+func podKey(name string) *Key[*v1.Pod] {
+	return newKey(name, func(n Names, pod *v1.Pod) slog.Attr {
 		if pod == nil {
 			return slog.Attr{}
 		}
@@ -163,7 +191,7 @@ func podKey(name string) Key[*v1.Pod] {
 			labels = append(labels, slog.String(k, v))
 		}
 
-		return slog.GroupAttrs(id.Name,
+		return slog.GroupAttrs(n.Name,
 			slog.String("name", pod.Name),
 			slog.String("namespace", pod.Namespace),
 			slog.String("uid", string(pod.UID)),
@@ -178,12 +206,12 @@ func podKey(name string) Key[*v1.Pod] {
 	})
 }
 
-func replicaSetKey(name string) Key[*appsv1.ReplicaSet] {
-	return newKey(name, func(id Identifier, rs *appsv1.ReplicaSet) slog.Attr {
+func replicaSetKey(name string) *Key[*appsv1.ReplicaSet] {
+	return newKey(name, func(n Names, rs *appsv1.ReplicaSet) slog.Attr {
 		if rs == nil {
 			return slog.Attr{}
 		}
-		return slog.GroupAttrs(id.Name,
+		return slog.GroupAttrs(n.Name,
 			slog.String("name", rs.Name),
 			slog.String("namespace", rs.Namespace),
 			slog.String("uid", string(rs.UID)),
@@ -193,8 +221,8 @@ func replicaSetKey(name string) Key[*appsv1.ReplicaSet] {
 	})
 }
 
-func urlKey(name string) Key[*url.URL] {
-	return newKey(name, func(id Identifier, url *url.URL) slog.Attr {
+func urlKey(name string) *Key[*url.URL] {
+	return newKey(name, func(n Names, url *url.URL) slog.Attr {
 		if url == nil {
 			return slog.Attr{}
 		}
@@ -209,7 +237,7 @@ func urlKey(name string) Key[*url.URL] {
 			fragmentAttr = slog.String("fragment", url.Fragment)
 		}
 
-		return slog.GroupAttrs(id.Name,
+		return slog.GroupAttrs(n.Name,
 			slog.String("full", url.Redacted()),
 			slog.String("scheme", url.Scheme),
 			slog.String("domain", url.Hostname()),

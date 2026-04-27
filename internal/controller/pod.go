@@ -66,11 +66,11 @@ GET_UNASSIGNED_POD:
 	patches := []byte(`[
 		{ "op": "test", "path": "/metadata/ownerReferences/0/kind", "value": "ReplicaSet" },
 		{ "op": "test", "path": "` + key.Tenant.PatchLabel + `", "value": null },
-		{ "op": "test", "path": "` + key.Function.PatchAnnotation + `", "value": null },
+		{ "op": "test", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": null },
 		{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
 		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
 		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.GetTenant() + `" },
-		{ "op": "add", "path": "` + key.Function.PatchAnnotation + `", "value": ` + strconv.Quote(string(fnJSON)) + ` },
+		{ "op": "add", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": ` + strconv.Quote(string(fnJSON)) + ` },
 		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
 	]`)
 
@@ -140,7 +140,7 @@ GET_UNASSIGNED_POD:
 		assignedPod.Annotations = map[string]string{}
 	}
 	readyAtStr := now.UTC().Format(time.RFC3339)
-	assignedPod.Annotations[key.ReadyAt.Annotation] = readyAtStr
+	assignedPod.Annotations[key.ReadyAt.Label] = readyAtStr
 
 	go func() {
 		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ctrl.config.FunctionAssignTimeout)
@@ -391,7 +391,7 @@ func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*skipper.Function, error) 
 		return nil, errors.New("pod is nil")
 	}
 
-	fnJSON, ok := pod.Annotations[key.Function.Annotation]
+	fnJSON, ok := pod.Annotations[skipper.FunctionKey.Label]
 	if !ok {
 		return nil, errors.New("missing function annotation")
 	}
@@ -418,12 +418,12 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 		return nil, err
 	}
 
-	replicaSet := pod.Annotations[key.ReplicaSet.Annotation]
+	replicaSet := pod.Annotations[key.ReplicaSet.Label]
 	if replicaSet == "" {
 		return nil, errors.New("missing replica set annotation")
 	}
 
-	assignedAt, err := time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Annotation])
+	assignedAt, err := time.Parse(time.RFC3339, pod.Annotations[key.AssignedAt.Label])
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
 	}
@@ -454,7 +454,7 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 	instance.SetCpuUsageMilli(cpuUsageMilli)
 	instance.SetMemoryUsageMib(memoryUsageMib)
 
-	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Annotation]; ok && isPodReady(pod) {
+	if readyAtStr, ok := pod.Annotations[key.ReadyAt.Label]; ok && isPodReady(pod) {
 		readyAt, err := time.Parse(time.RFC3339, readyAtStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse ready at annotation: %w", err)
@@ -472,7 +472,7 @@ func (ctrl *Controller) portFromPod(pod *v1.Pod) (string, error) {
 		}
 	}
 
-	port := pod.Annotations[key.Port.Annotation]
+	port := pod.Annotations[key.Port.Label]
 	if port == "" {
 		// no port annotation, grab the first port from the first container
 		if len(pod.Spec.Containers) > 0 && len(pod.Spec.Containers[0].Ports) > 0 {

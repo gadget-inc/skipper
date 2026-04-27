@@ -8,21 +8,16 @@ import (
 
 // Key is a typed key for creating structured log and telemetry attributes.
 type Key[V any] struct {
-	Identifier
-	toSlogAttr func(v V) slog.Attr
+	Names
+	toSlogAttr   func(v V) slog.Attr
+	otelOverride func(v V) []attribute.KeyValue
+	cache        func(v V) Attr
 }
 
 // Slog returns a slog.Attr for use in logging calls.
 // This is the most efficient method when only logging is needed.
-func (k Key[V]) Slog(v V) slog.Attr {
+func (k *Key[V]) Slog(v V) slog.Attr {
 	return k.toSlogAttr(v)
-}
-
-// Otel returns OpenTelemetry attributes for use in span creation.
-// Groups are flattened using dot notation. This is efficient when only
-// tracing attributes are needed without logging.
-func (k Key[V]) Otel(v V) []attribute.KeyValue {
-	return slogAttrToOtelAttrs(k.Slog(v))
 }
 
 // Attr returns both slog and OTel representations, pre-computed for efficiency.
@@ -31,14 +26,22 @@ func (k Key[V]) Otel(v V) []attribute.KeyValue {
 //
 // The slog.Value is resolved eagerly so the returned Attr never retains a
 // LogValuer's underlying pointer, keeping the Attr safe to cache (see
-// key.Memoized) without leaking the source value past its natural lifetime.
-func (k Key[V]) Attr(v V) Attr {
+// NewCached) without leaking the source value past its natural lifetime.
+func (k *Key[V]) Attr(v V) Attr {
+	if k.cache != nil {
+		return k.cache(v)
+	}
+	return k.buildAttr(v)
+}
+
+// buildAttr is the cache-miss path; NewCached wires it as memoizedCache.build.
+func (k *Key[V]) buildAttr(v V) Attr {
 	slogAttr := k.toSlogAttr(v)
 	slogAttr.Value = slogAttr.Value.Resolve()
-	return Attr{
-		Slog: slogAttr,
-		Otel: slogAttrToOtelAttrs(slogAttr),
+	if k.otelOverride != nil {
+		return Attr{Slog: slogAttr, Otel: k.otelOverride(v)}
 	}
+	return Attr{Slog: slogAttr, Otel: slogAttrToOtelAttrs(slogAttr)}
 }
 
 // Attr holds a pre-computed slog attribute and its OTel equivalent
