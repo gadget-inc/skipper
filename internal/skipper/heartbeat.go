@@ -13,7 +13,7 @@ var _ slog.LogValuer = (*Heartbeat)(nil)
 // HeartbeatKey is the typed telemetry key for a Heartbeat. Heartbeats mutate
 // per converge tick so pointer-keyed memoization would never hit; the OTel
 // override (via OtelAttrs) lets the converge hot path skip the slog walk.
-var HeartbeatKey = key.NewLogAndOtel[*Heartbeat]("heartbeat")
+var HeartbeatKey = key.NewWithOtel("heartbeat", (*Heartbeat).LogValue, (*Heartbeat).OtelAttrs)
 
 // Pre-computed OTel keys for the OtelAttrs path. The literal "heartbeat" is
 // duplicated from HeartbeatKey above because referencing HeartbeatKey.Name
@@ -31,9 +31,8 @@ func (h *Heartbeat) LogValue() slog.Value {
 	)
 }
 
-// OtelAttrs is consumed by HeartbeatKey via [key.NewLogAndOtel]. The method
-// is exported so the constructor's interface constraint can reference it
-// from internal/key.
+// OtelAttrs is consumed by HeartbeatKey via [key.NewWithOtel] as the direct
+// otelOf path. Exported so the method value can be passed as an argument.
 func (h *Heartbeat) OtelAttrs() []attribute.KeyValue {
 	return []attribute.KeyValue{
 		{Key: heartbeatTimestampOtelKey, Value: attribute.StringValue(h.GetTimestamp().AsTime().Format(time.RFC3339))},

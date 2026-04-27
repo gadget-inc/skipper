@@ -87,7 +87,7 @@ func (s *Supervisor) updateFunction(fn *skipper.Function) {
 // function, as they track scaling decisions that may be needed if responsibility
 // changes. Invalid pods (e.g., with malformed function annotations) are deleted.
 func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace string) error {
-	ctx, span := telemetry.TraceRoot(ctx, "controller.discover_supervisors", trace.WithAttributes(key.Namespace.Otel(namespace)...))
+	ctx, span := telemetry.TraceRoot(ctx, "controller.discover_supervisors", trace.WithAttributes(key.Namespace.Attr(namespace).Otel...))
 	defer span.End()
 
 	pods, err := ctrl.listPods(namespace, hasTenantSelector)

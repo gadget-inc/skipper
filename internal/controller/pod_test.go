@@ -30,7 +30,7 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod
 
 	fnJSON, err := json.Marshal(instance.GetFunction())
 	assert.NilError(t, err)
-	assert.Assert(t, string(fnJSON) == pod.Annotations[skipper.FunctionKey.Annotation])
+	assert.Assert(t, string(fnJSON) == pod.Annotations[skipper.FunctionKey.Label])
 
 	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
 	port, err := ctrl.portFromPod(&pod)
@@ -38,9 +38,9 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod
 
 	assert.Assert(t, instance.GetName() == pod.Name)
 	assert.Assert(t, instance.GetAddr() == net.JoinHostPort(pod.Status.PodIP, port))
-	assert.Assert(t, instance.GetReplicaSet() == pod.Annotations[key.ReplicaSet.Annotation])
-	assert.Assert(t, instance.GetAssignedAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Annotation])
-	assert.Assert(t, instance.GetReadyAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Annotation])
+	assert.Assert(t, instance.GetReplicaSet() == pod.Annotations[key.ReplicaSet.Label])
+	assert.Assert(t, instance.GetAssignedAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Label])
+	assert.Assert(t, instance.GetReadyAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Label])
 }
 
 // listAssignedPods lists pods and waits for the ready-at annotation to be
@@ -58,7 +58,7 @@ func listAssignedPods(t *testing.T, client *fake.Clientset, namespace string, ex
 			return poll.Continue("expected %d pods, got %d", expected, len(pods.Items))
 		}
 		for _, pod := range pods.Items {
-			if pod.Annotations[key.ReadyAt.Annotation] == "" {
+			if pod.Annotations[key.ReadyAt.Label] == "" {
 				return poll.Continue("pod %s missing ready-at annotation", pod.Name)
 			}
 		}
@@ -70,10 +70,10 @@ func listAssignedPods(t *testing.T, client *fake.Clientset, namespace string, ex
 
 func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
 	assert.Assert(t, pod.Labels[key.Tenant.Label] == "")
-	assert.Assert(t, pod.Annotations[skipper.FunctionKey.Annotation] == "")
-	assert.Assert(t, pod.Annotations[key.ReplicaSet.Annotation] == "")
-	assert.Assert(t, pod.Annotations[key.AssignedAt.Annotation] == "")
-	assert.Assert(t, pod.Annotations[key.ReadyAt.Annotation] == "")
+	assert.Assert(t, pod.Annotations[skipper.FunctionKey.Label] == "")
+	assert.Assert(t, pod.Annotations[key.ReplicaSet.Label] == "")
+	assert.Assert(t, pod.Annotations[key.AssignedAt.Label] == "")
+	assert.Assert(t, pod.Annotations[key.ReadyAt.Label] == "")
 }
 
 func TestAssignPod(t *testing.T) {
@@ -155,7 +155,7 @@ func TestAssignPod(t *testing.T) {
 				pod := fixture.NewAvailablePod(t, state.fn, nil)
 
 				// verify default port setup
-				assert.Assert(t, pod.Annotations[key.Port.Annotation] == "http")
+				assert.Assert(t, pod.Annotations[key.Port.Label] == "http")
 				assert.Assert(t, pod.Spec.Containers[0].Ports[0].Name == "http")
 
 				// add another port and make the http port the second port on the container
@@ -175,7 +175,7 @@ func TestAssignPod(t *testing.T) {
 			name: "uses first container port when port annotation is empty",
 			setup: func(t *testing.T, state *testState) {
 				pod := fixture.NewAvailablePod(t, state.fn, nil)
-				pod.Annotations[key.Port.Annotation] = ""
+				pod.Annotations[key.Port.Label] = ""
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
@@ -470,7 +470,7 @@ func TestPortFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						key.Port.Annotation: "http",
+						key.Port.Label: "http",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -491,7 +491,7 @@ func TestPortFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						key.Port.Annotation: "3000",
+						key.Port.Label: "3000",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -511,7 +511,7 @@ func TestPortFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						key.Port.Annotation: "nonexistent",
+						key.Port.Label: "nonexistent",
 					},
 				},
 				Spec: v1.PodSpec{
@@ -596,7 +596,7 @@ func TestFunctionFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: string(fnJSON),
+						skipper.FunctionKey.Label: string(fnJSON),
 					},
 				},
 			},
@@ -623,7 +623,7 @@ func TestFunctionFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: "not valid json",
+						skipper.FunctionKey.Label: "not valid json",
 					},
 				},
 			},
@@ -634,7 +634,7 @@ func TestFunctionFromPod(t *testing.T) {
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: `{"namespace":"","deployment":"","tenant":""}`,
+						skipper.FunctionKey.Label: `{"namespace":"","deployment":"","tenant":""}`,
 					},
 				},
 			},
@@ -683,10 +683,10 @@ func TestInstanceFromPod(t *testing.T) {
 						key.Deployment.Label: fn.GetDeployment(),
 					},
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: string(fnJSON),
-						key.ReplicaSet.Annotation:      "test-replicaset",
-						key.AssignedAt.Annotation:      "2024-01-01T00:00:00Z",
-						key.ReadyAt.Annotation:         "2024-01-01T00:00:01Z",
+						skipper.FunctionKey.Label: string(fnJSON),
+						key.ReplicaSet.Label:      "test-replicaset",
+						key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
+						key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
 					},
 				},
 				Status: v1.PodStatus{
@@ -731,7 +731,7 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: "not valid json",
+						skipper.FunctionKey.Label: "not valid json",
 					},
 				},
 			},
@@ -743,7 +743,7 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: `{"namespace":"","deployment":"","tenant":""}`,
+						skipper.FunctionKey.Label: `{"namespace":"","deployment":"","tenant":""}`,
 					},
 				},
 			},
@@ -755,7 +755,7 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: string(fnJSON),
+						skipper.FunctionKey.Label: string(fnJSON),
 					},
 				},
 			},
@@ -767,9 +767,9 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: string(fnJSON),
-						key.ReplicaSet.Annotation:      "test-replicaset",
-						key.AssignedAt.Annotation:      "not-a-timestamp",
+						skipper.FunctionKey.Label: string(fnJSON),
+						key.ReplicaSet.Label:      "test-replicaset",
+						key.AssignedAt.Label:      "not-a-timestamp",
 					},
 				},
 			},
@@ -781,10 +781,10 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: string(fnJSON),
-						key.ReplicaSet.Annotation:      "test-replicaset",
-						key.AssignedAt.Annotation:      "2024-01-01T00:00:00Z",
-						key.ReadyAt.Annotation:         "not-a-timestamp",
+						skipper.FunctionKey.Label: string(fnJSON),
+						key.ReplicaSet.Label:      "test-replicaset",
+						key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
+						key.ReadyAt.Label:         "not-a-timestamp",
 					},
 				},
 				Status: v1.PodStatus{
@@ -808,10 +808,10 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Annotation: string(fnJSON),
-						key.ReplicaSet.Annotation:      "test-replicaset",
-						key.AssignedAt.Annotation:      "2024-01-01T00:00:00Z",
-						key.ReadyAt.Annotation:         "2024-01-01T00:00:01Z",
+						skipper.FunctionKey.Label: string(fnJSON),
+						key.ReplicaSet.Label:      "test-replicaset",
+						key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
+						key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
 					},
 				},
 				Status: v1.PodStatus{
@@ -1050,7 +1050,7 @@ func TestGetInstances(t *testing.T) {
 				// Add unready pod (no ReadyAt annotation)
 				unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
 				unreadyPod.Name = "unready-pod"
-				delete(unreadyPod.Annotations, key.ReadyAt.Annotation)
+				delete(unreadyPod.Annotations, key.ReadyAt.Label)
 				unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				err = state.fakeKubernetes.Tracker().Add(unreadyPod)
 				assert.NilError(t, err)
@@ -1075,7 +1075,7 @@ func TestGetInstances(t *testing.T) {
 				// Create a pod with missing replica set annotation
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Name = "invalid-pod"
-				delete(pod.Annotations, key.ReplicaSet.Annotation)
+				delete(pod.Annotations, key.ReplicaSet.Label)
 				err := state.fakeKubernetes.Tracker().Add(pod)
 				assert.NilError(t, err)
 
@@ -1103,7 +1103,7 @@ func TestGetInstances(t *testing.T) {
 				// Create a pod with malformed assigned at timestamp
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Name = "invalid-pod"
-				pod.Annotations[key.AssignedAt.Annotation] = "not-a-valid-timestamp"
+				pod.Annotations[key.AssignedAt.Label] = "not-a-valid-timestamp"
 				err := state.fakeKubernetes.Tracker().Add(pod)
 				assert.NilError(t, err)
 
@@ -1131,7 +1131,7 @@ func TestGetInstances(t *testing.T) {
 				// Create a pod with malformed ready at timestamp
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Name = "invalid-pod"
-				pod.Annotations[key.ReadyAt.Annotation] = "not-a-valid-timestamp"
+				pod.Annotations[key.ReadyAt.Label] = "not-a-valid-timestamp"
 				err := state.fakeKubernetes.Tracker().Add(pod)
 				assert.NilError(t, err)
 
@@ -1159,13 +1159,13 @@ func TestGetInstances(t *testing.T) {
 				// Add multiple invalid pods
 				invalidPod1 := fixture.NewAssignedPod(t, state.fn, nil)
 				invalidPod1.Name = "invalid-pod-1"
-				delete(invalidPod1.Annotations, key.ReplicaSet.Annotation)
+				delete(invalidPod1.Annotations, key.ReplicaSet.Label)
 				err := state.fakeKubernetes.Tracker().Add(invalidPod1)
 				assert.NilError(t, err)
 
 				invalidPod2 := fixture.NewAssignedPod(t, state.fn, nil)
 				invalidPod2.Name = "invalid-pod-2"
-				invalidPod2.Annotations[key.AssignedAt.Annotation] = "invalid"
+				invalidPod2.Annotations[key.AssignedAt.Label] = "invalid"
 				err = state.fakeKubernetes.Tracker().Add(invalidPod2)
 				assert.NilError(t, err)
 
@@ -1192,7 +1192,7 @@ func TestGetInstances(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				// Create an invalid pod - should not cause getInstances to return an error
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
-				delete(pod.Annotations, key.ReplicaSet.Annotation)
+				delete(pod.Annotations, key.ReplicaSet.Label)
 				err := state.fakeKubernetes.Tracker().Add(pod)
 				assert.NilError(t, err)
 			},

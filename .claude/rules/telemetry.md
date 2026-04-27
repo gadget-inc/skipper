@@ -10,7 +10,7 @@ Typed keys provide consistent, type-safe attribute names across slog, OTel, HTTP
 - Framework-level and primitive keys live in `internal/key/` (e.g. `key.Namespace`, `key.Count`, `key.Request`).
 - Domain-specific keys live next to the type they describe (e.g. `skipper.FunctionKey`, `skipper.HeartbeatKey`).
 
-Both flavors expose the same `Slog`, `Otel`, and `Attr` methods. Pick the matching key for the value's type — passing the wrong type fails at compile time.
+Both flavors expose the same `Slog` and `Attr` methods. Pick the matching key for the value's type — passing the wrong type fails at compile time.
 
 ## Logging
 
@@ -27,11 +27,11 @@ slog.Info("forwarding request", "function", fn, "instance", instance)
 
 ## Tracing
 
-Use `.Otel()` for span attributes:
+Use `.Attr(v).Otel` for span attributes:
 
 ```go
-span.SetAttributes(skipper.FunctionKey.Otel(fn)...)
-span.SetAttributes(key.Namespace.Otel(ns)...)
+span.SetAttributes(skipper.FunctionKey.Attr(fn).Otel...)
+span.SetAttributes(key.Namespace.Attr(ns).Otel...)
 ```
 
 ## Combined (Logs + Traces)
@@ -63,7 +63,7 @@ var WidgetKey = key.NewCached("widget", (*Widget).LogValue)
 For a hot path where `[]attribute.KeyValue` should be built directly (bypassing the slog walk):
 
 ```go
-var WidgetKey = key.New("widget", (*Widget).LogValue, key.WithOtel((*Widget).otelAttrs))
+var WidgetKey = key.NewWithOtel("widget", (*Widget).LogValue, (*Widget).otelAttrs)
 ```
 
 ## Available Keys

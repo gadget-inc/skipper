@@ -10,7 +10,7 @@ var _ slog.LogValuer = (*Instance)(nil)
 
 // InstanceKey is uncached: Instances arrive fresh from each ctrl.GetInstance
 // RPC response so pointer-keyed caching wouldn't hit.
-var InstanceKey = key.NewLogValuer[*Instance]("instance")
+var InstanceKey = key.New("instance", (*Instance).LogValue)
 
 func (instance *Instance) LogValue() slog.Value {
 	return slog.GroupValue(

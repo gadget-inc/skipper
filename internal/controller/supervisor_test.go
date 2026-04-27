@@ -189,7 +189,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 
 				// create an assigned pod with invalid function annotation JSON
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
-				pod.Annotations[skipper.FunctionKey.Annotation] = "not valid json"
+				pod.Annotations[skipper.FunctionKey.Label] = "not valid json"
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
@@ -351,7 +351,7 @@ func TestScale(t *testing.T) {
 				// add one instance with the most recent assignment time
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				pod.Name = "most-recent-assigned-at"
-				pod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(time.Second).UTC().Format(time.RFC3339)
+				pod.Annotations[key.AssignedAt.Label] = time.Now().Add(time.Second).UTC().Format(time.RFC3339)
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
@@ -889,8 +889,8 @@ func TestConvergeProtectionPeriod(t *testing.T) {
 			for range tc.initialPods {
 				pod := fixture.NewAssignedPod(t, fn, nil)
 				assignedAt := time.Now().Add(-tc.instanceAge).UTC().Format(time.RFC3339)
-				pod.Annotations[key.AssignedAt.Annotation] = assignedAt
-				pod.Annotations[key.ReadyAt.Annotation] = assignedAt
+				pod.Annotations[key.AssignedAt.Label] = assignedAt
+				pod.Annotations[key.ReadyAt.Label] = assignedAt
 				fakeKubernetes.Tracker().Add(pod)
 			}
 
@@ -1576,7 +1576,7 @@ func TestGetReadyInstance(t *testing.T) {
 				for i := range 5 {
 					pod := fixture.NewAssignedPod(t, state.fn, nil)
 					// Set AssignedAt to different times so newest are kept
-					pod.Annotations[key.AssignedAt.Annotation] = time.Now().Add(time.Duration(i) * time.Second).UTC().Format(time.RFC3339)
+					pod.Annotations[key.AssignedAt.Label] = time.Now().Add(time.Duration(i) * time.Second).UTC().Format(time.RFC3339)
 					state.fakeKubernetes.Tracker().Add(pod)
 				}
 			},
@@ -2156,8 +2156,8 @@ func TestCleanupStuckInstances(t *testing.T) {
 				// create a pod that was assigned long ago but never became ready
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
 				stuckTime := time.Now().Add(-state.ctrl.config.FunctionAssignTimeout * 3) // well past the 2x threshold
-				pod.Annotations[key.AssignedAt.Annotation] = stuckTime.Format(time.RFC3339)
-				delete(pod.Annotations, key.ReadyAt.Annotation) // never became ready
+				pod.Annotations[key.AssignedAt.Label] = stuckTime.Format(time.RFC3339)
+				delete(pod.Annotations, key.ReadyAt.Label) // never became ready
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
@@ -2175,8 +2175,8 @@ func TestCleanupStuckInstances(t *testing.T) {
 
 				// create a pod that was assigned recently and isn't ready yet
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
-				pod.Annotations[key.AssignedAt.Annotation] = time.Now().Format(time.RFC3339)
-				delete(pod.Annotations, key.ReadyAt.Annotation) // not yet ready
+				pod.Annotations[key.AssignedAt.Label] = time.Now().Format(time.RFC3339)
+				delete(pod.Annotations, key.ReadyAt.Label) // not yet ready
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
@@ -2290,7 +2290,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				// Create an assigned pod that references a non-existent replica set
 				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
-				assignedPod.Annotations[key.ReplicaSet.Annotation] = "nonexistent-replicaset"
+				assignedPod.Annotations[key.ReplicaSet.Label] = "nonexistent-replicaset"
 				state.fakeKubernetes.Tracker().Add(assignedPod)
 				// Don't add the replica set - this will cause lookup to fail
 			},
@@ -2428,7 +2428,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// Create a stale pod pointing to the old replica set
 				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
 				stalePod.Name = "stale-pod"
-				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 				state.fakeKubernetes.Tracker().Add(stalePod)
 
 				// Create a fresh pod pointing to the new replica set (uses current name)
@@ -2469,7 +2469,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// Create a stale pod pointing to the old replica set
 				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
 				stalePod.Name = "stale-pod"
-				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 				state.fakeKubernetes.Tracker().Add(stalePod)
 
 				// Add an available pod for replacement
@@ -2521,7 +2521,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// Create a stale pod pointing to the old replica set (simulates failed deletion)
 				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
 				stalePod.Name = "stale-pod"
-				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 				state.fakeKubernetes.Tracker().Add(stalePod)
 
 				// Create 2 fresh pods pointing to the new replica set (already at maxInstances+1 = 3 total)
@@ -2572,7 +2572,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// Create a stale pod pointing to the old replica set
 				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
 				stalePod.Name = "stale-pod"
-				stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+				stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 				state.fakeKubernetes.Tracker().Add(stalePod)
 
 				// Add an available pod for replacement (should NOT be used)
@@ -2597,7 +2597,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 				var assignedPods, availablePods int
 				var foundStale, foundAvailable bool
 				for _, pod := range allPods.Items {
-					if pod.Annotations[key.AssignedAt.Annotation] != "" {
+					if pod.Annotations[key.AssignedAt.Label] != "" {
 						assignedPods++
 						if pod.Name == "stale-pod" {
 							foundStale = true
@@ -2757,7 +2757,7 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 		for j := range stalePerFunc {
 			assignedPod := fixture.NewAssignedPod(t, fn, nil)
 			assignedPod.Name = fmt.Sprintf("stale-pod-%d-%d", i, j)
-			assignedPod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetNames[i]
+			assignedPod.Annotations[key.ReplicaSet.Label] = staleReplicaSetNames[i]
 			fakeKubernetes.Tracker().Add(assignedPod)
 		}
 
@@ -2884,7 +2884,7 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 	// Create 1 stale ready pod on the old replica set
 	stalePod := fixture.NewAssignedPod(t, fn, nil)
 	stalePod.Name = "stale-ready-pod"
-	stalePod.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+	stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 	fakeKubernetes.Tracker().Add(stalePod)
 
 	// Create 2 unready pods (assigned but no ReadyAt annotation)
@@ -2892,7 +2892,7 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 	for i := range 2 {
 		unreadyPod := fixture.NewAssignedPod(t, fn, nil)
 		unreadyPod.Name = fmt.Sprintf("unready-pod-%d", i)
-		delete(unreadyPod.Annotations, key.ReadyAt.Annotation) // make it unready
+		delete(unreadyPod.Annotations, key.ReadyAt.Label) // make it unready
 		fakeKubernetes.Tracker().Add(unreadyPod)
 	}
 
@@ -3120,12 +3120,12 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	// Create 2 stale instances on the old replica set
 	stalePod1 := fixture.NewAssignedPod(t, fn, nil)
 	stalePod1.Name = "stale-pod-1"
-	stalePod1.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+	stalePod1.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 	fakeKubernetes.Tracker().Add(stalePod1)
 
 	stalePod2 := fixture.NewAssignedPod(t, fn, nil)
 	stalePod2.Name = "stale-pod-2"
-	stalePod2.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
+	stalePod2.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 	fakeKubernetes.Tracker().Add(stalePod2)
 
 	// Add 3 available pods on the new replica set for replacements + scale up
@@ -3169,7 +3169,7 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 		assert.Assert(t, pod.Name != "stale-pod-1" && pod.Name != "stale-pod-2",
 			"stale pod %s should have been replaced", pod.Name)
 		// Verify the pods are on the new replica set
-		assert.Assert(t, pod.Annotations[key.ReplicaSet.Annotation] != staleReplicaSetName,
+		assert.Assert(t, pod.Annotations[key.ReplicaSet.Label] != staleReplicaSetName,
 			"pod %s should be on new replica set", pod.Name)
 	}
 }
@@ -3215,19 +3215,19 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	// The stale pods are OLDER (assigned earlier) so they'll be deleted first during scale-down
 	stalePod1 := fixture.NewAssignedPod(t, fn, nil)
 	stalePod1.Name = "stale-pod-1"
-	stalePod1.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
-	stalePod1.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-time.Hour).Format(time.RFC3339)
+	stalePod1.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
+	stalePod1.Annotations[key.AssignedAt.Label] = time.Now().Add(-time.Hour).Format(time.RFC3339)
 	fakeKubernetes.Tracker().Add(stalePod1)
 
 	stalePod2 := fixture.NewAssignedPod(t, fn, nil)
 	stalePod2.Name = "stale-pod-2"
-	stalePod2.Annotations[key.ReplicaSet.Annotation] = staleReplicaSetName
-	stalePod2.Annotations[key.AssignedAt.Annotation] = time.Now().Add(-30 * time.Minute).Format(time.RFC3339)
+	stalePod2.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
+	stalePod2.Annotations[key.AssignedAt.Label] = time.Now().Add(-30 * time.Minute).Format(time.RFC3339)
 	fakeKubernetes.Tracker().Add(stalePod2)
 
 	freshPod := fixture.NewAssignedPod(t, fn, nil)
 	freshPod.Name = "fresh-pod"
-	freshPod.Annotations[key.AssignedAt.Annotation] = time.Now().Format(time.RFC3339)
+	freshPod.Annotations[key.AssignedAt.Label] = time.Now().Format(time.RFC3339)
 	fakeKubernetes.Tracker().Add(freshPod)
 
 	// Add available pods that should NOT be used (we're scaling down, not up)
@@ -3992,7 +3992,7 @@ func TestOneshotProtectionPeriodPreventsOrphanDeletion(t *testing.T) {
 	// This simulates a long-running oneshot request.
 	pod := fixture.NewAssignedPod(t, fn, nil)
 	assignedAt := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
-	pod.Annotations[key.AssignedAt.Annotation] = assignedAt
+	pod.Annotations[key.AssignedAt.Label] = assignedAt
 	fakeKubernetes.Tracker().Add(pod)
 
 	cfg := testConfig()

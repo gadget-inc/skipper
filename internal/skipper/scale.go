@@ -8,7 +8,7 @@ import (
 
 var _ slog.LogValuer = (*Scale)(nil)
 
-var ScaleKey = key.NewLogValuer[*Scale]("scale")
+var ScaleKey = key.New("scale", (*Scale).LogValue)
 
 func (s *Scale) LogValue() slog.Value {
 	return slog.GroupValue(
@@ -22,7 +22,7 @@ func (s *Scale) LogValue() slog.Value {
 
 var _ slog.LogValuer = (*ScaleDecision)(nil)
 
-var ScaleDecisionKey = key.NewLogValuer[*ScaleDecision]("scale_decision")
+var ScaleDecisionKey = key.New("scale_decision", (*ScaleDecision).LogValue)
 
 func (sd *ScaleDecision) LogValue() slog.Value {
 	var metricAttrs []slog.Attr

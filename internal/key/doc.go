@@ -5,16 +5,17 @@
 // and Kubernetes labels/annotations. A single key definition automatically
 // generates the appropriate name format for each context.
 //
-// # Key vs Identifier
+// # Key vs Names
 //
 // The package provides two types:
 //
 //   - [Key] is a typed key for creating structured log and telemetry
 //     attributes. Use Key when you need to log or trace values.
 //
-//   - [Identifier] provides naming conventions (underscored, header, label,
-//     annotation) without the logging machinery. Use Identifier for keys that
-//     are only used for HTTP headers or Kubernetes labels/annotations.
+//   - [Names] holds the cross-context renderings of a key (Name, Header,
+//     Label, PatchLabel, PatchAnnotation) without the logging machinery. Use
+//     Names directly for keys that are only used for HTTP headers or
+//     Kubernetes labels/annotations.
 //
 // # Declaring keys
 //
@@ -27,10 +28,8 @@
 //   - [NewCached] -- per-pointer memoized key, for long-lived pointers reused
 //     across many calls. Cache entries shrink automatically once the source
 //     pointer becomes unreachable.
-//   - [NewLogValuer] -- shorthand for a key whose source type implements
-//     slog.LogValuer; saves the (*T).LogValue method-value boilerplate.
-//   - [NewLogAndOtel] -- shorthand for a key whose source type implements
-//     both LogValue and an OtelAttrs() override that bypasses the slog walk.
+//   - [NewWithOtel] -- typed key whose OTel attributes come from a direct
+//     otelOf function instead of the slog -> OTel walk; for hot paths.
 //
 // # Usage
 //
@@ -43,9 +42,10 @@
 //	ctx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn))
 //
 // Kubernetes labels, annotations, and HTTP headers (works with both Key and
-// Identifier):
+// Names; Label is used for both pod.Labels and pod.Annotations because the
+// rendering is identical):
 //
 //	pod.Labels[key.Tenant.Label] = tenant
-//	pod.Annotations[skipper.FunctionKey.Annotation] = fnJSON
+//	pod.Annotations[skipper.FunctionKey.Label] = fnJSON
 //	req.Header.Set(key.Token.Header, token)
 package key

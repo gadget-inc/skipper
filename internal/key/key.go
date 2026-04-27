@@ -8,7 +8,7 @@ import (
 
 // Key is a typed key for creating structured log and telemetry attributes.
 type Key[V any] struct {
-	Identifier
+	Names
 	toSlogAttr   func(v V) slog.Attr
 	otelOverride func(v V) []attribute.KeyValue
 	cache        func(v V) Attr
@@ -18,16 +18,6 @@ type Key[V any] struct {
 // This is the most efficient method when only logging is needed.
 func (k *Key[V]) Slog(v V) slog.Attr {
 	return k.toSlogAttr(v)
-}
-
-// Otel returns OpenTelemetry attributes for use in span creation.
-// Groups are flattened using dot notation. This is efficient when only
-// tracing attributes are needed without logging.
-func (k *Key[V]) Otel(v V) []attribute.KeyValue {
-	if k.otelOverride != nil {
-		return k.otelOverride(v)
-	}
-	return slogAttrToOtelAttrs(k.Slog(v))
 }
 
 // Attr returns both slog and OTel representations, pre-computed for efficiency.
