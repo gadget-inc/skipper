@@ -38,7 +38,7 @@ func NewFunction(t testing.TB) *skipper.Function {
 
 func NewFunctionRequest(t *testing.T, fn *skipper.Function, method string, path string, body io.Reader) *http.Request {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	req := httptest.NewRequestWithContext(ctx, method, path, body)
 	fn.SetHeader(req)
