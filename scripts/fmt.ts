@@ -8,5 +8,5 @@ $.verbose = true;
 $.stdio = "inherit";
 
 await $nothrow`golangci-lint fmt`;
-await $nothrow`oxfmt --write .`;
-await $nothrow`oxlint --type-aware --type-check --fix .`;
+await $nothrow`pnpm exec oxfmt --write .`;
+await $nothrow`pnpm exec oxlint --type-aware --type-check --fix .`;

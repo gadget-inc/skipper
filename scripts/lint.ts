@@ -10,5 +10,5 @@ $.stdio = "inherit";
 await $nothrow`scripts/kube-lint.ts`;
 await $nothrow`golangci-lint run`;
 await $nothrow`pnpm --dir docs exec astro sync`;
-await $nothrow`oxfmt --check .`;
-await $nothrow`oxlint --type-aware --type-check --max-warnings=0 .`;
+await $nothrow`pnpm exec oxfmt --check .`;
+await $nothrow`pnpm exec oxlint --type-aware --type-check --max-warnings=0 .`;
