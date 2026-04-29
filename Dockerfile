@@ -22,6 +22,7 @@ RUN go mod download && go mod verify
 # Build controller
 FROM deps AS build-controller
 COPY . .
+RUN pnpm install --frozen-lockfile
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/controller ./cmd/controller
 

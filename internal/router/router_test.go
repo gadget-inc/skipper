@@ -188,17 +188,17 @@ func TestMethods(t *testing.T) {
 				t.Skip("skipping integration test in short mode")
 			}
 
-			fn := fixture.NewEchoFunction(t)
-			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterIntegrationURL, nil)
+			fn := fixture.NewFixtureFunction(t)
+			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterIntegrationURL(), nil)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
 			assert.NilError(t, err)
 			defer res.Body.Close()
 			assert.Assert(t, res.StatusCode == http.StatusOK)
 
-			echoResponse, err := fixture.ParseEchoResponse(res)
+			fixtureResponse, err := fixture.ParseFixtureResponse(res)
 			assert.NilError(t, err)
-			assert.Assert(t, echoResponse.Method == tc.method)
+			assert.Assert(t, fixtureResponse.Method == tc.method)
 		})
 	}
 }
@@ -334,9 +334,9 @@ func TestHeaders(t *testing.T) {
 			}
 
 			state := &testState{
-				fn: fixture.NewEchoFunction(t),
+				fn: fixture.NewFixtureFunction(t),
 			}
-			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, fixture.RouterIntegrationURL, nil)
+			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, fixture.RouterIntegrationURL(), nil)
 			state.req.Header.Set("User-Agent", "") // disable the default User-Agent header
 
 			tc.setup(t, state)
@@ -347,10 +347,10 @@ func TestHeaders(t *testing.T) {
 			defer res.Body.Close()
 			assert.Assert(t, res.StatusCode == http.StatusOK)
 
-			echoResponse, err := fixture.ParseEchoResponse(res)
+			fixtureResponse, err := fixture.ParseFixtureResponse(res)
 			assert.NilError(t, err)
 
-			state.headers = echoResponse.Header()
+			state.headers = fixtureResponse.Header()
 			state.headers.Del("Traceparent") // ignore the Traceparent header since it may or may not be present depending on the test environment
 
 			tc.check(t, state)
@@ -444,12 +444,12 @@ func TestBody(t *testing.T) {
 			}
 
 			state := &testState{
-				fn: fixture.NewEchoFunction(t),
+				fn: fixture.NewFixtureFunction(t),
 			}
 
 			tc.setup(t, state)
 
-			req := fixture.NewFunctionRequest(t, state.fn, http.MethodPost, fixture.RouterIntegrationURL, state.body)
+			req := fixture.NewFunctionRequest(t, state.fn, http.MethodPost, fixture.RouterIntegrationURL(), state.body)
 			req.Header.Set("Content-Type", state.contentType)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
@@ -457,10 +457,10 @@ func TestBody(t *testing.T) {
 			defer res.Body.Close()
 			assert.Assert(t, res.StatusCode == http.StatusOK)
 
-			echoResponse, err := fixture.ParseEchoResponse(res)
+			fixtureResponse, err := fixture.ParseFixtureResponse(res)
 			assert.NilError(t, err)
 
-			state.receivedBody = echoResponse.Body
+			state.receivedBody = fixtureResponse.Body
 
 			tc.check(t, state)
 		})

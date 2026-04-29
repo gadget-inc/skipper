@@ -9,14 +9,14 @@ import (
 	"github.com/go-json-experiment/json"
 )
 
-func NewEchoFunction(t *testing.T) *skipper.Function {
+func NewFixtureFunction(t *testing.T) *skipper.Function {
 	t.Helper()
 	fn := NewFunction(t)
-	fn.SetDeployment("echo")
+	fn.SetDeployment("fixture")
 	return fn
 }
 
-type EchoResponse struct {
+type FixtureResponse struct {
 	Method  string            `json:"method"`
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers"`
@@ -24,7 +24,7 @@ type EchoResponse struct {
 	header  http.Header
 }
 
-func (er *EchoResponse) Header() http.Header {
+func (er *FixtureResponse) Header() http.Header {
 	if er.header == nil {
 		er.header = make(http.Header)
 		for k, v := range er.Headers {
@@ -36,8 +36,8 @@ func (er *EchoResponse) Header() http.Header {
 	return er.header
 }
 
-func ParseEchoResponse(res *http.Response) (EchoResponse, error) {
-	var response EchoResponse
+func ParseFixtureResponse(res *http.Response) (FixtureResponse, error) {
+	var response FixtureResponse
 	err := json.UnmarshalRead(res.Body, &response)
 	return response, err
 }

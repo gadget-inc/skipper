@@ -1,33 +1,33 @@
 <%-
 env ||= {}
-echo_image_tag ||= "latest"
-echo_image_digest ||= ""
+fixture_image_tag ||= "latest"
+fixture_image_digest ||= ""
 
-image = "skipper-fixtures-echo:#{echo_image_tag}"
-unless echo_image_digest.empty?
-  image += "@#{echo_image_digest}"
+image = "skipper-fixtures-fixture:#{fixture_image_tag}"
+unless fixture_image_digest.empty?
+  image += "@#{fixture_image_digest}"
 end
 -%>
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: echo
+  name: fixture
   labels:
-    skipper/deployment: echo
+    skipper/deployment: fixture
   annotations:
     shipit.shopify.io/restart: "true"
 spec:
   replicas: 10
   selector:
     matchLabels:
-      skipper/deployment: echo
+      skipper/deployment: fixture
     matchExpressions:
       - key: skipper/tenant
         operator: DoesNotExist
   template:
     metadata:
       labels:
-        skipper/deployment: echo
+        skipper/deployment: fixture
       annotations:
         skipper/port: "http"
     spec:
@@ -35,7 +35,7 @@ spec:
         - name: empty-dir
           emptyDir: {}
       containers:
-        - name: echo
+        - name: fixture
           image: <%= image %>
           imagePullPolicy: Never
           ports:
@@ -57,7 +57,7 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: k8s.pod.name=$(K8S_POD_NAME),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME)
             - name: OTEL_SERVICE_NAME
-              value: echo
+              value: fixture
             - name: SKIPPER_PUBLIC_KEY
               value: <%= File.read("#{workspace_dir}/tmp/paseto/public.pem").to_json %>
             <%- env.each do |key, value| -%>
@@ -68,9 +68,10 @@ spec:
             - name: empty-dir
               mountPath: /tmp
           resources:
+            # Fixture is a lightweight echo server; minimal resources suffice
             requests:
-              memory: "256Mi"
-              cpu: "250m"
+              memory: "32Mi"
+              cpu: "10m"
           startupProbe:
             httpGet:
               path: /healthz

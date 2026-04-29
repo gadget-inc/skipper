@@ -3,7 +3,7 @@ import process from "node:process";
 import { parseArgs } from "node:util";
 
 import { dedent } from "ts-dedent";
-import { $, glob, path } from "zx";
+import { $, path } from "zx";
 
 import { abs, currentDockerPlatform, currentImageTag, expandSkipperAlias, isCI } from "./_utils.ts";
 
@@ -93,28 +93,27 @@ if (buildController || buildRouter) {
 }
 
 if (components.has("fixtures")) {
-  for (const fixture of await glob(abs("fixtures/*"), { onlyDirectories: true })) {
-    const name = path.basename(fixture);
-    const imageName = `skipper-fixtures-${name}`;
-    const buildFlags = [
-      `--file=${fixture}/Dockerfile`,
-      `--platform=${flags.values.platform}`,
-      `--tag=${imageName}:${flags.values.tag}`,
-      `--build-arg=NODE_VERSION=${process.version.slice(1)}`,
-    ];
+  const fixture = abs("fixture");
+  const name = path.basename(fixture);
+  const imageName = `skipper-fixtures-${name}`;
+  const buildFlags = [
+    `--file=${fixture}/Dockerfile`,
+    `--platform=${flags.values.platform}`,
+    `--tag=${imageName}:${flags.values.tag}`,
+    `--build-arg=NODE_VERSION=${process.version.slice(1)}`,
+  ];
 
-    if (flags.values.load) {
-      buildFlags.push("--load");
-    }
+  if (flags.values.load) {
+    buildFlags.push("--load");
+  }
 
-    if (!flags.values.provenance) {
-      buildFlags.push("--provenance=false");
-    }
+  if (!flags.values.provenance) {
+    buildFlags.push("--provenance=false");
+  }
 
-    await $({ verbose: true })`docker buildx build . ${buildFlags}`;
+  await $({ verbose: true })`docker buildx build . ${buildFlags}`;
 
-    if (flags.values.kind) {
-      await $`kind load docker-image ${imageName}:${flags.values.tag}`;
-    }
+  if (flags.values.kind) {
+    await $`kind load docker-image ${imageName}:${flags.values.tag}`;
   }
 }
