@@ -1,6 +1,7 @@
-import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import tailwindcss from "@tailwindcss/vite";
+import { defineConfig } from "astro/config";
+
 import comments from "./plugins/comments.ts";
 
 const isDev = process.argv.includes("dev");

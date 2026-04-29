@@ -150,10 +150,7 @@ describe("createComment", () => {
 
     expect(result.id).toBe("new");
     expect(result.comment).toBe("fresh");
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/comments",
-      expect.objectContaining({ method: "POST" }),
-    );
+    expect(fetch).toHaveBeenCalledWith("/api/comments", expect.objectContaining({ method: "POST" }));
   });
 
   it("C-4: non-ok response throws with status code", async () => {
@@ -185,10 +182,7 @@ describe("deleteComment", () => {
 
     await mod.deleteComment("remove");
 
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("id=remove"),
-      expect.objectContaining({ method: "DELETE" }),
-    );
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("id=remove"), expect.objectContaining({ method: "DELETE" }));
   });
 
   it("C-6: non-ok DELETE throws and does not modify array", async () => {
@@ -215,10 +209,7 @@ describe("updateComment", () => {
     const result = await mod.updateComment("u1", "new text");
 
     expect(result.comment).toBe("new text");
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("id=u1"),
-      expect.objectContaining({ method: "PATCH" }),
-    );
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("id=u1"), expect.objectContaining({ method: "PATCH" }));
   });
 
   it("non-ok PATCH throws", async () => {
@@ -328,12 +319,7 @@ describe("openCommentForm — context capture", () => {
     setupSelection(selected, full);
 
     const created = makeComment();
-    const mod = await importClient([
-      responseFactory([]),
-      responseFactory(created),
-      responseFactory([created]),
-      responseFactory([created]),
-    ]);
+    const mod = await importClient([responseFactory([]), responseFactory(created), responseFactory([created]), responseFactory([created])]);
 
     mod.openCommentForm("content");
 
@@ -341,19 +327,14 @@ describe("openCommentForm — context capture", () => {
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
     textarea.value = "my comment";
 
-    const saveBtn = Array.from(container.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Comment"),
-    )!;
+    const saveBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Comment"))!;
     saveBtn.click();
 
     await new Promise((r) => setTimeout(r, 50));
 
     // Find the POST call (not the GET from init)
     const allCalls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
-    const postCall = allCalls.find(
-      (call: unknown[]) =>
-        call[0] === "/api/comments" && (call[1] as RequestInit)?.method === "POST",
-    );
+    const postCall = allCalls.find((call: unknown[]) => call[0] === "/api/comments" && (call[1] as RequestInit)?.method === "POST");
     expect(postCall).toBeTruthy();
     const body = JSON.parse((postCall![1] as RequestInit).body as string) as {
       contextBefore: string;
@@ -409,12 +390,7 @@ describe("openCommentForm — interactions", () => {
     makeSelection();
 
     const created = makeComment({ id: "kbd1" });
-    const mod = await importClient([
-      responseFactory([]),
-      responseFactory(created),
-      responseFactory([created]),
-      responseFactory([created]),
-    ]);
+    const mod = await importClient([responseFactory([]), responseFactory(created), responseFactory([created]), responseFactory([created])]);
 
     mod.openCommentForm("content");
 
@@ -422,16 +398,12 @@ describe("openCommentForm — interactions", () => {
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
     textarea.value = "my cmd+enter comment";
 
-    const saveBtn = Array.from(container.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Comment"),
-    ) as HTMLButtonElement;
+    const saveBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Comment")) as HTMLButtonElement;
 
     const clickSpy = vi.fn();
     saveBtn.addEventListener("click", clickSpy);
 
-    textarea.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }),
-    );
+    textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true }));
 
     expect(clickSpy).toHaveBeenCalledOnce();
   });
@@ -446,9 +418,7 @@ describe("openCommentForm — interactions", () => {
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
     textarea.value = "   ";
 
-    const saveBtn = Array.from(container.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Comment"),
-    )!;
+    const saveBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Comment"))!;
     saveBtn.click();
 
     await new Promise((r) => setTimeout(r, 10));
@@ -467,9 +437,7 @@ describe("openCommentForm — interactions", () => {
     const textarea = container.querySelector("textarea") as HTMLTextAreaElement;
     textarea.value = "some comment";
 
-    const saveBtn = Array.from(container.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("Comment"),
-    ) as HTMLButtonElement;
+    const saveBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Comment")) as HTMLButtonElement;
     saveBtn.click();
 
     await new Promise((r) => setTimeout(r, 20));
@@ -667,25 +635,18 @@ describe("showCommentPopover", () => {
     mod.showCommentPopover("pop1", target);
 
     const popover = document.getElementById("docs-comment-popover")!;
-    const editBtn = Array.from(popover.querySelectorAll("button")).find(
-      (b) => b.textContent === "Edit",
-    )!;
+    const editBtn = Array.from(popover.querySelectorAll("button")).find((b) => b.textContent === "Edit")!;
     editBtn.click();
 
     const textarea = popover.querySelector("textarea") as HTMLTextAreaElement;
     textarea.value = "updated text";
 
-    const saveBtn = Array.from(popover.querySelectorAll("button")).find(
-      (b) => b.textContent === "Save",
-    )!;
+    const saveBtn = Array.from(popover.querySelectorAll("button")).find((b) => b.textContent === "Save")!;
     saveBtn.click();
 
     await new Promise((r) => setTimeout(r, 20));
 
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("id=pop1"),
-      expect.objectContaining({ method: "PATCH" }),
-    );
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("id=pop1"), expect.objectContaining({ method: "PATCH" }));
   });
 
   it("C-28: edit → cancel restores original text div", async () => {
@@ -698,16 +659,12 @@ describe("showCommentPopover", () => {
     mod.showCommentPopover("pop2", target);
 
     const popover = document.getElementById("docs-comment-popover")!;
-    const editBtn = Array.from(popover.querySelectorAll("button")).find(
-      (b) => b.textContent === "Edit",
-    )!;
+    const editBtn = Array.from(popover.querySelectorAll("button")).find((b) => b.textContent === "Edit")!;
     editBtn.click();
 
     expect(popover.querySelector("textarea")).not.toBeNull();
 
-    const cancelBtn = Array.from(popover.querySelectorAll("button")).find(
-      (b) => b.textContent === "Cancel",
-    )!;
+    const cancelBtn = Array.from(popover.querySelectorAll("button")).find((b) => b.textContent === "Cancel")!;
     cancelBtn.click();
 
     // After cancel, textarea is gone and original comment text is restored
@@ -725,14 +682,10 @@ describe("showCommentPopover", () => {
     mod.showCommentPopover("pop3", target);
 
     const popover = document.getElementById("docs-comment-popover")!;
-    const editBtn = Array.from(popover.querySelectorAll("button")).find(
-      (b) => b.textContent === "Edit",
-    )!;
+    const editBtn = Array.from(popover.querySelectorAll("button")).find((b) => b.textContent === "Edit")!;
     editBtn.click();
 
-    const saveBtn = Array.from(popover.querySelectorAll("button")).find(
-      (b) => b.textContent === "Save",
-    ) as HTMLButtonElement;
+    const saveBtn = Array.from(popover.querySelectorAll("button")).find((b) => b.textContent === "Save") as HTMLButtonElement;
     saveBtn.click();
 
     await new Promise((r) => setTimeout(r, 20));
@@ -773,9 +726,7 @@ describe("event handlers", () => {
     popover.appendChild(inner);
     inner.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 
-    const plusButtons = Array.from(document.querySelectorAll("button")).filter(
-      (b) => b.textContent === "+",
-    );
+    const plusButtons = Array.from(document.querySelectorAll("button")).filter((b) => b.textContent === "+");
     expect(plusButtons).toHaveLength(0);
   });
 
@@ -823,9 +774,7 @@ describe("highlight click toggle", () => {
     // First call — opens popover
     mod.showCommentPopover("tog1", target);
     expect(document.getElementById("docs-comment-popover")).not.toBeNull();
-    expect((document.getElementById("docs-comment-popover") as HTMLElement).dataset.commentId).toBe(
-      "tog1",
-    );
+    expect((document.getElementById("docs-comment-popover") as HTMLElement).dataset.commentId).toBe("tog1");
 
     // Simulate the toggle: remove existing popover and don't reopen (same ID clicked again)
     // The click handler removes when existing && existing.dataset.commentId === commentId

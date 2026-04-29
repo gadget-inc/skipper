@@ -1,9 +1,0 @@
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript"],
-  "rules": {
-    "typescript/no-confusing-void-expression": ["warn", { "ignoreVoidReturningFunctions": true }],
-    "typescript/no-misused-promises": ["warn", { "checksVoidReturn": false }],
-    "typescript/restrict-template-expressions": ["warn", { "allowNumber": true }]
-  }
-}

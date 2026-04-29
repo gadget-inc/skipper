@@ -1,5 +1,6 @@
 #!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import { $ } from "zx";
+
 import { $nothrow, abs } from "./_utils.ts";
 
 $.cwd = abs();

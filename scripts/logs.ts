@@ -1,8 +1,10 @@
 #!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import process from "node:process";
 import { parseArgs } from "node:util";
+
 import { dedent } from "ts-dedent";
 import { $ } from "zx";
+
 import { abs, isCI } from "./_utils.ts";
 
 $.cwd = abs();
@@ -10,8 +12,7 @@ $.verbose = true;
 $.stdio = "inherit";
 $.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
 
-const DEFAULT_NAMESPACES =
-  "skipper-development,skipper-development-fixtures,skipper-test,skipper-test-fixtures";
+const DEFAULT_NAMESPACES = "skipper-development,skipper-development-fixtures,skipper-test,skipper-test-fixtures";
 
 const COMPONENT_PODS: Record<string, string> = {
   controller: "skipper-controller",
@@ -145,9 +146,7 @@ if (!flags.values.follow && !flags.values.tail) {
 // Validate component
 const component = flags.values.component;
 if (!COMPONENT_PODS[component]) {
-  console.error(
-    `Unknown component: ${component}. Available: ${Object.keys(COMPONENT_PODS).join(", ")}`,
-  );
+  console.error(`Unknown component: ${component}. Available: ${Object.keys(COMPONENT_PODS).join(", ")}`);
   process.exit(1);
 }
 

@@ -32,8 +32,12 @@ Starlight uses `--sl-color-*` CSS variables. The Starlight-Tailwind bridge maps 
 Override _derived_ variables (e.g., `--sl-color-text-accent`, `--sl-color-bg-accent`) on doubled-specificity selectors to beat Starlight's `props.css` defaults:
 
 ```css
-:root[data-theme="dark"]:root { --sl-color-text-accent: ...; }
-:root[data-theme="light"]:root { --sl-color-text-accent: ...; }
+:root[data-theme="dark"]:root {
+  --sl-color-text-accent: ...;
+}
+:root[data-theme="light"]:root {
+  --sl-color-text-accent: ...;
+}
 ```
 
 ## Sidebar Active Item

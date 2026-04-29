@@ -1,5 +1,6 @@
 import { basename, join } from "node:path";
 import process from "node:process";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // -- Hoisted mock state (available to vi.mock factories) --
@@ -21,12 +22,9 @@ const mocks = vi.hoisted(() => {
       const error = Object.assign(new Error("command failed"), {
         stderr: state.shellErrorStderr || "",
       });
-      const result = shouldThrow
-        ? Promise.reject(error)
-        : Promise.resolve({ stdout: state.shellTextReturn, exitCode: 0 });
+      const result = shouldThrow ? Promise.reject(error) : Promise.resolve({ stdout: state.shellTextReturn, exitCode: 0 });
       // Prevent unhandled rejection when .text() is called instead of direct await
       if (shouldThrow) result.catch(() => {});
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const chainable: any = Object.assign(result, {
         nothrow: () => chainable,
         quiet: () => chainable,
@@ -149,11 +147,7 @@ describe("findProfiles", () => {
 
   it("returns empty array when glob finds nothing", async () => {
     mocks.state.globResults = [];
-    const result = await findProfiles(
-      "tmp/pprof/controller",
-      "pod-heap-*.pb.gz",
-      /pod-heap-(\d+)\.pb\.gz/,
-    );
+    const result = await findProfiles("tmp/pprof/controller", "pod-heap-*.pb.gz", /pod-heap-(\d+)\.pb\.gz/);
     expect(result).toEqual([]);
   });
 
@@ -183,10 +177,7 @@ describe("mergeProfiles", () => {
   });
 
   it("calls go tool pprof -proto for multiple profiles", async () => {
-    const profiles = [
-      "/workspace/tmp/pprof/pod-heap-001.pb.gz",
-      "/workspace/tmp/pprof/pod-heap-002.pb.gz",
-    ];
+    const profiles = ["/workspace/tmp/pprof/pod-heap-001.pb.gz", "/workspace/tmp/pprof/pod-heap-002.pb.gz"];
     const result = await mergeProfiles(profiles);
     expect(result).toMatch(/^\/workspace\/tmp\/pprof\/merged-diff-base-[\da-f-]+\.pb\.gz$/);
     expect(mocks.state.shellCalls).toHaveLength(1);
@@ -202,9 +193,7 @@ describe("fetchProfile", () => {
   it("uses production context and namespace with --production", async () => {
     await fetchProfile(["--production", "my-pod"]);
 
-    const execCall = mocks.state.shellCalls.find(
-      (c) => shellCommand(c).includes("kubectl") && shellCommand(c).includes("exec"),
-    );
+    const execCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("kubectl") && shellCommand(c).includes("exec"));
     expect(execCall).toBeDefined();
     const cmd = shellCommand(execCall!);
     expect(cmd).toContain("--context=gke_gadget-core-production_us-central1_main");
@@ -214,9 +203,7 @@ describe("fetchProfile", () => {
   it("uses orbstack context and development namespace by default", async () => {
     await fetchProfile(["my-pod"]);
 
-    const execCall = mocks.state.shellCalls.find(
-      (c) => shellCommand(c).includes("kubectl") && shellCommand(c).includes("exec"),
-    );
+    const execCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("kubectl") && shellCommand(c).includes("exec"));
     expect(execCall).toBeDefined();
     const cmd = shellCommand(execCall!);
     expect(cmd).toContain("--context=orbstack");
@@ -242,9 +229,7 @@ describe("fetchProfile", () => {
   });
 
   it("throws on invalid --type", async () => {
-    await expect(fetchProfile(["--type=invalid", "my-pod"])).rejects.toThrow(
-      "Invalid profile type: invalid",
-    );
+    await expect(fetchProfile(["--type=invalid", "my-pod"])).rejects.toThrow("Invalid profile type: invalid");
   });
 
   it("uses positional pod name when provided", async () => {
@@ -264,9 +249,7 @@ describe("fetchProfile", () => {
     const getPodsCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("get pods"));
     expect(getPodsCall).toBeDefined();
 
-    const execCall = mocks.state.shellCalls.find((c) =>
-      shellCommand(c).includes("exec auto-discovered-pod"),
-    );
+    const execCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("exec auto-discovered-pod"));
     expect(execCall).toBeDefined();
   });
 
@@ -317,9 +300,7 @@ describe("fetchProfile", () => {
 
     await fetchProfile(["--diff", "my-pod"]);
 
-    const pprofCall = mocks.state.shellCalls.find(
-      (c) => shellCommand(c).includes("go tool pprof") && !shellCommand(c).includes("-proto"),
-    );
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof") && !shellCommand(c).includes("-proto"));
     expect(pprofCall).toBeDefined();
     const cmd = shellCommand(pprofCall!);
     expect(cmd).toContain("-diff_base");
@@ -344,18 +325,14 @@ describe("fetchProfile", () => {
   it("skips go tool pprof entirely by default (--web is false)", async () => {
     await fetchProfile(["my-pod"]);
 
-    const pprofCall = mocks.state.shellCalls.find(
-      (c) => shellCommand(c).includes("go tool pprof") && !shellCommand(c).includes("-proto"),
-    );
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof") && !shellCommand(c).includes("-proto"));
     expect(pprofCall).toBeUndefined();
   });
 
   it("includes -http=: when --web is explicitly passed", async () => {
     await fetchProfile(["--web", "my-pod"]);
 
-    const pprofCall = mocks.state.shellCalls.find(
-      (c) => shellCommand(c).includes("go tool pprof") && !shellCommand(c).includes("-proto"),
-    );
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof") && !shellCommand(c).includes("-proto"));
     expect(pprofCall).toBeDefined();
     const cmd = shellCommand(pprofCall!);
     expect(cmd).toContain("-http=:");
@@ -377,9 +354,7 @@ describe("fetchProfile", () => {
   });
 
   it("throws on non-positive --seconds for CPU type", async () => {
-    await expect(fetchProfile(["--type=cpu", "--seconds=0", "my-pod"])).rejects.toThrow(
-      "Invalid duration: 0 (must be a positive integer)",
-    );
+    await expect(fetchProfile(["--type=cpu", "--seconds=0", "my-pod"])).rejects.toThrow("Invalid duration: 0 (must be a positive integer)");
   });
 
   it("throws on float --seconds for CPU type", async () => {
@@ -393,9 +368,7 @@ describe("fetchProfile", () => {
 
     await fetchProfile(["--type=cpu", "my-pod"]);
 
-    const hintLog = spy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Hint:"),
-    );
+    const hintLog = spy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Hint:"));
     expect(hintLog).toBeDefined();
     expect(hintLog![0]).toContain("profile fetch --type=cpu --production");
     spy.mockRestore();
@@ -406,9 +379,7 @@ describe("fetchProfile", () => {
 
     await fetchProfile(["--type=cpu", "--production", "my-pod"]);
 
-    const hintLog = spy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Hint:"),
-    );
+    const hintLog = spy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Hint:"));
     expect(hintLog).toBeUndefined();
     spy.mockRestore();
   });
@@ -418,9 +389,7 @@ describe("fetchProfile", () => {
 
     await fetchProfile(["my-pod"]);
 
-    const hintLog = spy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Hint:"),
-    );
+    const hintLog = spy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Hint:"));
     expect(hintLog).toBeUndefined();
     spy.mockRestore();
   });
@@ -463,9 +432,7 @@ describe("fetchProfile --spread", () => {
 
     await fetchProfile(["--spread"]);
 
-    const execCalls = mocks.state.shellCalls.filter(
-      (c) => shellCommand(c).includes("kubectl") && shellCommand(c).includes("exec"),
-    );
+    const execCalls = mocks.state.shellCalls.filter((c) => shellCommand(c).includes("kubectl") && shellCommand(c).includes("exec"));
     expect(execCalls).toHaveLength(3);
     expect(shellCommand(execCalls[0]!)).toContain("exec pod-a");
     expect(shellCommand(execCalls[1]!)).toContain("exec pod-b");
@@ -478,21 +445,15 @@ describe("fetchProfile --spread", () => {
   });
 
   it("throws when combined with a positional pod name", async () => {
-    await expect(fetchProfile(["--spread", "my-pod"])).rejects.toThrow(
-      "Cannot use --spread with a positional pod name",
-    );
+    await expect(fetchProfile(["--spread", "my-pod"])).rejects.toThrow("Cannot use --spread with a positional pod name");
   });
 
   it("throws when combined with --web", async () => {
-    await expect(fetchProfile(["--spread", "--web"])).rejects.toThrow(
-      "Cannot use --spread with --web",
-    );
+    await expect(fetchProfile(["--spread", "--web"])).rejects.toThrow("Cannot use --spread with --web");
   });
 
   it("throws when combined with --diff", async () => {
-    await expect(fetchProfile(["--spread", "--diff"])).rejects.toThrow(
-      "Cannot use --spread with --diff",
-    );
+    await expect(fetchProfile(["--spread", "--diff"])).rejects.toThrow("Cannot use --spread with --diff");
   });
 
   it("saves each pod to a correctly named file", async () => {
@@ -511,9 +472,7 @@ describe("fetchProfile --spread", () => {
 
     await fetchProfile(["--spread", "--production"]);
 
-    const execCalls = mocks.state.shellCalls.filter(
-      (c) => shellCommand(c).includes("kubectl") && shellCommand(c).includes("exec"),
-    );
+    const execCalls = mocks.state.shellCalls.filter((c) => shellCommand(c).includes("kubectl") && shellCommand(c).includes("exec"));
     for (const call of execCalls) {
       const cmd = shellCommand(call);
       expect(cmd).toContain("--context=gke_gadget-core-production_us-central1_main");
@@ -527,9 +486,7 @@ describe("fetchProfile --spread", () => {
 
     await fetchProfile(["--spread"]);
 
-    const hintLog = spy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Fetched 2/2 profile(s)"),
-    );
+    const hintLog = spy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Fetched 2/2 profile(s)"));
     expect(hintLog).toBeDefined();
     expect(hintLog![0]).toContain("profile merge");
     spy.mockRestore();
@@ -564,15 +521,11 @@ describe("fetchProfile --spread", () => {
 
     await fetchProfile(["--spread"]);
 
-    const summaryLog = logSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Fetched"),
-    );
+    const summaryLog = logSpy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Fetched"));
     expect(summaryLog).toBeDefined();
     expect(summaryLog![0]).toContain("Fetched 3/3 profile(s)");
 
-    const retryingLog = logSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Retrying"),
-    );
+    const retryingLog = logSpy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Retrying"));
     expect(retryingLog).toBeDefined();
     expect(retryingLog![0]).toContain("1 failed pod(s) sequentially");
 
@@ -588,23 +541,17 @@ describe("fetchProfile --spread", () => {
 
     await fetchProfile(["--spread"]);
 
-    const summaryLog = logSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Fetched"),
-    );
+    const summaryLog = logSpy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Fetched"));
     expect(summaryLog).toBeDefined();
     expect(summaryLog![0]).toContain("Fetched 2/3 profile(s)");
 
     // Should print short "Failed: <pod>: <reason>" format
-    const failedLog = errorSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Failed:"),
-    );
+    const failedLog = errorSpy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Failed:"));
     expect(failedLog).toBeDefined();
     expect(failedLog![0]).toContain("pod-b");
 
     // Should print retry command
-    const retryLog = logSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Retry failed pods:"),
-    );
+    const retryLog = logSpy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Retry failed pods:"));
     expect(retryLog).toBeDefined();
 
     logSpy.mockRestore();
@@ -642,9 +589,7 @@ describe("fetchProfile --spread", () => {
 
     await fetchProfile(["--spread"]);
 
-    const failedLog = errorSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Failed:"),
-    );
+    const failedLog = errorSpy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Failed:"));
     expect(failedLog).toBeDefined();
     // Should use the last non-empty line of stderr as the reason
     expect(failedLog![0]).toContain("connection reset by peer");
@@ -662,14 +607,10 @@ describe("fetchProfile --spread", () => {
 
     await fetchProfile(["--spread"]);
 
-    const retryingLog = logSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("All concurrent fetches failed"),
-    );
+    const retryingLog = logSpy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("All concurrent fetches failed"));
     expect(retryingLog).toBeDefined();
 
-    const summaryLog = logSpy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Fetched"),
-    );
+    const summaryLog = logSpy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Fetched"));
     expect(summaryLog).toBeDefined();
     expect(summaryLog![0]).toContain("Fetched 2/2 profile(s)");
 
@@ -717,9 +658,7 @@ describe("open", () => {
     expect(basename(globArg)).toBe("my-pod-heap-*.pb.gz");
 
     // The pprof call should include -diff_base
-    const pprofCall = mocks.state.shellCalls.find(
-      (c) => shellCommand(c).includes("go tool pprof") && !shellCommand(c).includes("-proto"),
-    );
+    const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof") && !shellCommand(c).includes("-proto"));
     expect(pprofCall).toBeDefined();
     const cmd = shellCommand(pprofCall!);
     expect(cmd).toContain("-diff_base");
@@ -766,14 +705,10 @@ describe("merge", () => {
 
     await merge(["--component=controller"]);
 
-    expect(mocks.mockGlob).toHaveBeenCalledWith(
-      "/workspace/tmp/pprof/production/controller/*-cpu-*.pb.gz",
-    );
+    expect(mocks.mockGlob).toHaveBeenCalledWith("/workspace/tmp/pprof/production/controller/*-cpu-*.pb.gz");
     // 2 duration checks + 1 merge = 3 shell calls
     expect(mocks.state.shellCalls).toHaveLength(3);
-    const mergeCall = mocks.state.shellCalls.findLast((c) =>
-      shellCommand(c).includes("go tool pprof -proto"),
-    )!;
+    const mergeCall = mocks.state.shellCalls.findLast((c) => shellCommand(c).includes("go tool pprof -proto"))!;
     expect(mergeCall).toBeDefined();
     const profiles = mergeCall.values[0] as string[];
     expect(profiles).toHaveLength(2);
@@ -788,9 +723,7 @@ describe("merge", () => {
 
     expect(mocks.mockGlob).toHaveBeenCalledTimes(2);
     // 1 duration + 1 merge per component = 4 shell calls
-    const mergeCalls = mocks.state.shellCalls.filter((c) =>
-      shellCommand(c).includes("go tool pprof -proto"),
-    );
+    const mergeCalls = mocks.state.shellCalls.filter((c) => shellCommand(c).includes("go tool pprof -proto"));
     expect(mergeCalls).toHaveLength(2);
   });
 
@@ -804,22 +737,16 @@ describe("merge", () => {
 
     // Duration checks still run, but no merge call
     expect(mocks.state.shellCalls).toHaveLength(2);
-    expect(
-      mocks.state.shellCalls.every((c) => shellCommand(c).includes("go tool pprof -raw")),
-    ).toBe(true);
+    expect(mocks.state.shellCalls.every((c) => shellCommand(c).includes("go tool pprof -raw"))).toBe(true);
   });
 
   it("skips components with no matching profiles", async () => {
-    mocks.mockGlob
-      .mockResolvedValueOnce(["/workspace/tmp/pprof/production/controller/pod-abc12-cpu-001.pb.gz"])
-      .mockResolvedValueOnce([]);
+    mocks.mockGlob.mockResolvedValueOnce(["/workspace/tmp/pprof/production/controller/pod-abc12-cpu-001.pb.gz"]).mockResolvedValueOnce([]);
 
     await merge([]);
 
     // 1 duration check + 1 merge for controller; router has no profiles
-    const mergeCalls = mocks.state.shellCalls.filter((c) =>
-      shellCommand(c).includes("go tool pprof -proto"),
-    );
+    const mergeCalls = mocks.state.shellCalls.filter((c) => shellCommand(c).includes("go tool pprof -proto"));
     expect(mergeCalls).toHaveLength(1);
   });
 
@@ -831,9 +758,7 @@ describe("merge", () => {
 
     await merge(["--component=controller"]);
 
-    const mergeCall = mocks.state.shellCalls.findLast((c) =>
-      shellCommand(c).includes("go tool pprof -proto"),
-    )!;
+    const mergeCall = mocks.state.shellCalls.findLast((c) => shellCommand(c).includes("go tool pprof -proto"))!;
     expect(mergeCall).toBeDefined();
     const profiles = mergeCall.values[0] as string[];
     expect(profiles).toHaveLength(2);
@@ -868,9 +793,7 @@ describe("merge", () => {
   });
 
   it("does not delete files without --clean", async () => {
-    mocks.mockGlob.mockResolvedValueOnce([
-      "/workspace/tmp/pprof/production/controller/pod-abc12-cpu-001.pb.gz",
-    ]);
+    mocks.mockGlob.mockResolvedValueOnce(["/workspace/tmp/pprof/production/controller/pod-abc12-cpu-001.pb.gz"]);
 
     await merge(["--component=controller"]);
 
@@ -878,9 +801,7 @@ describe("merge", () => {
   });
 
   it("--clean --dry-run does not delete files", async () => {
-    mocks.mockGlob.mockResolvedValueOnce([
-      "/workspace/tmp/pprof/production/controller/pod-abc12-cpu-001.pb.gz",
-    ]);
+    mocks.mockGlob.mockResolvedValueOnce(["/workspace/tmp/pprof/production/controller/pod-abc12-cpu-001.pb.gz"]);
 
     await merge(["--clean", "--dry-run", "--component=controller"]);
 
@@ -898,16 +819,12 @@ describe("merge", () => {
 
     const now = Date.now();
     const tenDaysAgo = now - 10 * 24 * 60 * 60 * 1000;
-    mocks.mockStat
-      .mockResolvedValueOnce({ mtimeMs: tenDaysAgo })
-      .mockResolvedValueOnce({ mtimeMs: now });
+    mocks.mockStat.mockResolvedValueOnce({ mtimeMs: tenDaysAgo }).mockResolvedValueOnce({ mtimeMs: now });
 
     const spy = vi.spyOn(console, "log");
     await merge(["--component=controller"]);
 
-    const warningLog = spy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Warning:"),
-    );
+    const warningLog = spy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Warning:"));
     expect(warningLog).toBeDefined();
     expect(warningLog![0]).toContain("profiles span");
     spy.mockRestore();
@@ -921,16 +838,12 @@ describe("merge", () => {
     mocks.mockGlob.mockResolvedValueOnce(profiles);
 
     const now = Date.now();
-    mocks.mockStat
-      .mockResolvedValueOnce({ mtimeMs: now - 2 * 24 * 60 * 60 * 1000 })
-      .mockResolvedValueOnce({ mtimeMs: now });
+    mocks.mockStat.mockResolvedValueOnce({ mtimeMs: now - 2 * 24 * 60 * 60 * 1000 }).mockResolvedValueOnce({ mtimeMs: now });
 
     const spy = vi.spyOn(console, "log");
     await merge(["--component=controller"]);
 
-    const warningLog = spy.mock.calls.find(
-      (args) => typeof args[0] === "string" && args[0].includes("Warning:"),
-    );
+    const warningLog = spy.mock.calls.find((args) => typeof args[0] === "string" && args[0].includes("Warning:"));
     expect(warningLog).toBeUndefined();
     spy.mockRestore();
   });
@@ -940,33 +853,23 @@ describe("merge", () => {
 
 describe("analyze", () => {
   it("throws when no file provided and --pgo not set", async () => {
-    await expect(analyze([])).rejects.toThrow(
-      "No profile provided (use --pgo or pass a file path)",
-    );
+    await expect(analyze([])).rejects.toThrow("No profile provided (use --pgo or pass a file path)");
   });
 
   it("throws on invalid mode", async () => {
-    await expect(analyze(["--mode=invalid", "--pgo"])).rejects.toThrow(
-      "Invalid mode: invalid (must be one of top, peek, source, diff)",
-    );
+    await expect(analyze(["--mode=invalid", "--pgo"])).rejects.toThrow("Invalid mode: invalid (must be one of top, peek, source, diff)");
   });
 
   it("throws when peek mode used without --function", async () => {
-    await expect(analyze(["--mode=peek", "--pgo"])).rejects.toThrow(
-      "--function is required for --mode=peek",
-    );
+    await expect(analyze(["--mode=peek", "--pgo"])).rejects.toThrow("--function is required for --mode=peek");
   });
 
   it("throws when source mode used without --function", async () => {
-    await expect(analyze(["--mode=source", "--pgo"])).rejects.toThrow(
-      "--function is required for --mode=source",
-    );
+    await expect(analyze(["--mode=source", "--pgo"])).rejects.toThrow("--function is required for --mode=source");
   });
 
   it("throws when diff mode used without --diff-base", async () => {
-    await expect(analyze(["--mode=diff", "--pgo"])).rejects.toThrow(
-      "--diff-base is required for --mode=diff",
-    );
+    await expect(analyze(["--mode=diff", "--pgo"])).rejects.toThrow("--diff-base is required for --mode=diff");
   });
 
   it("resolves --pgo to cmd/controller/default.pgo by default", async () => {
@@ -998,16 +901,12 @@ describe("analyze", () => {
 
   it("throws when profile file does not exist", async () => {
     mocks.mockExistsSync.mockReturnValueOnce(false);
-    await expect(analyze(["tmp/missing.pb.gz"])).rejects.toThrow(
-      "Profile not found: tmp/missing.pb.gz",
-    );
+    await expect(analyze(["tmp/missing.pb.gz"])).rejects.toThrow("Profile not found: tmp/missing.pb.gz");
   });
 
   it("throws when --pgo profile does not exist", async () => {
     mocks.mockExistsSync.mockReturnValueOnce(false);
-    await expect(analyze(["--pgo"])).rejects.toThrow(
-      "Profile not found: cmd/controller/default.pgo",
-    );
+    await expect(analyze(["--pgo"])).rejects.toThrow("Profile not found: cmd/controller/default.pgo");
   });
 
   it("uses -top and -nodecount=20 in default top mode", async () => {
@@ -1067,13 +966,7 @@ describe("analyze", () => {
   });
 
   it("diff mode respects --cum and --nodecount", async () => {
-    await analyze([
-      "--mode=diff",
-      "--diff-base=tmp/before.pb.gz",
-      "--cum",
-      "--nodecount=10",
-      "tmp/after.pb.gz",
-    ]);
+    await analyze(["--mode=diff", "--diff-base=tmp/before.pb.gz", "--cum", "--nodecount=10", "tmp/after.pb.gz"]);
 
     const pprofCall = mocks.state.shellCalls.find((c) => shellCommand(c).includes("go tool pprof"));
     expect(pprofCall).toBeDefined();

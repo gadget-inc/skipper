@@ -1,6 +1,6 @@
 ---
 paths:
-    - "internal/**/*_test.go"
+  - "internal/**/*_test.go"
 ---
 
 # Testing Guidelines

@@ -1,8 +1,10 @@
 #!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import process from "node:process";
 import { parseArgs } from "node:util";
+
 import { dedent } from "ts-dedent";
 import { $, glob, path } from "zx";
+
 import { abs, currentDockerPlatform, currentImageTag, expandSkipperAlias, isCI } from "./_utils.ts";
 
 $.cwd = abs();
@@ -78,12 +80,8 @@ if (buildController || buildRouter) {
   await $({ verbose: true, env: bakeEnv })`docker buildx bake ${targets} ${bakeFlags}`;
 
   if (flags.values.kind) {
-    const controllerImageName = flags.values.registry
-      ? `${flags.values.registry}/skipper-controller`
-      : "skipper-controller";
-    const routerImageName = flags.values.registry
-      ? `${flags.values.registry}/skipper-router`
-      : "skipper-router";
+    const controllerImageName = flags.values.registry ? `${flags.values.registry}/skipper-controller` : "skipper-controller";
+    const routerImageName = flags.values.registry ? `${flags.values.registry}/skipper-router` : "skipper-router";
 
     if (buildController) {
       await $`kind load docker-image ${controllerImageName}:${flags.values.tag}`;

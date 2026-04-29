@@ -41,15 +41,13 @@ MUST NOT use `## Overview` as the first heading — Starlight auto-generates an 
 Wide tables MUST be wrapped:
 
 ```mdx
-<div class="table-scroll">
-| ... |
-</div>
+<div class="table-scroll">| ... |</div>
 ```
 
 Aside component:
 
 ```mdx
-import { Aside } from '@astrojs/starlight/components'
+import { Aside } from "@astrojs/starlight/components";
 
 <Aside type="tip">...</Aside>
 ```

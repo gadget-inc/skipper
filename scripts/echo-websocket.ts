@@ -1,7 +1,9 @@
 #!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
-import ms from "ms";
 import { setTimeout } from "node:timers/promises";
+
+import ms from "ms";
 import WebSocket from "ws";
+
 import { echoFunction, routerUrl } from "./_echo_utils.ts";
 
 const socket = new WebSocket(routerUrl, undefined, {

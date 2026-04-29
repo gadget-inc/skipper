@@ -4,17 +4,11 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import process from "node:process";
 import { parseArgs } from "node:util";
+
 import { dedent } from "ts-dedent";
 import { $ } from "zx";
-import {
-  abs,
-  currentImageTag,
-  deployKraneNamespace,
-  emptyDir,
-  expandSkipperAlias,
-  isCI,
-  renderKraneNamespace,
-} from "./_utils.ts";
+
+import { abs, currentImageTag, deployKraneNamespace, emptyDir, expandSkipperAlias, isCI, renderKraneNamespace } from "./_utils.ts";
 
 $.cwd = abs();
 $.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
@@ -26,8 +20,7 @@ const flags = parseArgs({
     build: { type: "boolean", default: true },
     "generate-paseto-keypair": {
       type: "boolean",
-      default:
-        !existsSync(abs("tmp/paseto/private.pem")) || !existsSync(abs("tmp/paseto/public.pem")),
+      default: !existsSync(abs("tmp/paseto/private.pem")) || !existsSync(abs("tmp/paseto/public.pem")),
     },
     development: { type: "boolean", default: !isCI },
     help: { type: "boolean", default: false, short: "h" },
@@ -64,10 +57,7 @@ if (flags.values.build) {
 if (flags.values["generate-paseto-keypair"]) {
   await emptyDir(abs("tmp/paseto"));
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  await writeFile(
-    abs("tmp/paseto/private.pem"),
-    privateKey.export({ format: "pem", type: "pkcs8" }),
-  );
+  await writeFile(abs("tmp/paseto/private.pem"), privateKey.export({ format: "pem", type: "pkcs8" }));
   await writeFile(abs("tmp/paseto/public.pem"), publicKey.export({ format: "pem", type: "spki" }));
   await $`ls -la ${abs("tmp/paseto")}`;
 }

@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
+
 import {
   findTextIn,
   wrapRange,
@@ -280,9 +281,7 @@ describe("applyHighlights", () => {
   });
 
   it("highlights text in a heading with nested anchor", () => {
-    const container = html(
-      '<h2 id="scale"><a href="#scale">Scaling</a></h2><p>Some paragraph text.</p>',
-    );
+    const container = html('<h2 id="scale"><a href="#scale">Scaling</a></h2><p>Some paragraph text.</p>');
     applyHighlights(container, [{ id: "c1", selectedText: "Scaling" }]);
 
     const mark = container.querySelector(`.${HIGHLIGHT_CLASS}`);
@@ -462,9 +461,7 @@ describe("highlight round-trip", () => {
  * Set up a page-like DOM with zone containers.
  * Returns a cleanup function to restore body.
  */
-function setupZones(
-  zones: Partial<Record<"content" | "title" | "sidebar" | "toc", string | false>> = {},
-): () => void {
+function setupZones(zones: Partial<Record<"content" | "title" | "sidebar" | "toc", string | false>> = {}): () => void {
   const els: Element[] = [];
   if (zones.content !== false) {
     const content = document.createElement("div");

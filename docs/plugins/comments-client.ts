@@ -82,9 +82,7 @@ export function themeColors(): Record<string, string> {
 
 export const page = window.location.pathname;
 
-export async function createComment(
-  data: Omit<Comment, "id" | "page" | "createdAt">,
-): Promise<Comment> {
+export async function createComment(data: Omit<Comment, "id" | "page" | "createdAt">): Promise<Comment> {
   const res = await fetch("/api/comments", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -189,8 +187,7 @@ export function openCommentForm(zone: string): void {
 
   const pos = fullText.indexOf(selectedText);
   const contextBefore = pos > 0 ? fullText.slice(Math.max(0, pos - 60), pos) : "";
-  const contextAfter =
-    pos >= 0 ? fullText.slice(pos + selectedText.length, pos + selectedText.length + 60) : "";
+  const contextAfter = pos >= 0 ? fullText.slice(pos + selectedText.length, pos + selectedText.length + 60) : "";
 
   removeSelectionButton();
 
@@ -224,8 +221,7 @@ export function openCommentForm(zone: string): void {
     margin: 12px; font-size: 12px; line-height: 1.4; max-height: 60px;
     overflow: hidden; color: ${t.fgMuted}; border-radius: 3px;
   `;
-  preview.textContent =
-    selectedText.length > 120 ? selectedText.slice(0, 120) + "\u2026" : selectedText;
+  preview.textContent = selectedText.length > 120 ? selectedText.slice(0, 120) + "\u2026" : selectedText;
   overlay.appendChild(preview);
 
   // Textarea wrapper with "Write" tab
@@ -578,8 +574,7 @@ export async function showAllCommentsPanel(focusId?: string): Promise<void> {
           margin-bottom: 8px; font-size: 12px; color: ${t.fgMuted}; border-radius: 3px;
           max-height: 40px; overflow: hidden; line-height: 1.4;
         `;
-        preview.textContent =
-          c.selectedText.length > 100 ? c.selectedText.slice(0, 100) + "\u2026" : c.selectedText;
+        preview.textContent = c.selectedText.length > 100 ? c.selectedText.slice(0, 100) + "\u2026" : c.selectedText;
         card.appendChild(preview);
 
         // Comment text
@@ -758,12 +753,7 @@ export function renderBadge(totalCount: number): void {
 
 document.addEventListener("mouseup", (e) => {
   // Ignore clicks inside our own UI
-  if (
-    (e.target as Element).closest(
-      `#${CONTAINER_ID}, #docs-comment-popover, #${ALL_COMMENTS_PANEL_ID}, .${HIGHLIGHT_CLASS}`,
-    )
-  )
-    return;
+  if ((e.target as Element).closest(`#${CONTAINER_ID}, #docs-comment-popover, #${ALL_COMMENTS_PANEL_ID}, .${HIGHLIGHT_CLASS}`)) return;
 
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || !sel.toString().trim()) {
@@ -789,28 +779,18 @@ document.addEventListener("selectionchange", () => {
 
 document.addEventListener("mousedown", (e) => {
   // Close popover on outside click (skip highlights — handled in click toggle)
-  if (
-    !(e.target as Element).closest("#docs-comment-popover") &&
-    !(e.target as Element).closest(`.${HIGHLIGHT_CLASS}`)
-  ) {
+  if (!(e.target as Element).closest("#docs-comment-popover") && !(e.target as Element).closest(`.${HIGHLIGHT_CLASS}`)) {
     document.getElementById("docs-comment-popover")?.remove();
   }
 
   // Close comment form on outside click
-  if (
-    !(e.target as Element).closest(`#${CONTAINER_ID}`) &&
-    !selectionButton?.contains(e.target as Node)
-  ) {
+  if (!(e.target as Element).closest(`#${CONTAINER_ID}`) && !selectionButton?.contains(e.target as Node)) {
     document.getElementById(CONTAINER_ID)?.remove();
   }
 
   // Close all-comments panel on outside click
   const panel = document.getElementById(ALL_COMMENTS_PANEL_ID);
-  if (
-    panel &&
-    !panel.contains(e.target as Node) &&
-    !(e.target as Element).closest("#docs-comment-badge")
-  ) {
+  if (panel && !panel.contains(e.target as Node) && !(e.target as Element).closest("#docs-comment-badge")) {
     panel.remove();
   }
 });
