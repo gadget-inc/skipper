@@ -202,6 +202,17 @@ func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Funct
 }
 
 func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
+	return ctrl.collectInstances(ctx, fn, true)
+}
+
+// listInstances is a read-only variant of getInstances that does NOT
+// delete invalid pods. Use from observability paths (web UI, status
+// RPCs) where the call must not have side effects.
+func (ctrl *Controller) listInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
+	return ctrl.collectInstances(ctx, fn, false)
+}
+
+func (ctrl *Controller) collectInstances(ctx context.Context, fn *skipper.Function, cleanup bool) ([]*skipper.Instance, error) {
 	namespaceLister, found := ctrl.namespaceListers[fn.GetNamespace()]
 	if !found {
 		return nil, fmt.Errorf("managed pod lister not started for namespace %s", fn.GetNamespace())
@@ -222,6 +233,9 @@ func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Function) 
 
 		instance, err := ctrl.instanceFromPod(pod)
 		if err != nil {
+			if !cleanup {
+				continue
+			}
 			// Pod failed validation (e.g., malformed timestamp annotation, missing replica set annotation).
 			// Delete it and continue processing other pods instead of blocking all scaling for this skipper.
 			log.Warn(ctx, "failed to get instance from pod, deleting invalid pod", key.Error.Slog(err), key.Pod.Slog(pod))

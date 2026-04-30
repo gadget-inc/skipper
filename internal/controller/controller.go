@@ -56,6 +56,7 @@ type Controller struct {
 	functionCache       *xsync.Map[string, *skipper.Function]         // keyed by raw annotation JSON
 	portCache           *xsync.Map[types.UID, string]                 // keyed by pod UID
 	staleReplacementSem *semaphore.Weighted
+	events              *eventLog
 }
 
 func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
@@ -72,6 +73,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 		functionCache:       xsync.NewMap[string, *skipper.Function](),
 		portCache:           xsync.NewMap[types.UID, string](),
 		staleReplacementSem: semaphore.NewWeighted(int64(cfg.MaxConcurrentStaleReplacements)),
+		events:              &eventLog{},
 	}
 }
 
@@ -119,71 +121,78 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 	ctx, span := telemetry.Trace(ctx, "controller.start_informers")
 	defer span.End()
 
-	controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
-		ctrl.kubernetes,
-		5*time.Minute,
-		informers.WithNamespace(ctrl.config.Namespace),
-		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
-			options.LabelSelector = "app.kubernetes.io/name=skipper,app.kubernetes.io/component=controller"
-		}),
-	)
+	if ctrl.config.SingleControllerMode {
+		// Skip controller pod discovery and add only this controller to the ring.
+		// Used in local development where the controller runs outside Kubernetes.
+		ctrl.ring.Add(ctrl.config.PodIP)
+		log.Info(ctx, "single-controller mode, added self to ring", key.PodIP.Slog(ctrl.config.PodIP))
+	} else {
+		controllerPodInformerFactory := informers.NewSharedInformerFactoryWithOptions(
+			ctrl.kubernetes,
+			5*time.Minute,
+			informers.WithNamespace(ctrl.config.Namespace),
+			informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+				options.LabelSelector = "app.kubernetes.io/name=skipper,app.kubernetes.io/component=controller"
+			}),
+		)
 
-	// keep track of the controller pod name to IP address so we can remove the controller from the ring if/when its IP disappears
-	ctrlPodNameToIP := make(map[string]string)
+		// keep track of the controller pod name to IP address so we can remove the controller from the ring if/when its IP disappears
+		ctrlPodNameToIP := make(map[string]string)
 
-	removeFromRing := func(pod *v1.Pod) {
-		ctrlIP := ctrlPodNameToIP[pod.Name]
-		if ctrlIP != "" {
-			delete(ctrlPodNameToIP, pod.Name)
-			ctrl.ring.Remove(ctrlIP)
-			log.Debug(ctx, "removed controller from ring", key.Pod.Slog(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+		removeFromRing := func(pod *v1.Pod) {
+			ctrlIP := ctrlPodNameToIP[pod.Name]
+			if ctrlIP != "" {
+				delete(ctrlPodNameToIP, pod.Name)
+				ctrl.ring.Remove(ctrlIP)
+				log.Debug(ctx, "removed controller from ring", key.Pod.Slog(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+			}
 		}
-	}
 
-	updateRing := func(pod *v1.Pod) {
-		if isPodReady(pod) {
-			ctrlPodNameToIP[pod.Name] = pod.Status.PodIP
-			ctrl.ring.Add(pod.Status.PodIP)
-			log.Debug(ctx, "added controller to ring", key.Pod.Slog(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
-		} else {
-			removeFromRing(pod)
+		updateRing := func(pod *v1.Pod) {
+			if isPodReady(pod) {
+				ctrlPodNameToIP[pod.Name] = pod.Status.PodIP
+				ctrl.ring.Add(pod.Status.PodIP)
+				log.Debug(ctx, "added controller to ring", key.Pod.Slog(pod), slog.String("ring", strings.Join(ctrl.ring.List(), ",")))
+			} else {
+				removeFromRing(pod)
+			}
 		}
-	}
 
-	controllerPodInformer := controllerPodInformerFactory.Core().V1().Pods().Informer()
-	err := controllerPodInformer.SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
-		slog.String("watch_resource", "controller_pods"),
-		key.Namespace.Slog(ctrl.config.Namespace),
-	))
-	if err != nil {
-		return fmt.Errorf("failed to set controller pod watch error handler: %w", err)
-	}
+		controllerPodInformer := controllerPodInformerFactory.Core().V1().Pods().Informer()
+		err := controllerPodInformer.SetWatchErrorHandler(ctrl.watchErrorHandler(ctx,
+			slog.String("watch_resource", "controller_pods"),
+			key.Namespace.Slog(ctrl.config.Namespace),
+		))
+		if err != nil {
+			return fmt.Errorf("failed to set controller pod watch error handler: %w", err)
+		}
 
-	controllerPodHandler, err := controllerPodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			pod := obj.(*v1.Pod)
-			RecordInformerEvent("controller_pods", "add", pod)
-			updateRing(pod)
-		},
-		UpdateFunc: func(_, newObj any) {
-			pod := newObj.(*v1.Pod)
-			RecordInformerEvent("controller_pods", "update", pod)
-			updateRing(pod)
-		},
-		DeleteFunc: func(obj any) {
-			pod := obj.(*v1.Pod)
-			RecordInformerEvent("controller_pods", "delete", pod)
-			removeFromRing(pod)
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to add controller pod event handler: %w", err)
-	}
+		controllerPodHandler, err := controllerPodInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj any) {
+				pod := obj.(*v1.Pod)
+				RecordInformerEvent("controller_pods", "add", pod)
+				updateRing(pod)
+			},
+			UpdateFunc: func(_, newObj any) {
+				pod := newObj.(*v1.Pod)
+				RecordInformerEvent("controller_pods", "update", pod)
+				updateRing(pod)
+			},
+			DeleteFunc: func(obj any) {
+				pod := obj.(*v1.Pod)
+				RecordInformerEvent("controller_pods", "delete", pod)
+				removeFromRing(pod)
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add controller pod event handler: %w", err)
+		}
 
-	controllerPodInformerFactory.Start(ctx.Done())
-	synced := cache.WaitForCacheSync(ctx.Done(), controllerPodHandler.HasSynced)
-	if !synced {
-		return errors.New("failed to sync controller pod informer")
+		controllerPodInformerFactory.Start(ctx.Done())
+		synced := cache.WaitForCacheSync(ctx.Done(), controllerPodHandler.HasSynced)
+		if !synced {
+			return errors.New("failed to sync controller pod informer")
+		}
 	}
 
 	for _, namespace := range ctrl.config.FunctionNamespaces {

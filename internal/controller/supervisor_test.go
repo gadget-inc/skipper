@@ -4063,3 +4063,256 @@ func BenchmarkRecordRecommendation(b *testing.B) {
 		}
 	})
 }
+
+func TestSupervisorEvents(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *skipper.Function
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		run   func(*testing.T, context.Context, *testState)
+		check func(*testing.T, *testState)
+	}{
+		{
+			name: "scale up records events",
+			setup: func(t *testing.T, state *testState) {
+				// add 2 available pods for scale up
+				for range 2 {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				}
+			},
+			run: func(t *testing.T, ctx context.Context, state *testState) {
+				supervisor := state.ctrl.supervisor(state.fn)
+				_, _, err := supervisor.scaleWithoutLock(ctx, state.fn, nil, skipper.ScaleDecision_builder{
+					DesiredInstances: proto.Uint32(2),
+					Reason:           skipper.ScaleReason_SCALE_REASON_CPU.Enum(),
+				}.Build())
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+				// expect 1 SCALE_UP + 2 POD_ASSIGNED = 3 events (newest first)
+				assert.Assert(t, len(events) == 3, "expected 3 events, got %d", len(events))
+
+				// newest first: POD_ASSIGNED, POD_ASSIGNED, SCALE_UP
+				assert.Equal(t, events[0].GetType(), skipper.EventType_EVENT_TYPE_POD_ASSIGNED)
+				assert.Equal(t, events[0].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+				assert.Equal(t, events[1].GetType(), skipper.EventType_EVENT_TYPE_POD_ASSIGNED)
+				assert.Equal(t, events[1].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+				assert.Equal(t, events[2].GetType(), skipper.EventType_EVENT_TYPE_SCALE_UP)
+				assert.Equal(t, events[2].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+			},
+		},
+		{
+			name: "scale down records events",
+			setup: func(t *testing.T, state *testState) {
+				// create 3 assigned pods
+				for range 3 {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				}
+			},
+			run: func(t *testing.T, ctx context.Context, state *testState) {
+				supervisor := state.ctrl.supervisor(state.fn)
+				instances, err := state.ctrl.getInstances(ctx, state.fn)
+				assert.NilError(t, err)
+				_, _, err = supervisor.scaleWithoutLock(ctx, state.fn, instances, skipper.ScaleDecision_builder{
+					DesiredInstances: proto.Uint32(1),
+					Reason:           skipper.ScaleReason_SCALE_REASON_CPU.Enum(),
+				}.Build())
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+				// expect 1 SCALE_DOWN + 2 POD_DELETED = 3 events (newest first)
+				assert.Assert(t, len(events) == 3, "expected 3 events, got %d", len(events))
+
+				// newest first: POD_DELETED, POD_DELETED, SCALE_DOWN
+				assert.Equal(t, events[0].GetType(), skipper.EventType_EVENT_TYPE_POD_DELETED)
+				assert.Equal(t, events[0].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+				assert.Equal(t, events[1].GetType(), skipper.EventType_EVENT_TYPE_POD_DELETED)
+				assert.Equal(t, events[1].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+				assert.Equal(t, events[2].GetType(), skipper.EventType_EVENT_TYPE_SCALE_DOWN)
+				assert.Equal(t, events[2].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+			},
+		},
+		{
+			name: "stuck instance cleanup records event",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create a pod stuck past the threshold
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				stuckTime := time.Now().Add(-state.ctrl.config.FunctionAssignTimeout * 3)
+				pod.Annotations[key.AssignedAt.Label] = stuckTime.Format(time.RFC3339)
+				delete(pod.Annotations, key.ReadyAt.Label)
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			run: func(t *testing.T, ctx context.Context, state *testState) {
+				instances, err := state.ctrl.getInstances(ctx, state.fn)
+				assert.NilError(t, err)
+				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor.cleanupStuckInstances(ctx, instances)
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+				assert.Assert(t, len(events) == 1, "expected 1 event, got %d", len(events))
+				assert.Equal(t, events[0].GetType(), skipper.EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP)
+				assert.Equal(t, events[0].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_WARN)
+			},
+		},
+		{
+			name: "stale instance replacement records event",
+			setup: func(t *testing.T, state *testState) {
+				// create an assigned pod on the old replica set
+				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+
+				// create a stale replica set (scaled to 0)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet.Status.Replicas = 0
+				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
+
+				// add a new replica set with an available pod
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			run: func(t *testing.T, ctx context.Context, state *testState) {
+				instances, err := state.ctrl.getInstances(ctx, state.fn)
+				assert.NilError(t, err)
+				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor.replaceStaleInstances(ctx, state.fn, instances, len(instances))
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+				// expect 1 STALE_REPLACEMENT + 1 POD_ASSIGNED (from assignPod in replacement)
+				// We only check for STALE_REPLACEMENT here since POD_ASSIGNED
+				// comes from scaleWithoutLock which isn't called in this path
+				assert.Assert(t, len(events) >= 1, "expected at least 1 event, got %d", len(events))
+
+				// find the STALE_REPLACEMENT event
+				var found bool
+				for _, event := range events {
+					if event.GetType() == skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT {
+						assert.Equal(t, event.GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+						found = true
+						break
+					}
+				}
+				assert.Assert(t, found, "expected STALE_REPLACEMENT event")
+			},
+		},
+		{
+			name: "heartbeat timeout records event",
+			setup: func(t *testing.T, state *testState) {
+				// disable resource scaling so heartbeat timeout drives the decision
+				state.fn.GetScale().SetTargetCpuUsageMilli(0)
+				state.fn.GetScale().SetTargetMemoryUsageMib(0)
+				state.fn.GetScale().SetTargetInFlightRequests(0)
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// create an assigned pod with old assignment time
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				assignedAt := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+				pod.Annotations[key.AssignedAt.Label] = assignedAt
+				pod.Annotations[key.ReadyAt.Label] = assignedAt
+				state.fakeKubernetes.Tracker().Add(pod)
+
+				// set controller started long ago so protection period is expired
+				protectionPeriod := max(state.ctrl.config.HPADownscaleStabilization, state.ctrl.config.HeartbeatTimeout)
+				state.ctrl.setStartedAt(time.Now().Add(-protectionPeriod - time.Second))
+			},
+			run: func(t *testing.T, ctx context.Context, state *testState) {
+				supervisor := state.ctrl.supervisor(state.fn)
+				// no heartbeats stored — will trigger heartbeat timeout
+				err := supervisor.converge(ctx)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+
+				// find the HEARTBEAT_TIMEOUT event
+				var found bool
+				for _, event := range events {
+					if event.GetType() == skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT {
+						assert.Equal(t, event.GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_WARN)
+						found = true
+						break
+					}
+				}
+				assert.Assert(t, found, "expected HEARTBEAT_TIMEOUT event")
+			},
+		},
+		{
+			// Regression test: when converge runs against a function that
+			// already has zero instances and the scaling decision lands at
+			// zero (e.g. maxInstances clamped to 0), converge must emit no
+			// scale-related event at all. Emitting "scaling to 0" when
+			// there is nothing to scale is misleading to operators reading
+			// the event log.
+			name: "scale-to-zero from zero instances records no scale event",
+			setup: func(t *testing.T, state *testState) {
+				// Set maxInstances=0 so clamping forces desiredInstances=0
+				// even though the heartbeat is fresh.
+				state.fn.GetScale().SetMaxInstances(0)
+				state.fn.GetScale().SetTargetCpuUsageMilli(0)
+				state.fn.GetScale().SetTargetMemoryUsageMib(0)
+				state.fn.GetScale().SetTargetInFlightRequests(0)
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// set controller started long ago so protection period is expired
+				protectionPeriod := max(state.ctrl.config.HPADownscaleStabilization, state.ctrl.config.HeartbeatTimeout)
+				state.ctrl.setStartedAt(time.Now().Add(-protectionPeriod - time.Second))
+			},
+			run: func(t *testing.T, ctx context.Context, state *testState) {
+				supervisor := state.ctrl.supervisor(state.fn)
+				// store a fresh heartbeat so the reason is NOT heartbeat timeout
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
+					Function:  state.fn,
+					Timestamp: timestamppb.Now(),
+				}.Build())
+				err := supervisor.converge(ctx)
+				assert.NilError(t, err)
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+				for _, event := range events {
+					assert.Assert(t,
+						event.GetType() != skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT &&
+							event.GetType() != skipper.EventType_EVENT_TYPE_SCALE_DOWN,
+						"scale-to-zero from zero instances must not record any scale event, got %s", event.GetType())
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			tc.run(t, ctx, state)
+			tc.check(t, state)
+		})
+	}
+}

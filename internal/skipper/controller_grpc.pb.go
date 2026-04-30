@@ -23,6 +23,7 @@ const (
 	ControllerService_Heartbeat_FullMethodName       = "/skipper.ControllerService/Heartbeat"
 	ControllerService_Scale_FullMethodName           = "/skipper.ControllerService/Scale"
 	ControllerService_ReleaseInstance_FullMethodName = "/skipper.ControllerService/ReleaseInstance"
+	ControllerService_GetClusterState_FullMethodName = "/skipper.ControllerService/GetClusterState"
 )
 
 // ControllerServiceClient is the client API for ControllerService service.
@@ -35,6 +36,7 @@ type ControllerServiceClient interface {
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
 	Scale(ctx context.Context, in *ScaleRequest, opts ...grpc.CallOption) (*ScaleResponse, error)
 	ReleaseInstance(ctx context.Context, in *ReleaseInstanceRequest, opts ...grpc.CallOption) (*ReleaseInstanceResponse, error)
+	GetClusterState(ctx context.Context, in *GetClusterStateRequest, opts ...grpc.CallOption) (*GetClusterStateResponse, error)
 }
 
 type controllerServiceClient struct {
@@ -85,6 +87,16 @@ func (c *controllerServiceClient) ReleaseInstance(ctx context.Context, in *Relea
 	return out, nil
 }
 
+func (c *controllerServiceClient) GetClusterState(ctx context.Context, in *GetClusterStateRequest, opts ...grpc.CallOption) (*GetClusterStateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetClusterStateResponse)
+	err := c.cc.Invoke(ctx, ControllerService_GetClusterState_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ControllerServiceServer is the server API for ControllerService service.
 // All implementations must embed UnimplementedControllerServiceServer
 // for forward compatibility.
@@ -95,6 +107,7 @@ type ControllerServiceServer interface {
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
 	Scale(context.Context, *ScaleRequest) (*ScaleResponse, error)
 	ReleaseInstance(context.Context, *ReleaseInstanceRequest) (*ReleaseInstanceResponse, error)
+	GetClusterState(context.Context, *GetClusterStateRequest) (*GetClusterStateResponse, error)
 	mustEmbedUnimplementedControllerServiceServer()
 }
 
@@ -116,6 +129,9 @@ func (UnimplementedControllerServiceServer) Scale(context.Context, *ScaleRequest
 }
 func (UnimplementedControllerServiceServer) ReleaseInstance(context.Context, *ReleaseInstanceRequest) (*ReleaseInstanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReleaseInstance not implemented")
+}
+func (UnimplementedControllerServiceServer) GetClusterState(context.Context, *GetClusterStateRequest) (*GetClusterStateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetClusterState not implemented")
 }
 func (UnimplementedControllerServiceServer) mustEmbedUnimplementedControllerServiceServer() {}
 func (UnimplementedControllerServiceServer) testEmbeddedByValue()                           {}
@@ -210,6 +226,24 @@ func _ControllerService_ReleaseInstance_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControllerService_GetClusterState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetClusterStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControllerServiceServer).GetClusterState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControllerService_GetClusterState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControllerServiceServer).GetClusterState(ctx, req.(*GetClusterStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ControllerService_ServiceDesc is the grpc.ServiceDesc for ControllerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -232,6 +266,10 @@ var ControllerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReleaseInstance",
 			Handler:    _ControllerService_ReleaseInstance_Handler,
+		},
+		{
+			MethodName: "GetClusterState",
+			Handler:    _ControllerService_GetClusterState_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

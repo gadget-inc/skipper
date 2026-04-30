@@ -109,6 +109,13 @@ func (s *Server) ReleaseInstance(ctx context.Context, req *skipper.ReleaseInstan
 	return &skipper.ReleaseInstanceResponse{}, nil
 }
 
+func (s *Server) GetClusterState(ctx context.Context, _ *skipper.GetClusterStateRequest) (*skipper.GetClusterStateResponse, error) {
+	state := s.ctrl.ClusterState(ctx)
+	resp := &skipper.GetClusterStateResponse{}
+	resp.SetClusterState(state)
+	return resp, nil
+}
+
 func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper.ScaleResponse, error) {
 	fn := req.GetFunction()
 	if err := fn.Validate(); err != nil {

@@ -75,6 +75,109 @@ func (x ScaleReason) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
+type EventType int32
+
+const (
+	EventType_EVENT_TYPE_UNSPECIFIED            EventType = 0
+	EventType_EVENT_TYPE_SCALE_UP               EventType = 1
+	EventType_EVENT_TYPE_SCALE_DOWN             EventType = 2
+	EventType_EVENT_TYPE_POD_ASSIGNED           EventType = 3
+	EventType_EVENT_TYPE_POD_DELETED            EventType = 4
+	EventType_EVENT_TYPE_STALE_REPLACEMENT      EventType = 5
+	EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT      EventType = 6
+	EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP EventType = 7
+)
+
+// Enum value maps for EventType.
+var (
+	EventType_name = map[int32]string{
+		0: "EVENT_TYPE_UNSPECIFIED",
+		1: "EVENT_TYPE_SCALE_UP",
+		2: "EVENT_TYPE_SCALE_DOWN",
+		3: "EVENT_TYPE_POD_ASSIGNED",
+		4: "EVENT_TYPE_POD_DELETED",
+		5: "EVENT_TYPE_STALE_REPLACEMENT",
+		6: "EVENT_TYPE_HEARTBEAT_TIMEOUT",
+		7: "EVENT_TYPE_STUCK_INSTANCE_CLEANUP",
+	}
+	EventType_value = map[string]int32{
+		"EVENT_TYPE_UNSPECIFIED":            0,
+		"EVENT_TYPE_SCALE_UP":               1,
+		"EVENT_TYPE_SCALE_DOWN":             2,
+		"EVENT_TYPE_POD_ASSIGNED":           3,
+		"EVENT_TYPE_POD_DELETED":            4,
+		"EVENT_TYPE_STALE_REPLACEMENT":      5,
+		"EVENT_TYPE_HEARTBEAT_TIMEOUT":      6,
+		"EVENT_TYPE_STUCK_INSTANCE_CLEANUP": 7,
+	}
+)
+
+func (x EventType) Enum() *EventType {
+	p := new(EventType)
+	*p = x
+	return p
+}
+
+func (x EventType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EventType) Descriptor() protoreflect.EnumDescriptor {
+	return file_types_proto_enumTypes[1].Descriptor()
+}
+
+func (EventType) Type() protoreflect.EnumType {
+	return &file_types_proto_enumTypes[1]
+}
+
+func (x EventType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+type EventSeverity int32
+
+const (
+	EventSeverity_EVENT_SEVERITY_UNSPECIFIED EventSeverity = 0
+	EventSeverity_EVENT_SEVERITY_INFO        EventSeverity = 1
+	EventSeverity_EVENT_SEVERITY_WARN        EventSeverity = 2
+)
+
+// Enum value maps for EventSeverity.
+var (
+	EventSeverity_name = map[int32]string{
+		0: "EVENT_SEVERITY_UNSPECIFIED",
+		1: "EVENT_SEVERITY_INFO",
+		2: "EVENT_SEVERITY_WARN",
+	}
+	EventSeverity_value = map[string]int32{
+		"EVENT_SEVERITY_UNSPECIFIED": 0,
+		"EVENT_SEVERITY_INFO":        1,
+		"EVENT_SEVERITY_WARN":        2,
+	}
+)
+
+func (x EventSeverity) Enum() *EventSeverity {
+	p := new(EventSeverity)
+	*p = x
+	return p
+}
+
+func (x EventSeverity) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EventSeverity) Descriptor() protoreflect.EnumDescriptor {
+	return file_types_proto_enumTypes[2].Descriptor()
+}
+
+func (EventSeverity) Type() protoreflect.EnumType {
+	return &file_types_proto_enumTypes[2]
+}
+
+func (x EventSeverity) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
 type Scale struct {
 	state                             protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_MinInstances           uint32                 `protobuf:"varint,1,opt,name=min_instances,json=minInstances"`
@@ -1167,6 +1270,778 @@ func (b0 ScaleDecision_builder) Build() *ScaleDecision {
 	return m0
 }
 
+type Event struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Timestamp   *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp"`
+	xxx_hidden_Function    *Function              `protobuf:"bytes,2,opt,name=function"`
+	xxx_hidden_Type        EventType              `protobuf:"varint,3,opt,name=type,enum=skipper.EventType"`
+	xxx_hidden_Message     *string                `protobuf:"bytes,4,opt,name=message"`
+	xxx_hidden_Severity    EventSeverity          `protobuf:"varint,5,opt,name=severity,enum=skipper.EventSeverity"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *Event) Reset() {
+	*x = Event{}
+	mi := &file_types_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Event) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Event) ProtoMessage() {}
+
+func (x *Event) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *Event) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.xxx_hidden_Timestamp
+	}
+	return nil
+}
+
+func (x *Event) GetFunction() *Function {
+	if x != nil {
+		return x.xxx_hidden_Function
+	}
+	return nil
+}
+
+func (x *Event) GetType() EventType {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 2) {
+			return x.xxx_hidden_Type
+		}
+	}
+	return EventType_EVENT_TYPE_UNSPECIFIED
+}
+
+func (x *Event) GetMessage() string {
+	if x != nil {
+		if x.xxx_hidden_Message != nil {
+			return *x.xxx_hidden_Message
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *Event) GetSeverity() EventSeverity {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 4) {
+			return x.xxx_hidden_Severity
+		}
+	}
+	return EventSeverity_EVENT_SEVERITY_UNSPECIFIED
+}
+
+func (x *Event) SetTimestamp(v *timestamppb.Timestamp) {
+	x.xxx_hidden_Timestamp = v
+}
+
+func (x *Event) SetFunction(v *Function) {
+	x.xxx_hidden_Function = v
+}
+
+func (x *Event) SetType(v EventType) {
+	x.xxx_hidden_Type = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 5)
+}
+
+func (x *Event) SetMessage(v string) {
+	x.xxx_hidden_Message = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+}
+
+func (x *Event) SetSeverity(v EventSeverity) {
+	x.xxx_hidden_Severity = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 5)
+}
+
+func (x *Event) HasTimestamp() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Timestamp != nil
+}
+
+func (x *Event) HasFunction() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Function != nil
+}
+
+func (x *Event) HasType() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *Event) HasMessage() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
+func (x *Event) HasSeverity() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
+}
+
+func (x *Event) ClearTimestamp() {
+	x.xxx_hidden_Timestamp = nil
+}
+
+func (x *Event) ClearFunction() {
+	x.xxx_hidden_Function = nil
+}
+
+func (x *Event) ClearType() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_Type = EventType_EVENT_TYPE_UNSPECIFIED
+}
+
+func (x *Event) ClearMessage() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_Message = nil
+}
+
+func (x *Event) ClearSeverity() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
+	x.xxx_hidden_Severity = EventSeverity_EVENT_SEVERITY_UNSPECIFIED
+}
+
+type Event_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Timestamp *timestamppb.Timestamp
+	Function  *Function
+	Type      *EventType
+	Message   *string
+	Severity  *EventSeverity
+}
+
+func (b0 Event_builder) Build() *Event {
+	m0 := &Event{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_Timestamp = b.Timestamp
+	x.xxx_hidden_Function = b.Function
+	if b.Type != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 5)
+		x.xxx_hidden_Type = *b.Type
+	}
+	if b.Message != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
+		x.xxx_hidden_Message = b.Message
+	}
+	if b.Severity != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 5)
+		x.xxx_hidden_Severity = *b.Severity
+	}
+	return m0
+}
+
+type ConfigValue struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Name        *string                `protobuf:"bytes,1,opt,name=name"`
+	xxx_hidden_Value       *string                `protobuf:"bytes,2,opt,name=value"`
+	xxx_hidden_Description *string                `protobuf:"bytes,3,opt,name=description"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *ConfigValue) Reset() {
+	*x = ConfigValue{}
+	mi := &file_types_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigValue) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigValue) ProtoMessage() {}
+
+func (x *ConfigValue) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ConfigValue) GetName() string {
+	if x != nil {
+		if x.xxx_hidden_Name != nil {
+			return *x.xxx_hidden_Name
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ConfigValue) GetValue() string {
+	if x != nil {
+		if x.xxx_hidden_Value != nil {
+			return *x.xxx_hidden_Value
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ConfigValue) GetDescription() string {
+	if x != nil {
+		if x.xxx_hidden_Description != nil {
+			return *x.xxx_hidden_Description
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ConfigValue) SetName(v string) {
+	x.xxx_hidden_Name = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+}
+
+func (x *ConfigValue) SetValue(v string) {
+	x.xxx_hidden_Value = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 3)
+}
+
+func (x *ConfigValue) SetDescription(v string) {
+	x.xxx_hidden_Description = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
+}
+
+func (x *ConfigValue) HasName() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ConfigValue) HasValue() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
+}
+
+func (x *ConfigValue) HasDescription() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
+}
+
+func (x *ConfigValue) ClearName() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_Name = nil
+}
+
+func (x *ConfigValue) ClearValue() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
+	x.xxx_hidden_Value = nil
+}
+
+func (x *ConfigValue) ClearDescription() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
+	x.xxx_hidden_Description = nil
+}
+
+type ConfigValue_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Name        *string
+	Value       *string
+	Description *string
+}
+
+func (b0 ConfigValue_builder) Build() *ConfigValue {
+	m0 := &ConfigValue{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Name != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		x.xxx_hidden_Name = b.Name
+	}
+	if b.Value != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
+		x.xxx_hidden_Value = b.Value
+	}
+	if b.Description != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
+		x.xxx_hidden_Description = b.Description
+	}
+	return m0
+}
+
+type HeartbeatState struct {
+	state                  protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_RouterIp    *string                `protobuf:"bytes,1,opt,name=router_ip,json=routerIp"`
+	xxx_hidden_Heartbeat   *Heartbeat             `protobuf:"bytes,2,opt,name=heartbeat"`
+	XXX_raceDetectHookData protoimpl.RaceDetectHookData
+	XXX_presence           [1]uint32
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *HeartbeatState) Reset() {
+	*x = HeartbeatState{}
+	mi := &file_types_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HeartbeatState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HeartbeatState) ProtoMessage() {}
+
+func (x *HeartbeatState) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *HeartbeatState) GetRouterIp() string {
+	if x != nil {
+		if x.xxx_hidden_RouterIp != nil {
+			return *x.xxx_hidden_RouterIp
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *HeartbeatState) GetHeartbeat() *Heartbeat {
+	if x != nil {
+		return x.xxx_hidden_Heartbeat
+	}
+	return nil
+}
+
+func (x *HeartbeatState) SetRouterIp(v string) {
+	x.xxx_hidden_RouterIp = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 2)
+}
+
+func (x *HeartbeatState) SetHeartbeat(v *Heartbeat) {
+	x.xxx_hidden_Heartbeat = v
+}
+
+func (x *HeartbeatState) HasRouterIp() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *HeartbeatState) HasHeartbeat() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Heartbeat != nil
+}
+
+func (x *HeartbeatState) ClearRouterIp() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_RouterIp = nil
+}
+
+func (x *HeartbeatState) ClearHeartbeat() {
+	x.xxx_hidden_Heartbeat = nil
+}
+
+type HeartbeatState_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	RouterIp  *string
+	Heartbeat *Heartbeat
+}
+
+func (b0 HeartbeatState_builder) Build() *HeartbeatState {
+	m0 := &HeartbeatState{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.RouterIp != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 2)
+		x.xxx_hidden_RouterIp = b.RouterIp
+	}
+	x.xxx_hidden_Heartbeat = b.Heartbeat
+	return m0
+}
+
+type SupervisorState struct {
+	state                              protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Function                *Function              `protobuf:"bytes,1,opt,name=function"`
+	xxx_hidden_Instances               *[]*Instance           `protobuf:"bytes,2,rep,name=instances"`
+	xxx_hidden_RouterHeartbeats        *[]*HeartbeatState     `protobuf:"bytes,3,rep,name=router_heartbeats,json=routerHeartbeats"`
+	xxx_hidden_ResponsibleControllerIp *string                `protobuf:"bytes,5,opt,name=responsible_controller_ip,json=responsibleControllerIp"`
+	xxx_hidden_ActiveReplicaSet        *string                `protobuf:"bytes,7,opt,name=active_replica_set,json=activeReplicaSet"`
+	XXX_raceDetectHookData             protoimpl.RaceDetectHookData
+	XXX_presence                       [1]uint32
+	unknownFields                      protoimpl.UnknownFields
+	sizeCache                          protoimpl.SizeCache
+}
+
+func (x *SupervisorState) Reset() {
+	*x = SupervisorState{}
+	mi := &file_types_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SupervisorState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SupervisorState) ProtoMessage() {}
+
+func (x *SupervisorState) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *SupervisorState) GetFunction() *Function {
+	if x != nil {
+		return x.xxx_hidden_Function
+	}
+	return nil
+}
+
+func (x *SupervisorState) GetInstances() []*Instance {
+	if x != nil {
+		if x.xxx_hidden_Instances != nil {
+			return *x.xxx_hidden_Instances
+		}
+	}
+	return nil
+}
+
+func (x *SupervisorState) GetRouterHeartbeats() []*HeartbeatState {
+	if x != nil {
+		if x.xxx_hidden_RouterHeartbeats != nil {
+			return *x.xxx_hidden_RouterHeartbeats
+		}
+	}
+	return nil
+}
+
+func (x *SupervisorState) GetResponsibleControllerIp() string {
+	if x != nil {
+		if x.xxx_hidden_ResponsibleControllerIp != nil {
+			return *x.xxx_hidden_ResponsibleControllerIp
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *SupervisorState) GetActiveReplicaSet() string {
+	if x != nil {
+		if x.xxx_hidden_ActiveReplicaSet != nil {
+			return *x.xxx_hidden_ActiveReplicaSet
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *SupervisorState) SetFunction(v *Function) {
+	x.xxx_hidden_Function = v
+}
+
+func (x *SupervisorState) SetInstances(v []*Instance) {
+	x.xxx_hidden_Instances = &v
+}
+
+func (x *SupervisorState) SetRouterHeartbeats(v []*HeartbeatState) {
+	x.xxx_hidden_RouterHeartbeats = &v
+}
+
+func (x *SupervisorState) SetResponsibleControllerIp(v string) {
+	x.xxx_hidden_ResponsibleControllerIp = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 5)
+}
+
+func (x *SupervisorState) SetActiveReplicaSet(v string) {
+	x.xxx_hidden_ActiveReplicaSet = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 5)
+}
+
+func (x *SupervisorState) HasFunction() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Function != nil
+}
+
+func (x *SupervisorState) HasResponsibleControllerIp() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
+}
+
+func (x *SupervisorState) HasActiveReplicaSet() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
+}
+
+func (x *SupervisorState) ClearFunction() {
+	x.xxx_hidden_Function = nil
+}
+
+func (x *SupervisorState) ClearResponsibleControllerIp() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
+	x.xxx_hidden_ResponsibleControllerIp = nil
+}
+
+func (x *SupervisorState) ClearActiveReplicaSet() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 4)
+	x.xxx_hidden_ActiveReplicaSet = nil
+}
+
+type SupervisorState_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Function                *Function
+	Instances               []*Instance
+	RouterHeartbeats        []*HeartbeatState
+	ResponsibleControllerIp *string
+	ActiveReplicaSet        *string
+}
+
+func (b0 SupervisorState_builder) Build() *SupervisorState {
+	m0 := &SupervisorState{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_Function = b.Function
+	x.xxx_hidden_Instances = &b.Instances
+	x.xxx_hidden_RouterHeartbeats = &b.RouterHeartbeats
+	if b.ResponsibleControllerIp != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 5)
+		x.xxx_hidden_ResponsibleControllerIp = b.ResponsibleControllerIp
+	}
+	if b.ActiveReplicaSet != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 4, 5)
+		x.xxx_hidden_ActiveReplicaSet = b.ActiveReplicaSet
+	}
+	return m0
+}
+
+type ClusterState struct {
+	state                    protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_PodIp         *string                `protobuf:"bytes,1,opt,name=pod_ip,json=podIp"`
+	xxx_hidden_StartedAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=started_at,json=startedAt"`
+	xxx_hidden_ControllerIps []string               `protobuf:"bytes,3,rep,name=controller_ips,json=controllerIps"`
+	xxx_hidden_Supervisors   *[]*SupervisorState    `protobuf:"bytes,4,rep,name=supervisors"`
+	xxx_hidden_Events        *[]*Event              `protobuf:"bytes,5,rep,name=events"`
+	xxx_hidden_Config        *[]*ConfigValue        `protobuf:"bytes,6,rep,name=config"`
+	XXX_raceDetectHookData   protoimpl.RaceDetectHookData
+	XXX_presence             [1]uint32
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *ClusterState) Reset() {
+	*x = ClusterState{}
+	mi := &file_types_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClusterState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClusterState) ProtoMessage() {}
+
+func (x *ClusterState) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ClusterState) GetPodIp() string {
+	if x != nil {
+		if x.xxx_hidden_PodIp != nil {
+			return *x.xxx_hidden_PodIp
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *ClusterState) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.xxx_hidden_StartedAt
+	}
+	return nil
+}
+
+func (x *ClusterState) GetControllerIps() []string {
+	if x != nil {
+		return x.xxx_hidden_ControllerIps
+	}
+	return nil
+}
+
+func (x *ClusterState) GetSupervisors() []*SupervisorState {
+	if x != nil {
+		if x.xxx_hidden_Supervisors != nil {
+			return *x.xxx_hidden_Supervisors
+		}
+	}
+	return nil
+}
+
+func (x *ClusterState) GetEvents() []*Event {
+	if x != nil {
+		if x.xxx_hidden_Events != nil {
+			return *x.xxx_hidden_Events
+		}
+	}
+	return nil
+}
+
+func (x *ClusterState) GetConfig() []*ConfigValue {
+	if x != nil {
+		if x.xxx_hidden_Config != nil {
+			return *x.xxx_hidden_Config
+		}
+	}
+	return nil
+}
+
+func (x *ClusterState) SetPodIp(v string) {
+	x.xxx_hidden_PodIp = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 6)
+}
+
+func (x *ClusterState) SetStartedAt(v *timestamppb.Timestamp) {
+	x.xxx_hidden_StartedAt = v
+}
+
+func (x *ClusterState) SetControllerIps(v []string) {
+	x.xxx_hidden_ControllerIps = v
+}
+
+func (x *ClusterState) SetSupervisors(v []*SupervisorState) {
+	x.xxx_hidden_Supervisors = &v
+}
+
+func (x *ClusterState) SetEvents(v []*Event) {
+	x.xxx_hidden_Events = &v
+}
+
+func (x *ClusterState) SetConfig(v []*ConfigValue) {
+	x.xxx_hidden_Config = &v
+}
+
+func (x *ClusterState) HasPodIp() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ClusterState) HasStartedAt() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_StartedAt != nil
+}
+
+func (x *ClusterState) ClearPodIp() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_PodIp = nil
+}
+
+func (x *ClusterState) ClearStartedAt() {
+	x.xxx_hidden_StartedAt = nil
+}
+
+type ClusterState_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	PodIp         *string
+	StartedAt     *timestamppb.Timestamp
+	ControllerIps []string
+	Supervisors   []*SupervisorState
+	Events        []*Event
+	Config        []*ConfigValue
+}
+
+func (b0 ClusterState_builder) Build() *ClusterState {
+	m0 := &ClusterState{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.PodIp != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 6)
+		x.xxx_hidden_PodIp = b.PodIp
+	}
+	x.xxx_hidden_StartedAt = b.StartedAt
+	x.xxx_hidden_ControllerIps = b.ControllerIps
+	x.xxx_hidden_Supervisors = &b.Supervisors
+	x.xxx_hidden_Events = &b.Events
+	x.xxx_hidden_Config = &b.Config
+	return m0
+}
+
 var File_types_proto protoreflect.FileDescriptor
 
 const file_types_proto_rawDesc = "" +
@@ -1204,46 +2079,105 @@ const file_types_proto_rawDesc = "" +
 	"\x12in_flight_requests\x18\x03 \x01(\rR\x10inFlightRequests\"7\n" +
 	"\vScaleMetric\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x01R\x05value\"\xda\x01\n" +
+	"\x05value\x18\x02 \x01(\x01R\x05value\"\xeb\x01\n" +
 	"\rScaleDecision\x12+\n" +
 	"\x11desired_instances\x18\x01 \x01(\rR\x10desiredInstances\x12>\n" +
 	"\x1bunclamped_desired_instances\x18\x02 \x01(\rR\x19unclampedDesiredInstances\x12,\n" +
 	"\x06reason\x18\x03 \x01(\x0e2\x14.skipper.ScaleReasonR\x06reason\x12.\n" +
-	"\ametrics\x18\x04 \x03(\v2\x14.skipper.ScaleMetricR\ametrics*\xc8\x01\n" +
+	"\ametrics\x18\x04 \x03(\v2\x14.skipper.ScaleMetricR\ametricsJ\x04\b\x05\x10\x06R\ttimestamp\"\xe6\x01\n" +
+	"\x05Event\x128\n" +
+	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12-\n" +
+	"\bfunction\x18\x02 \x01(\v2\x11.skipper.FunctionR\bfunction\x12&\n" +
+	"\x04type\x18\x03 \x01(\x0e2\x12.skipper.EventTypeR\x04type\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x122\n" +
+	"\bseverity\x18\x05 \x01(\x0e2\x16.skipper.EventSeverityR\bseverity\"Y\n" +
+	"\vConfigValue\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\"_\n" +
+	"\x0eHeartbeatState\x12\x1b\n" +
+	"\trouter_ip\x18\x01 \x01(\tR\brouterIp\x120\n" +
+	"\theartbeat\x18\x02 \x01(\v2\x12.skipper.HeartbeatR\theartbeat\"\xd1\x02\n" +
+	"\x0fSupervisorState\x12-\n" +
+	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x12/\n" +
+	"\tinstances\x18\x02 \x03(\v2\x11.skipper.InstanceR\tinstances\x12D\n" +
+	"\x11router_heartbeats\x18\x03 \x03(\v2\x17.skipper.HeartbeatStateR\x10routerHeartbeats\x12:\n" +
+	"\x19responsible_controller_ip\x18\x05 \x01(\tR\x17responsibleControllerIp\x12,\n" +
+	"\x12active_replica_set\x18\a \x01(\tR\x10activeReplicaSetJ\x04\b\x04\x10\x05J\x04\b\x06\x10\aR\x13last_scale_decisionR\rscale_history\"\x99\x02\n" +
+	"\fClusterState\x12\x15\n" +
+	"\x06pod_ip\x18\x01 \x01(\tR\x05podIp\x129\n" +
+	"\n" +
+	"started_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12%\n" +
+	"\x0econtroller_ips\x18\x03 \x03(\tR\rcontrollerIps\x12:\n" +
+	"\vsupervisors\x18\x04 \x03(\v2\x18.skipper.SupervisorStateR\vsupervisors\x12&\n" +
+	"\x06events\x18\x05 \x03(\v2\x0e.skipper.EventR\x06events\x12,\n" +
+	"\x06config\x18\x06 \x03(\v2\x14.skipper.ConfigValueR\x06config*\xc8\x01\n" +
 	"\vScaleReason\x12\x1c\n" +
 	"\x18SCALE_REASON_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10SCALE_REASON_CPU\x10\x01\x12\"\n" +
 	"\x1eSCALE_REASON_HEARTBEAT_TIMEOUT\x10\x02\x12#\n" +
 	"\x1fSCALE_REASON_IN_FLIGHT_REQUESTS\x10\x03\x12\x17\n" +
 	"\x13SCALE_REASON_MEMORY\x10\x04\x12#\n" +
-	"\x1fSCALE_REASON_NO_READY_INSTANCES\x10\x05B8Z.github.com/gadget-inc/skipper/internal/skipper\x92\x03\x05\xd2>\x02\x10\x03b\beditionsp\xe8\a"
+	"\x1fSCALE_REASON_NO_READY_INSTANCES\x10\x05*\xff\x01\n" +
+	"\tEventType\x12\x1a\n" +
+	"\x16EVENT_TYPE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13EVENT_TYPE_SCALE_UP\x10\x01\x12\x19\n" +
+	"\x15EVENT_TYPE_SCALE_DOWN\x10\x02\x12\x1b\n" +
+	"\x17EVENT_TYPE_POD_ASSIGNED\x10\x03\x12\x1a\n" +
+	"\x16EVENT_TYPE_POD_DELETED\x10\x04\x12 \n" +
+	"\x1cEVENT_TYPE_STALE_REPLACEMENT\x10\x05\x12 \n" +
+	"\x1cEVENT_TYPE_HEARTBEAT_TIMEOUT\x10\x06\x12%\n" +
+	"!EVENT_TYPE_STUCK_INSTANCE_CLEANUP\x10\a*a\n" +
+	"\rEventSeverity\x12\x1e\n" +
+	"\x1aEVENT_SEVERITY_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13EVENT_SEVERITY_INFO\x10\x01\x12\x17\n" +
+	"\x13EVENT_SEVERITY_WARN\x10\x02B8Z.github.com/gadget-inc/skipper/internal/skipper\x92\x03\x05\xd2>\x02\x10\x03b\beditionsp\xe8\a"
 
-var file_types_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_types_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_types_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_types_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_types_proto_goTypes = []any{
 	(ScaleReason)(0),              // 0: skipper.ScaleReason
-	(*Scale)(nil),                 // 1: skipper.Scale
-	(*Function)(nil),              // 2: skipper.Function
-	(*Instance)(nil),              // 3: skipper.Instance
-	(*Heartbeat)(nil),             // 4: skipper.Heartbeat
-	(*ScaleMetric)(nil),           // 5: skipper.ScaleMetric
-	(*ScaleDecision)(nil),         // 6: skipper.ScaleDecision
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(EventType)(0),                // 1: skipper.EventType
+	(EventSeverity)(0),            // 2: skipper.EventSeverity
+	(*Scale)(nil),                 // 3: skipper.Scale
+	(*Function)(nil),              // 4: skipper.Function
+	(*Instance)(nil),              // 5: skipper.Instance
+	(*Heartbeat)(nil),             // 6: skipper.Heartbeat
+	(*ScaleMetric)(nil),           // 7: skipper.ScaleMetric
+	(*ScaleDecision)(nil),         // 8: skipper.ScaleDecision
+	(*Event)(nil),                 // 9: skipper.Event
+	(*ConfigValue)(nil),           // 10: skipper.ConfigValue
+	(*HeartbeatState)(nil),        // 11: skipper.HeartbeatState
+	(*SupervisorState)(nil),       // 12: skipper.SupervisorState
+	(*ClusterState)(nil),          // 13: skipper.ClusterState
+	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
 }
 var file_types_proto_depIdxs = []int32{
-	1, // 0: skipper.Function.scale:type_name -> skipper.Scale
-	2, // 1: skipper.Instance.function:type_name -> skipper.Function
-	7, // 2: skipper.Instance.assigned_at:type_name -> google.protobuf.Timestamp
-	7, // 3: skipper.Instance.ready_at:type_name -> google.protobuf.Timestamp
-	2, // 4: skipper.Heartbeat.function:type_name -> skipper.Function
-	7, // 5: skipper.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
-	0, // 6: skipper.ScaleDecision.reason:type_name -> skipper.ScaleReason
-	5, // 7: skipper.ScaleDecision.metrics:type_name -> skipper.ScaleMetric
-	8, // [8:8] is the sub-list for method output_type
-	8, // [8:8] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	3,  // 0: skipper.Function.scale:type_name -> skipper.Scale
+	4,  // 1: skipper.Instance.function:type_name -> skipper.Function
+	14, // 2: skipper.Instance.assigned_at:type_name -> google.protobuf.Timestamp
+	14, // 3: skipper.Instance.ready_at:type_name -> google.protobuf.Timestamp
+	4,  // 4: skipper.Heartbeat.function:type_name -> skipper.Function
+	14, // 5: skipper.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
+	0,  // 6: skipper.ScaleDecision.reason:type_name -> skipper.ScaleReason
+	7,  // 7: skipper.ScaleDecision.metrics:type_name -> skipper.ScaleMetric
+	14, // 8: skipper.Event.timestamp:type_name -> google.protobuf.Timestamp
+	4,  // 9: skipper.Event.function:type_name -> skipper.Function
+	1,  // 10: skipper.Event.type:type_name -> skipper.EventType
+	2,  // 11: skipper.Event.severity:type_name -> skipper.EventSeverity
+	6,  // 12: skipper.HeartbeatState.heartbeat:type_name -> skipper.Heartbeat
+	4,  // 13: skipper.SupervisorState.function:type_name -> skipper.Function
+	5,  // 14: skipper.SupervisorState.instances:type_name -> skipper.Instance
+	11, // 15: skipper.SupervisorState.router_heartbeats:type_name -> skipper.HeartbeatState
+	14, // 16: skipper.ClusterState.started_at:type_name -> google.protobuf.Timestamp
+	12, // 17: skipper.ClusterState.supervisors:type_name -> skipper.SupervisorState
+	9,  // 18: skipper.ClusterState.events:type_name -> skipper.Event
+	10, // 19: skipper.ClusterState.config:type_name -> skipper.ConfigValue
+	20, // [20:20] is the sub-list for method output_type
+	20, // [20:20] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_types_proto_init() }
@@ -1256,8 +2190,8 @@ func file_types_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_types_proto_rawDesc), len(file_types_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   6,
+			NumEnums:      3,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

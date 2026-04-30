@@ -32,6 +32,7 @@ Flags:
       --pprof-shutdown-timeout duration         The timeout for shutting down the pprof. (env SKIPPER_PPROF_SHUTDOWN_TIMEOUT) (default 5s)
       --scale-interval duration                 How often to scale functions. (env SKIPPER_SCALE_INTERVAL) (default 15s)
       --shutdown-timeout duration               The timeout for shutting down the controller. (env SKIPPER_SHUTDOWN_TIMEOUT) (default 5s)
+      --single-controller-mode                  Add only this controller to the hash ring, ignoring controller pod discovery. For local development. (env SKIPPER_SINGLE_CONTROLLER_MODE)
       --skip-forbidden-namespaces               Whether to skip function namespaces that the service account does not have access to. (env SKIPPER_SKIP_FORBIDDEN_NAMESPACES)
       --telemetry                               Whether to enable OpenTelemetry. (env SKIPPER_TELEMETRY)
       --telemetry-metric                        Whether to enable metrics if telemetry is enabled. (env SKIPPER_TELEMETRY_METRIC) (default true)

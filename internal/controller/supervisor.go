@@ -356,6 +356,16 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		return nil
 	}
 
+	// Record scale-to-zero event only on the responsible controller and
+	// only when we actually have instances to scale down. Without the
+	// currentInstances guard, a heartbeat-timeout sweep on a function
+	// that never had pods assigned would emit a misleading "scaling to
+	// 0" event.
+	if isScalingDown && scalingDecision.GetDesiredInstances() == 0 && currentInstances > 0 {
+		eventType, eventMessage := scaleToZeroEvent(scalingDecision.GetReason())
+		s.ctrl.events.add(fn, eventType, skipper.EventSeverity_EVENT_SEVERITY_WARN, eventMessage)
+	}
+
 	// 3. Cleanup stuck instances (cheap, run before scaling execution)
 	instances = s.cleanupStuckInstances(ctx, instances)
 
@@ -437,7 +447,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 	desired := decision.GetDesiredInstances()
 	total := ready + unready
 
-	if desired == ready && desired > unready {
+	if desired == ready && unready == 0 {
 		// we already have the desired number of ready instances and we
 		// don't have extra unready instances, so there's nothing to do
 		return readyInstances, unreadyInstances, nil
@@ -454,11 +464,16 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 		log.Info(ctx, "scaling function up")
 		scaleUpsTotal.WithLabelValues(fn.GetDeployment()).Add(float64(desired - ready))
 
+		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+			fmt.Sprintf("scaling up from %d to %d instances", ready, desired))
+
 		for range desired - ready {
 			instance, err := s.ctrl.assignPod(ctx, fn)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
+			s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_POD_ASSIGNED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+				fmt.Sprintf("assigned pod %s", instance.GetName()))
 			readyInstances = append(readyInstances, instance)
 		}
 	} else if decision.GetReason() == skipper.ScaleReason_SCALE_REASON_NO_READY_INSTANCES {
@@ -470,6 +485,9 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling function down")
 
+		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_SCALE_DOWN, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+			fmt.Sprintf("scaling down from %d to %d instances", total, desired))
+
 		// delete all unready instances
 		unreadyCount := len(unreadyInstances)
 		for _, unreadyInstance := range unreadyInstances {
@@ -477,6 +495,8 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
+			s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_POD_DELETED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+				fmt.Sprintf("deleted pod %s", unreadyInstance.GetName()))
 		}
 		unreadyInstances = nil
 
@@ -494,6 +514,8 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
+			s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_POD_DELETED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+				fmt.Sprintf("deleted pod %s", instance.GetName()))
 			readyInstances = readyInstances[:len(readyInstances)-1]
 		}
 	}
@@ -513,7 +535,10 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*ski
 			err := s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
+				return false // Keep in slice; another iteration will retry
 			}
+			s.ctrl.events.add(instance.GetFunction(), skipper.EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP, skipper.EventSeverity_EVENT_SEVERITY_WARN,
+				fmt.Sprintf("terminated stuck instance %s", instance.GetName()))
 			return true // Remove from slice
 		}
 		return false // Keep in slice
@@ -586,6 +611,8 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Func
 		}
 
 		log.Info(ctx, "replacing stale instance")
+		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+			fmt.Sprintf("replacing stale instance %s", instance.GetName()))
 
 		// Assign a new pod from the active replica set (temporarily exceeding max instances).
 		// Use a closure with defer to ensure the semaphore is released even if assignPod panics.
@@ -680,6 +707,16 @@ const (
 type Recommendation struct {
 	DesiredInstances uint32
 	Timestamp        time.Time
+}
+
+// scaleToZeroEvent returns the event type and message for a scale-to-zero decision
+// based on the scaling reason. Heartbeat timeout gets its own event type; all other
+// reasons use EVENT_TYPE_SCALE_DOWN so the event log accurately reflects the cause.
+func scaleToZeroEvent(reason skipper.ScaleReason) (skipper.EventType, string) {
+	if reason == skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT {
+		return skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT, "heartbeat timeout, scaling to 0"
+	}
+	return skipper.EventType_EVENT_TYPE_SCALE_DOWN, "scaling to 0"
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric
