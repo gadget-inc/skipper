@@ -5,11 +5,17 @@
 All commands must be run with `direnv exec .`:
 
 ```bash
+direnv exec . dev                                 # Run controller, router, and docs locally
+direnv exec . dev --only=controller               # Controller only
+direnv exec . dev --only=docs                     # Docs dev server only
 direnv exec . deploy                              # Build and deploy to Kubernetes (Orbstack)
 direnv exec . deploy --only=skipper               # Deploy only Skipper
-direnv exec . tests ./...                         # Run all tests
-direnv exec . tests -short ./...                  # Run tests without Kubernetes (skips integration tests)
-direnv exec . tests -v ./internal/controller/...  # Run specific package tests
+direnv exec . tests go ./...                      # Run all Go tests
+direnv exec . tests go -short ./...               # Run Go tests without Kubernetes (skips integration tests)
+direnv exec . tests go -v ./internal/controller/... # Run specific package tests
+direnv exec . tests docs                          # Run docs tests
+direnv exec . tests scripts                       # Run script tests (vitest)
+direnv exec . tests all                           # Run go + docs + scripts
 direnv exec . lint                                # Run golangci-lint, oxfmt, oxlint
 direnv exec . fmt                                 # Auto-fix formatting
 direnv exec . buf generate                        # Regenerate protobuf Go code from .proto files
@@ -21,7 +27,6 @@ direnv exec . docs                                # Start docs dev server
 direnv exec . docs build                          # Build docs site
 direnv exec . docs preview                        # Preview built docs
 direnv exec . clean                               # Delete all Kubernetes resources
-direnv exec . script-tests                        # Run tests for scripts/ (vitest)
 direnv exec . profile fetch                       # Fetch heap profile from local controller
 direnv exec . profile fetch -t cpu -p             # Fetch CPU profile from production
 direnv exec . profile fetch -t cpu -p <pod>       # Fetch from a specific production pod
@@ -37,6 +42,30 @@ direnv exec . profile analyze --pgo --mode=peek -f Hash  # Callers/callees of Ha
 direnv exec . profile analyze --pgo --mode=source -f Hash # Source-annotated view
 direnv exec . profile analyze <file>              # Analyze any .pb.gz profile
 direnv exec . profile analyze --mode=diff --diff-base=before.pb.gz after.pb.gz  # Compare profiles
+```
+
+## Local Development
+
+First-time setup (fixtures and metrics-server still run in K8s):
+
+```bash
+direnv exec . deploy --only=fixtures,metrics-server
+```
+
+`dev` runs controller, router, and the docs site as local processes. Local endpoints:
+
+- Controller gRPC: `127.0.0.1:50051`
+- Router: `http://127.0.0.1:8081`
+- Docs: `http://localhost:4321`
+
+### Debugging
+
+`dev` writes structured JSON logs to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl` (truncated on restart). Any command also accepts:
+
+```bash
+direnv exec . controller --log-file=tmp/logs/controller.jsonl                    # Write logs to file and stderr
+direnv exec . controller --log-file=tmp/logs/controller.jsonl --log-file-level=trace  # File at trace, stderr at default
+direnv exec . controller --log-file=tmp/logs/controller.jsonl --log-file-format=text  # File as text, stderr as default
 ```
 
 ## Architecture
