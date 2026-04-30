@@ -119,6 +119,8 @@ if (components.has("controller") || components.has("router")) {
       unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
       router_node_port: 31020,
       controller_node_port: 31021,
+      controller_web_node_port: 31022,
+      controller_web_template_host_dir: abs("internal/web"),
       env: {
         SKIPPER_TELEMETRY: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
@@ -139,6 +141,7 @@ if (components.has("controller") || components.has("router")) {
       unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
       router_node_port: 31030,
       controller_node_port: 31031,
+      controller_web_node_port: 31032,
       env: {
         SKIPPER_TELEMETRY: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",

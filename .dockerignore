@@ -6,6 +6,7 @@
 !internal/
 !nix/
 !pkg/
+!styles/
 !.envrc
 !go.mod
 !go.sum

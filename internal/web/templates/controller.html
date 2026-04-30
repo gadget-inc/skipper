@@ -1,0 +1,64 @@
+{{define "content"}} {{if not .Found}}
+<div class="text-center py-8 text-fg-muted">Controller not found: {{.IP}}</div>
+{{else}}
+<div data-on-interval__duration.5000ms="@get('/sse/controller/{{pathEscape .IP}}')">
+  <div class="page-header">
+    <div class="breadcrumb"><a href="/controllers">Controllers</a><span class="separator">/</span>{{.IP}}</div>
+    <h1>Controller {{.IP}} {{if .IsSelf}}<span class="badge badge-green">self</span>{{end}}</h1>
+  </div>
+  <div id="controller-detail">{{template "controller-detail" .}}</div>
+</div>
+{{end}} {{end}} {{define "controller-detail"}}
+<div class="detail-layout">
+  <div class="detail-sidebar">
+    <div class="stat-card stat-card-muted">
+      <div class="stat-label">IP Address</div>
+      <div class="stat-value-sm">{{.IP}}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Functions</div>
+      <div class="stat-value">{{len .Supervisors}}</div>
+    </div>
+    <div class="stat-card stat-card-success">
+      <div class="stat-label">Instances</div>
+      <div class="stat-value">{{.ReadyInstances}}/{{.TotalInstances}}</div>
+    </div>
+    <div class="stat-card stat-card-muted">
+      <div class="stat-label">Uptime</div>
+      <div class="stat-value-sm">{{if .IsSelf}}{{timeAgo .State.GetStartedAt}}{{else}}—{{end}}</div>
+    </div>
+  </div>
+
+  <div>
+    <h2>Functions</h2>
+    {{if not .Supervisors}}
+    <div class="text-center py-8 text-fg-muted">No functions assigned</div>
+    {{else}}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Deployment</th>
+            <th>Namespace</th>
+            <th>Tenant</th>
+            <th>Instances</th>
+            <th>Heartbeats</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Supervisors}} {{$fn := .GetFunction}}
+          <tr>
+            <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
+            <td>{{$fn.GetNamespace}}</td>
+            <td class="font-mono">{{$fn.GetTenant}}</td>
+            <td class="tabular">{{len .GetInstances}}</td>
+            <td class="tabular">{{len .GetRouterHeartbeats}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

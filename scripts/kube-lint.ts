@@ -44,6 +44,8 @@ const configs: BindingConfig[] = [
     name: "nodeport",
     bindings: {
       router_node_port: 30080,
+      controller_node_port: 31021,
+      controller_web_node_port: 31022,
     },
   },
   {

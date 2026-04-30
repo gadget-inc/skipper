@@ -14,6 +14,7 @@ import (
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/skipper"
+	"github.com/gadget-inc/skipper/internal/web"
 	"github.com/spf13/cobra"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -96,11 +97,27 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 				return fmt.Errorf("failed to create listener: %w", err)
 			}
 
-			serverError := make(chan error, 1)
+			serverError := make(chan error, 2)
 
 			go func() {
 				log.Info(ctx, "serving controller", key.Addr.Slog(listener.Addr().String()))
 				if err := server.Serve(listener); err != nil {
+					serverError <- err
+				}
+			}()
+
+			// Start web UI server
+			var webOpts []web.Option
+			if cfg.WebTemplateDir != "" {
+				webOpts = append(webOpts, web.WithTemplateDir(cfg.WebTemplateDir))
+				webOpts = append(webOpts, web.WithStaticDir(cfg.WebTemplateDir))
+			}
+			webServer := web.New(ctrl.ClusterState, webOpts...)
+			webAddr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.WebPort))
+			webHTTPServer := &http.Server{Addr: webAddr, Handler: webServer.Handler()}
+			go func() {
+				log.Info(ctx, "serving web ui", key.Addr.Slog(webAddr))
+				if err := webHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					serverError <- err
 				}
 			}()
@@ -125,6 +142,9 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 			stopped := make(chan struct{})
 			go func() {
 				server.GracefulStop()
+				if err := webHTTPServer.Shutdown(shutdownCtx); err != nil {
+					log.Warn(ctx, "web server shutdown error", key.Error.Slog(err))
+				}
 				close(stopped)
 			}()
 
@@ -133,6 +153,7 @@ func NewController(deps *ControllerDeps) *cobra.Command {
 			case <-shutdownCtx.Done():
 				log.Warn(ctx, "graceful stop timed out, forcing stop")
 				server.Stop()
+				webHTTPServer.Close()
 			}
 
 			ctrl.Close()

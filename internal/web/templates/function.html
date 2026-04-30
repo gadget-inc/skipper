@@ -1,0 +1,132 @@
+{{define "content"}} {{if not .Supervisor}}
+<div class="text-center py-8 text-fg-muted">Function not found: {{.Key}}</div>
+{{else}} {{$fn := .Supervisor.GetFunction}} {{$scale := $fn.GetScale}} {{$sup := .Supervisor}}
+<div data-on-interval__duration.5000ms="@get('/sse/function/{{pathEscape .Key}}')">
+  <div class="page-header">
+    <div class="breadcrumb"><a href="/functions">Functions</a><span class="separator">/</span>{{$fn.GetDeployment}}</div>
+    <h1>
+      {{$fn.GetDeployment}}
+      <span class="text-fg-muted font-normal text-base">{{$fn.GetTenant}}</span>
+    </h1>
+  </div>
+
+  <div id="function-detail">
+    <div class="detail-layout">
+      <div class="detail-sidebar">
+        <div class="stat-card stat-card-muted">
+          <div class="stat-label">Namespace</div>
+          <div class="stat-value-sm">{{$fn.GetNamespace}}</div>
+        </div>
+        <div class="stat-card stat-card-success">
+          <div class="stat-label">Instances</div>
+          <div class="stat-value">{{.ReadyInstances}}/{{len $sup.GetInstances}}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Scale Range</div>
+          <div class="stat-value">{{if $scale}}{{$scale.GetMinInstances}}–{{$scale.GetMaxInstances}}{{else}}—{{end}}</div>
+        </div>
+        <div class="stat-card stat-card-muted">
+          <div class="stat-label">Responsible</div>
+          <div class="stat-value-sm">
+            <a href="/controllers/{{pathEscape $sup.GetResponsibleControllerIp}}">{{$sup.GetResponsibleControllerIp}}</a>
+          </div>
+        </div>
+
+        {{if $scale}}
+        <div class="stat-card stat-card-muted mt-4">
+          <div class="stat-label mb-2">Scale Targets</div>
+          <div class="text-[13px] space-y-1">
+            <div class="flex justify-between">
+              <span class="text-fg-muted">CPU</span><span class="font-mono tabular">{{$scale.GetTargetCpuUsageMilli}}m</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-fg-muted">Memory</span><span class="font-mono tabular">{{$scale.GetTargetMemoryUsageMib}}Mi</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-fg-muted">In-Flight</span><span class="font-mono tabular">{{$scale.GetTargetInFlightRequests}}</span>
+            </div>
+          </div>
+        </div>
+        {{end}}
+      </div>
+
+      <div>
+        <div class="mb-6">
+          <h2>Router Heartbeats</h2>
+          {{if not $sup.GetRouterHeartbeats}}
+          <div class="text-center py-8 text-fg-muted">No router heartbeats</div>
+          {{else}}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Router IP</th>
+                  <th>In-Flight</th>
+                  <th>Last Seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{range $sup.GetRouterHeartbeats}}
+                <tr>
+                  <td class="font-mono">
+                    <a href="/routers/{{pathEscape .GetRouterIp}}">{{.GetRouterIp}}</a>
+                  </td>
+                  <td class="tabular">{{if .GetHeartbeat}}{{.GetHeartbeat.GetInFlightRequests}}{{else}}0{{end}}</td>
+                  <td class="text-fg-muted">{{if .GetHeartbeat}}{{timeAgo .GetHeartbeat.GetTimestamp}}{{else}}—{{end}}</td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+          {{end}}
+        </div>
+      </div>
+    </div>
+
+    {{if and $sup.GetActiveReplicaSet .StaleInstances}}
+    <div class="px-4 py-2 rounded-md text-[13px] mb-4 bg-attention/10 border border-attention/30 text-attention">
+      Rollout in progress — {{len .StaleInstances}} stale / {{sub (len $sup.GetInstances) (len .StaleInstances)}} current instances
+    </div>
+    {{end}}
+
+    <div class="mb-8">
+      <h2>Instances</h2>
+      <div id="instances-table" class="table-wrap">{{template "instances-table" .}}</div>
+    </div>
+  </div>
+</div>
+{{end}} {{end}} {{define "instances-table"}} {{if not .Supervisor.GetInstances}}
+<div class="text-center py-8 text-fg-muted">No instances</div>
+{{else}}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Address</th>
+      <th>Status</th>
+      <th>CPU</th>
+      <th>Memory</th>
+      <th>ReplicaSet</th>
+      <th>Assigned</th>
+      <th>Ready</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{$activeRS := .Supervisor.GetActiveReplicaSet}} {{range .Supervisor.GetInstances}}
+    <tr>
+      <td class="font-mono"><a href="/instances/{{pathEscape .GetName}}">{{.GetName}}</a></td>
+      <td class="font-mono">{{.GetAddr}}</td>
+      <td>{{instanceStateBadge . $activeRS}}</td>
+      <td class="tabular">{{.GetCpuUsageMilli}}m</td>
+      <td class="tabular">{{.GetMemoryUsageMib}}Mi</td>
+      <td class="font-mono">
+        {{.GetReplicaSet}}{{if and $activeRS (ne .GetReplicaSet $activeRS)}}
+        <span class="badge badge-yellow">stale</span>{{end}}
+      </td>
+      <td class="text-fg-muted">{{timeAgo .GetAssignedAt}}</td>
+      <td class="text-fg-muted">{{if isReady .}}{{timeAgo .GetReadyAt}}{{else}}—{{end}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}} {{end}}

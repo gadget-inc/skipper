@@ -1,0 +1,67 @@
+{{define "content"}}
+<div
+  data-on-interval__duration.5000ms="@get('/sse/events')"
+  data-signals="{{signals `eventFunction` .FunctionFilter `eventSeverity` (or .SeverityFilter `all`)}}"
+>
+  <div class="page-header">
+    <h1>Events</h1>
+  </div>
+
+  <div class="flex gap-3 mb-4 items-center">
+    <input
+      type="text"
+      class="bg-bg border border-border rounded-md text-fg px-4 py-2.5 text-[13px] font-mono focus:outline-none focus:border-accent"
+      placeholder="Filter by function…"
+      data-bind="eventFunction"
+      data-on:keyup__debounce.300ms="syncParams({function: $eventFunction, severity: $eventSeverity === 'all' ? '' : $eventSeverity}); @get('/sse/events')"
+    />
+    <div class="relative">
+      <select
+        class="appearance-none bg-bg border border-border rounded-md text-fg pl-4 pr-10 py-2.5 text-[13px] font-mono focus:outline-none focus:border-accent cursor-pointer"
+        data-bind="eventSeverity"
+        data-on:change="syncParams({function: $eventFunction, severity: $eventSeverity === 'all' ? '' : $eventSeverity}); @get('/sse/events')"
+      >
+        <option value="all" {{if or (not .SeverityFilter) (eq .SeverityFilter `all`)}} selected{{end}}>All severities</option>
+        <option value="1" {{if eq .SeverityFilter `1`}} selected{{end}}>Info</option>
+        <option value="2" {{if eq .SeverityFilter `2`}} selected{{end}}>Warn</option>
+      </select>
+      <svg
+        class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-fg-muted"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+      >
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
+      </svg>
+    </div>
+  </div>
+
+  <div id="events-table" class="table-wrap">{{template "events-table" .FilteredEvents}}</div>
+</div>
+{{end}} {{define "events-table"}} {{if not .}}
+<div class="text-center py-8 text-fg-muted">No events</div>
+{{else}}
+<table>
+  <thead>
+    <tr>
+      <th>Timestamp</th>
+      <th>Function</th>
+      <th>Type</th>
+      <th>Detail</th>
+      <th>Severity</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .}}
+    <tr>
+      <td class="font-mono text-fg-muted">{{formatTimestamp .GetTimestamp}}</td>
+      <td>{{if .GetFunction}}<a href="{{functionPath .GetFunction}}">{{functionKey .GetFunction}}</a>{{else}}—{{end}}</td>
+      <td>{{eventTypeLabel .GetType}}</td>
+      <td class="text-fg-muted">{{.GetMessage}}</td>
+      <td>{{eventSeverityBadge .GetSeverity}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}} {{end}}

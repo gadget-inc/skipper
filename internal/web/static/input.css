@@ -1,0 +1,137 @@
+@import "tailwindcss";
+@import "../../../styles/primer.css";
+@source "../format.go";
+
+@theme {
+  --color-bg: var(--primer-bg);
+  --color-bg-muted: var(--primer-bg-muted);
+  --color-border: var(--primer-border);
+  --color-fg: var(--primer-fg);
+  --color-fg-muted: var(--primer-fg-muted);
+  --color-accent: var(--primer-fg-accent);
+  --color-success: var(--primer-fg-success);
+  --color-attention: var(--primer-fg-attention);
+  --color-danger: var(--primer-fg-danger);
+  --font-family-sans: var(--primer-font-sans);
+  --font-family-mono: var(--primer-font-mono);
+}
+
+@layer base {
+  h1 {
+    @apply text-xl font-semibold mb-1;
+  }
+  h2 {
+    @apply text-sm font-semibold mb-3 text-fg-muted uppercase tracking-wider;
+  }
+  a {
+    @apply text-accent no-underline;
+  }
+  a:hover {
+    @apply underline;
+  }
+  table {
+    @apply w-full border-collapse text-[13px];
+  }
+  thead th {
+    @apply text-left px-3 py-2 border-b border-border text-fg-muted font-medium text-xs uppercase tracking-wider bg-bg sticky top-0 z-10;
+  }
+  tbody td {
+    @apply px-3 py-2 border-b border-border;
+  }
+  tbody tr:hover {
+    @apply bg-accent/[0.04];
+  }
+}
+
+@layer components {
+  /* Navigation */
+  .nav-link {
+    @apply relative text-fg-muted no-underline text-sm font-medium hover:text-fg transition-colors py-3;
+  }
+  .nav-link-active {
+    @apply text-fg;
+  }
+  .nav-link-active::after {
+    content: "";
+    @apply absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded-full;
+  }
+  .nav-divider {
+    @apply w-px h-4 bg-border;
+  }
+
+  /* Page header */
+  .page-header {
+    @apply mb-6;
+  }
+  .breadcrumb {
+    @apply text-[13px] text-fg-muted mb-1;
+  }
+  .breadcrumb a {
+    @apply text-fg-muted hover:text-accent;
+  }
+  .breadcrumb .separator {
+    @apply mx-1.5;
+  }
+
+  /* Stat cards */
+  .stat-card {
+    @apply bg-bg-muted rounded-lg p-4 shadow-sm border-l-[3px] border-l-accent;
+  }
+  .stat-card-success {
+    @apply border-l-success;
+  }
+  .stat-card-attention {
+    @apply border-l-attention;
+  }
+  .stat-card-muted {
+    @apply border-l-fg-muted/30;
+  }
+  .stat-label {
+    @apply text-xs text-fg-muted uppercase tracking-wider mb-1;
+  }
+  .stat-value {
+    @apply text-2xl font-semibold font-mono tabular-nums;
+  }
+  .stat-value-sm {
+    @apply text-base font-semibold font-mono;
+  }
+
+  /* Badges */
+  .badge {
+    @apply inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide;
+  }
+  .badge-green {
+    @apply bg-success/15 text-success;
+  }
+  .badge-yellow {
+    @apply bg-attention/15 text-attention;
+  }
+  .badge-red {
+    @apply bg-danger/15 text-danger;
+  }
+  .badge-muted {
+    @apply bg-fg-muted/15 text-fg-muted;
+  }
+
+  /* Tables */
+  .table-wrap {
+    @apply overflow-x-auto;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Two-column detail layout */
+  .detail-layout {
+    @apply grid gap-6 mb-6;
+    grid-template-columns: 280px 1fr;
+  }
+  @media (width < theme(--breakpoint-md)) {
+    .detail-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+  .detail-sidebar .stat-card {
+    @apply mb-3;
+  }
+}

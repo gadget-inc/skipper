@@ -1,0 +1,56 @@
+{{define "content"}} {{if not .Found}}
+<div class="text-center py-8 text-fg-muted">Router not found: {{.IP}}</div>
+{{else}}
+<div data-on-interval__duration.5000ms="@get('/sse/router/{{pathEscape .IP}}')">
+  <div class="page-header">
+    <div class="breadcrumb"><a href="/routers">Routers</a><span class="separator">/</span>{{.IP}}</div>
+    <h1>Router {{.IP}}</h1>
+  </div>
+  <div id="router-detail">{{template "router-detail" .}}</div>
+</div>
+{{end}} {{end}} {{define "router-detail"}}
+<div class="detail-layout">
+  <div class="detail-sidebar">
+    <div class="stat-card stat-card-muted">
+      <div class="stat-label">IP Address</div>
+      <div class="stat-value-sm">{{.IP}}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Functions</div>
+      <div class="stat-value">{{len .Entries}}</div>
+    </div>
+    <div class="stat-card stat-card-attention">
+      <div class="stat-label">Total In-Flight</div>
+      <div class="stat-value">{{.TotalInFlight}}</div>
+    </div>
+  </div>
+
+  <div>
+    <h2>Functions</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Deployment</th>
+            <th>Namespace</th>
+            <th>Tenant</th>
+            <th>In-Flight</th>
+            <th>Last Seen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Entries}} {{$fn := .Supervisor.GetFunction}}
+          <tr>
+            <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
+            <td>{{$fn.GetNamespace}}</td>
+            <td class="font-mono">{{$fn.GetTenant}}</td>
+            <td class="tabular">{{if .Heartbeat.GetHeartbeat}}{{.Heartbeat.GetHeartbeat.GetInFlightRequests}}{{else}}0{{end}}</td>
+            <td class="text-fg-muted">{{if .Heartbeat.GetHeartbeat}}{{timeAgo .Heartbeat.GetHeartbeat.GetTimestamp}}{{else}}—{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{end}}

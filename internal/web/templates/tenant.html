@@ -1,0 +1,90 @@
+{{define "content"}} {{if not .Found}}
+<div class="text-center py-8 text-fg-muted">Tenant not found: {{.Tenant}}</div>
+{{else}}
+<div data-on-interval__duration.5000ms="@get('/sse/tenant/{{pathEscape .Tenant}}')">
+  <div class="page-header">
+    <div class="breadcrumb"><a href="/tenants">Tenants</a><span class="separator">/</span>{{.Tenant}}</div>
+    <h1>{{.Tenant}}</h1>
+  </div>
+  <div id="tenant-detail">{{template "tenant-detail" .}}</div>
+</div>
+{{end}} {{end}} {{define "tenant-detail"}}
+<div class="detail-layout">
+  <div class="detail-sidebar">
+    <div class="stat-card stat-card-muted">
+      <div class="stat-label">Tenant</div>
+      <div class="stat-value-sm">{{.Tenant}}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Functions</div>
+      <div class="stat-value">{{len .Supervisors}}</div>
+    </div>
+    <div class="stat-card stat-card-success">
+      <div class="stat-label">Instances</div>
+      <div class="stat-value">{{.ReadyInstances}}/{{.TotalInstances}}</div>
+    </div>
+    {{if gt (sub .TotalInstances .ReadyInstances) 0}}
+    <div class="stat-card stat-card-attention">
+      <div class="stat-label">Pending</div>
+      <div class="stat-value">{{sub .TotalInstances .ReadyInstances}}</div>
+    </div>
+    {{end}}
+  </div>
+
+  <div>
+    {{if gt (len .DeploymentBreakdowns) 1}}
+    <h2>Deployment Breakdown</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Deployment</th>
+            <th>Ready</th>
+            <th>Pending</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .DeploymentBreakdowns}}
+          <tr>
+            <td><a href="/deployments/{{pathEscape .Deployment}}">{{.Deployment}}</a></td>
+            <td class="tabular">{{.ReadyInstances}}</td>
+            <td class="tabular">{{.PendingInstances}}</td>
+            <td class="tabular">{{.TotalInstances}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+
+    <h2>Functions</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Deployment</th>
+            <th>Namespace</th>
+            <th>Instances</th>
+            <th>Scale</th>
+            <th>Responsible</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Supervisors}} {{$fn := .GetFunction}} {{$scale := $fn.GetScale}}
+          <tr>
+            <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
+            <td>{{$fn.GetNamespace}}</td>
+            <td class="tabular">{{len .GetInstances}}</td>
+            <td class="tabular">{{if $scale}}{{$scale.GetMinInstances}}–{{$scale.GetMaxInstances}}{{else}}—{{end}}</td>
+            <td class="font-mono">
+              <a href="/controllers/{{pathEscape .GetResponsibleControllerIp}}">{{.GetResponsibleControllerIp}}</a>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{{end}}

@@ -5,8 +5,10 @@
 All commands must be run with `direnv exec .`:
 
 ```bash
-direnv exec . dev                                 # Run controller, router, and docs locally
+direnv exec . dev                                 # Run controller, router, and Tailwind locally
+direnv exec . dev --only=tailwind                 # Tailwind CSS watcher only
 direnv exec . dev --only=controller               # Controller only
+direnv exec . dev --only=controller,tailwind      # Controller + Tailwind (no router)
 direnv exec . dev --only=docs                     # Docs dev server only
 direnv exec . deploy                              # Build and deploy to Kubernetes (Orbstack)
 direnv exec . deploy --only=skipper               # Deploy only Skipper
@@ -15,7 +17,8 @@ direnv exec . tests go -short ./...               # Run Go tests without Kuberne
 direnv exec . tests go -v ./internal/controller/... # Run specific package tests
 direnv exec . tests docs                          # Run docs tests
 direnv exec . tests scripts                       # Run script tests (vitest)
-direnv exec . tests all                           # Run go + docs + scripts
+direnv exec . tests e2e                           # Run e2e tests
+direnv exec . tests all                           # Run go + docs + scripts (not e2e)
 direnv exec . lint                                # Run golangci-lint, oxfmt, oxlint
 direnv exec . fmt                                 # Auto-fix formatting
 direnv exec . buf generate                        # Regenerate protobuf Go code from .proto files
@@ -52,9 +55,10 @@ First-time setup (fixtures and metrics-server still run in K8s):
 direnv exec . deploy --only=fixtures,metrics-server
 ```
 
-`dev` runs controller, router, and the docs site as local processes. Local endpoints:
+`dev` runs controller, router, Tailwind, and the docs site as local processes. Local endpoints:
 
 - Controller gRPC: `127.0.0.1:50051`
+- Web UI: `http://127.0.0.1:8080`
 - Router: `http://127.0.0.1:8081`
 - Docs: `http://localhost:4321`
 

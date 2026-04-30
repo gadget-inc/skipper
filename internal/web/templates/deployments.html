@@ -1,0 +1,43 @@
+{{define "content"}}
+<div data-on-interval__duration.5000ms="@get('/sse/deployments')">
+  <div class="page-header">
+    <h1>Deployments</h1>
+  </div>
+  <div id="deployments-table" class="table-wrap">{{template "deployments-table" .DeploymentRows}}</div>
+</div>
+{{end}} {{define "deployments-table"}} {{if not .}}
+<div class="text-center py-8 text-fg-muted">No deployments</div>
+{{else}}
+<table>
+  <thead>
+    <tr>
+      <th>Deployment</th>
+      <th>Namespace</th>
+      <th>Tenants</th>
+      <th>Ready</th>
+      <th>Pending</th>
+      <th>Total</th>
+      <th>Scale</th>
+      <th>Utilization</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .}}
+    <tr>
+      <td class="font-mono"><a href="/deployments/{{pathEscape .Name}}">{{.Name}}</a></td>
+      <td>{{.Namespace}}</td>
+      <td class="tabular">{{.Tenants}}</td>
+      <td class="tabular">{{.ReadyInstances}}</td>
+      <td class="tabular">{{.PendingInstances}}</td>
+      <td class="tabular">{{.TotalInstances}}</td>
+      <td class="tabular">{{.ScaleMin}}–{{.ScaleMax}}</td>
+      <td>
+        <div class="w-24 bg-bg-muted rounded-full h-2">
+          <div class="bg-success rounded-full h-2" style="width: {{pct .ReadyInstances .TotalInstances}}%"></div>
+        </div>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}} {{end}}

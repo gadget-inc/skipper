@@ -1,0 +1,29 @@
+{{define "content"}}
+<div data-on-interval__duration.5000ms="@get('/sse/routers')">
+  <div class="page-header">
+    <h1>Routers</h1>
+  </div>
+  <div id="routers-table" class="table-wrap">{{template "routers-table" .RouterRows}}</div>
+</div>
+{{end}} {{define "routers-table"}} {{if not .}}
+<div class="text-center py-8 text-fg-muted">No routers</div>
+{{else}}
+<table>
+  <thead>
+    <tr>
+      <th>IP</th>
+      <th>Functions</th>
+      <th>Total In-Flight</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .}}
+    <tr>
+      <td class="font-mono"><a href="/routers/{{pathEscape .IP}}">{{.IP}}</a></td>
+      <td class="tabular">{{.Functions}}</td>
+      <td class="tabular">{{.InFlight}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}} {{end}}

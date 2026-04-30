@@ -27,6 +27,7 @@ service_spec ||= {}
 
 controller_name = "#{namespace}-controller"
 controller_port ||= 50051
+controller_web_port ||= 8080
 controller_log_level ||= log_level
 controller_log_format ||= log_format
 controller_image_registry ||= image_registry
@@ -54,6 +55,7 @@ controller_affinity ||= affinity
 controller_topology_spread_constraints ||= topology_spread_constraints
 controller_service_annotations ||= {}
 controller_service_spec ||= {}
+controller_web_template_host_dir ||= ""
 
 controller_image = ""
 if controller_image_registry.present?
@@ -212,6 +214,9 @@ spec:
               containerPort: 6060
             - name: grpc
               containerPort: <%= controller_port %>
+            - name: web
+              containerPort: <%= controller_web_port %>
+              protocol: TCP
             - name: metrics
               containerPort: 9090
           env:
@@ -261,6 +266,10 @@ spec:
             - name: "<%= key %>"
               value: "<%= value %>"
             <%- end -%>
+            <%- if controller_web_template_host_dir.present? -%>
+            - name: SKIPPER_WEB_TEMPLATE_DIR
+              value: "/web-templates"
+            <%- end -%>
             <%- if defined? unsafe_controller_paseto_private_key -%>
             - name: SKIPPER_PASETO_PRIVATE_KEY
               value: <%= unsafe_controller_paseto_private_key.to_json %>
@@ -269,6 +278,12 @@ spec:
             - secretRef:
                 name: <%= controller_name %>
             <%- end -%>
+          <%- if controller_web_template_host_dir.present? -%>
+          volumeMounts:
+            - name: web-templates
+              mountPath: /web-templates
+              readOnly: true
+          <%- end -%>
           resources:
             requests:
               memory: "<%= controller_request_memory %>"
@@ -346,6 +361,13 @@ spec:
               app.kubernetes.io/name: skipper
               app.kubernetes.io/component: controller
               app.kubernetes.io/instance: <%= namespace %>
+      <%- if controller_web_template_host_dir.present? -%>
+      volumes:
+        - name: web-templates
+          hostPath:
+            path: "<%= controller_web_template_host_dir %>"
+            type: Directory
+      <%- end -%>
 ---
 apiVersion: v1
 kind: Service
@@ -361,6 +383,9 @@ metadata:
     <%- end -%>
   <%- end -%>
 spec:
+  <%- if defined? controller_node_port or defined? controller_web_node_port -%>
+  type: NodePort
+  <%- end -%>
   selector:
     app.kubernetes.io/name: skipper
     app.kubernetes.io/component: controller
@@ -369,6 +394,17 @@ spec:
     - name: grpc
       port: <%= controller_port %>
       targetPort: grpc
+      protocol: TCP
+  <%- if defined? controller_node_port -%>
+      nodePort: <%= controller_node_port %>
+  <%- end -%>
+    - name: web
+      port: <%= controller_web_port %>
+      targetPort: web
+      protocol: TCP
+  <%- if defined? controller_web_node_port -%>
+      nodePort: <%= controller_web_node_port %>
+  <%- end -%>
   <%- if service_spec.any? -%>
   <%= to_yaml(service_spec, indentation: 2) %>
   <%- end -%>
