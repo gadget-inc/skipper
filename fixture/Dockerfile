@@ -18,8 +18,8 @@ SHELL ["direnv", "exec", ".", "bash", "-lc"]
 
 # Install dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY fixtures/echo/package.json ./fixtures/echo/
-RUN pnpm install --frozen-lockfile --prod
+COPY fixture/package.json ./fixture/
+RUN pnpm install --frozen-lockfile --prod --filter fixture
 
 # Final image
 ARG NODE_VERSION
@@ -29,12 +29,12 @@ RUN apt-get update -qqy && \
     ca-certificates curl jq less vim && \
     rm -rf /var/lib/apt/lists/* && \
     update-ca-certificates
-RUN useradd -ms /bin/bash echo
-WORKDIR /home/echo
-USER echo
-COPY --from=build --chown=echo /build/node_modules ./node_modules
-COPY --from=build --chown=echo /build/fixtures/echo/node_modules ./fixtures/echo/node_modules
-COPY --chown=echo package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY --chown=echo fixtures/echo/package.json fixtures/echo/*.ts ./fixtures/echo/
-WORKDIR /home/echo/fixtures/echo
-CMD ["npm", "run", "start"]
+RUN useradd -ms /bin/bash fixture
+WORKDIR /home/fixture
+USER fixture
+COPY --from=build --chown=fixture /build/node_modules ./node_modules
+COPY --from=build --chown=fixture /build/fixture/node_modules ./fixture/node_modules
+COPY --chown=fixture package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY --chown=fixture fixture/package.json fixture/*.ts ./fixture/
+WORKDIR /home/fixture/fixture
+CMD ["node", "--no-warnings", "--experimental-strip-types", "index.ts"]

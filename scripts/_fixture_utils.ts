@@ -1,12 +1,13 @@
+import process from "node:process";
+
 import z from "zod";
 
-export const routerUrl = "http://127.0.0.1:31020";
-// export const routerUrl = "http://skipper-development-router.skipper-development.svc.cluster.local";
+export const routerUrl = process.env["SKIPPER_ROUTER_URL"] ?? "http://127.0.0.1:8081";
 
-export const echoFunction = {
+export const fixtureFunction = {
   namespace: "skipper-development-fixtures",
-  deployment: "echo",
-  tenant: "123",
+  deployment: "fixture",
+  tenant: "tenant-1",
   metadata: JSON.stringify({ foo: "bar" }),
   scale: {
     min_instances: 0,
@@ -17,11 +18,11 @@ export const echoFunction = {
   },
 };
 
-export const EchoResponseBody = z.object({
+export const FixtureResponseBody = z.object({
   method: z.string(),
   url: z.string(),
   headers: z.record(z.string(), z.string()),
   body: z.string(),
 });
 
-export type EchoResponseBody = z.infer<typeof EchoResponseBody>;
+export type FixtureResponseBody = z.infer<typeof FixtureResponseBody>;

@@ -79,7 +79,7 @@ if (components.has("otel-lgtm") && flags.values.otel) {
 if (components.has("fixtures")) {
   if (flags.values.development) {
     await deployKraneNamespace("skipper-development-fixtures", {
-      echo_image_tag: await currentImageTag(),
+      fixture_image_tag: await currentImageTag(),
       env: {
         OTEL_DENO: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",
@@ -90,7 +90,7 @@ if (components.has("fixtures")) {
 
   if (flags.values.test) {
     await deployKraneNamespace("skipper-test-fixtures", {
-      echo_image_tag: await currentImageTag(),
+      fixture_image_tag: await currentImageTag(),
       env: {
         OTEL_DENO: flags.values.otel,
         OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf",

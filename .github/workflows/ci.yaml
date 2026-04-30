@@ -92,6 +92,8 @@ jobs:
           nohup logs -f >tmp/logs/cluster.log 2>&1 &
 
       - name: Run tests
+        env:
+          SKIPPER_ROUTER_URL: http://127.0.0.1:31030
         run: tests
 
       - if: always()

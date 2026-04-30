@@ -63,9 +63,7 @@ const server = createServer(async (request, response) => {
 const wss = new WebSocketServer({ server });
 
 wss.on("connection", (socket) => {
-  socket.addEventListener("open", () => {
-    log.info("websocket opened");
-  });
+  log.info("websocket connected");
 
   socket.addEventListener("message", (event) => {
     log.info({ data: event.data }, "websocket message");
