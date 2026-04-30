@@ -1,7 +1,7 @@
 {{define "content"}}
 <div
   data-on-interval__duration.5000ms="@get('/sse/events')"
-  data-signals="{eventFunction: '{{.FunctionFilter}}', eventSeverity: '{{or .SeverityFilter `all`}}'}"
+  data-signals="{{signals `eventFunction` .FunctionFilter `eventSeverity` (or .SeverityFilter `all`)}}"
 >
   <div class="page-header">
     <h1>Events</h1>

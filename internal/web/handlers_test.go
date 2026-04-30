@@ -979,9 +979,31 @@ func TestFunctionsQueryParams(t *testing.T) {
 
 		body := w.Body.String()
 		assert.Equal(t, w.Code, 200)
-		assert.Assert(t, strings.Contains(body, "fnSearch: 'web'"), "data-signals should contain fnSearch")
-		assert.Assert(t, strings.Contains(body, "fnSort: 'tenant'"), "data-signals should contain fnSort")
-		assert.Assert(t, strings.Contains(body, "fnSortDir: 'desc'"), "data-signals should contain fnSortDir")
+		// data-signals is rendered as JSON inside an HTML attribute, so the
+		// double-quotes around keys/values arrive as `&#34;` -- the browser
+		// decodes them before Datastar parses the expression.
+		assert.Assert(t, strings.Contains(body, `&#34;fnSearch&#34;:&#34;web&#34;`), "data-signals should contain fnSearch")
+		assert.Assert(t, strings.Contains(body, `&#34;fnSort&#34;:&#34;tenant&#34;`), "data-signals should contain fnSort")
+		assert.Assert(t, strings.Contains(body, `&#34;fnSortDir&#34;:&#34;desc&#34;`), "data-signals should contain fnSortDir")
+	})
+
+	t.Run("signal initialization escapes quote and ampersand in user input", func(t *testing.T) {
+		t.Parallel()
+		// A bare apostrophe in `search` previously broke the inline string
+		// `'{{.FnSearch}}'`, which made Datastar fail to parse the entire
+		// data-signals expression and disabled the page. The JSON encoding
+		// escapes the apostrophe so the rendered attribute is parseable
+		// after the browser HTML-decodes it.
+		req := httptest.NewRequest(http.MethodGet, "/functions?search=it%27s+%26+more", nil)
+		w := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(w, req)
+		body := w.Body.String()
+		assert.Equal(t, w.Code, 200)
+		// `'` is rendered as the HTML entity `&#39;`; `&` is JSON-escaped
+		// to the 6-character sequence `&` (encoding/json defaults
+		// to HTML-safe output) which the JS parser decodes back to `&`.
+		assert.Assert(t, strings.Contains(body, "&#34;fnSearch&#34;:&#34;it&#39;s \\u0026 more&#34;"),
+			"data-signals must safely encode apostrophe and ampersand, got: %s", body)
 	})
 }
 
@@ -1028,7 +1050,7 @@ func TestTenantsQueryParams(t *testing.T) {
 
 		body := w.Body.String()
 		assert.Equal(t, w.Code, 200)
-		assert.Assert(t, strings.Contains(body, "tenantSearch: 'acme'"), "data-signals should contain tenantSearch")
+		assert.Assert(t, strings.Contains(body, `&#34;tenantSearch&#34;:&#34;acme&#34;`), "data-signals should contain tenantSearch")
 	})
 }
 
@@ -1202,8 +1224,8 @@ func TestEventsQueryParams(t *testing.T) {
 
 		body := w.Body.String()
 		assert.Equal(t, w.Code, 200)
-		assert.Assert(t, strings.Contains(body, "eventSeverity: '2'"), "data-signals should contain eventSeverity")
-		assert.Assert(t, strings.Contains(body, "eventFunction: 'web'"), "data-signals should contain eventFunction")
+		assert.Assert(t, strings.Contains(body, `&#34;eventSeverity&#34;:&#34;2&#34;`), "data-signals should contain eventSeverity")
+		assert.Assert(t, strings.Contains(body, `&#34;eventFunction&#34;:&#34;web&#34;`), "data-signals should contain eventFunction")
 	})
 
 	t.Run("signal initialization defaults", func(t *testing.T) {
@@ -1214,8 +1236,8 @@ func TestEventsQueryParams(t *testing.T) {
 
 		body := w.Body.String()
 		assert.Equal(t, w.Code, 200)
-		assert.Assert(t, strings.Contains(body, "eventSeverity: 'all'"), "data-signals should default eventSeverity to 'all'")
-		assert.Assert(t, strings.Contains(body, "eventFunction: ''"), "data-signals should default eventFunction to empty")
+		assert.Assert(t, strings.Contains(body, `&#34;eventSeverity&#34;:&#34;all&#34;`), "data-signals should default eventSeverity to 'all'")
+		assert.Assert(t, strings.Contains(body, `&#34;eventFunction&#34;:&#34;&#34;`), "data-signals should default eventFunction to empty")
 	})
 }
 

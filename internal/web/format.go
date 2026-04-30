@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"net/url"
@@ -10,6 +11,29 @@ import (
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// signalsAttr renders an alternating key/value list as a JSON object suitable
+// for a Datastar `data-signals` attribute. The JSON encoder properly escapes
+// quotes, backslashes, and HTML-meaningful characters in user-controlled
+// strings, so the resulting expression survives an HTML attribute round-trip.
+func signalsAttr(pairs ...any) (template.JS, error) {
+	if len(pairs)%2 != 0 {
+		return "", fmt.Errorf("signals: expected even number of arguments, got %d", len(pairs))
+	}
+	obj := make(map[string]any, len(pairs)/2)
+	for i := 0; i < len(pairs); i += 2 {
+		key, ok := pairs[i].(string)
+		if !ok {
+			return "", fmt.Errorf("signals: argument %d is not a string key", i)
+		}
+		obj[key] = pairs[i+1]
+	}
+	encoded, err := json.Marshal(obj)
+	if err != nil {
+		return "", err
+	}
+	return template.JS(encoded), nil
+}
 
 func timeAgo(ts *timestamppb.Timestamp) string {
 	if ts == nil {

@@ -1,7 +1,7 @@
 {{define "content"}}
 <div
   data-on-interval__duration.5000ms="@get('/sse/functions')"
-  data-signals="{fnSearch: '{{.FnSearch}}', fnSort: '{{.FnSort}}', fnSortDir: '{{.FnSortDir}}'}"
+  data-signals="{{signals `fnSearch` .FnSearch `fnSort` .FnSort `fnSortDir` .FnSortDir}}"
 >
   <div class="page-header">
     <h1>Functions</h1>

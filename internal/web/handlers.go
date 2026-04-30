@@ -196,8 +196,17 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := s.state(r.Context())
+	data := buildDashboardData(state)
+	data.Title = "Dashboard"
+	s.render(w, "dashboard", data)
+}
+
+// buildDashboardData populates the data structure rendered by the dashboard
+// page and its SSE handler. Both call sites need identical instance counts,
+// recent-events slicing, and top-deployments selection, so the construction
+// lives here to keep them in lockstep.
+func buildDashboardData(state *skipper.ClusterState) *dashboardData {
 	ready, total := countInstances(state)
-	pending := total - ready
 	events := state.GetEvents()
 	if len(events) > 5 {
 		events = events[:5]
@@ -210,8 +219,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		deploySet[sup.GetFunction().GetDeployment()] = struct{}{}
 	}
 
-	rows := buildDeploymentRows(state)
-	topDeployments := slices.Clone(rows)
+	topDeployments := slices.Clone(buildDeploymentRows(state))
 	slices.SortFunc(topDeployments, func(a, b deploymentRow) int {
 		if a.Tenants != b.Tenants {
 			return b.Tenants - a.Tenants
@@ -222,17 +230,16 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		topDeployments = topDeployments[:5]
 	}
 
-	s.render(w, "dashboard", &dashboardData{
-		Title:            "Dashboard",
+	return &dashboardData{
 		State:            state,
 		ReadyInstances:   ready,
-		PendingInstances: pending,
+		PendingInstances: total - ready,
 		TotalInstances:   total,
 		TotalTenants:     len(tenantSet),
 		TotalDeployments: len(deploySet),
 		TopDeployments:   topDeployments,
 		RecentEvents:     events,
-	})
+	}
 }
 
 func (s *Server) handleFunctions(w http.ResponseWriter, r *http.Request) {

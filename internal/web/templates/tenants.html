@@ -1,7 +1,7 @@
 {{define "content"}}
 <div
   data-on-interval__duration.5000ms="@get('/sse/tenants')"
-  data-signals="{tenantSearch: '{{.TenantSearch}}', tenantSort: '{{.TenantSort}}', tenantSortDir: '{{.TenantSortDir}}'}"
+  data-signals="{{signals `tenantSearch` .TenantSearch `tenantSort` .TenantSort `tenantSortDir` .TenantSortDir}}"
 >
   <div class="page-header">
     <h1>Tenants</h1>

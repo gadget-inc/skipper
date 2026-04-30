@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
-	"slices"
-	"strings"
 
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/starfederation/datastar-go/datastar"
@@ -39,42 +37,7 @@ func (s *Server) patchFragment(sse *datastar.ServerSentEventGenerator, page, id 
 
 func (s *Server) sseDashboard(w http.ResponseWriter, r *http.Request) {
 	state := s.state(r.Context())
-	ready, total := countInstances(state)
-	pending := total - ready
-	events := state.GetEvents()
-	if len(events) > 5 {
-		events = events[:5]
-	}
-
-	tenantSet := make(map[string]struct{})
-	deploySet := make(map[string]struct{})
-	for _, sup := range state.GetSupervisors() {
-		tenantSet[sup.GetFunction().GetTenant()] = struct{}{}
-		deploySet[sup.GetFunction().GetDeployment()] = struct{}{}
-	}
-
-	rows := buildDeploymentRows(state)
-	topDeployments := slices.Clone(rows)
-	slices.SortFunc(topDeployments, func(a, b deploymentRow) int {
-		if a.Tenants != b.Tenants {
-			return b.Tenants - a.Tenants
-		}
-		return strings.Compare(a.Name, b.Name)
-	})
-	if len(topDeployments) > 5 {
-		topDeployments = topDeployments[:5]
-	}
-
-	data := &dashboardData{
-		State:            state,
-		ReadyInstances:   ready,
-		PendingInstances: pending,
-		TotalInstances:   total,
-		TotalTenants:     len(tenantSet),
-		TotalDeployments: len(deploySet),
-		TopDeployments:   topDeployments,
-		RecentEvents:     events,
-	}
+	data := buildDashboardData(state)
 
 	sse := datastar.NewSSE(w, r)
 	s.patchFragment(sse, "dashboard", "health-indicators", state)

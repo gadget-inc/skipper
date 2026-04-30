@@ -65,8 +65,9 @@ func newFuncMap() template.FuncMap {
 		"isReady": func(inst *skipper.Instance) bool {
 			return inst.HasReadyAt()
 		},
-		"sub": func(a, b int) int { return a - b },
-		"pct": pct,
+		"sub":     func(a, b int) int { return a - b },
+		"pct":     pct,
+		"signals": signalsAttr,
 	}
 }
 
