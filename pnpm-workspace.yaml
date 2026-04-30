@@ -19,7 +19,7 @@ catalog:
   "@types/ms": ^2.1.0
   "@types/node": ^25.5.0
   "@types/ws": ^8.18.1
-  astro: ^6.0.4
+  astro: ^6.1.6
   clean-stack: ^6.0.0
   happy-dom: ^20.8.4
   ms: ^2.1.3
