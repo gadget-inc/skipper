@@ -74,8 +74,7 @@ async function importClient(factories: Array<() => Response>) {
   // Wait for init() to complete
   await new Promise<void>((r) => {
     // Use real setTimeout to avoid issues with fake timers
-    const id = setInterval(() => {
-      clearInterval(id);
+    setTimeout(() => {
       r();
     }, 20);
   });
