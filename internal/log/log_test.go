@@ -134,6 +134,26 @@ func TestInit(t *testing.T) {
 	}
 }
 
+func TestLogFileAppendsAcrossRestarts(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "out.jsonl")
+
+	for _, msg := range []string{"first run", "second run"} {
+		cfg := Config{Format: "json", LogFile: path}
+		handler, cleanup := buildHandler(&cfg)
+		slog.New(handler).Info(msg)
+		cleanup()
+	}
+
+	data, err := os.ReadFile(path)
+	assert.NilError(t, err)
+	content := string(data)
+	assert.Assert(t, strings.Contains(content, `"msg":"first run"`), "first run lost on restart, got: %s", content)
+	assert.Assert(t, strings.Contains(content, `"msg":"second run"`), "second run missing, got: %s", content)
+}
+
 func TestConfigValidate(t *testing.T) {
 	t.Parallel()
 
@@ -164,6 +184,10 @@ func TestConfigValidate(t *testing.T) {
 		{
 			name: "log file format defaults to main format",
 			cfg:  Config{Format: "json", LogFile: "out.log"},
+		},
+		{
+			name: "log file level is not validated when log file is unset",
+			cfg:  Config{Format: "json", LogFileLevel: "banana"},
 		},
 	}
 

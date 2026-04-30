@@ -23,7 +23,7 @@ func (c *Config) Validate() error {
 	if c.LogFile != "" && c.LogFileFormat != "" && c.LogFileFormat != "json" && c.LogFileFormat != "text" {
 		return fmt.Errorf("invalid log file format: %s", c.LogFileFormat)
 	}
-	if c.LogFileLevel != "" {
+	if c.LogFile != "" && c.LogFileLevel != "" {
 		if _, err := parseLevel(c.LogFileLevel); err != nil {
 			return fmt.Errorf("invalid log file level: %s", c.LogFileLevel)
 		}
@@ -55,10 +55,10 @@ func (l LogLevel) MarshalText() ([]byte, error) {
 
 // UnmarshalText implements encoding.TextUnmarshaler.
 func (l *LogLevel) UnmarshalText(text []byte) error {
-	s := string(text)
-	if strings.EqualFold(s, "trace") {
-		l.Level = LevelTrace
-		return nil
+	level, err := parseLevel(string(text))
+	if err != nil {
+		return err
 	}
-	return l.Level.UnmarshalText(text)
+	l.Level = level
+	return nil
 }
