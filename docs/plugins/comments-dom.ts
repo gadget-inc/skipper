@@ -138,9 +138,7 @@ export function detectZone(node: Node): string | null {
  * Scroll to and pulse the highlight for a comment on the current page.
  */
 export function scrollToHighlight(commentId: string): void {
-  const mark = document.querySelector(
-    `.${HIGHLIGHT_CLASS}[data-comment-id="${commentId}"]`,
-  ) as HTMLElement | null;
+  const mark = document.querySelector(`.${HIGHLIGHT_CLASS}[data-comment-id="${commentId}"]`) as HTMLElement | null;
   if (!mark) return;
   mark.scrollIntoView({ block: "center", behavior: "smooth" });
   const orig = mark.style.background;

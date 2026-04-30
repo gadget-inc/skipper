@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+
 import { normalizeComments, badgeText, relativeTime } from "./comments-utils.ts";
 
 describe("relativeTime", () => {

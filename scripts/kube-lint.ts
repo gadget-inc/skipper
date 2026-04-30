@@ -1,5 +1,6 @@
 #!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import { $, chalk } from "zx";
+
 import { abs, emptyDir, isCI } from "./_utils.ts";
 
 if (isCI) {
@@ -167,12 +168,8 @@ const configs: BindingConfig[] = [
     bindings: {
       controller_annotations: { "prometheus.io/scrape": "true" },
       router_annotations: { "prometheus.io/scrape": "true" },
-      controller_tolerations: [
-        { key: "dedicated", operator: "Equal", value: "skipper", effect: "NoSchedule" },
-      ],
-      router_tolerations: [
-        { key: "dedicated", operator: "Equal", value: "skipper", effect: "NoSchedule" },
-      ],
+      controller_tolerations: [{ key: "dedicated", operator: "Equal", value: "skipper", effect: "NoSchedule" }],
+      router_tolerations: [{ key: "dedicated", operator: "Equal", value: "skipper", effect: "NoSchedule" }],
       controller_node_selector: { "node-pool": "skipper" },
       router_node_selector: { "node-pool": "skipper" },
     },
@@ -238,9 +235,7 @@ for (const config of configs) {
         const objectName = report.Object?.K8sObject?.Name || "unknown";
         const check = report.Check || "unknown";
         const message = report.Diagnostic?.Message || "unknown error";
-        console.error(
-          `${chalk.dim(file)}: ${objectName} [${chalk.yellow(check)}]: ${chalk.red(message)}`,
-        );
+        console.error(`${chalk.dim(file)}: ${objectName} [${chalk.yellow(check)}]: ${chalk.red(message)}`);
       }
     } catch {
       // Fallback if JSON parsing fails

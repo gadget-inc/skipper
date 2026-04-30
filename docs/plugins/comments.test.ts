@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter } from "node:events";
+
 import type { ViteDevServer } from "vite";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Hoist mock functions so they are defined before vi.mock() executes
@@ -151,9 +152,7 @@ describe("comments plugin middleware", () => {
       };
 
       mocks.readdir.mockResolvedValue(["aaa.json", "bbb.json"]);
-      mocks.readFile
-        .mockResolvedValueOnce(JSON.stringify(older))
-        .mockResolvedValueOnce(JSON.stringify(newer));
+      mocks.readFile.mockResolvedValueOnce(JSON.stringify(older)).mockResolvedValueOnce(JSON.stringify(newer));
 
       const req = makeReq("GET", "/api/comments");
       const res = makeRes();
@@ -199,9 +198,7 @@ describe("comments plugin middleware", () => {
       };
 
       mocks.readdir.mockResolvedValue(["match.json", "other.json"]);
-      mocks.readFile
-        .mockResolvedValueOnce(JSON.stringify(match))
-        .mockResolvedValueOnce(JSON.stringify(other));
+      mocks.readFile.mockResolvedValueOnce(JSON.stringify(match)).mockResolvedValueOnce(JSON.stringify(other));
 
       const req = makeReq("GET", "/api/comments?page=%2Fdocs%2Ffoo");
       const res = makeRes();
@@ -795,9 +792,7 @@ describe("comments plugin middleware", () => {
 
   it("DELETE responds 500 for non-ENOENT filesystem errors", () =>
     new Promise<void>((resolve, reject) => {
-      mocks.unlink.mockRejectedValue(
-        Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }),
-      );
+      mocks.unlink.mockRejectedValue(Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" }));
 
       const req = makeReq("DELETE", "/api/comments?id=abc123");
       const res = makeRes();

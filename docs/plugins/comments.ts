@@ -6,9 +6,10 @@
  * - Client script is served directly by Vite from plugins/comments-client.ts
  */
 
-import { readdir, readFile, unlink, writeFile, mkdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { readdir, readFile, unlink, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+
 import type { Plugin, ViteDevServer } from "vite";
 
 const COMMENTS_DIR = join(import.meta.dirname, "..", "tmp", "comments");
@@ -171,11 +172,7 @@ function addMiddleware(server: ViteDevServer): void {
           res.end(JSON.stringify({ deleted: id }));
         })
         .catch((err: unknown) => {
-          if (
-            typeof err === "object" &&
-            err !== null &&
-            (err as NodeJS.ErrnoException).code === "ENOENT"
-          ) {
+          if (typeof err === "object" && err !== null && (err as NodeJS.ErrnoException).code === "ENOENT") {
             res.writeHead(404, { "content-type": "application/json" });
             res.end(JSON.stringify({ error: "not found" }));
           } else {

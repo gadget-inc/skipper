@@ -1,7 +1,9 @@
 #!/usr/bin/env -S pnpm node --no-warnings --experimental-strip-types
 import { mkdir } from "node:fs/promises";
 import process from "node:process";
+
 import { $ } from "zx";
+
 import { $nothrow, abs, isCI } from "./_utils.ts";
 
 $.cwd = abs();

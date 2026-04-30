@@ -4,8 +4,10 @@ import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import process from "node:process";
 import { parseArgs } from "node:util";
+
 import { dedent } from "ts-dedent";
 import { $, ProcessOutput, chalk, glob } from "zx";
+
 import { abs, rel, unwrap } from "./_utils.ts";
 
 $.cwd = abs();
@@ -105,9 +107,7 @@ export async function fetchProfile(argv: string[]) {
     throw new Error("Cannot use --spread with --diff");
   }
 
-  const context = flags.values.production
-    ? "gke_gadget-core-production_us-central1_main"
-    : $.env["SKIPPER_KUBECTL_CONTEXT"]!;
+  const context = flags.values.production ? "gke_gadget-core-production_us-central1_main" : $.env["SKIPPER_KUBECTL_CONTEXT"]!;
   const namespace = flags.values.production ? "skipper-production" : "skipper-development";
   const selector = `app.kubernetes.io/name=skipper,app.kubernetes.io/component=${flags.values.component},app.kubernetes.io/instance=${namespace}`;
 
@@ -120,9 +120,7 @@ export async function fetchProfile(argv: string[]) {
       output =
         await $`kubectl --context=${context} --namespace=${namespace} get pods --selector=${selector} --output=${`jsonpath=${jsonpath}`}`.text();
     } catch (error) {
-      throw new Error(
-        `Failed to list pods: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`Failed to list pods: ${error instanceof Error ? error.message : String(error)}`);
     }
     pods = output.split("\n").filter((p) => p.length > 0);
     if (pods.length === 0) {
@@ -136,9 +134,7 @@ export async function fetchProfile(argv: string[]) {
       pod =
         await $`kubectl --context=${context} --namespace=${namespace} get pods --selector=${selector} --output=jsonpath={.items[0].metadata.name}`.text();
     } catch (error) {
-      throw new Error(
-        `Failed to find pod: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      throw new Error(`Failed to find pod: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (!pod) {
       throw new Error("No pod found");
@@ -169,27 +165,16 @@ export async function fetchProfile(argv: string[]) {
   const environment = flags.values.production ? "production" : "development";
   const profileDir = `tmp/pprof/${environment}/${flags.values.component}`;
 
-  async function fetchOnePod(
-    pod: string,
-    progress: string,
-  ): Promise<{ filename: string; baseProfiles: string[] }> {
+  async function fetchOnePod(pod: string, progress: string): Promise<{ filename: string; baseProfiles: string[] }> {
     const profileRegex = new RegExp(`${escapeRegExp(pod)}-${flags.values.type}-(\\d+)\\.pb\\.gz`);
-    const baseProfiles = await findProfiles(
-      profileDir,
-      `${pod}-${flags.values.type}-*.pb.gz`,
-      profileRegex,
-    );
+    const baseProfiles = await findProfiles(profileDir, `${pod}-${flags.values.type}-*.pb.gz`, profileRegex);
 
     const index = parseInt(baseProfiles.at(-1)?.match(profileRegex)?.[1] ?? "0") + 1;
     await mkdir(abs(profileDir), { recursive: true });
-    const filename = abs(
-      `${profileDir}/${pod}-${flags.values.type}-${index.toString().padStart(3, "0")}.pb.gz`,
-    );
+    const filename = abs(`${profileDir}/${pod}-${flags.values.type}-${index.toString().padStart(3, "0")}.pb.gz`);
 
     const duration = flags.values.type === "cpu" ? ` (${flags.values.seconds}s)` : "";
-    console.log(
-      `${progress}Fetching ${flags.values.type} profile for ${chalk.green(pod)}${duration}`,
-    );
+    console.log(`${progress}Fetching ${flags.values.type} profile for ${chalk.green(pod)}${duration}`);
     const url = `http://localhost:6060/debug/pprof/${endpoint}?${query}`;
     const tmpFilename = `${filename}.${globalThis.crypto.randomUUID()}.tmp`;
     try {
@@ -207,9 +192,7 @@ export async function fetchProfile(argv: string[]) {
   }
 
   if (flags.values.spread) {
-    const results = await Promise.allSettled(
-      pods.map((pod, i) => fetchOnePod(pod, `[${i + 1}/${pods.length}] `)),
-    );
+    const results = await Promise.allSettled(pods.map((pod, i) => fetchOnePod(pod, `[${i + 1}/${pods.length}] `)));
 
     let failedPods: string[] = [];
     let successCount = 0;
@@ -255,9 +238,7 @@ export async function fetchProfile(argv: string[]) {
         `--type=${flags.values.type}`,
         flags.values.production ? "--production" : "",
         flags.values.component !== "controller" ? `--component=${flags.values.component}` : "",
-        flags.values.type === "cpu" && flags.values.seconds !== "30"
-          ? `--seconds=${flags.values.seconds}`
-          : "",
+        flags.values.type === "cpu" && flags.values.seconds !== "30" ? `--seconds=${flags.values.seconds}` : "",
       ]
         .filter(Boolean)
         .join(" ");
@@ -270,27 +251,18 @@ export async function fetchProfile(argv: string[]) {
     }
 
     console.log();
-    console.log(
-      `Fetched ${successCount}/${pods.length} profile(s). Merge with: ${chalk.dim("profile merge")}`,
-    );
+    console.log(`Fetched ${successCount}/${pods.length} profile(s). Merge with: ${chalk.dim("profile merge")}`);
     console.log();
     return;
   }
 
-  const { filename: lastFilename, baseProfiles: lastBaseProfiles } = await fetchOnePod(
-    pods[0]!,
-    "",
-  );
+  const { filename: lastFilename, baseProfiles: lastBaseProfiles } = await fetchOnePod(pods[0]!, "");
 
   if (!flags.values.web && !flags.values.diff) {
     console.log(`Open with: ${chalk.dim(`profile open ${rel(lastFilename)}`)}`);
     if (flags.values.type === "cpu" && !flags.values.production) {
       console.log();
-      console.log(
-        chalk.dim(
-          "Hint: For PGO, collect CPU profiles from production: profile fetch --type=cpu --production",
-        ),
-      );
+      console.log(chalk.dim("Hint: For PGO, collect CPU profiles from production: profile fetch --type=cpu --production"));
     }
     console.log();
     return;
@@ -363,9 +335,7 @@ export async function open(argv: string[]) {
   const profile = basename(filepath);
   const profilePrefix = profile.replace(/-\d+\.pb\.gz$/, "");
   const profileRegex = new RegExp(`${escapeRegExp(profilePrefix)}-(\\d+)\\.pb\\.gz$`);
-  const profileIndex = parseInt(
-    unwrap(profile.match(profileRegex)?.[1], "profile index is undefined"),
-  );
+  const profileIndex = parseInt(unwrap(profile.match(profileRegex)?.[1], "profile index is undefined"));
 
   let baseProfiles: string[] = [];
 
@@ -436,8 +406,7 @@ export async function merge(argv: string[]) {
     process.exit(0);
   }
 
-  const components =
-    flags.values.component === "all" ? ["controller", "router"] : [flags.values.component!];
+  const components = flags.values.component === "all" ? ["controller", "router"] : [flags.values.component!];
 
   let totalProfiles = 0;
 
@@ -456,11 +425,7 @@ export async function merge(argv: string[]) {
     const newest = Math.max(...mtimes);
     if (newest - oldest > STALENESS_THRESHOLD_MS) {
       const days = Math.round((newest - oldest) / (24 * 60 * 60 * 1000));
-      console.log(
-        chalk.yellow(
-          `Warning: ${component} profiles span ${days} days — consider using --clean to remove stale profiles`,
-        ),
-      );
+      console.log(chalk.yellow(`Warning: ${component} profiles span ${days} days — consider using --clean to remove stale profiles`));
     }
 
     // Check for mixed durations: longer profiles contribute more samples and skew the merge
@@ -583,9 +548,7 @@ export async function analyze(argv: string[]) {
   }
 
   if (!existsSync(filepath)) {
-    throw new Error(
-      `Profile not found: ${flags.values.pgo ? `cmd/${flags.values.component}/default.pgo` : flags.positionals[0]}`,
-    );
+    throw new Error(`Profile not found: ${flags.values.pgo ? `cmd/${flags.values.component}/default.pgo` : flags.positionals[0]}`);
   }
 
   const args: string[] = [];

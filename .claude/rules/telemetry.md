@@ -1,6 +1,6 @@
 ---
 paths:
-    - "**/*.go"
+  - "**/*.go"
 ---
 
 # Telemetry Guidelines

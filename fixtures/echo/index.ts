@@ -1,8 +1,8 @@
 import "./telemetry.ts";
-
 import assert from "node:assert";
 import { stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+
 import { V2 } from "paseto";
 import { pino } from "pino";
 import pretty from "pino-pretty";
@@ -21,10 +21,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  log.info(
-    { method: request.method, url: request.url, headers: request.headers },
-    "incoming request",
-  );
+  log.info({ method: request.method, url: request.url, headers: request.headers }, "incoming request");
   if (request.method === "POST" && request.url === "/__skipper/assign") {
     if (assigned) {
       response.statusCode = 409;
@@ -34,10 +31,7 @@ const server = createServer(async (request, response) => {
 
     assert(process.env["SKIPPER_PUBLIC_KEY"], "SKIPPER_PUBLIC_KEY is not set");
     assert(typeof request.headers["x-skipper-token"] === "string", "x-skipper-token is not set");
-    assert(
-      typeof request.headers["x-skipper-function"] === "string",
-      "x-skipper-function is not set",
-    );
+    assert(typeof request.headers["x-skipper-function"] === "string", "x-skipper-function is not set");
 
     assigned = true;
     const token = request.headers["x-skipper-token"];
@@ -63,9 +57,7 @@ const server = createServer(async (request, response) => {
   });
 
   response.setHeader("content-type", "application/json");
-  response.end(
-    JSON.stringify({ method: request.method, url: request.url, headers: request.headers, body }),
-  );
+  response.end(JSON.stringify({ method: request.method, url: request.url, headers: request.headers, body }));
 });
 
 const wss = new WebSocketServer({ server });

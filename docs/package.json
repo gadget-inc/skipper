@@ -10,16 +10,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.37.2",
-    "@astrojs/starlight-tailwind": "^4.0.2",
-    "@tailwindcss/vite": "^4.2.1",
-    "astro": "^5.6.1",
-    "sharp": "^0.34.2",
-    "tailwindcss": "^4.2.1"
+    "@astrojs/starlight": "catalog:",
+    "@astrojs/starlight-tailwind": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "astro": "catalog:",
+    "sharp": "catalog:",
+    "tailwindcss": "catalog:"
   },
   "devDependencies": {
-    "happy-dom": "^20.8.3",
-    "vite": "^6.0.0",
-    "vitest": "^4.0.18"
+    "happy-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
   }
 }
