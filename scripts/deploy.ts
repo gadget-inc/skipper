@@ -8,7 +8,7 @@ import { parseArgs } from "node:util";
 import { dedent } from "ts-dedent";
 import { $ } from "zx";
 
-import { abs, currentImageTag, deployKraneNamespace, emptyDir, expandSkipperAlias, isCI, renderKraneNamespace } from "./_utils.ts";
+import { $stdout, abs, currentImageTag, deployKraneNamespace, emptyDir, expandSkipperAlias, isCI, renderKraneNamespace } from "./_utils.ts";
 
 $.cwd = abs();
 $.env["SKIPPER_KUBECTL_CONTEXT"] ??= "orbstack";
@@ -53,6 +53,12 @@ if (flags.values.help) {
 if (flags.values.build) {
   await import("./build.ts");
 }
+
+// Resolve local image IDs so krane detects changes even when the tag is reused.
+// Docker doesn't assign digests to local images, so we use the image ID instead.
+const imageTag = await currentImageTag();
+const controllerImageId = await $stdout`docker images -q skipper-controller:${imageTag}`.catch(() => "");
+const routerImageId = await $stdout`docker images -q skipper-router:${imageTag}`.catch(() => "");
 
 if (flags.values["generate-paseto-keypair"]) {
   await emptyDir(abs("tmp/paseto"));
@@ -105,7 +111,9 @@ if (components.has("controller") || components.has("router")) {
     await deployKraneNamespace("skipper-development", {
       controller_image_name: "skipper-controller",
       router_image_name: "skipper-router",
-      image_tag: await currentImageTag(),
+      image_tag: imageTag,
+      controller_annotations: { "skipper/image-id": controllerImageId },
+      router_annotations: { "skipper/image-id": routerImageId },
       namespace: "skipper-development",
       function_namespaces: ["skipper-development-fixtures"],
       unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
@@ -123,7 +131,9 @@ if (components.has("controller") || components.has("router")) {
     await deployKraneNamespace("skipper-test", {
       controller_image_name: "skipper-controller",
       router_image_name: "skipper-router",
-      image_tag: await currentImageTag(),
+      image_tag: imageTag,
+      controller_annotations: { "skipper/image-id": controllerImageId },
+      router_annotations: { "skipper/image-id": routerImageId },
       namespace: "skipper-test",
       function_namespaces: ["skipper-test-fixtures"],
       unsafe_controller_paseto_private_key: await readFile(abs("tmp/paseto/private.pem"), "utf8"),
