@@ -25,5 +25,5 @@ func init() {
 		cfg.Format = "text"
 	}
 
-	log.Init(cfg)
+	_ = log.Init(cfg)
 }
