@@ -72,6 +72,10 @@ const processes: Promise<unknown>[] = [];
 const needsGoWatch = components.has("controller") || components.has("router");
 const goWatcher = needsGoWatch ? createGoWatcher(abs(), ac.signal) : { subscribe() {} };
 
+if (components.has("controller") || components.has("router")) {
+  await mkdir(abs("tmp/logs"), { recursive: true });
+}
+
 if (components.has("controller")) {
   const pasetoKey = await readFile(abs("tmp/paseto/private.pem"), "utf8");
   const env = {
