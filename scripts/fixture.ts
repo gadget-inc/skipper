@@ -375,6 +375,8 @@ export async function load(argv: string[]) {
       if (!response.ok) {
         failures++;
       }
+
+      await response.body?.cancel();
     } catch (error) {
       if (isAbortError(error)) return;
       completed++;

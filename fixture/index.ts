@@ -33,11 +33,11 @@ const server = createServer(async (request, response) => {
     assert(typeof request.headers["x-skipper-token"] === "string", "x-skipper-token is not set");
     assert(typeof request.headers["x-skipper-function"] === "string", "x-skipper-function is not set");
 
+    assigned = true;
     const token = request.headers["x-skipper-token"];
     const payload = await V2.verify(token, process.env["SKIPPER_PUBLIC_KEY"]);
     const fn = JSON.parse(request.headers["x-skipper-function"]) as unknown;
     await writeFile(tokenFilepath, token);
-    assigned = true;
     log.info({ token, payload, fn }, "assigned");
     response.end();
     return;
