@@ -4250,24 +4250,22 @@ func TestSupervisorEvents(t *testing.T) {
 			},
 		},
 		{
-			// Regression test: scale-to-zero from a non-heartbeat reason (e.g.
-			// maxInstances clamped to 0) must record EVENT_TYPE_SCALE_DOWN, not
-			// the incorrect EVENT_TYPE_HEARTBEAT_TIMEOUT that was recorded before
-			// the fix.
-			name: "non-heartbeat scale-to-zero records SCALE_DOWN not HEARTBEAT_TIMEOUT",
+			// Regression test: when converge runs against a function that
+			// already has zero instances and the scaling decision lands at
+			// zero (e.g. maxInstances clamped to 0), converge must emit no
+			// scale-related event at all. Emitting "scaling to 0" when
+			// there is nothing to scale is misleading to operators reading
+			// the event log.
+			name: "scale-to-zero from zero instances records no scale event",
 			setup: func(t *testing.T, state *testState) {
 				// Set maxInstances=0 so clamping forces desiredInstances=0
-				// even though the heartbeat is fresh. The scale reason will be
-				// SCALE_REASON_UNSPECIFIED (no metric wins), not heartbeat timeout.
+				// even though the heartbeat is fresh.
 				state.fn.GetScale().SetMaxInstances(0)
 				state.fn.GetScale().SetTargetCpuUsageMilli(0)
 				state.fn.GetScale().SetTargetMemoryUsageMib(0)
 				state.fn.GetScale().SetTargetInFlightRequests(0)
 
 				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
-
-				pod := fixture.NewAssignedPod(t, state.fn, nil)
-				state.fakeKubernetes.Tracker().Add(pod)
 
 				// set controller started long ago so protection period is expired
 				protectionPeriod := max(state.ctrl.config.HPADownscaleStabilization, state.ctrl.config.HeartbeatTimeout)
@@ -4285,25 +4283,12 @@ func TestSupervisorEvents(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				events := state.ctrl.events.snapshot()
-
-				// must NOT record a heartbeat timeout event
 				for _, event := range events {
-					assert.Assert(t, event.GetType() != skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT,
-						"scale-to-zero from non-heartbeat reason must not record HEARTBEAT_TIMEOUT event")
+					assert.Assert(t,
+						event.GetType() != skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT &&
+							event.GetType() != skipper.EventType_EVENT_TYPE_SCALE_DOWN,
+						"scale-to-zero from zero instances must not record any scale event, got %s", event.GetType())
 				}
-
-				// converge adds a WARN-severity SCALE_DOWN event before delegating to
-				// scaleWithoutLock (which adds its own INFO-severity SCALE_DOWN event).
-				// Verify the converge-level event is present with the correct severity.
-				var found bool
-				for _, event := range events {
-					if event.GetType() == skipper.EventType_EVENT_TYPE_SCALE_DOWN &&
-						event.GetSeverity() == skipper.EventSeverity_EVENT_SEVERITY_WARN {
-						found = true
-						break
-					}
-				}
-				assert.Assert(t, found, "expected WARN-severity SCALE_DOWN event for non-heartbeat scale-to-zero")
 			},
 		},
 	}

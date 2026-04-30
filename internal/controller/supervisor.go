@@ -356,8 +356,12 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		return nil
 	}
 
-	// Record scale-to-zero event only on the responsible controller.
-	if isScalingDown && scalingDecision.GetDesiredInstances() == 0 {
+	// Record scale-to-zero event only on the responsible controller and
+	// only when we actually have instances to scale down. Without the
+	// currentInstances guard, a heartbeat-timeout sweep on a function
+	// that never had pods assigned would emit a misleading "scaling to
+	// 0" event.
+	if isScalingDown && scalingDecision.GetDesiredInstances() == 0 && currentInstances > 0 {
 		eventType, eventMessage := scaleToZeroEvent(scalingDecision.GetReason())
 		s.ctrl.events.add(fn, eventType, skipper.EventSeverity_EVENT_SEVERITY_WARN, eventMessage)
 	}
@@ -443,7 +447,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 	desired := decision.GetDesiredInstances()
 	total := ready + unready
 
-	if desired == ready && desired > unready {
+	if desired == ready && unready == 0 {
 		// we already have the desired number of ready instances and we
 		// don't have extra unready instances, so there's nothing to do
 		return readyInstances, unreadyInstances, nil
@@ -531,6 +535,7 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*ski
 			err := s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to terminate instance stuck in assigned state", key.Error.Slog(err))
+				return false // Keep in slice; another iteration will retry
 			}
 			s.ctrl.events.add(instance.GetFunction(), skipper.EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP, skipper.EventSeverity_EVENT_SEVERITY_WARN,
 				fmt.Sprintf("terminated stuck instance %s", instance.GetName()))

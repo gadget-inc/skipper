@@ -32,7 +32,7 @@ func (ctrl *Controller) ClusterState(ctx context.Context) *skipper.ClusterState 
 		supState := &skipper.SupervisorState{}
 		supState.SetFunction(fn)
 
-		instances, err := ctrl.getInstances(ctx, fn)
+		instances, err := ctrl.listInstances(ctx, fn)
 		if err != nil {
 			log.Warn(ctx, "failed to get instances for cluster state", key.Error.Slog(err), skipper.FunctionKey.Slog(fn))
 		} else {
