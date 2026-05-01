@@ -9,7 +9,7 @@ When `dev` is running, structured JSON logs are written to:
 - `tmp/logs/controller.jsonl` — controller logs
 - `tmp/logs/router.jsonl` — router logs
 
-These files are truncated on each restart. Read them to debug runtime issues without scrolling through terminal output.
+Read them to debug runtime issues without scrolling through terminal output.
 
 ## Log File Flags
 

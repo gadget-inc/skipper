@@ -64,7 +64,7 @@ direnv exec . deploy --only=fixtures,metrics-server
 
 ### Debugging
 
-`dev` writes structured JSON logs to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl` (truncated on restart). Any command also accepts:
+`dev` writes structured JSON logs to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl`. Any command also accepts:
 
 ```bash
 direnv exec . controller --log-file=tmp/logs/controller.jsonl                    # Write logs to file and stderr
