@@ -96,12 +96,7 @@ if (components.has("fixtures")) {
   const fixture = abs("fixture");
   const name = path.basename(fixture);
   const imageName = `skipper-fixtures-${name}`;
-  const buildFlags = [
-    `--file=${fixture}/Dockerfile`,
-    `--platform=${flags.values.platform}`,
-    `--tag=${imageName}:${flags.values.tag}`,
-    `--build-arg=NODE_VERSION=${process.version.slice(1)}`,
-  ];
+  const buildFlags = [`--file=${fixture}/Dockerfile`, `--platform=${flags.values.platform}`, `--tag=${imageName}:${flags.values.tag}`];
 
   if (flags.values.load) {
     buildFlags.push("--load");
