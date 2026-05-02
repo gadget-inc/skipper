@@ -5,11 +5,11 @@
 All commands must be run with `direnv exec .`:
 
 ```bash
-direnv exec . dev                                 # Run controller, router, and Tailwind locally
-direnv exec . dev --only=tailwind                 # Tailwind CSS watcher only
-direnv exec . dev --only=controller               # Controller only
-direnv exec . dev --only=controller,tailwind      # Controller + Tailwind (no router)
-direnv exec . dev --only=docs                     # Docs dev server only
+direnv exec . dev up                              # Run controller, router, and Tailwind locally
+direnv exec . dev up --only=tailwind              # Tailwind CSS watcher only
+direnv exec . dev up --only=controller            # Controller only
+direnv exec . dev up --only=controller,tailwind   # Controller + Tailwind (no router)
+direnv exec . dev up --only=docs                  # Docs dev server only
 direnv exec . deploy                              # Build and deploy to Kubernetes (Orbstack)
 direnv exec . deploy --only=skipper               # Deploy only Skipper
 direnv exec . tests go ./...                      # Run all Go tests
@@ -19,17 +19,17 @@ direnv exec . tests docs                          # Run docs tests
 direnv exec . tests scripts                       # Run script tests (vitest)
 direnv exec . tests e2e                           # Run e2e tests
 direnv exec . tests all                           # Run go + docs + scripts (not e2e)
-direnv exec . lint                                # Run golangci-lint, oxfmt, oxlint
-direnv exec . fmt                                 # Auto-fix formatting
-direnv exec . buf generate                        # Regenerate protobuf Go code from .proto files
+direnv exec . dev lint                            # Run golangci-lint, oxfmt, oxlint
+direnv exec . dev fmt                             # Auto-fix formatting
+direnv exec . dev generate                        # Regenerate protobuf Go code from .proto files
 direnv exec . logs                                # Show recent logs and exit
 direnv exec . logs -f                             # Stream logs continuously (follow)
 direnv exec . logs -c controller                  # Show controller logs
 direnv exec . logs --errors --since=5m            # Recent errors only
-direnv exec . docs                                # Start docs dev server
-direnv exec . docs build                          # Build docs site
-direnv exec . docs preview                        # Preview built docs
-direnv exec . clean                               # Delete all Kubernetes resources
+direnv exec . dev docs                            # Start docs dev server
+direnv exec . dev docs build                      # Build docs site
+direnv exec . dev docs preview                    # Preview built docs
+direnv exec . dev clean                           # Delete all Kubernetes resources
 direnv exec . profile fetch                       # Fetch heap profile from local controller
 direnv exec . profile fetch -t cpu -p             # Fetch CPU profile from production
 direnv exec . profile fetch -t cpu -p <pod>       # Fetch from a specific production pod
@@ -55,7 +55,7 @@ First-time setup (fixtures and metrics-server still run in K8s):
 direnv exec . deploy --only=fixtures,metrics-server
 ```
 
-`dev` runs controller, router, Tailwind, and the docs site as local processes. Local endpoints:
+`dev up` runs controller, router, Tailwind, and the docs site as local processes. Local endpoints:
 
 - Controller gRPC: `127.0.0.1:50051`
 - Web UI: `http://127.0.0.1:8080`
@@ -64,7 +64,7 @@ direnv exec . deploy --only=fixtures,metrics-server
 
 ### Debugging
 
-`dev` writes structured JSON logs to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl`. Any command also accepts:
+`dev up` writes structured JSON logs to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl`. Any command also accepts:
 
 ```bash
 direnv exec . controller --log-file=tmp/logs/controller.jsonl                    # Write logs to file and stderr

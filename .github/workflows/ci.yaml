@@ -20,7 +20,7 @@ jobs:
           cachix_auth_token: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Run lint
-        run: lint
+        run: dev lint
 
   docs-tests:
     runs-on: blacksmith-2vcpu-ubuntu-2404

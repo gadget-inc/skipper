@@ -76,15 +76,10 @@
 
           # scripts
           build = pkgs.writeShellScriptBin "build" '' "$WORKSPACE_DIR"/scripts/build.ts "$@" '';
-          clean = pkgs.writeShellScriptBin "clean" '' "$WORKSPACE_DIR"/scripts/clean.ts "$@" '';
           deploy = pkgs.writeShellScriptBin "deploy" '' "$WORKSPACE_DIR"/scripts/deploy.ts "$@" '';
-          dev = pkgs.writeShellScriptBin "dev" '' "$WORKSPACE_DIR"/scripts/dev.ts "$@" '';
-          docs = pkgs.writeShellScriptBin "docs" '' "$WORKSPACE_DIR"/scripts/docs.ts "$@" '';
+          dev = pkgs.writeShellScriptBin "dev" '' cd "$WORKSPACE_DIR" && go run ./cmd/dev "$@" '';
           fixture = pkgs.writeShellScriptBin "fixture" '' "$WORKSPACE_DIR"/scripts/fixture.ts "$@" '';
-          fmt = pkgs.writeShellScriptBin "fmt" '' "$WORKSPACE_DIR"/scripts/fmt.ts "$@" '';
-          generate = pkgs.writeShellScriptBin "generate" '' "$WORKSPACE_DIR"/scripts/generate.ts "$@" '';
           kube-lint = pkgs.writeShellScriptBin "kube-lint" '' "$WORKSPACE_DIR"/scripts/kube-lint.ts "$@" '';
-          lint = pkgs.writeShellScriptBin "lint" '' "$WORKSPACE_DIR"/scripts/lint.ts "$@" '';
           logs = pkgs.writeShellScriptBin "logs" '' "$WORKSPACE_DIR"/scripts/logs.ts "$@" '';
           profile = pkgs.writeShellScriptBin "profile" '' "$WORKSPACE_DIR"/scripts/profile.ts "$@" '';
           tests = pkgs.writeShellScriptBin "tests" '' "$WORKSPACE_DIR"/scripts/tests.ts "$@" '';
