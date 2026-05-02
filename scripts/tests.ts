@@ -57,7 +57,7 @@ export async function runScripts(argv: string[]) {
 }
 
 export async function runE2e(argv: string[]) {
-  await $nothrow`pnpm --filter e2e test ${argv}`;
+  await $nothrow`go test ./e2e/... ${argv}`;
 }
 
 export async function runAll() {
@@ -73,7 +73,7 @@ Subcommands:
   go [flags] [./path/...]    Run Go tests (gotestsum)
   docs [args]                Run docs tests (pnpm --filter docs)
   scripts [args]             Run script tests (pnpm --filter scripts)
-  e2e [args]                 Run e2e tests (pnpm --filter e2e)
+  e2e [args]                 Run e2e tests (chromedp Go suite)
   all                        Run go + docs + scripts (not e2e)`);
   process.exitCode = 1;
 }
