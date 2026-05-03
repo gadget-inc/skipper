@@ -12,20 +12,20 @@ direnv exec . dev up --only=controller,tailwind   # Controller + Tailwind (no ro
 direnv exec . dev up --only=docs                  # Docs dev server only
 direnv exec . deploy                              # Build and deploy to Kubernetes (Orbstack)
 direnv exec . deploy --only=skipper               # Deploy only Skipper
-direnv exec . tests go ./...                      # Run all Go tests
-direnv exec . tests go -short ./...               # Run Go tests without Kubernetes (skips integration tests)
-direnv exec . tests go -v ./internal/controller/... # Run specific package tests
-direnv exec . tests docs                          # Run docs tests
-direnv exec . tests scripts                       # Run script tests (vitest)
-direnv exec . tests e2e                           # Run e2e tests
-direnv exec . tests all                           # Run go + docs + scripts (not e2e)
+direnv exec . dev tests go ./...                      # Run all Go tests
+direnv exec . dev tests go -short ./...               # Run Go tests without Kubernetes (skips integration tests)
+direnv exec . dev tests go -v ./internal/controller/... # Run specific package tests
+direnv exec . dev tests docs                          # Run docs tests
+direnv exec . dev tests scripts                       # Run script tests (vitest)
+direnv exec . dev tests e2e                           # Run e2e tests
+direnv exec . dev tests all                           # Run go + docs + scripts (not e2e)
 direnv exec . dev lint                            # Run golangci-lint, oxfmt, oxlint
 direnv exec . dev fmt                             # Auto-fix formatting
 direnv exec . dev generate                        # Regenerate protobuf Go code from .proto files
-direnv exec . logs                                # Show recent logs and exit
-direnv exec . logs -f                             # Stream logs continuously (follow)
-direnv exec . logs -c controller                  # Show controller logs
-direnv exec . logs --errors --since=5m            # Recent errors only
+direnv exec . dev logs                            # Show recent logs and exit
+direnv exec . dev logs -f                         # Stream logs continuously (follow)
+direnv exec . dev logs -c controller              # Show controller logs
+direnv exec . dev logs --errors --since=5m        # Recent errors only
 direnv exec . dev docs                            # Start docs dev server
 direnv exec . dev docs build                      # Build docs site
 direnv exec . dev docs preview                    # Preview built docs

@@ -34,7 +34,7 @@ jobs:
           cachix_auth_token: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Run docs tests
-        run: tests docs
+        run: dev tests docs
 
   script-tests:
     runs-on: blacksmith-2vcpu-ubuntu-2404
@@ -48,7 +48,7 @@ jobs:
           cachix_auth_token: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Run script tests
-        run: tests scripts
+        run: dev tests scripts
 
   test:
     runs-on: blacksmith-8vcpu-ubuntu-2404
@@ -89,12 +89,12 @@ jobs:
           SKIPPER_KUBECTL_CONTEXT: kind-kind
         run: |
           mkdir -p tmp/logs
-          nohup logs -f >tmp/logs/cluster.log 2>&1 &
+          nohup dev logs -f >tmp/logs/cluster.log 2>&1 &
 
       - name: Run tests
         env:
           SKIPPER_ROUTER_URL: http://127.0.0.1:31030
-        run: tests go
+        run: dev tests go
 
       - if: always()
         name: Upload logs

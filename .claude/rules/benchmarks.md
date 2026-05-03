@@ -14,10 +14,10 @@ Scoped to: `internal/**/*_test.go`
 
 ```bash
 # Run benchmarks and save results
-tests -bench=BenchmarkName -benchmem -count=6 ./internal/pkg/... | tee tmp/benchmarks/name-before.txt
+dev tests go -bench=BenchmarkName -benchmem -count=6 ./internal/pkg/... | tee tmp/benchmarks/name-before.txt
 
 # After optimization, run again
-tests -bench=BenchmarkName -benchmem -count=6 ./internal/pkg/... | tee tmp/benchmarks/name-after.txt
+dev tests go -bench=BenchmarkName -benchmem -count=6 ./internal/pkg/... | tee tmp/benchmarks/name-after.txt
 
 # Compare with benchstat (require statistical significance)
 benchstat tmp/benchmarks/name-before.txt tmp/benchmarks/name-after.txt

@@ -80,9 +80,7 @@
           dev = pkgs.writeShellScriptBin "dev" '' cd "$WORKSPACE_DIR" && go run ./cmd/dev "$@" '';
           fixture = pkgs.writeShellScriptBin "fixture" '' "$WORKSPACE_DIR"/scripts/fixture.ts "$@" '';
           kube-lint = pkgs.writeShellScriptBin "kube-lint" '' "$WORKSPACE_DIR"/scripts/kube-lint.ts "$@" '';
-          logs = pkgs.writeShellScriptBin "logs" '' "$WORKSPACE_DIR"/scripts/logs.ts "$@" '';
           profile = pkgs.writeShellScriptBin "profile" '' "$WORKSPACE_DIR"/scripts/profile.ts "$@" '';
-          tests = pkgs.writeShellScriptBin "tests" '' "$WORKSPACE_DIR"/scripts/tests.ts "$@" '';
         };
 
         devShell = pkgs.mkShell {

@@ -8,12 +8,12 @@ import { Aside } from "@astrojs/starlight/components";
 ## Testing
 
 ```bash
-tests                                    # Runs go test ./...
-tests -v ./internal/controller/...       # Verbose tests for the controller package
-tests -short ./...                       # Skips integration tests (no Orbstack required)
+dev tests go                                  # Runs go test ./...
+dev tests go -v ./internal/controller/...     # Verbose tests for the controller package
+dev tests go -short ./...                     # Skips integration tests (no Orbstack required)
 ```
 
-`tests` forwards all arguments to `go test`.
+`dev tests go` forwards all arguments to `go test`.
 
 <Aside type="tip">
   Some tests are integration tests that require Skipper to be deployed to Orbstack. Pass `-short` to skip these tests if you haven't
@@ -23,8 +23,8 @@ tests -short ./...                       # Skips integration tests (no Orbstack 
 ## Linting and formatting
 
 ```bash
-lint    # Runs golangci-lint, oxfmt, and oxlint (with type checking)
-fmt     # Attempts to fix linting errors
+dev lint    # Runs golangci-lint, oxfmt, and oxlint (with type checking)
+dev fmt     # Attempts to fix linting errors
 ```
 
 All Go files must be formatted with **gofumpt** (enforced by `golangci-lint`).
