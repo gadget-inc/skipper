@@ -11,8 +11,7 @@ import (
 )
 
 // newCleanCmd deletes every Kubernetes namespace skipper deploys plus
-// the local krane / paseto / log / test scratch directories. Mirrors
-// scripts/clean.ts.
+// the local krane / paseto / log / test scratch directories.
 func newCleanCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "clean",

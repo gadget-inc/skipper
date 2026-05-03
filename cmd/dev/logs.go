@@ -21,9 +21,9 @@ var logsComponentPods = map[string]string{
 
 var logsValidLevels = []string{"trace", "debug", "info", "warn", "error"}
 
-// newLogsCmd wraps stern with the same flag surface as scripts/logs.ts:
-// component selectors, level filtering with --errors shortcut, time
-// windows, follow / tail control, and grep include / exclude patterns.
+// newLogsCmd wraps stern with: component selectors, level filtering
+// with --errors shortcut, time windows, follow / tail control, and
+// grep include / exclude patterns.
 func newLogsCmd() *cobra.Command {
 	var (
 		namespace string

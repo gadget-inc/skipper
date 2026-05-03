@@ -22,8 +22,8 @@ direnv exec . dev tests go -short ./...               # Run Go tests without Kub
 direnv exec . dev tests go -v ./internal/controller/... # Run specific package tests
 direnv exec . dev tests e2e                           # Run e2e tests
 direnv exec . dev tests all                           # Run all Go tests (not e2e)
-direnv exec . dev lint                            # Run golangci-lint, oxfmt, oxlint
-direnv exec . dev fmt                             # Auto-fix formatting
+direnv exec . dev lint                            # Run kube-lint and golangci-lint
+direnv exec . dev fmt                             # Auto-fix formatting (golangci-lint fmt)
 direnv exec . dev generate                        # Regenerate protobuf Go code from .proto files
 direnv exec . dev logs                            # Show recent logs and exit
 direnv exec . dev logs -f                         # Stream logs continuously (follow)
@@ -57,7 +57,7 @@ First-time setup (fixtures and metrics-server still run in K8s):
 direnv exec . dev deploy --only=fixtures,metrics-server
 ```
 
-`dev up` runs controller, router, Tailwind, and the docs site as local processes. Local endpoints:
+`dev up` runs controller, router, and the docs site as local processes. Local endpoints:
 
 - Controller gRPC: `127.0.0.1:50051`
 - Web UI: `http://127.0.0.1:8080`

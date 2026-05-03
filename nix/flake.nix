@@ -57,8 +57,6 @@
           };
           kube-linter = pkgs.kube-linter;
           kubectl = pkgs.kubectl;
-          nodejs = pkgs.nodejs_24;
-          pnpm = pkgs.pnpm.override { nodejs = flake.packages.nodejs; };
           stern = pkgs.stern;
           yamllint = pkgs.yamllint;
           benchstat = pkgs.buildGoModule {

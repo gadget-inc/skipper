@@ -9,9 +9,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newBuildCmd ports scripts/build.ts: docker buildx bake for the
-// controller / router targets, docker buildx build for the fixture
-// container, and an optional `kind load` step for CI.
+// newBuildCmd builds the controller / router / fixture container
+// images: docker buildx bake for the controller / router targets,
+// docker buildx build for the fixture container, and an optional
+// `kind load` step for CI.
 func newBuildCmd() *cobra.Command {
 	var (
 		registry   string
@@ -143,8 +144,7 @@ func kindLoadImage(ctx context.Context, name, registry, tag string, build bool) 
 }
 
 // expandSkipperAlias rewrites the comma-separated --only string,
-// promoting "skipper" into "controller,router" the same way
-// scripts/_utils.ts does.
+// promoting "skipper" into "controller,router".
 func expandSkipperAlias(only string) map[string]bool {
 	out := map[string]bool{}
 	for _, token := range strings.Split(only, ",") {

@@ -49,10 +49,9 @@ func newTestsCmd() *cobra.Command {
 	return cmd
 }
 
-// runGoTests builds the gotestsum invocation that scripts/tests.ts ran:
-// piping through tee to tmp/logs/tests.log, defaulting to ./... when no
-// path is supplied, and adding -count=1, -race, and a follow-up
-// Allocations pass in CI.
+// runGoTests builds the gotestsum invocation: piping through tee to
+// tmp/logs/tests.log, defaulting to ./... when no path is supplied,
+// and adding -count=1, -race, and a follow-up Allocations pass in CI.
 func runGoTests(ctx context.Context, args []string) error {
 	logsDir := filepath.Join(repoRoot(), "tmp", "logs")
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {

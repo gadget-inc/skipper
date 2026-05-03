@@ -1,7 +1,6 @@
-// Package dockerimg wraps the docker shellouts that scripts/_utils.ts
-// exposed for the dev tooling: querying the local Docker daemon for the
-// OS / architecture it builds for, and computing the project's
-// per-commit image tag.
+// Package dockerimg wraps docker shellouts for the dev tooling:
+// querying the local Docker daemon for the OS / architecture it builds
+// for, and computing the project's per-commit image tag.
 package dockerimg
 
 import (

@@ -5,8 +5,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newGenerateCmd regenerates the protobuf Go code via buf, mirroring
-// scripts/generate.ts.
+// newGenerateCmd regenerates the protobuf Go code via buf.
 func newGenerateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "generate",
