@@ -50,20 +50,8 @@ var forbiddenTokensAllowlist = []forbiddenTokensAllowEntry{
 	// internal/dev/watcher/watcher.go SkipDir case -- defensive safety
 	// net for stray Node trees. Kept indefinitely.
 	{File: "internal/dev/watcher/watcher.go", Pattern: `node_modules`},
-	// internal/web/testserver_test.go references SKIPPER_PLAYWRIGHT.
-	// drop in phase 8 (file is deleted there).
-	{File: "internal/web/testserver_test.go", Pattern: `SKIPPER_PLAYWRIGHT`},
 	// The doclint package's own test fixtures.
 	{File: "internal/dev/doclint/", Pattern: ``},
-	// .claude/rules/docs.md MDX-Conventions section -- drop in phase 8
-	// (wholesale rewrite).
-	{File: ".claude/rules/docs.md", Pattern: ``},
-	// .claude/rules/docs-styling.md Starlight cascade architecture --
-	// drop in phase 8 (wholesale rewrite).
-	{File: ".claude/rules/docs-styling.md", Pattern: ``},
-	// .claude/skills/doc-comments/* references MDX path mapping and
-	// astro.config.mjs zone -- drop in phase 8 (rewrite).
-	{File: ".claude/skills/doc-comments/", Pattern: ``},
 }
 
 type forbiddenTokensRule struct{}

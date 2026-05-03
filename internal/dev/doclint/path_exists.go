@@ -24,12 +24,7 @@ type pathExistsAllowEntry struct {
 	Pattern string
 }
 
-var pathExistsAllowlist = []pathExistsAllowEntry{
-	// drop in phase 8 -- wholesale rewrites land there.
-	{File: ".claude/rules/docs.md", Pattern: ``},
-	{File: ".claude/rules/docs-styling.md", Pattern: ``},
-	{File: ".claude/skills/doc-comments/", Pattern: ``},
-}
+var pathExistsAllowlist = []pathExistsAllowEntry{}
 
 func (pathExistsRule) Name() string    { return "path-exists" }
 func (pathExistsRule) Globs() []string { return []string{"**/*.md"} }
