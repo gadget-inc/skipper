@@ -21,9 +21,8 @@ direnv exec . dev tests go ./...                      # Run all Go tests
 direnv exec . dev tests go -short ./...               # Run Go tests without Kubernetes (skips integration tests)
 direnv exec . dev tests go -v ./internal/controller/... # Run specific package tests
 direnv exec . dev tests docs                          # Run docs tests
-direnv exec . dev tests scripts                       # Run script tests (vitest)
 direnv exec . dev tests e2e                           # Run e2e tests
-direnv exec . dev tests all                           # Run go + docs + scripts (not e2e)
+direnv exec . dev tests all                           # Run go + docs (not e2e)
 direnv exec . dev lint                            # Run golangci-lint, oxfmt, oxlint
 direnv exec . dev fmt                             # Auto-fix formatting
 direnv exec . dev generate                        # Regenerate protobuf Go code from .proto files
@@ -35,21 +34,21 @@ direnv exec . dev docs                            # Start docs dev server
 direnv exec . dev docs build                      # Build docs site
 direnv exec . dev docs preview                    # Preview built docs
 direnv exec . dev clean                           # Delete all Kubernetes resources
-direnv exec . profile fetch                       # Fetch heap profile from local controller
-direnv exec . profile fetch -t cpu -p             # Fetch CPU profile from production
-direnv exec . profile fetch -t cpu -p <pod>       # Fetch from a specific production pod
-direnv exec . profile fetch -t cpu -p --spread    # CPU profiles from all production pods
-direnv exec . profile open <file>                 # Open a saved profile in browser
-direnv exec . profile merge                       # Merge CPU profiles into default.pgo
-direnv exec . profile merge --clean               # Merge and remove source profiles
-direnv exec . profile merge --dry-run             # Preview merge without writing
-direnv exec . profile analyze --pgo               # Top hotspots in committed PGO profile
-direnv exec . profile analyze --pgo --cum         # Sort by cumulative time
-direnv exec . profile analyze --pgo -c router     # Analyze router PGO profile
-direnv exec . profile analyze --pgo --mode=peek -f Hash  # Callers/callees of Hash
-direnv exec . profile analyze --pgo --mode=source -f Hash # Source-annotated view
-direnv exec . profile analyze <file>              # Analyze any .pb.gz profile
-direnv exec . profile analyze --mode=diff --diff-base=before.pb.gz after.pb.gz  # Compare profiles
+direnv exec . dev profile fetch                       # Fetch heap profile from local controller
+direnv exec . dev profile fetch -t cpu -p             # Fetch CPU profile from production
+direnv exec . dev profile fetch -t cpu -p <pod>       # Fetch from a specific production pod
+direnv exec . dev profile fetch -t cpu -p --spread    # CPU profiles from all production pods
+direnv exec . dev profile open <file>                 # Open a saved profile in browser
+direnv exec . dev profile merge                       # Merge CPU profiles into default.pgo
+direnv exec . dev profile merge --clean               # Merge and remove source profiles
+direnv exec . dev profile merge --dry-run             # Preview merge without writing
+direnv exec . dev profile analyze --pgo               # Top hotspots in committed PGO profile
+direnv exec . dev profile analyze --pgo --cum         # Sort by cumulative time
+direnv exec . dev profile analyze --pgo -c router     # Analyze router PGO profile
+direnv exec . dev profile analyze --pgo --mode=peek -f Hash  # Callers/callees of Hash
+direnv exec . dev profile analyze --pgo --mode=source -f Hash # Source-annotated view
+direnv exec . dev profile analyze <file>              # Analyze any .pb.gz profile
+direnv exec . dev profile analyze --mode=diff --diff-base=before.pb.gz after.pb.gz  # Compare profiles
 ```
 
 ## Local Development

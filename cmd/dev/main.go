@@ -45,5 +45,6 @@ func newRoot() *cobra.Command {
 	root.AddCommand(newKubeLintCmd())
 	root.AddCommand(newDeployCmd())
 	root.AddCommand(newFixtureCmd())
+	root.AddCommand(newProfileCmd())
 	return root
 }

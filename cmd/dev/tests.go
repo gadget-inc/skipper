@@ -14,11 +14,10 @@ import (
 )
 
 // newTestsCmd dispatches the project's test runners. The Go suite goes
-// through gotestsum so the output matches the legacy scripts/tests.ts;
-// docs and scripts use pnpm filters; e2e is a chromedp Go suite.
+// through gotestsum; docs uses pnpm filter; e2e is a chromedp Go suite.
 func newTestsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "tests <go|docs|scripts|e2e|all> [args...]",
+		Use:   "tests <go|docs|e2e|all> [args...]",
 		Short: "Run test suites",
 	}
 
@@ -38,14 +37,6 @@ func newTestsCmd() *cobra.Command {
 			return exec.Run(cmd.Context(), "pnpm", append([]string{"--filter", "docs", "test"}, args...))
 		},
 	}
-	scriptsCmd := &cobra.Command{
-		Use:                "scripts [args...]",
-		Short:              "Run scripts tests (vitest)",
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return exec.Run(cmd.Context(), "pnpm", append([]string{"--filter", "scripts", "test"}, args...))
-		},
-	}
 	e2eCmd := &cobra.Command{
 		Use:                "e2e [args...]",
 		Short:              "Run the chromedp e2e suite",
@@ -56,20 +47,17 @@ func newTestsCmd() *cobra.Command {
 	}
 	allCmd := &cobra.Command{
 		Use:   "all",
-		Short: "Run go + docs + scripts (not e2e)",
+		Short: "Run go + docs (not e2e)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			if err := runGoTests(ctx, nil); err != nil {
 				return err
 			}
-			if err := exec.Run(ctx, "pnpm", []string{"--filter", "docs", "test"}); err != nil {
-				return err
-			}
-			return exec.Run(ctx, "pnpm", []string{"--filter", "scripts", "test"})
+			return exec.Run(ctx, "pnpm", []string{"--filter", "docs", "test"})
 		},
 	}
 
-	cmd.AddCommand(goCmd, docsCmd, scriptsCmd, e2eCmd, allCmd)
+	cmd.AddCommand(goCmd, docsCmd, e2eCmd, allCmd)
 	return cmd
 }
 

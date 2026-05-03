@@ -1,0 +1,11 @@
+File: controller
+Build ID: 12fd1d6ec5c7e5746ea8eaf742acbd94d1af0ba3
+Type: cpu
+Duration: 90s, Total samples = 7.75s ( 8.61%)
+Showing nodes accounting for 0.03s, 0.39% of 7.75s total
+Dropped 488 nodes (cum <= 0.04s)
+Showing top 3 nodes out of 327
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      3.21s 41.42%  github.com/gadget-inc/skipper/internal/timer.Loop (inline)
+         0     0%     0%      2.69s 34.71%  github.com/gadget-inc/skipper/internal/controller.(*Supervisor).loop
+     0.03s  0.39%  0.39%      2.53s 32.65%  github.com/gadget-inc/skipper/internal/controller.(*Supervisor).converge

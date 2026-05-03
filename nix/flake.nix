@@ -76,7 +76,6 @@
 
           # scripts
           dev = pkgs.writeShellScriptBin "dev" '' cd "$WORKSPACE_DIR" && go run ./cmd/dev "$@" '';
-          profile = pkgs.writeShellScriptBin "profile" '' "$WORKSPACE_DIR"/scripts/profile.ts "$@" '';
         };
 
         devShell = pkgs.mkShell {
