@@ -1,4 +1,4 @@
-package main
+package fixture
 
 import (
 	"context"
@@ -59,7 +59,7 @@ func newFixtureEnv(t *testing.T) *fixtureEnv {
 func startFixtureServer(t *testing.T, env *fixtureEnv) *httptest.Server {
 	t.Helper()
 
-	srv, err := newServer(env.publicKey, env.tokenPath)
+	srv, err := New(env.publicKey, env.tokenPath)
 	assert.NilError(t, err)
 
 	ts := httptest.NewServer(srv.Handler())
@@ -91,7 +91,7 @@ func TestParsePublicKeyPEMAcceptsSPKI(t *testing.T) {
 	t.Parallel()
 
 	env := newFixtureEnv(t)
-	parsed, err := parsePublicKeyPEM([]byte(env.publicKeyPEM))
+	parsed, err := ParsePublicKeyPEM([]byte(env.publicKeyPEM))
 	assert.NilError(t, err)
 
 	token := env.mintToken(t, "tenant-1")
@@ -103,7 +103,7 @@ func TestParsePublicKeyPEMAcceptsSPKI(t *testing.T) {
 func TestParsePublicKeyPEMRejectsGarbage(t *testing.T) {
 	t.Parallel()
 
-	_, err := parsePublicKeyPEM([]byte("not a pem block"))
+	_, err := ParsePublicKeyPEM([]byte("not a pem block"))
 	assert.ErrorContains(t, err, "no PEM block")
 }
 

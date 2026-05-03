@@ -1,8 +1,16 @@
-package main
+// Package fixture is the in-cluster HTTP+WebSocket service skipper assigns
+// pods to during integration testing. It exposes the assignment endpoint,
+// the echo handler, and a small ed25519/PASETO public-key parser used to
+// verify assignment tokens.
+package fixture
 
 import (
+	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -17,11 +25,11 @@ import (
 	"github.com/gadget-inc/skipper/internal/skipper"
 )
 
-// server is the in-cluster fixture HTTP+WebSocket service. A pod hosts
-// exactly one server; once /__skipper/assign succeeds it commits to that
+// Server is the in-cluster fixture HTTP+WebSocket service. A pod hosts
+// exactly one Server; once /__skipper/assign succeeds it commits to that
 // assignment for its lifetime, and the controller terminates the pod
 // when releasing it.
-type server struct {
+type Server struct {
 	publicKey paseto.V2AsymmetricPublicKey
 	tokenPath string
 
@@ -29,11 +37,11 @@ type server struct {
 	assigned bool
 }
 
-// newServer constructs a server. If tokenPath already exists on disk the
-// server boots in the assigned state — pods that restart after a successful
+// New constructs a Server. If tokenPath already exists on disk the Server
+// boots in the assigned state -- pods that restart after a successful
 // assign keep their identity.
-func newServer(publicKey paseto.V2AsymmetricPublicKey, tokenPath string) (*server, error) {
-	s := &server{publicKey: publicKey, tokenPath: tokenPath}
+func New(publicKey paseto.V2AsymmetricPublicKey, tokenPath string) (*Server, error) {
+	s := &Server{publicKey: publicKey, tokenPath: tokenPath}
 	if _, err := os.Stat(tokenPath); err == nil {
 		s.assigned = true
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -42,7 +50,8 @@ func newServer(publicKey paseto.V2AsymmetricPublicKey, tokenPath string) (*serve
 	return s, nil
 }
 
-func (s *server) Handler() http.Handler {
+// Handler returns the HTTP handler tree the fixture exposes.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -52,7 +61,7 @@ func (s *server) Handler() http.Handler {
 	return mux
 }
 
-func (s *server) handleEcho(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 	if isWebSocketUpgrade(r) {
 		s.handleWebSocket(w, r)
 		return
@@ -114,7 +123,7 @@ func isWebSocketUpgrade(r *http.Request) bool {
 
 func hasToken(values []string, target string) bool {
 	for _, v := range values {
-		for _, tok := range strings.Split(v, ",") {
+		for tok := range strings.SplitSeq(v, ",") {
 			if strings.EqualFold(strings.TrimSpace(tok), target) {
 				return true
 			}
@@ -123,7 +132,7 @@ func hasToken(values []string, target string) bool {
 	return false
 }
 
-func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		log.Warn(r.Context(), "websocket accept failed", key.Error.Slog(err))
@@ -145,7 +154,7 @@ func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *server) handleAssign(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -185,4 +194,22 @@ func (s *server) handleAssign(w http.ResponseWriter, r *http.Request) {
 	s.assigned = true
 	log.Info(r.Context(), "assigned")
 	w.WriteHeader(http.StatusOK)
+}
+
+// ParsePublicKeyPEM decodes an SPKI-encoded ed25519 public key from PEM
+// bytes and returns the corresponding PASETO V2 asymmetric public key.
+func ParsePublicKeyPEM(pemBytes []byte) (paseto.V2AsymmetricPublicKey, error) {
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return paseto.V2AsymmetricPublicKey{}, errors.New("no PEM block found")
+	}
+	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return paseto.V2AsymmetricPublicKey{}, fmt.Errorf("parsing PKIX public key: %w", err)
+	}
+	ed, ok := parsed.(ed25519.PublicKey)
+	if !ok {
+		return paseto.V2AsymmetricPublicKey{}, fmt.Errorf("expected ed25519 public key, got %T", parsed)
+	}
+	return paseto.NewV2AsymmetricPublicKeyFromBytes(ed)
 }

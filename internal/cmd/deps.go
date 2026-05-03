@@ -4,6 +4,8 @@ import (
 	"errors"
 	"path/filepath"
 
+	"aidanwoods.dev/go-paseto"
+	"github.com/gadget-inc/skipper/internal/cmd/fixture"
 	"github.com/gadget-inc/skipper/internal/controller"
 	"github.com/gadget-inc/skipper/internal/router"
 	"k8s.io/client-go/kubernetes"
@@ -89,4 +91,25 @@ func defaultNewControllerClient(cfg *router.Config) (controller.Client, error) {
 		host = cfg.ControllerServiceHost
 	}
 	return controller.NewClient(host, cfg.ControllerPort)
+}
+
+// FixtureDeps holds injectable dependencies for the fixture command.
+// Public-key parsing and token-path resolution route through these so tests
+// can substitute pre-built keys and per-test temp paths.
+type FixtureDeps struct {
+	// LoadPublicKey parses a PASETO V2 public key from PEM bytes.
+	// Defaults to fixture.ParsePublicKeyPEM (SPKI ed25519).
+	LoadPublicKey func(pemBytes []byte) (paseto.V2AsymmetricPublicKey, error)
+
+	// ResolveTokenPath returns the on-disk path where the fixture persists
+	// its assigned token. Defaults to the configured value.
+	ResolveTokenPath func(configured string) string
+}
+
+// DefaultFixtureDeps returns the default production dependencies.
+func DefaultFixtureDeps() *FixtureDeps {
+	return &FixtureDeps{
+		LoadPublicKey:    fixture.ParsePublicKeyPEM,
+		ResolveTokenPath: func(configured string) string { return configured },
+	}
 }
