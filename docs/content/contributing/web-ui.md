@@ -7,12 +7,12 @@ The web UI is a browser-based view of controller state — functions, tenants, i
 
 ## Running in dev mode
 
-`direnv exec . dev` starts the web UI alongside the controller, router, and docs server. Because the web UI is served by the controller, any command that starts the controller also starts the web UI:
+`dev up` starts the web UI alongside the controller, router, and docs server. Because the web UI is served by the controller, any command that starts the controller also starts the web UI:
 
 ```bash
-direnv exec . dev                          # all components (controller, router, docs)
-direnv exec . dev --only=controller        # controller only (includes web UI)
-direnv exec . dev --only=controller,router # controller + router
+dev up                          # all components (controller, router, docs)
+dev up --only=controller        # controller only (includes web UI)
+dev up --only=controller,router # controller + router
 ```
 
 ## Available routes
@@ -40,7 +40,7 @@ Each full-page route also has a corresponding `/sse/*` endpoint that streams liv
 
 ## Template live-reload
 
-When `SKIPPER_WEB_TEMPLATE_DIR` is set (done automatically by `dev`), templates are read from disk on every request instead of using the copies embedded in the binary. This means you can edit any HTML template in `internal/web/templates/` and see the result by refreshing the browser — no restart required.
+When `SKIPPER_WEB_TEMPLATE_DIR` is set (done automatically by `dev up`), templates are read from disk on every request instead of using the copies embedded in the binary. This means you can edit any HTML template in `internal/web/templates/` and see the result by refreshing the browser — no restart required.
 
 ## Static assets
 

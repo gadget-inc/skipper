@@ -10,10 +10,10 @@ Run flat and cumulative views to understand where time is spent:
 
 ```bash
 # Flat: where does the CPU actually spend time?
-profile analyze --pgo
+dev profile analyze --pgo
 
 # Cumulative: which call trees are expensive?
-profile analyze --pgo --cum
+dev profile analyze --pgo --cum
 ```
 
 For router profiles, add `-c router`.
@@ -32,10 +32,10 @@ For each candidate function, get caller/callee context and source-level attribut
 
 ```bash
 # Who calls this function, and what does it call?
-profile analyze --pgo --mode=peek -f FunctionName
+dev profile analyze --pgo --mode=peek -f FunctionName
 
 # Where exactly in the source code is time spent?
-profile analyze --pgo --mode=source -f FunctionName
+dev profile analyze --pgo --mode=source -f FunctionName
 ```
 
 ### 4. Classify the optimization opportunity

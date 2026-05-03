@@ -41,7 +41,7 @@ Apply each pending reviewer comment to the MDX source file it targets, delete th
 
 7. **Clean up**: After successfully resolving a comment, MUST delete its JSON file from `docs/tmp/comments/`. If the file is already gone (e.g., resolved by a parallel run), treat it as a no-op.
 
-8. **Verify**: Run `direnv exec . docs build` after all edits. If the build fails, check the error for the referenced file, revert only that file's edit with `git restore <file>`, and re-run the build to confirm. Restore the comment file for any reverted edit.
+8. **Verify**: Run `dev docs build` after all edits. If the build fails, check the error for the referenced file, revert only that file's edit with `git restore <file>`, and re-run the build to confirm. Restore the comment file for any reverted edit.
 
 9. **Report**: Summarize the outcome as a short bulleted list:
    - Number resolved
