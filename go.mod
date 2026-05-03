@@ -37,6 +37,7 @@ require (
 	github.com/chromedp/sysutil v1.1.0 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/fsnotify/fsnotify v1.10.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/swag/cmdutils v0.25.4 // indirect
 	github.com/go-openapi/swag/conv v0.25.4 // indirect
