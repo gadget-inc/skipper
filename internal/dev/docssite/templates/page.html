@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{ if .Title }}{{ .Title }}{{ if .SiteTitle }} - {{ .SiteTitle }}{{ end }}{{ else }}{{ .SiteTitle }}{{ end }}</title>
+{{ if .Description }}<meta name="description" content="{{ .Description }}" />{{ end }}
+<link rel="stylesheet" href="{{ .BasePath }}/style.css" />
+</head>
+<body>
+<div class="layout">
+{{ if .Sidebar }}<nav class="sidebar" aria-label="Site navigation">{{ .Sidebar }}</nav>{{ end }}
+<main class="content">
+{{ if .Title }}<h1>{{ .Title }}</h1>{{ end }}
+{{ .Body }}
+{{ if .Widgets }}{{ .Widgets }}{{ end }}
+</main>
+</div>
+{{ if .LiveReload }}<script>
+(function() {
+  var ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/__reload");
+  ws.onmessage = function() { location.reload(); };
+})();
+</script>{{ end }}
+</body>
+</html>

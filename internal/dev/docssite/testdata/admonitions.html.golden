@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admonitions - Skipper</title>
+
+<link rel="stylesheet" href="/skipper/style.css" />
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar" aria-label="Site navigation"><ul class="sidebar-top">
+  <li><a href="/skipper/">Introduction</a></li>
+</ul>
+<details class="sidebar-group" open>
+  <summary>Guides</summary>
+  <ul>
+    <li><a href="/skipper/guides/routing/">Routing</a></li>
+    <li><a href="/skipper/guides/scaling/">Scaling</a></li>
+  </ul>
+</details>
+<details class="sidebar-group" open>
+  <summary>Architecture</summary>
+  <ul>
+    <li><a href="/skipper/architecture/overview/">Overview</a></li>
+  </ul>
+</details>
+<details class="sidebar-group" open>
+  <summary>Reference</summary>
+  <ul>
+    <li><a href="/skipper/reference/api/">API</a></li>
+  </ul>
+</details>
+<details class="sidebar-group" open>
+  <summary>Contributing</summary>
+  <ul>
+    <li><a href="/skipper/contributing/workflow/">Workflow</a></li>
+  </ul>
+</details>
+</nav>
+<main class="content">
+<h1>Admonitions</h1>
+<p>Default note:</p>
+<aside class="aside aside-note" aria-label="Note">
+<p class="aside-title">Note</p>
+<section class="aside-content">
+<p>Plain note body with <code>code</code> and <strong>bold</strong>.</p>
+</section>
+</aside>
+<p>Tip:</p>
+<aside class="aside aside-tip" aria-label="Quick tip">
+<p class="aside-title">Quick tip</p>
+<section class="aside-content">
+<p>This is a tip with <a href="/guides/routing/">a link</a>.</p>
+</section>
+</aside>
+<p>Caution:</p>
+<aside class="aside aside-caution" aria-label="Caution">
+<p class="aside-title">Caution</p>
+<section class="aside-content">
+<p>Be careful — this is a warning.</p>
+</section>
+</aside>
+
+
+</main>
+</div>
+
+</body>
+</html>
