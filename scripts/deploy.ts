@@ -51,7 +51,7 @@ if (flags.values.help) {
 }
 
 if (flags.values.build) {
-  await import("./build.ts");
+  await $`go run ./cmd/dev build`;
 }
 
 // Resolve local image IDs so krane detects changes even when the tag is reused.

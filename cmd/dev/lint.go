@@ -5,15 +5,14 @@ import (
 )
 
 // newLintCmd is the read-only counterpart to fmt: it runs every checker
-// scripts/lint.ts ran. kube-lint stays a TS shellout until phase 6
-// introduces its Go port.
+// scripts/lint.ts ran.
 func newLintCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "lint",
 		Short: "Check formatting, linters, and rendered manifests",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAll(cmd.Context(), [][]string{
-				{"scripts/kube-lint.ts"},
+				{"go", "run", "./cmd/dev", "kube-lint"},
 				{"golangci-lint", "run"},
 				{"pnpm", "--dir", "docs", "exec", "astro", "sync"},
 				{"pnpm", "exec", "oxfmt", "--check", "."},

@@ -5,13 +5,15 @@
 All commands must be run with `direnv exec .`:
 
 ```bash
-direnv exec . dev up                              # Run controller, router, and Tailwind locally
-direnv exec . dev up --only=tailwind              # Tailwind CSS watcher only
+direnv exec . dev up                              # Run controller, router, and docs locally
 direnv exec . dev up --only=controller            # Controller only
-direnv exec . dev up --only=controller,tailwind   # Controller + Tailwind (no router)
+direnv exec . dev up --only=controller,router     # Controller + router (no docs)
 direnv exec . dev up --only=docs                  # Docs dev server only
 direnv exec . deploy                              # Build and deploy to Kubernetes (Orbstack)
 direnv exec . deploy --only=skipper               # Deploy only Skipper
+direnv exec . dev build                           # Build controller, router, and fixture images
+direnv exec . dev build --only=fixtures           # Build only the fixture image
+direnv exec . dev kube-lint                       # Render template.yaml.erb and lint each binding configuration
 direnv exec . dev tests go ./...                      # Run all Go tests
 direnv exec . dev tests go -short ./...               # Run Go tests without Kubernetes (skips integration tests)
 direnv exec . dev tests go -v ./internal/controller/... # Run specific package tests

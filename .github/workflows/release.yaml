@@ -53,11 +53,11 @@ jobs:
 
       - name: Build and push ${{ matrix.platform }} image to Google Artifact Registry
         run: |
-          build \
+          dev build \
             --only=skipper \
             --registry=us-central1-docker.pkg.dev/gadget-core-production/core-production \
             --push \
-            --no-kind
+            --kind=false
 
   merge-manifests:
     needs: build

@@ -75,11 +75,9 @@
           };
 
           # scripts
-          build = pkgs.writeShellScriptBin "build" '' "$WORKSPACE_DIR"/scripts/build.ts "$@" '';
           deploy = pkgs.writeShellScriptBin "deploy" '' "$WORKSPACE_DIR"/scripts/deploy.ts "$@" '';
           dev = pkgs.writeShellScriptBin "dev" '' cd "$WORKSPACE_DIR" && go run ./cmd/dev "$@" '';
           fixture = pkgs.writeShellScriptBin "fixture" '' "$WORKSPACE_DIR"/scripts/fixture.ts "$@" '';
-          kube-lint = pkgs.writeShellScriptBin "kube-lint" '' "$WORKSPACE_DIR"/scripts/kube-lint.ts "$@" '';
           profile = pkgs.writeShellScriptBin "profile" '' "$WORKSPACE_DIR"/scripts/profile.ts "$@" '';
         };
 
