@@ -107,8 +107,8 @@ Use the same `--seconds` value for all profiles in a collection round. Different
 4. **Verify** the merged profiles:
 
    ```bash
-   direnv exec . go tool pprof -top cmd/controller/default.pgo | head -20
-   direnv exec . go tool pprof -top cmd/router/default.pgo | head -20
+   go tool pprof -top cmd/controller/default.pgo | head -20
+   go tool pprof -top cmd/router/default.pgo | head -20
    ```
 
    Check that `Type: cpu`, Duration is roughly `--seconds x pod count`, and the top functions include application or library code (not only `runtime.*`).
