@@ -1,7 +1,6 @@
 ---
 paths:
-  - "docs/**/*.css"
-  - "docs/**/*.astro"
+  - "docs/content/**/*.css"
 ---
 
 # Docs Styling — GitHub Dark Theme (Starlight)

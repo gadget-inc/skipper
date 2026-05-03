@@ -1,7 +1,6 @@
 ---
 paths:
   - "internal/web/templates/**/*.html"
-  - "e2e/**/*.ts"
 ---
 
 # Datastar Template Conventions
