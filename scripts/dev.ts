@@ -16,7 +16,7 @@ $.cwd = abs();
 const flags = parseArgs({
   args: process.argv.slice(2),
   options: {
-    only: { type: "string", default: "controller,router,tailwind,docs" },
+    only: { type: "string", default: "controller,router,docs" },
     help: { type: "boolean", default: false, short: "h" },
   },
 });
@@ -29,7 +29,7 @@ if (flags.values.help) {
       dev [flags]
 
     Flags:
-          --only <string>  Components to run (default: controller,router,tailwind,docs)
+          --only <string>  Components to run (default: controller,router,docs)
       -h, --help           Show this help message
 
     Local endpoints:
@@ -110,12 +110,6 @@ if (components.has("router")) {
     SKIPPER_LOG_FILE_FORMAT: "json",
   };
   processes.push(watchAndRun("router", () => $({ env })`go run ./cmd/router`, goWatcher, ac.signal));
-}
-
-if (components.has("tailwind")) {
-  const input = abs("internal/web/static/input.css");
-  const output = abs("internal/web/static/css/output.css");
-  processes.push($({ signal: ac.signal })`pnpm exec tailwindcss -i ${input} -o ${output} --watch`.exitCode.catch(() => {}));
 }
 
 if (components.has("docs")) {

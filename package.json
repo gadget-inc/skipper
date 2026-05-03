@@ -13,12 +13,10 @@
     "@opentelemetry/sdk-trace-node": "catalog:"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "catalog:",
     "@types/node": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
     "oxlint-tsgolint": "catalog:",
-    "tailwindcss": "catalog:",
     "typescript": "catalog:"
   }
 }

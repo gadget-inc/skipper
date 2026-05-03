@@ -93,7 +93,7 @@ describe("createGoWatcher", () => {
     watcher.subscribe(subscriber);
 
     triggerFileChange("scripts/dev.ts");
-    triggerFileChange("internal/web/static/input.css");
+    triggerFileChange("internal/web/static/css/output.css");
     triggerFileChange("package.json");
     triggerFileChange("README.md");
     vi.advanceTimersByTime(200);

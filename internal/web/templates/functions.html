@@ -8,7 +8,7 @@
   </div>
   <input
     type="text"
-    class="bg-bg border border-border rounded-md text-fg px-4 py-2.5 text-[13px] font-mono focus:outline-none focus:border-accent w-full max-w-sm mb-4"
+    class="search-input"
     placeholder="Search functions…"
     data-bind="fnSearch"
     data-on:keyup__debounce.300ms="syncParams({search: $fnSearch, sort: $fnSort, dir: $fnSortDir}); @get('/sse/functions')"
@@ -16,31 +16,31 @@
   <div id="functions-table" class="table-wrap">{{template "functions-table" .}}</div>
 </div>
 {{end}} {{define "functions-table"}} {{if not .Supervisors}}
-<div class="text-center py-8 text-fg-muted">No functions</div>
+<div class="empty-state">No functions</div>
 {{else}}
 <table>
   <thead>
     <tr>
       <th
-        class="cursor-pointer select-none"
+        class="sortable"
         data-on:click="$fnSort = 'deployment'; $fnSortDir = $fnSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $fnSearch, sort: $fnSort, dir: $fnSortDir}); $get('/sse/functions')"
       >
         Deployment
       </th>
       <th
-        class="cursor-pointer select-none"
+        class="sortable"
         data-on:click="$fnSort = 'namespace'; $fnSortDir = $fnSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $fnSearch, sort: $fnSort, dir: $fnSortDir}); $get('/sse/functions')"
       >
         Namespace
       </th>
       <th
-        class="cursor-pointer select-none"
+        class="sortable"
         data-on:click="$fnSort = 'tenant'; $fnSortDir = $fnSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $fnSearch, sort: $fnSort, dir: $fnSortDir}); $get('/sse/functions')"
       >
         Tenant
       </th>
       <th
-        class="cursor-pointer select-none"
+        class="sortable"
         data-on:click="$fnSort = 'instances'; $fnSortDir = $fnSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $fnSearch, sort: $fnSort, dir: $fnSortDir}); $get('/sse/functions')"
       >
         Instances
@@ -56,12 +56,12 @@
     <tr>
       <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
       <td>{{$fn.GetNamespace}}</td>
-      <td class="font-mono">{{$fn.GetTenant}}</td>
+      <td class="mono">{{$fn.GetTenant}}</td>
       <td class="tabular">{{len .GetInstances}}</td>
       <td class="tabular">{{if $scale}}{{$scale.GetMinInstances}}–{{$scale.GetMaxInstances}}{{else}}—{{end}}</td>
       <td class="tabular">{{len .GetRouterHeartbeats}}</td>
       <td class="tabular">—</td>
-      <td class="font-mono">
+      <td class="mono">
         <a href="/controllers/{{pathEscape .GetResponsibleControllerIp}}">{{.GetResponsibleControllerIp}}</a>
       </td>
     </tr>

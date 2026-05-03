@@ -7,12 +7,12 @@ The web UI is a browser-based view of controller state — functions, tenants, i
 
 ## Running in dev mode
 
-`direnv exec . dev` starts the web UI alongside the controller, router, and Tailwind watcher. Because the web UI is served by the controller, any command that starts the controller also starts the web UI:
+`direnv exec . dev` starts the web UI alongside the controller, router, and docs server. Because the web UI is served by the controller, any command that starts the controller also starts the web UI:
 
 ```bash
-direnv exec . dev                          # all components (controller, router, tailwind, docs)
+direnv exec . dev                          # all components (controller, router, docs)
 direnv exec . dev --only=controller        # controller only (includes web UI)
-direnv exec . dev --only=controller,tailwind  # controller + tailwind (for CSS changes)
+direnv exec . dev --only=controller,router # controller + router
 ```
 
 ## Available routes
@@ -42,12 +42,6 @@ Each full-page route also has a corresponding `/sse/*` endpoint that streams liv
 
 When `SKIPPER_WEB_TEMPLATE_DIR` is set (done automatically by `dev`), templates are read from disk on every request instead of using the copies embedded in the binary. This means you can edit any HTML template in `internal/web/templates/` and see the result by refreshing the browser — no restart required.
 
-## Static assets and Tailwind CSS
+## Static assets
 
-CSS is compiled from `internal/web/static/input.css` via the Tailwind watcher:
-
-```bash
-direnv exec . dev --only=tailwind   # run the Tailwind watcher in isolation
-```
-
-The watcher reads `input.css`, processes Tailwind directives against the template files, and writes the compiled output to `internal/web/static/css/output.css`. In dev mode the controller serves static files from disk so changes appear on refresh. In production the compiled CSS is embedded in the binary at build time.
+The stylesheet at `internal/web/static/css/output.css` is hand-authored vanilla CSS — there is no build step. Edit it directly and refresh the browser; in dev mode the controller serves static files from disk. In production the CSS is embedded in the binary at build time.

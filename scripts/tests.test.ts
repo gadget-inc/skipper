@@ -204,12 +204,12 @@ describe("runScripts", () => {
 });
 
 describe("runE2e", () => {
-  it("passes args through to pnpm filter", async () => {
+  it("invokes go test on the e2e package with passthrough args", async () => {
     await runE2e(["--watch"]);
 
     expect(mocks.state.nothrowCalls.length).toBeGreaterThanOrEqual(1);
     const cmd = shellCommand(mocks.state.nothrowCalls[0]!);
-    expect(cmd).toContain("--filter e2e test");
+    expect(cmd).toContain("go test ./e2e/...");
     expect(cmd).toContain("--watch");
   });
 });

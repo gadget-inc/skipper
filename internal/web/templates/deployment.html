@@ -1,5 +1,5 @@
 {{define "content"}} {{if not .Found}}
-<div class="text-center py-8 text-fg-muted">Deployment not found: {{.Name}}</div>
+<div class="empty-state">Deployment not found: {{.Name}}</div>
 {{else}}
 <div data-on-interval__duration.5000ms="@get('/sse/deployment/{{pathEscape .Name}}')">
   <div class="page-header">
@@ -53,7 +53,7 @@
             <td>{{$fn.GetTenant}}</td>
             <td class="tabular">{{len .GetInstances}}</td>
             <td class="tabular">{{if $scale}}{{$scale.GetMinInstances}}–{{$scale.GetMaxInstances}}{{else}}—{{end}}</td>
-            <td class="font-mono">
+            <td class="mono">
               <a href="/controllers/{{pathEscape .GetResponsibleControllerIp}}">{{.GetResponsibleControllerIp}}</a>
             </td>
           </tr>
