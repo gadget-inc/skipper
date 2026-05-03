@@ -13,6 +13,7 @@ func newLintCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runAll(cmd.Context(), [][]string{
 				{"go", "run", "./cmd/dev", "kube-lint"},
+				{"go", "run", "./cmd/dev", "lint-docs"},
 				{"golangci-lint", "run"},
 			})
 		},
