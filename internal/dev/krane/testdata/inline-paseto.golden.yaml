@@ -1,0 +1,395 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lint-controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lint-controller
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lint-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lint-controller
+subjects:
+  - kind: ServiceAccount
+    name: lint-controller
+    namespace: lint
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lint-controller
+  labels:
+    app.kubernetes.io/name: skipper
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: lint
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skipper
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/instance: lint
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skipper
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: lint
+    spec:
+      serviceAccountName: lint-controller
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: controller
+          image: skipper-controller:v1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 20"]
+          ports:
+            - name: pprof
+              containerPort: 6060
+            - name: grpc
+              containerPort: 50051
+            - name: web
+              containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+          env:
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: K8S_NAMESPACE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(K8S_POD_NAME),k8s.pod.ip=$(K8S_POD_IP),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME)
+            - name: SKIPPER_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SKIPPER_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: SKIPPER_LOG_LEVEL
+              value: "info"
+            - name: SKIPPER_LOG_FORMAT
+              value: "text"
+            - name: SKIPPER_FUNCTION_NAMESPACES
+              value: "default"
+            - name: SKIPPER_SKIP_FORBIDDEN_NAMESPACES
+              value: "false"
+            - name: SKIPPER_SHUTDOWN_TIMEOUT
+              value: "5s"
+            - name: SKIPPER_PORT
+              value: "50051"
+            - name: SKIPPER_PASETO_PRIVATE_KEY
+              value: "k4.secret.fake-paseto-key-for-linting"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+          startupProbe:
+            grpc:
+              port: 50051
+            failureThreshold: 3
+            initialDelaySeconds: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            grpc:
+              port: 50051
+            failureThreshold: 2
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            grpc:
+              port: 50051
+            failureThreshold: 1
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: skipper
+                    app.kubernetes.io/component: controller
+                    app.kubernetes.io/instance: lint
+      topologySpreadConstraints:
+        - topologyKey: kubernetes.io/hostname
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: skipper
+              app.kubernetes.io/component: controller
+              app.kubernetes.io/instance: lint
+        - topologyKey: topology.kubernetes.io/zone
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: skipper
+              app.kubernetes.io/component: controller
+              app.kubernetes.io/instance: lint
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lint-controller
+spec:
+  selector:
+    app.kubernetes.io/name: skipper
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: lint
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      protocol: TCP
+    - name: web
+      port: 8080
+      targetPort: web
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lint-controller-headless
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: skipper
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: lint
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: lint-controller-pdb
+spec:
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skipper
+      app.kubernetes.io/component: controller
+      app.kubernetes.io/instance: lint
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lint-router
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lint-router
+  labels:
+    app.kubernetes.io/name: skipper
+    app.kubernetes.io/component: router
+    app.kubernetes.io/instance: lint
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skipper
+      app.kubernetes.io/component: router
+      app.kubernetes.io/instance: lint
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skipper
+        app.kubernetes.io/component: router
+        app.kubernetes.io/instance: lint
+    spec:
+      serviceAccountName: lint-router
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: router
+          image: skipper-router:v1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 20"]
+          ports:
+            - name: pprof
+              containerPort: 6060
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          env:
+            - name: K8S_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: K8S_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: K8S_NAMESPACE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: K8S_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.pod.name=$(K8S_POD_NAME),k8s.pod.ip=$(K8S_POD_IP),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME)
+            - name: SKIPPER_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: SKIPPER_LOG_LEVEL
+              value: "info"
+            - name: SKIPPER_LOG_FORMAT
+              value: "text"
+            - name: SKIPPER_CONTROLLER_SERVICE_HOST
+              value: "lint-controller.lint.svc.cluster.local"
+            - name: SKIPPER_CONTROLLER_PORT
+              value: "50051"
+            - name: SKIPPER_CONTROLLER_HEADLESS_SERVICE_HOST
+              value: "lint-controller-headless.lint.svc.cluster.local"
+            - name: SKIPPER_SHUTDOWN_TIMEOUT
+              value: "5s"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              memory: "256Mi"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 3
+            initialDelaySeconds: 3
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 2
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 1
+            periodSeconds: 1
+            successThreshold: 1
+            timeoutSeconds: 1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: skipper
+                    app.kubernetes.io/component: router
+                    app.kubernetes.io/instance: lint
+      topologySpreadConstraints:
+        - topologyKey: kubernetes.io/hostname
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: skipper
+              app.kubernetes.io/component: router
+              app.kubernetes.io/instance: lint
+        - topologyKey: topology.kubernetes.io/zone
+          maxSkew: 1
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: skipper
+              app.kubernetes.io/component: router
+              app.kubernetes.io/instance: lint
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lint-router
+spec:
+  selector:
+    app.kubernetes.io/name: skipper
+    app.kubernetes.io/component: router
+    app.kubernetes.io/instance: lint
+  ports:
+    - port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: lint-router-pdb
+spec:
+  maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skipper
+      app.kubernetes.io/component: router
+      app.kubernetes.io/instance: lint

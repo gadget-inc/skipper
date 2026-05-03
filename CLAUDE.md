@@ -9,8 +9,11 @@ direnv exec . dev up                              # Run controller, router, and 
 direnv exec . dev up --only=controller            # Controller only
 direnv exec . dev up --only=controller,router     # Controller + router (no docs)
 direnv exec . dev up --only=docs                  # Docs dev server only
-direnv exec . deploy                              # Build and deploy to Kubernetes (Orbstack)
-direnv exec . deploy --only=skipper               # Deploy only Skipper
+direnv exec . dev deploy                          # Build and deploy to Kubernetes (Orbstack)
+direnv exec . dev deploy --only=skipper           # Deploy only Skipper
+direnv exec . dev fixture request                 # Send an HTTP request to the fixture
+direnv exec . dev fixture websocket               # Open a WebSocket to the fixture
+direnv exec . dev fixture load -c 10 -n 1000      # Load test the fixture
 direnv exec . dev build                           # Build controller, router, and fixture images
 direnv exec . dev build --only=fixtures           # Build only the fixture image
 direnv exec . dev kube-lint                       # Render template.yaml.erb and lint each binding configuration
@@ -54,7 +57,7 @@ direnv exec . profile analyze --mode=diff --diff-base=before.pb.gz after.pb.gz  
 First-time setup (fixtures and metrics-server still run in K8s):
 
 ```bash
-direnv exec . deploy --only=fixtures,metrics-server
+direnv exec . dev deploy --only=fixtures,metrics-server
 ```
 
 `dev up` runs controller, router, Tailwind, and the docs site as local processes. Local endpoints:

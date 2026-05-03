@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -15,7 +14,7 @@ import (
 
 	osexec "os/exec"
 
-	"github.com/gadget-inc/skipper/internal/dev/exec"
+	"github.com/gadget-inc/skipper/internal/dev/krane"
 	"github.com/spf13/cobra"
 )
 
@@ -154,8 +153,8 @@ func affinityCombined(component string) map[string]any {
 }
 
 // newKubeLintCmd renders template.yaml.erb across the binding-config
-// corpus and runs yamllint + kube-linter on each rendered manifest.
-// Phase 7 swaps the raw `krane render` shellouts for internal/dev/krane.
+// corpus via internal/dev/krane and runs yamllint + kube-linter on
+// each rendered manifest.
 func newKubeLintCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "kube-lint",
@@ -187,14 +186,14 @@ func runKubeLint(ctx context.Context) error {
 		maps.Copy(merged, kubeLintBaseBindings)
 		maps.Copy(merged, cfg.bindings)
 
-		bindingsJSON, err := json.Marshal(merged)
+		rendered, err := krane.RenderManifest(ctx, templatePath, merged)
 		if err != nil {
-			return fmt.Errorf("marshal bindings %s: %w", cfg.name, err)
+			return fmt.Errorf("krane render %s: %w", cfg.name, err)
 		}
 
 		manifest := filepath.Join(configDir, "template.yaml")
-		if err := kraneRenderTo(ctx, templatePath, string(bindingsJSON), manifest); err != nil {
-			return fmt.Errorf("krane render %s: %w", cfg.name, err)
+		if err := os.WriteFile(manifest, rendered, 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", manifest, err)
 		}
 
 		if err := runYamllint(ctx, yamllintConfig, manifest); err != nil {
@@ -211,19 +210,6 @@ func runKubeLint(ctx context.Context) error {
 
 	fmt.Printf("✓ %d template configurations linted successfully\n", len(kubeLintConfigs))
 	return nil
-}
-
-func kraneRenderTo(ctx context.Context, templatePath, bindings, outputFile string) error {
-	out, err := os.Create(outputFile)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	return exec.Run(ctx, "krane", []string{
-		"render",
-		"--filenames=" + templatePath,
-		"--bindings=" + bindings,
-	}, exec.Stdout(out), exec.Stderr(io.Discard))
 }
 
 var yamllintParsableLine = regexp.MustCompile(`^(.+?:\d+:\d+): (\[error\]) (.+)$`)
@@ -282,7 +268,6 @@ func runKubeLinter(ctx context.Context, root, manifest string) error {
 	}
 	var report kubeLinterReport
 	if jsonErr := json.Unmarshal(stdout.Bytes(), &report); jsonErr != nil {
-		// Fallback: print raw output.
 		raw := strings.TrimSpace(stdout.String())
 		if raw == "" {
 			raw = strings.TrimSpace(stderr.String())

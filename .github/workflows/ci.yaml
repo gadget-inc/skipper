@@ -82,7 +82,7 @@ jobs:
       - name: Deploy
         env:
           SKIPPER_KUBECTL_CONTEXT: kind-kind
-        run: deploy --only=skipper,fixtures
+        run: dev deploy --only=skipper,fixtures
 
       - name: Watch and persist logs
         env:

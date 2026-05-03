@@ -75,9 +75,7 @@
           };
 
           # scripts
-          deploy = pkgs.writeShellScriptBin "deploy" '' "$WORKSPACE_DIR"/scripts/deploy.ts "$@" '';
           dev = pkgs.writeShellScriptBin "dev" '' cd "$WORKSPACE_DIR" && go run ./cmd/dev "$@" '';
-          fixture = pkgs.writeShellScriptBin "fixture" '' "$WORKSPACE_DIR"/scripts/fixture.ts "$@" '';
           profile = pkgs.writeShellScriptBin "profile" '' "$WORKSPACE_DIR"/scripts/profile.ts "$@" '';
         };
 
