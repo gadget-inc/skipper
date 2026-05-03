@@ -14,10 +14,10 @@ import (
 )
 
 // newTestsCmd dispatches the project's test runners. The Go suite goes
-// through gotestsum; docs uses pnpm filter; e2e is a chromedp Go suite.
+// through gotestsum; e2e is a chromedp Go suite.
 func newTestsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "tests <go|docs|e2e|all> [args...]",
+		Use:   "tests <go|e2e|all> [args...]",
 		Short: "Run test suites",
 	}
 
@@ -27,14 +27,6 @@ func newTestsCmd() *cobra.Command {
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGoTests(cmd.Context(), args)
-		},
-	}
-	docsCmd := &cobra.Command{
-		Use:                "docs [args...]",
-		Short:              "Run docs tests",
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return exec.Run(cmd.Context(), "pnpm", append([]string{"--filter", "docs", "test"}, args...))
 		},
 	}
 	e2eCmd := &cobra.Command{
@@ -47,17 +39,13 @@ func newTestsCmd() *cobra.Command {
 	}
 	allCmd := &cobra.Command{
 		Use:   "all",
-		Short: "Run go + docs (not e2e)",
+		Short: "Run all Go tests (not e2e)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			if err := runGoTests(ctx, nil); err != nil {
-				return err
-			}
-			return exec.Run(ctx, "pnpm", []string{"--filter", "docs", "test"})
+			return runGoTests(cmd.Context(), nil)
 		},
 	}
 
-	cmd.AddCommand(goCmd, docsCmd, e2eCmd, allCmd)
+	cmd.AddCommand(goCmd, e2eCmd, allCmd)
 	return cmd
 }
 

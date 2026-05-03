@@ -3,8 +3,6 @@ title: Watching Logs
 description: Stream and filter logs from Skipper pods during development.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
 The `dev logs` command streams logs from Skipper pods running in your local Kubernetes cluster.
 
 ```bash
@@ -18,7 +16,9 @@ dev logs --errors --since=5m       # Recent errors
 
 See `dev logs --help` for all available flags including output formats and filtering options.
 
-<Aside>By default, `dev logs` shows current logs and exits. Use `-f` or `--follow` to stream continuously.</Aside>
+:::note
+By default, `dev logs` shows current logs and exits. Use `-f` or `--follow` to stream continuously.
+:::
 
 ## Log format
 

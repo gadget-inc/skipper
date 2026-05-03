@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/gadget-inc/skipper/internal/dev/docssite"
 	"github.com/gadget-inc/skipper/internal/dev/process"
 	"github.com/gadget-inc/skipper/internal/dev/watcher"
 	"github.com/spf13/cobra"
@@ -86,7 +87,7 @@ func newUpCmd() *cobra.Command {
 				grp.SpawnWithRestart("router", routerSpawn(root), pop())
 			}
 			if runDocs {
-				grp.Spawn("docs", docsSpawn(root))
+				grp.Run("docs", runDocsInProc)
 			}
 
 			printEndpoints(runController, runRouter, runDocs)
@@ -153,18 +154,15 @@ func routerSpawn(root string) process.SpawnFunc {
 	}
 }
 
-func docsSpawn(root string) process.SpawnFunc {
-	return func(ctx context.Context, stdout, stderr io.Writer) *osexec.Cmd {
-		// Phase 11 swaps this for an in-process call to
-		// internal/dev/docssite.Serve.
-		cmd := osexec.CommandContext(ctx, "pnpm", "--filter", "docs", "dev")
-		cmd.Dir = root
-		cmd.Env = os.Environ()
-		cmd.Stdout = stdout
-		cmd.Stderr = stderr
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		return cmd
-	}
+// runDocsInProc serves the docs site directly from this binary so the
+// orchestrator and the docs server share a single Go process. Output
+// goes through the prefix writer the process group passes in.
+func runDocsInProc(ctx context.Context, stdout, stderr io.Writer) error {
+	src := filepath.Join(repoRoot(), docsContentDir)
+	fmt.Fprintf(stdout, "docs dev server listening on http://127.0.0.1:4321%s/\n", docsBasePath)
+	return docssite.Serve(ctx, src, ":4321", docssite.ServeOptions{
+		BuildOptions: docsBuildOptions(),
+	})
 }
 
 // fanOut multiplies a single source channel into n buffered output

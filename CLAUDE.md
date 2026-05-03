@@ -20,9 +20,8 @@ direnv exec . dev kube-lint                       # Render template.yaml.erb and
 direnv exec . dev tests go ./...                      # Run all Go tests
 direnv exec . dev tests go -short ./...               # Run Go tests without Kubernetes (skips integration tests)
 direnv exec . dev tests go -v ./internal/controller/... # Run specific package tests
-direnv exec . dev tests docs                          # Run docs tests
 direnv exec . dev tests e2e                           # Run e2e tests
-direnv exec . dev tests all                           # Run go + docs (not e2e)
+direnv exec . dev tests all                           # Run all Go tests (not e2e)
 direnv exec . dev lint                            # Run golangci-lint, oxfmt, oxlint
 direnv exec . dev fmt                             # Auto-fix formatting
 direnv exec . dev generate                        # Regenerate protobuf Go code from .proto files
@@ -32,7 +31,6 @@ direnv exec . dev logs -c controller              # Show controller logs
 direnv exec . dev logs --errors --since=5m        # Recent errors only
 direnv exec . dev docs                            # Start docs dev server
 direnv exec . dev docs build                      # Build docs site
-direnv exec . dev docs preview                    # Preview built docs
 direnv exec . dev clean                           # Delete all Kubernetes resources
 direnv exec . dev profile fetch                       # Fetch heap profile from local controller
 direnv exec . dev profile fetch -t cpu -p             # Fetch CPU profile from production

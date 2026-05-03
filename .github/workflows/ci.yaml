@@ -22,20 +22,6 @@ jobs:
       - name: Run lint
         run: dev lint
 
-  docs-tests:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up environment
-        uses: ./.github/actions/setup-environment
-        with:
-          cachix_auth_token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-
-      - name: Run docs tests
-        run: dev tests docs
-
   test:
     runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:

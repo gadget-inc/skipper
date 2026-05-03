@@ -241,12 +241,21 @@ func rewriteAbsoluteLinks(src, basePath string) string {
 // fences is admonition content.
 var asideRe = regexp.MustCompile(`(?ms)^:::(tip|caution|note)?(?:[ \t]+([^\n]*))?\n(.*?)\n:::[ \t]*$`)
 
+// widgetRe matches an inline widget marker on its own line:
+//
+//	{{< widget-name >}}
+//
+// Accepted widget names map to the same partial table as
+// assembleWidgets's frontmatter path; an unrecognized name is left in
+// the source untouched.
+var widgetRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*([a-z][a-z0-9-]*)\s*>\}\}\s*$`)
+
 // preprocessShortcodes expands custom shortcodes into raw HTML before
-// goldmark sees the source. Currently handles admonitions; the
-// ScalingCalculator widget opts in via frontmatter and is appended in
-// assembleWidgets.
+// goldmark sees the source: admonition fences (`:::variant`) and inline
+// widget markers (`{{< widget-name >}}`). The frontmatter `widgets:`
+// path remains the way to opt into a widget without editing the body.
 func preprocessShortcodes(src string) string {
-	return asideRe.ReplaceAllStringFunc(src, func(match string) string {
+	src = asideRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := asideRe.FindStringSubmatch(match)
 		variant := "note"
 		if len(groups) >= 2 && groups[1] != "" {
@@ -262,6 +271,27 @@ func preprocessShortcodes(src string) string {
 		}
 		return renderAside(variant, title, body)
 	})
+	return widgetRe.ReplaceAllStringFunc(src, func(match string) string {
+		groups := widgetRe.FindStringSubmatch(match)
+		if len(groups) < 2 {
+			return match
+		}
+		if html := widgetPartial(groups[1]); html != "" {
+			return html
+		}
+		return match
+	})
+}
+
+// widgetPartial returns the HTML for a registered widget name, or the
+// empty string for an unknown name. Keep this in sync with the
+// frontmatter switch in assembleWidgets.
+func widgetPartial(name string) string {
+	switch name {
+	case "scaling-calculator":
+		return scalingCalculatorPartial
+	}
+	return ""
 }
 
 // renderAside returns the HTML for a single admonition. The output

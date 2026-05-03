@@ -3,8 +3,6 @@ title: Profiling and PGO
 description: Collect profiles and generate profile-guided optimization data.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
 Skipper supports [profile-guided optimization](https://go.dev/doc/pgo) (PGO), typically yielding 2--14% CPU improvement. The `profile` command collects pprof profiles from running pods and merges them into `default.pgo` files that the Go compiler uses to optimize builds.
 
 There are two profile types:
@@ -14,10 +12,9 @@ There are two profile types:
 | **Heap** | `--type=heap` (default) | Debug memory usage during development           |
 | **CPU**  | `--type=cpu`            | Generate PGO data — collect from **production** |
 
-<Aside>
-  **Why production profiles?** Development profiles reflect test fixtures and artificial load, not real user traffic. PGO is most effective
-  when the compiler sees the hot paths that matter in production.
-</Aside>
+:::note
+**Why production profiles?** Development profiles reflect test fixtures and artificial load, not real user traffic. PGO is most effective when the compiler sees the hot paths that matter in production.
+:::
 
 ## Collecting profiles
 
@@ -39,10 +36,9 @@ Use `--spread` to fetch one profile from every pod — this is the recommended a
 profile fetch --type=cpu --production --spread
 ```
 
-<Aside>
-  Transient connection resets are common with `--spread` (e.g., 3 of 6 pods may fail). The script prints a short error per pod and
-  copy-pasteable retry commands.
-</Aside>
+:::note
+Transient connection resets are common with `--spread` (e.g., 3 of 6 pods may fail). The script prints a short error per pod and copy-pasteable retry commands.
+:::
 
 To target a single pod instead, pass its name as a positional argument:
 
@@ -81,10 +77,9 @@ profile merge --dry-run                # Preview what would be merged
 
 ## End-to-end PGO workflow
 
-<Aside type="caution">
-  Use the same `--seconds` value for all profiles in a collection round. Different durations skew the merge because longer profiles
-  contribute disproportionately more samples.
-</Aside>
+:::caution
+Use the same `--seconds` value for all profiles in a collection round. Different durations skew the merge because longer profiles contribute disproportionately more samples.
+:::
 
 1. **Collect controller profiles** from production, spread across all pods:
 

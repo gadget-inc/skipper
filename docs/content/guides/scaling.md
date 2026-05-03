@@ -54,9 +54,7 @@ If the adjusted ratio changes direction or crosses the tolerance band, the resul
 
 Drag the sliders to see how the autoscaler responds to different load scenarios. The formula is the same for CPU, memory, and in-flight requests — only the metric and target change.
 
-import ScalingCalculator from "../../../components/ScalingCalculator.astro";
-
-<ScalingCalculator />
+{{< scaling-calculator >}}
 
 In all cases, the result is clamped to `[min_instances, max_instances]`.
 

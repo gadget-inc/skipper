@@ -3,8 +3,6 @@ title: Testing, Linting, and Code Generation
 description: Run tests, linters, and regenerate protobuf code.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
 ## Testing
 
 ```bash
@@ -15,10 +13,9 @@ dev tests go -short ./...                     # Skips integration tests (no Orbs
 
 `dev tests go` forwards all arguments to `go test`.
 
-<Aside type="tip">
-  Some tests are integration tests that require Skipper to be deployed to Orbstack. Pass `-short` to skip these tests if you haven't
-  deployed yet.
-</Aside>
+:::tip
+Some tests are integration tests that require Skipper to be deployed to Orbstack. Pass `-short` to skip these tests if you haven't deployed yet.
+:::
 
 ## Linting and formatting
 

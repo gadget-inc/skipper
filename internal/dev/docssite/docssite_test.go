@@ -2,6 +2,7 @@ package docssite_test
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -209,6 +210,77 @@ func TestBuild_OutputLayout(t *testing.T) {
 		_, err := os.Stat(filepath.Join(outDir, p))
 		assert.NilError(t, err, "expected %s to exist", p)
 	}
+}
+
+// TestBuild_CopiesStaticAssets confirms non-markdown files in srcDir
+// reach outDir at the same relative path.
+func TestBuild_CopiesStaticAssets(t *testing.T) {
+	srcDir := t.TempDir()
+	outDir := t.TempDir()
+
+	assert.NilError(t, os.WriteFile(filepath.Join(srcDir, "index.md"),
+		[]byte("---\ntitle: Home\n---\n\nHi."), 0o644))
+	assert.NilError(t, os.WriteFile(filepath.Join(srcDir, "style.css"),
+		[]byte("body { color: red; }"), 0o644))
+	assert.NilError(t, os.MkdirAll(filepath.Join(srcDir, "assets"), 0o755))
+	assert.NilError(t, os.WriteFile(filepath.Join(srcDir, "assets", "logo.svg"),
+		[]byte("<svg/>"), 0o644))
+
+	err := docssite.Build(srcDir, outDir, docssite.BuildOptions{})
+	assert.NilError(t, err)
+
+	css, err := os.ReadFile(filepath.Join(outDir, "style.css"))
+	assert.NilError(t, err)
+	assert.Equal(t, string(css), "body { color: red; }")
+
+	svg, err := os.ReadFile(filepath.Join(outDir, "assets", "logo.svg"))
+	assert.NilError(t, err)
+	assert.Equal(t, string(svg), "<svg/>")
+}
+
+// TestServe_StaticAsset confirms the dev server serves a non-markdown
+// file from srcDir at its relative path, honouring BasePath.
+func TestServe_StaticAsset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping live-server integration test in short mode")
+	}
+
+	srcDir := t.TempDir()
+	assert.NilError(t, os.WriteFile(filepath.Join(srcDir, "index.md"),
+		[]byte("---\ntitle: Home\n---\n\nHi."), 0o644))
+	assert.NilError(t, os.WriteFile(filepath.Join(srcDir, "style.css"),
+		[]byte("body { color: red; }"), 0o644))
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NilError(t, err)
+	addr := listener.Addr().String()
+	listener.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	go func() {
+		_ = docssite.Serve(ctx, srcDir, addr, docssite.ServeOptions{
+			BuildOptions: docssite.BuildOptions{BasePath: "/skipper"},
+		})
+	}()
+
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		c, err := net.DialTimeout("tcp", addr, 250*time.Millisecond)
+		if err != nil {
+			return poll.Continue("waiting for server on %s", addr)
+		}
+		c.Close()
+		return poll.Success()
+	}, poll.WithTimeout(3*time.Second), poll.WithDelay(50*time.Millisecond))
+
+	resp, err := http.Get("http://" + addr + "/skipper/style.css")
+	assert.NilError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, resp.StatusCode, 200)
+	body, err := io.ReadAll(resp.Body)
+	assert.NilError(t, err)
+	assert.Equal(t, string(body), "body { color: red; }")
 }
 
 // TestServe_HotReload starts the dev server, connects to /__reload,

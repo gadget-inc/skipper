@@ -84,6 +84,28 @@ func (g *Group) Spawn(name string, spawn SpawnFunc) {
 	})
 }
 
+// RunFunc is an in-process task body. Implementations should respect
+// ctx for cancellation and return when it is cancelled.
+type RunFunc func(ctx context.Context, stdout, stderr io.Writer) error
+
+// Run schedules an in-process task with the same prefixed-output and
+// shared-cancellation semantics as Spawn. Use it for tasks that don't
+// fork a child process (e.g. an HTTP server hosted inside the dev
+// binary). A non-nil return value cancels the group.
+func (g *Group) Run(name string, run RunFunc) {
+	g.eg.Go(func() error {
+		stdout, stderr := g.prefixWriters(name)
+		err := run(g.ctx, stdout, stderr)
+		if g.ctx.Err() != nil {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		return nil
+	})
+}
+
 // SpawnWithRestart behaves like Spawn but restarts the process each
 // time restart receives a value, until ctx is cancelled. A clean exit
 // of the underlying process (exit 0 with no error) does NOT cancel the

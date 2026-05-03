@@ -1,0 +1,523 @@
+/* Skipper docs — hand-authored stylesheet.
+   Primer-derived neutral palette + GitHub blue accent, with a fixed
+   sidebar / scrollable main layout. Code highlighting is rendered
+   inline by chroma; this file styles the surrounding <pre> wrapper,
+   tables, admonitions, and the ScalingCalculator widget. */
+
+:root {
+  color-scheme: light dark;
+
+  --primer-fg: #1f2328;
+  --primer-fg-muted: #59636e;
+  --primer-fg-accent: #0969da;
+  --primer-fg-success: #1a7f37;
+  --primer-fg-attention: #9a6700;
+  --primer-fg-danger: #d1242f;
+  --primer-bg: #ffffff;
+  --primer-bg-muted: #f6f8fa;
+  --primer-bg-inline-code: rgba(175, 184, 193, 0.2);
+  --primer-border: #d1d9e0;
+  --primer-border-muted: #d8dee4;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --primer-fg: #e6edf3;
+    --primer-fg-muted: #8b949e;
+    --primer-fg-accent: #58a6ff;
+    --primer-fg-success: #3fb950;
+    --primer-fg-attention: #d29922;
+    --primer-fg-danger: #f85149;
+    --primer-bg: #0d1117;
+    --primer-bg-muted: #151b23;
+    --primer-bg-inline-code: rgba(110, 118, 129, 0.4);
+    --primer-border: #30363d;
+    --primer-border-muted: #21262d;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --primer-fg: #e6edf3;
+  --primer-fg-muted: #8b949e;
+  --primer-fg-accent: #58a6ff;
+  --primer-fg-success: #3fb950;
+  --primer-fg-attention: #d29922;
+  --primer-fg-danger: #f85149;
+  --primer-bg: #0d1117;
+  --primer-bg-muted: #151b23;
+  --primer-bg-inline-code: rgba(110, 118, 129, 0.4);
+  --primer-border: #30363d;
+  --primer-border-muted: #21262d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--primer-bg);
+  color: var(--primer-fg);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--primer-fg-accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+@media (max-width: 64rem) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sidebar {
+  border-right: 1px solid var(--primer-border);
+  padding: 1.25rem 1rem;
+  font-size: 0.875rem;
+  background: var(--primer-bg);
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 64rem) {
+  .sidebar {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--primer-border);
+  }
+}
+
+.sidebar-top {
+  list-style: none;
+  margin: 0 0 1rem 0;
+  padding: 0;
+}
+
+.sidebar-top li {
+  margin: 0;
+}
+
+.sidebar-top a {
+  display: block;
+  padding: 0.25rem 0.5rem;
+  font-weight: 600;
+  border-radius: 0.25rem;
+}
+
+.sidebar-top a:hover {
+  background: var(--primer-bg-muted);
+  text-decoration: none;
+}
+
+.sidebar-group {
+  margin-bottom: 0.75rem;
+}
+
+.sidebar-group > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primer-fg-muted);
+  user-select: none;
+}
+
+.sidebar-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.sidebar-group ul {
+  list-style: none;
+  margin: 0.25rem 0 0 0;
+  padding: 0;
+}
+
+.sidebar-group li {
+  margin: 0;
+}
+
+.sidebar-group a {
+  display: block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  color: var(--primer-fg);
+}
+
+.sidebar-group a:hover {
+  background: var(--primer-bg-muted);
+  text-decoration: none;
+}
+
+.content {
+  padding: 1.5rem 2rem 4rem 2rem;
+  max-width: 56rem;
+}
+
+@media (max-width: 48rem) {
+  .content {
+    padding: 1rem 1rem 3rem 1rem;
+  }
+}
+
+.content h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+  line-height: 1.25;
+}
+
+.content h2 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--primer-border-muted);
+  line-height: 1.25;
+}
+
+.content h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.25;
+}
+
+.content h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.content p {
+  margin: 0.75rem 0;
+}
+
+.content ul,
+.content ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+
+.content li {
+  margin: 0.25rem 0;
+}
+
+.content li > p {
+  margin: 0.25rem 0;
+}
+
+.content blockquote {
+  margin: 0.75rem 0;
+  padding: 0 1rem;
+  color: var(--primer-fg-muted);
+  border-left: 4px solid var(--primer-border);
+}
+
+.content hr {
+  border: 0;
+  height: 1px;
+  background: var(--primer-border-muted);
+  margin: 2rem 0;
+}
+
+/* Inline code */
+.content :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.15em 0.35em;
+  background: var(--primer-bg-inline-code);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Code blocks (chroma renders inline styles, we frame the wrapper) */
+.content pre {
+  margin: 0.75rem 0;
+  padding: 1rem;
+  background: var(--primer-bg-muted);
+  border: 1px solid var(--primer-border-muted);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.content pre code {
+  font-family: inherit;
+  font-size: inherit;
+  white-space: pre;
+  background: none;
+  padding: 0;
+}
+
+/* Tables */
+.content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.content table th,
+.content table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--primer-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.content table th {
+  background: var(--primer-bg-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.content table td:first-child {
+  white-space: nowrap;
+}
+
+.content table td code,
+.content table th code {
+  white-space: nowrap;
+}
+
+.content .table-scroll {
+  position: relative;
+  overflow-x: auto;
+}
+
+/* Admonitions */
+.aside {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--primer-border);
+  border-radius: 0 6px 6px 0;
+  background: var(--primer-bg-muted);
+}
+
+.aside-title {
+  margin: 0 0 0.4rem 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--primer-fg);
+}
+
+.aside-content {
+  font-size: 0.95rem;
+}
+
+.aside-content p {
+  margin: 0.4rem 0;
+}
+
+.aside-content p:first-child {
+  margin-top: 0;
+}
+
+.aside-content p:last-child {
+  margin-bottom: 0;
+}
+
+.aside-note {
+  border-left-color: var(--primer-fg-accent);
+}
+
+.aside-tip {
+  border-left-color: var(--primer-fg-success);
+}
+
+.aside-tip .aside-title {
+  color: var(--primer-fg-success);
+}
+
+.aside-caution {
+  border-left-color: var(--primer-fg-attention);
+}
+
+.aside-caution .aside-title {
+  color: var(--primer-fg-attention);
+}
+
+/* ScalingCalculator widget */
+.scaling-calculator {
+  --calc-color-over: #f97583;
+  --calc-color-under: #79c0ff;
+
+  border: 1px solid var(--primer-border);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.calc-section-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--primer-fg-muted);
+  margin-bottom: 0.5rem;
+}
+
+.calc-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1.25rem;
+}
+
+@media (max-width: 40rem) {
+  .calc-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+
+.calc-field {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.calc-field label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  margin-bottom: 0.15rem;
+  color: var(--primer-fg);
+}
+
+.calc-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.calc-slider-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--primer-fg-accent);
+}
+
+.calc-slider-row output {
+  width: 3.5rem;
+  flex-shrink: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--primer-fg);
+}
+
+.calc-output {
+  font-size: 0.85rem;
+}
+
+.calc-step {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--primer-border-muted);
+}
+
+.calc-step:last-of-type {
+  border-bottom: none;
+}
+
+.calc-step-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.calc-label {
+  color: var(--primer-fg);
+  font-weight: 500;
+  flex-shrink: 0;
+  font-size: 0.8rem;
+}
+
+.calc-value {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.calc-hint {
+  font-size: 0.75rem;
+  color: var(--primer-fg-muted);
+  margin-top: 0.1rem;
+}
+
+.calc-bar-track {
+  height: 4px;
+  background: var(--primer-border-muted);
+  border-radius: 2px;
+  margin-top: 0.3rem;
+  overflow: hidden;
+}
+
+.calc-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition:
+    width 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.calc-verdict {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.calc-verdict.no-change {
+  color: var(--primer-fg);
+  background: var(--primer-bg-muted);
+}
+
+.calc-verdict.scale-up {
+  color: var(--calc-color-over);
+  background: rgba(249, 117, 131, 0.08);
+}
+
+.calc-verdict.scale-down {
+  color: var(--calc-color-under);
+  background: rgba(121, 192, 255, 0.08);
+}

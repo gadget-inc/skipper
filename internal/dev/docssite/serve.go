@@ -78,11 +78,12 @@ func (s *devServer) run(ctx context.Context, addr string) error {
 // handlePage maps a request URL to a markdown source file under
 // srcDir, renders it on the fly with live-reload turned on, and
 // streams the result. Requests that don't resolve to a markdown file
-// fall back to a 404.
+// fall through to handleStatic, which serves any non-markdown file at
+// the requested relative path.
 func (s *devServer) handlePage(w http.ResponseWriter, r *http.Request) {
 	rel := s.resolveSource(r.URL.Path)
 	if rel == "" {
-		http.NotFound(w, r)
+		s.handleStatic(w, r)
 		return
 	}
 	full := filepath.Join(s.srcDir, rel)
@@ -99,6 +100,30 @@ func (s *devServer) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(out)
+}
+
+// handleStatic serves a non-markdown file from srcDir at the request
+// path (less the configured BasePath). The handler refuses paths that
+// escape srcDir and 404s anything else that doesn't resolve.
+func (s *devServer) handleStatic(w http.ResponseWriter, r *http.Request) {
+	reqPath := r.URL.Path
+	prefix := strings.TrimRight(s.opts.BasePath, "/")
+	if prefix != "" && strings.HasPrefix(reqPath, prefix) {
+		reqPath = strings.TrimPrefix(reqPath, prefix)
+	}
+	clean := strings.TrimPrefix(reqPath, "/")
+	if clean == "" || strings.Contains(clean, "..") {
+		http.NotFound(w, r)
+		return
+	}
+	full := filepath.Join(s.srcDir, clean)
+	info, err := os.Stat(full)
+	if err != nil || info.IsDir() {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeFile(w, r, full)
 }
 
 // resolveSource maps a request URL to a markdown file path relative

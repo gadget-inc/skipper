@@ -86,9 +86,12 @@ var scalingCalculatorPartial string
 var pageTemplate = template.Must(template.New("page").Parse(pageTemplateSource))
 
 // Build walks srcDir for .md files, renders each to HTML, and writes
-// the result under outDir preserving the source-tree layout. An empty
-// outDir falls back to DefaultBuildOutputDir resolved relative to the
-// current working directory.
+// the result under outDir preserving the source-tree layout. Any
+// non-markdown file in the source tree is copied verbatim to the same
+// relative path in the output, so static assets (CSS, images, the
+// favicon) ship alongside the rendered pages. An empty outDir falls
+// back to DefaultBuildOutputDir resolved relative to the current
+// working directory.
 func Build(srcDir, outDir string, opts BuildOptions) error {
 	if srcDir == "" {
 		return errors.New("docssite.Build: srcDir is required")
@@ -112,12 +115,12 @@ func Build(srcDir, outDir string, opts BuildOptions) error {
 		if d.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
-			return nil
-		}
 		rel, err := filepath.Rel(srcDir, path)
 		if err != nil {
 			return err
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
+			return copyStatic(path, filepath.Join(outDir, rel))
 		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
@@ -136,6 +139,19 @@ func Build(srcDir, outDir string, opts BuildOptions) error {
 		}
 		return nil
 	})
+}
+
+// copyStatic copies src to dst byte-for-byte, creating dst's parent
+// directory tree as needed.
+func copyStatic(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o644)
 }
 
 // Serve is the dev-mode entry point. It blocks until ctx is cancelled.

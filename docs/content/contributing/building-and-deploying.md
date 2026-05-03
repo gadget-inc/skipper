@@ -3,12 +3,9 @@ title: Building and Deploying
 description: Build Skipper and deploy it to your local Kubernetes cluster.
 ---
 
-import { Aside } from "@astrojs/starlight/components";
-
-<Aside>
-  Skipper is designed to run inside Kubernetes. You should not run the code natively (e.g., with `go run .`). All changes should be built
-  and deployed using the provided scripts.
-</Aside>
+:::note
+Skipper is designed to run inside Kubernetes. You should not run the code natively (e.g., with `go run .`). All changes should be built and deployed using the provided scripts.
+:::
 
 ## Deploying to Kubernetes (Orbstack)
 
