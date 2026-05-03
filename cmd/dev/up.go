@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/docssite"
 	"github.com/gadget-inc/skipper/internal/dev/process"
 	"github.com/gadget-inc/skipper/internal/dev/watcher"
@@ -28,7 +29,7 @@ func newUpCmd() *cobra.Command {
 		Short: "Run controller, router, and the docs site locally",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			components := expandSkipperAlias(only)
+			components := devenv.ExpandSkipperAlias(only)
 
 			runController := components["controller"]
 			runRouter := components["router"]
@@ -38,7 +39,7 @@ func newUpCmd() *cobra.Command {
 				return fmt.Errorf("up: --only=%q produced no components", only)
 			}
 
-			root := repoRoot()
+			root := devenv.RepoRoot()
 
 			if runController {
 				if err := ensurePasetoKeypair(); err != nil {
@@ -158,7 +159,7 @@ func routerSpawn(root string) process.SpawnFunc {
 // orchestrator and the docs server share a single Go process. Output
 // goes through the prefix writer the process group passes in.
 func runDocsInProc(ctx context.Context, stdout, stderr io.Writer) error {
-	src := filepath.Join(repoRoot(), docsContentDir)
+	src := filepath.Join(devenv.RepoRoot(), docsContentDir)
 	fmt.Fprintf(stdout, "docs dev server listening on http://127.0.0.1:4321%s/\n", docsBasePath)
 	return docssite.Serve(ctx, src, ":4321", docssite.ServeOptions{
 		BuildOptions: docsBuildOptions(),
@@ -204,18 +205,10 @@ func fanOut(ctx context.Context, in <-chan struct{}, n int) []chan struct{} {
 }
 
 func ensurePasetoKeypair() error {
-	root := repoRoot()
-	dir := filepath.Join(root, "tmp", "paseto")
-	priv := filepath.Join(dir, "private.pem")
-	pub := filepath.Join(dir, "public.pem")
-
-	_, e1 := os.Stat(priv)
-	_, e2 := os.Stat(pub)
-	if e1 == nil && e2 == nil {
+	if devenv.PasetoKeypairExists() {
 		return nil
 	}
-
-	if err := generatePasetoKeypairFiles(); err != nil {
+	if err := devenv.GeneratePasetoKeypairFiles(); err != nil {
 		return err
 	}
 	fmt.Println("Generated PASETO keypair in tmp/paseto/")

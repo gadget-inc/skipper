@@ -14,6 +14,7 @@ import (
 
 	osexec "os/exec"
 
+	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/krane"
 	"github.com/spf13/cobra"
 )
@@ -166,7 +167,7 @@ func newKubeLintCmd() *cobra.Command {
 }
 
 func runKubeLint(ctx context.Context) error {
-	root := repoRoot()
+	root := devenv.RepoRoot()
 	lintDir := filepath.Join(root, "tmp", "kube-lint")
 	if err := emptyDir(lintDir); err != nil {
 		return err

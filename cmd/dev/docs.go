@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/docssite"
 	"github.com/spf13/cobra"
 )
@@ -110,7 +111,7 @@ func docsBuildOptions() docssite.BuildOptions {
 
 // runDocsServe boots the dev server bound to addr.
 func runDocsServe(ctx context.Context, addr string) error {
-	src := filepath.Join(repoRoot(), docsContentDir)
+	src := filepath.Join(devenv.RepoRoot(), docsContentDir)
 	opts := docssite.ServeOptions{BuildOptions: docsBuildOptions()}
 	fmt.Printf("docs dev server listening on http://127.0.0.1%s%s/\n", addr, docsBasePath)
 	return docssite.Serve(ctx, src, addr, opts)
@@ -119,8 +120,8 @@ func runDocsServe(ctx context.Context, addr string) error {
 // runDocsBuild renders the static site to the package default output
 // directory, the path .github/workflows/docs.yaml uploads.
 func runDocsBuild() error {
-	src := filepath.Join(repoRoot(), docsContentDir)
-	out := filepath.Join(repoRoot(), docssite.DefaultBuildOutputDir)
+	src := filepath.Join(devenv.RepoRoot(), docsContentDir)
+	out := filepath.Join(devenv.RepoRoot(), docssite.DefaultBuildOutputDir)
 	if err := docssite.Build(src, out, docsBuildOptions()); err != nil {
 		return fmt.Errorf("build docs: %w", err)
 	}

@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
-	"strings"
-
+	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/dockerimg"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/spf13/cobra"
@@ -46,7 +44,7 @@ func newBuildCmd() *cobra.Command {
 				platform = p
 			}
 
-			components := expandSkipperAlias(only)
+			components := devenv.ExpandSkipperAlias(only)
 			buildController := components["controller"]
 			buildRouter := components["router"]
 
@@ -82,10 +80,10 @@ func newBuildCmd() *cobra.Command {
 				}
 
 				if kindLoad {
-					if err := kindLoadImage(ctx, "skipper-controller", registry, tag, buildController); err != nil {
+					if err := devenv.KindLoadImage(ctx, "skipper-controller", registry, tag, buildController); err != nil {
 						return err
 					}
-					if err := kindLoadImage(ctx, "skipper-router", registry, tag, buildRouter); err != nil {
+					if err := devenv.KindLoadImage(ctx, "skipper-router", registry, tag, buildRouter); err != nil {
 						return err
 					}
 				}
@@ -124,40 +122,10 @@ func newBuildCmd() *cobra.Command {
 	cmd.Flags().StringVar(&tag, "tag", "", "Build tag (default: sha-<git>-<arch>)")
 	cmd.Flags().StringVar(&platform, "platform", "", "Platform to build for (default: <os>/<arch> from docker)")
 	cmd.Flags().StringVar(&only, "only", "controller,router,fixtures", "Only build the given images")
-	cmd.Flags().BoolVar(&kindLoad, "kind", isCI(), "Load images into the kind cluster after build")
+	cmd.Flags().BoolVar(&kindLoad, "kind", devenv.IsCI(), "Load images into the kind cluster after build")
 	cmd.Flags().BoolVar(&load, "load", true, "Load the image into the local docker daemon")
 	cmd.Flags().BoolVar(&push, "push", false, "Push the image to the registry")
 	cmd.Flags().BoolVar(&provenance, "provenance", false, "Enable build provenance")
 
 	return cmd
-}
-
-func kindLoadImage(ctx context.Context, name, registry, tag string, build bool) error {
-	if !build {
-		return nil
-	}
-	full := name + ":" + tag
-	if registry != "" {
-		full = registry + "/" + full
-	}
-	return exec.Run(ctx, "kind", []string{"load", "docker-image", full})
-}
-
-// expandSkipperAlias rewrites the comma-separated --only string,
-// promoting "skipper" into "controller,router".
-func expandSkipperAlias(only string) map[string]bool {
-	out := map[string]bool{}
-	for _, token := range strings.Split(only, ",") {
-		token = strings.TrimSpace(token)
-		if token == "" {
-			continue
-		}
-		if token == "skipper" {
-			out["controller"] = true
-			out["router"] = true
-			continue
-		}
-		out[token] = true
-	}
-	return out
 }

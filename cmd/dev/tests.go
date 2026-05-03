@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/spf13/cobra"
 )
@@ -53,7 +54,7 @@ func newTestsCmd() *cobra.Command {
 // tmp/logs/tests.log, defaulting to ./... when no path is supplied,
 // and adding -count=1, -race, and a follow-up Allocations pass in CI.
 func runGoTests(ctx context.Context, args []string) error {
-	logsDir := filepath.Join(repoRoot(), "tmp", "logs")
+	logsDir := filepath.Join(devenv.RepoRoot(), "tmp", "logs")
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return fmt.Errorf("create logs dir: %w", err)
 	}
@@ -62,7 +63,7 @@ func runGoTests(ctx context.Context, args []string) error {
 	if !hasPathArg(goTestFlags) {
 		goTestFlags = append([]string{"./..."}, goTestFlags...)
 	}
-	if isCI() {
+	if devenv.IsCI() {
 		if !hasFlagPrefix(goTestFlags, "-count") {
 			goTestFlags = append(goTestFlags, "-count=1")
 		}
@@ -72,14 +73,14 @@ func runGoTests(ctx context.Context, args []string) error {
 	}
 
 	gotestsumFlags := []string{"--format-hide-empty-pkg"}
-	if !isCI() {
+	if !devenv.IsCI() {
 		gotestsumFlags = append(gotestsumFlags, "--hide-summary=skipped")
 	}
 
 	if err := runWithTee(ctx, logsDir, "tests.log", false, gotestsumFlags, goTestFlags); err != nil {
 		return err
 	}
-	if isCI() {
+	if devenv.IsCI() {
 		// Allocations pass: race detector adds extra allocations, so run
 		// it separately without -race.
 		allocFlags := []string{"./...", "-run=Allocations", "-count=1"}
@@ -128,20 +129,4 @@ func hasFlagPrefix(args []string, prefix string) bool {
 		}
 	}
 	return false
-}
-
-func isCI() bool {
-	v := os.Getenv("CI")
-	return v == "1" || v == "true"
-}
-
-func repoRoot() string {
-	if d := os.Getenv("WORKSPACE_DIR"); d != "" {
-		return d
-	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	return wd
 }

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/spf13/cobra"
 )
@@ -96,7 +97,7 @@ func newLogsCmd() *cobra.Command {
 				pattern := fmt.Sprintf(`(?i)("?level"?[=:]\s*"?(%s)|(\[\s*(%s)\s*\]))`, match, match)
 				sternArgs = append(sternArgs, "--include="+pattern)
 			}
-			if isCI() {
+			if devenv.IsCI() {
 				sternArgs = append(sternArgs, "--color=never")
 			}
 

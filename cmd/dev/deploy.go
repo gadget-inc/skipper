@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/dockerimg"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/gadget-inc/skipper/internal/dev/krane"
@@ -29,7 +26,7 @@ func newDeployCmd() *cobra.Command {
 		test                  bool
 	)
 
-	ci := isCI()
+	ci := devenv.IsCI()
 
 	cmd := &cobra.Command{
 		Use:   "deploy [flags]",
@@ -41,13 +38,13 @@ func newDeployCmd() *cobra.Command {
 				os.Setenv("SKIPPER_KUBECTL_CONTEXT", "orbstack")
 			}
 
-			components := expandSkipperAlias(only)
+			components := devenv.ExpandSkipperAlias(only)
 
 			// --generate-paseto-keypair defaults to true when the
 			// keypair is missing on disk, false when present; an
 			// explicit flag value wins.
 			if !cmd.Flags().Changed("generate-paseto-keypair") {
-				generatePasetoKeypair = !pasetoKeypairExists()
+				generatePasetoKeypair = !devenv.PasetoKeypairExists()
 			}
 
 			if build {
@@ -64,7 +61,7 @@ func newDeployCmd() *cobra.Command {
 			routerImageID, _ := dockerimg.ImageID(ctx, "skipper-router")
 
 			if generatePasetoKeypair {
-				if err := generatePasetoKeypairFiles(); err != nil {
+				if err := devenv.GeneratePasetoKeypairFiles(); err != nil {
 					return err
 				}
 			}
@@ -106,7 +103,7 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			if components["controller"] || components["router"] {
-				root := repoRoot()
+				root := devenv.RepoRoot()
 				pasetoPrivate, err := os.ReadFile(filepath.Join(root, "tmp", "paseto", "private.pem"))
 				if err != nil {
 					return fmt.Errorf("read paseto private key: %w", err)
@@ -173,66 +170,6 @@ func newDeployCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&test, "test", true, "Deploy test namespaces")
 
 	return cmd
-}
-
-func pasetoKeypairExists() bool {
-	root := repoRoot()
-	_, e1 := os.Stat(filepath.Join(root, "tmp", "paseto", "private.pem"))
-	_, e2 := os.Stat(filepath.Join(root, "tmp", "paseto", "public.pem"))
-	return e1 == nil && e2 == nil
-}
-
-// generatePasetoKeypairFiles regenerates an ed25519 keypair under
-// tmp/paseto/, replacing any existing files.
-func generatePasetoKeypairFiles() error {
-	root := repoRoot()
-	dir := filepath.Join(root, "tmp", "paseto")
-	if err := os.RemoveAll(dir); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		return fmt.Errorf("generate ed25519 keypair: %w", err)
-	}
-
-	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
-	if err != nil {
-		return fmt.Errorf("encode private key as PKCS8: %w", err)
-	}
-	privPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})
-	if err := os.WriteFile(filepath.Join(dir, "private.pem"), privPEM, 0o600); err != nil {
-		return err
-	}
-
-	pubDER, err := x509.MarshalPKIXPublicKey(pub)
-	if err != nil {
-		return fmt.Errorf("encode public key as SPKI: %w", err)
-	}
-	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
-	if err := os.WriteFile(filepath.Join(dir, "public.pem"), pubPEM, 0o644); err != nil {
-		return err
-	}
-
-	return listDir(dir)
-}
-
-func listDir(dir string) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, e := range entries {
-		info, err := e.Info()
-		if err != nil {
-			return err
-		}
-		fmt.Printf("%s\t%d\t%s\n", info.Mode(), info.Size(), filepath.Join(dir, e.Name()))
-	}
-	return nil
 }
 
 // deployMetricsServer applies the cluster-scoped resources (via krane

@@ -76,6 +76,20 @@ func RunQuiet(ctx context.Context, name string, args []string, opts ...Option) e
 	return nil
 }
 
+// RunAll runs each step in order. A non-zero exit from one step does not
+// skip the rest -- developers want to see findings from every formatter
+// and linter, not just the first. The first non-nil error is returned to
+// set the process exit code.
+func RunAll(ctx context.Context, steps [][]string) error {
+	var firstErr error
+	for _, step := range steps {
+		if err := Run(ctx, step[0], step[1:]); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 func apply(opts []Option, defStdout, defStderr io.Writer) *config {
 	cfg := &config{stdout: defStdout, stderr: defStderr}
 	for _, o := range opts {
