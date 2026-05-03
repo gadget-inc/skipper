@@ -20,7 +20,7 @@ Some tests are integration tests that require Skipper to be deployed to Orbstack
 ## Linting and formatting
 
 ```bash
-dev lint    # Runs golangci-lint, oxfmt, and oxlint (with type checking)
+dev lint    # Runs kube-lint, lint-docs, and golangci-lint
 dev fmt     # Attempts to fix linting errors
 ```
 

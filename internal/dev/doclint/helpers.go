@@ -34,6 +34,18 @@ func forEachProseLine(content []byte, fn func(lineNum int, line string)) {
 	}
 }
 
+// forEachLine invokes fn for every line in content. Line numbers are
+// 1-based.
+func forEachLine(content []byte, fn func(lineNum int, line string)) {
+	scanner := bufio.NewScanner(bytes.NewReader(content))
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	lineNum := 0
+	for scanner.Scan() {
+		lineNum++
+		fn(lineNum, scanner.Text())
+	}
+}
+
 // forEachShellCodeLine invokes fn for every line that lies INSIDE a
 // fenced code block opened with ```bash, ```sh, or ```shell (the
 // language tag is matched case-sensitively and must be exact). Lines

@@ -26,10 +26,9 @@ CI runs automatically on every pull request and push to `main`. Docker builds do
 
 ## Documentation
 
-Documentation is built with [Astro](https://astro.build/) and [Starlight](https://starlight.astro.build/). Source files live in `docs/src/content/docs/` as `.mdx` files.
+Documentation is built by an in-tree static-site generator (`internal/dev/docssite`, Goldmark-based). Source files live under `docs/content/` as plain Markdown files.
 
 ```bash
-docs           # Start the dev server with hot reload
-docs build     # Build the static site to docs/dist/
-docs preview   # Preview the built site locally
+dev docs        # Start the dev server with live reload
+dev docs build  # Build the static site to docs/dist/
 ```

@@ -22,9 +22,8 @@ import (
 )
 
 // chromaDarkStyle / chromaLightStyle name the chroma themes the
-// generated HTML uses for code highlighting. They match Starlight's
-// `expressiveCode.themes: ["github-dark-default", "github-light-default"]`
-// pair as closely as chroma's bundled style set allows.
+// generated HTML uses for code highlighting -- the GitHub light/dark
+// pair, picked to match the broader docs site theme.
 const (
 	chromaDarkStyle  = "github-dark"
 	chromaLightStyle = "github"
@@ -295,12 +294,12 @@ func widgetPartial(name string) string {
 }
 
 // renderAside returns the HTML for a single admonition. The output
-// shape mirrors Starlight's <Aside> rendering: a wrapping <aside>
-// element keyed off the variant, a heading row with a default label,
-// and a content section that gets goldmark-rendered nested HTML on
-// the line breaks the admonition body uses. To keep the implementation
-// shortcode-only (no recursive goldmark passes), the body is inserted
-// as an HTML comment marker that goldmark passes through verbatim.
+// is a wrapping <aside> element keyed off the variant, a heading row
+// with a default label, and a content section that goldmark renders
+// nested HTML into using the line breaks of the admonition body. To
+// keep the implementation shortcode-only (no recursive goldmark
+// passes), the body is inserted as an HTML comment marker that
+// goldmark passes through verbatim.
 func renderAside(variant, title, body string) string {
 	defaultTitle := map[string]string{
 		"note":    "Note",

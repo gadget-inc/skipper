@@ -24,8 +24,8 @@ import (
 	"strings"
 )
 
-// SidebarGroup is one heading group in the sidebar (Starlight calls
-// these "sidebar:" entries with `label` + `items`).
+// SidebarGroup is one heading group in the sidebar -- a labeled
+// section containing one or more page links.
 type SidebarGroup struct {
 	Label string
 	Items []SidebarItem
@@ -70,9 +70,9 @@ type ServeOptions struct {
 }
 
 // DefaultBuildOutputDir is where Build writes when callers do not
-// override the destination. The path matches the existing Astro
-// build output (referenced by .github/workflows/docs.yaml so the
-// deploy pipeline keeps working without changes).
+// override the destination. .github/workflows/docs.yaml references
+// docs/dist as the publish directory, so the deploy pipeline picks
+// up the rendered tree without configuration changes.
 const DefaultBuildOutputDir = "docs/dist"
 
 //go:embed templates/page.html

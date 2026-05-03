@@ -20,8 +20,8 @@ import (
 	"github.com/gadget-inc/skipper/internal/dev/docssite"
 )
 
-// fixtureSidebar is the four-group structure the criterion expects to
-// match the current Starlight layout.
+// fixtureSidebar is the four-group structure (Guides, Architecture,
+// Reference, Contributing) the rendered docs site exposes.
 var fixtureSidebar = docssite.Sidebar{
 	Intro: &docssite.SidebarItem{Label: "Introduction", Link: "/"},
 	Groups: []docssite.SidebarGroup{

@@ -14,7 +14,6 @@ description: Set up your development environment for Skipper.
 1. Install the prerequisites above.
 2. `cd` into the repository.
 3. Run `direnv allow` — direnv will automatically enter the `nix develop` shell that contains all the tools you need to build and run the project.
-4. Run `pnpm install` to install Node.js dependencies.
 
 Every new terminal opened in the repository will automatically provide the correct environment.
 
@@ -24,13 +23,12 @@ Every new terminal opened in the repository will automatically provide the corre
 
 | Path                | Description                                  |
 | ------------------- | -------------------------------------------- |
-| `deploy/`           | Kubernetes manifests rendered by Krane       |
-| `docs/`             | Documentation site (Astro + Starlight)       |
+| `cmd/dev/`          | The `dev` developer-experience CLI           |
+| `docs/content/`     | Documentation site source (Markdown)         |
 | `fixture/`          | Example fixture server for integration tests |
 | `internal/`         | Skipper source code (Go)                     |
 | `internal/web/`     | Web UI server, handlers, and HTML templates  |
 | `nix/`              | Nix development environment                  |
-| `scripts/`          | Developer tooling scripts                    |
 | `tmp/`              | Temporary build artifacts (safe to delete)   |
 | `template.yaml.erb` | Krane deployment template                    |
 

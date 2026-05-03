@@ -4,9 +4,8 @@
 
 1. Install [Nix](https://nixos.org/download), [direnv](https://direnv.net/), and [Orbstack](https://orbstack.dev/).
 2. `cd` into the repository and run `direnv allow`.
-3. Run `pnpm install` to install Node.js dependencies.
-4. Run `deploy` to build and deploy to your local Kubernetes cluster.
-5. Run `tests -short ./...` to verify everything works.
+3. Run `dev deploy` to build and deploy to your local Kubernetes cluster.
+4. Run `dev tests go -short ./...` to verify everything works.
 
 ## Debugging
 
@@ -16,11 +15,12 @@ You can also pass `--log-file`, `--log-file-level`, and `--log-file-format` to a
 
 ## Full Guide
 
-See the [Contributing section](docs/src/content/docs/contributing/) in the docs for the complete guide, including:
+See the [Contributing section](docs/content/contributing/) in the docs for the complete guide, including:
 
-- [Building and Deploying](docs/src/content/docs/contributing/building-and-deploying.mdx) — deploy scripts, fixture smoke tests, cleanup
-- [Testing, Linting, and Code Generation](docs/src/content/docs/contributing/testing.mdx) — test commands, linting, code generation
-- [Watching Logs](docs/src/content/docs/contributing/watching-logs.mdx) — stream and filter pod logs
-- [Web UI](docs/src/content/docs/contributing/web-ui.mdx) — dev mode, available routes, live-reload
-- [Profiling and PGO](docs/src/content/docs/contributing/profiling.mdx) — collect profiles, generate PGO data
-- [Contribution Workflow](docs/src/content/docs/contributing/workflow.mdx) — PRs, CI, Docker image builds
+- [Getting Started](docs/content/contributing/getting-started.md) — prerequisites and setup
+- [Building and Deploying](docs/content/contributing/building-and-deploying.md) — deploy commands, fixture smoke tests, cleanup
+- [Testing, Linting, and Code Generation](docs/content/contributing/testing.md) — test commands, linting, code generation
+- [Watching Logs](docs/content/contributing/watching-logs.md) — stream and filter pod logs
+- [Web UI](docs/content/contributing/web-ui.md) — dev mode, available routes, live-reload
+- [Profiling and PGO](docs/content/contributing/profiling.md) — collect profiles, generate PGO data
+- [Contribution Workflow](docs/content/contributing/workflow.md) — PRs, CI, Docker image builds
