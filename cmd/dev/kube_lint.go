@@ -14,6 +14,7 @@ import (
 
 	osexec "os/exec"
 
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/krane"
 	"github.com/spf13/cobra"
@@ -157,13 +158,13 @@ func affinityCombined(component string) map[string]any {
 // corpus via internal/dev/krane and runs yamllint + kube-linter on
 // each rendered manifest.
 func newKubeLintCmd() *cobra.Command {
-	return &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "kube-lint",
 		Short: "Render template.yaml.erb across binding configurations and lint each",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runKubeLint(cmd.Context())
+		RunE: func(c *cobra.Command, args []string) error {
+			return runKubeLint(c.Context())
 		},
-	}
+	})
 }
 
 func runKubeLint(ctx context.Context) error {

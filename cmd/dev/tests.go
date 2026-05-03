@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/spf13/cobra"
@@ -17,37 +18,37 @@ import (
 // newTestsCmd dispatches the project's test runners. The Go suite goes
 // through gotestsum; e2e is a chromedp Go suite.
 func newTestsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "tests <go|e2e|all> [args...]",
-		Short: "Run test suites",
-	}
+	goCmd := cmd.Build(cmd.Spec{
+		Use:   "go [flags] [./path/...]",
+		Short: "Run Go tests via gotestsum",
+		RunE: func(c *cobra.Command, args []string) error {
+			return runGoTests(c.Context(), args)
+		},
+	})
+	goCmd.DisableFlagParsing = true
 
-	goCmd := &cobra.Command{
-		Use:                "go [flags] [./path/...]",
-		Short:              "Run Go tests via gotestsum",
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGoTests(cmd.Context(), args)
+	e2eCmd := cmd.Build(cmd.Spec{
+		Use:   "e2e [args...]",
+		Short: "Run the chromedp e2e suite",
+		RunE: func(c *cobra.Command, args []string) error {
+			return exec.Run(c.Context(), "go", append([]string{"test", "./e2e/..."}, args...))
 		},
-	}
-	e2eCmd := &cobra.Command{
-		Use:                "e2e [args...]",
-		Short:              "Run the chromedp e2e suite",
-		DisableFlagParsing: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return exec.Run(cmd.Context(), "go", append([]string{"test", "./e2e/..."}, args...))
-		},
-	}
-	allCmd := &cobra.Command{
+	})
+	e2eCmd.DisableFlagParsing = true
+
+	allCmd := cmd.Build(cmd.Spec{
 		Use:   "all",
 		Short: "Run all Go tests (not e2e)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGoTests(cmd.Context(), nil)
+		RunE: func(c *cobra.Command, args []string) error {
+			return runGoTests(c.Context(), nil)
 		},
-	}
+	})
 
-	cmd.AddCommand(goCmd, e2eCmd, allCmd)
-	return cmd
+	return cmd.Build(cmd.Spec{
+		Use:   "tests <go|e2e|all> [args...]",
+		Short: "Run test suites",
+		Sub:   []*cobra.Command{goCmd, e2eCmd, allCmd},
+	})
 }
 
 // runGoTests builds the gotestsum invocation: piping through tee to

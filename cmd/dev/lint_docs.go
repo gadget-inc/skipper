@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/doclint"
 	"github.com/spf13/cobra"
 )
@@ -15,13 +16,13 @@ import (
 // an indented hint line. Exits non-zero when at least one finding is
 // reported.
 func newLintDocsCmd() *cobra.Command {
-	return &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "lint-docs",
 		Short: "Lint repository documentation for stale toolchain words and other drift",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLintDocs(cmd.Context(), cmd.OutOrStdout(), doclint.RunOptions{})
+		RunE: func(c *cobra.Command, args []string) error {
+			return runLintDocs(c.Context(), c.OutOrStdout(), doclint.RunOptions{})
 		},
-	}
+	})
 }
 
 func runLintDocs(ctx context.Context, out io.Writer, opts doclint.RunOptions) error {

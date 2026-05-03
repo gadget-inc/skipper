@@ -9,11 +9,13 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/docssite"
 	"github.com/gadget-inc/skipper/internal/dev/process"
 	"github.com/gadget-inc/skipper/internal/dev/watcher"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // newUpCmd starts the local development orchestrator: controller,
@@ -24,11 +26,14 @@ import (
 func newUpCmd() *cobra.Command {
 	var only string
 
-	cmd := &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "up [flags]",
 		Short: "Run controller, router, and the docs site locally",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
+		Flags: func(fs *pflag.FlagSet) {
+			fs.StringVar(&only, "only", "controller,router,docs", "Components to run (controller,router,docs)")
+		},
+		RunE: func(c *cobra.Command, args []string) error {
+			ctx := c.Context()
 			components := devenv.ExpandSkipperAlias(only)
 
 			runController := components["controller"]
@@ -99,10 +104,7 @@ func newUpCmd() *cobra.Command {
 			}
 			return err
 		},
-	}
-
-	cmd.Flags().StringVar(&only, "only", "controller,router,docs", "Components to run (controller,router,docs)")
-	return cmd
+	})
 }
 
 func controllerSpawn(root string) process.SpawnFunc {

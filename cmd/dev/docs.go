@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/docssite"
 	"github.com/spf13/cobra"
@@ -73,30 +74,28 @@ var docsSidebar = docssite.Sidebar{
 // `dev docs dev` runs the live-reload server; `dev docs build`
 // renders the static site to `docs/dist`.
 func newDocsCmd() *cobra.Command {
-	cmd := &cobra.Command{
+	dev := cmd.Build(cmd.Spec{
+		Use:   "dev",
+		Short: "Run the docs dev server (default)",
+		RunE: func(c *cobra.Command, args []string) error {
+			return runDocsServe(c.Context(), ":4321")
+		},
+	})
+	build := cmd.Build(cmd.Spec{
+		Use:   "build",
+		Short: "Build the static docs site",
+		RunE: func(c *cobra.Command, args []string) error {
+			return runDocsBuild()
+		},
+	})
+	return cmd.Build(cmd.Spec{
 		Use:   "docs [dev|build]",
 		Short: "Run the docs dev server or build the static site",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDocsServe(cmd.Context(), ":4321")
+		Sub:   []*cobra.Command{dev, build},
+		RunE: func(c *cobra.Command, args []string) error {
+			return runDocsServe(c.Context(), ":4321")
 		},
-	}
-	cmd.AddCommand(
-		&cobra.Command{
-			Use:   "dev",
-			Short: "Run the docs dev server (default)",
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return runDocsServe(cmd.Context(), ":4321")
-			},
-		},
-		&cobra.Command{
-			Use:   "build",
-			Short: "Build the static docs site",
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return runDocsBuild()
-			},
-		},
-	)
-	return cmd
+	})
 }
 
 // docsBuildOptions returns the BuildOptions wired with the project's

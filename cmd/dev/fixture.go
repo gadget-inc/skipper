@@ -18,7 +18,9 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Defaults for the local skipper router. SKIPPER_ROUTER_URL overrides
@@ -46,14 +48,15 @@ var (
 // WebSocket sessions, and load tests against the K8s-deployed fixture
 // container through the local router.
 func newFixtureCmd() *cobra.Command {
-	cmd := &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "fixture",
 		Short: "Test the fixture via HTTP, WebSocket, and load",
-	}
-	cmd.AddCommand(newFixtureRequestCmd())
-	cmd.AddCommand(newFixtureWebSocketCmd())
-	cmd.AddCommand(newFixtureLoadCmd())
-	return cmd
+		Sub: []*cobra.Command{
+			newFixtureRequestCmd(),
+			newFixtureWebSocketCmd(),
+			newFixtureLoadCmd(),
+		},
+	})
 }
 
 // -- request -----------------------------------------------------------
@@ -68,10 +71,18 @@ func newFixtureRequestCmd() *cobra.Command {
 		verbose bool
 	)
 
-	cmd := &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "request",
 		Short: "Send HTTP request(s) to the fixture",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Flags: func(fs *pflag.FlagSet) {
+			fs.StringVarP(&method, "method", "m", "POST", "HTTP method")
+			fs.StringVarP(&path, "path", "p", "/hello", "Request path")
+			fs.StringVarP(&body, "body", "b", `{"hello":"world"}`, "Request body JSON")
+			fs.StringVarP(&tenant, "tenant", "t", fixtureFunctionDefault["tenant"].(string), "Tenant ID")
+			fs.IntVarP(&count, "count", "n", 1, "Number of requests to send")
+			fs.BoolVarP(&verbose, "verbose", "v", false, "Show response headers")
+		},
+		RunE: func(c *cobra.Command, args []string) error {
 			if count <= 0 {
 				return fmt.Errorf("invalid count: %d (must be a positive integer)", count)
 			}
@@ -86,7 +97,7 @@ func newFixtureRequestCmd() *cobra.Command {
 				if count > 1 {
 					fmt.Printf("\033[2m--- request %d/%d ---\033[0m\n", i+1, count)
 				}
-				if err := sendOne(cmd.Context(), client, method, path, body, string(fnHeader), verbose); err != nil {
+				if err := sendOne(c.Context(), client, method, path, body, string(fnHeader), verbose); err != nil {
 					return err
 				}
 				if count > 1 && i < count-1 {
@@ -95,16 +106,7 @@ func newFixtureRequestCmd() *cobra.Command {
 			}
 			return nil
 		},
-	}
-
-	cmd.Flags().StringVarP(&method, "method", "m", "POST", "HTTP method")
-	cmd.Flags().StringVarP(&path, "path", "p", "/hello", "Request path")
-	cmd.Flags().StringVarP(&body, "body", "b", `{"hello":"world"}`, "Request body JSON")
-	cmd.Flags().StringVarP(&tenant, "tenant", "t", fixtureFunctionDefault["tenant"].(string), "Tenant ID")
-	cmd.Flags().IntVarP(&count, "count", "n", 1, "Number of requests to send")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show response headers")
-
-	return cmd
+	})
 }
 
 func sendOne(ctx context.Context, client *http.Client, method, path, body, fn string, verbose bool) error {
@@ -167,11 +169,16 @@ func newFixtureWebSocketCmd() *cobra.Command {
 		tenant   string
 	)
 
-	cmd := &cobra.Command{
-		Use:     "websocket",
-		Aliases: []string{"ws"},
-		Short:   "Open a WebSocket connection to the fixture",
-		RunE: func(cmd *cobra.Command, args []string) error {
+	wsCmd := cmd.Build(cmd.Spec{
+		Use:   "websocket",
+		Short: "Open a WebSocket connection to the fixture",
+		Flags: func(fs *pflag.FlagSet) {
+			fs.StringVar(&message, "message", "ping", "Message to send")
+			fs.DurationVarP(&interval, "interval", "i", time.Second, "Interval between messages")
+			fs.IntVarP(&count, "count", "n", 0, "Number of messages to send (0 = unlimited)")
+			fs.StringVarP(&tenant, "tenant", "t", fixtureFunctionDefault["tenant"].(string), "Tenant ID")
+		},
+		RunE: func(c *cobra.Command, args []string) error {
 			if interval <= 0 {
 				return fmt.Errorf("invalid interval: %s (must be > 0)", interval)
 			}
@@ -184,7 +191,7 @@ func newFixtureWebSocketCmd() *cobra.Command {
 				return err
 			}
 
-			ctx, cancel := context.WithCancel(cmd.Context())
+			ctx, cancel := context.WithCancel(c.Context())
 			defer cancel()
 
 			conn, _, err := websocket.Dial(ctx, defaultRouterURL, &websocket.DialOptions{
@@ -240,14 +247,9 @@ func newFixtureWebSocketCmd() *cobra.Command {
 			fmt.Printf("%d message(s) sent\n", sent)
 			return nil
 		},
-	}
-
-	cmd.Flags().StringVar(&message, "message", "ping", "Message to send")
-	cmd.Flags().DurationVarP(&interval, "interval", "i", time.Second, "Interval between messages")
-	cmd.Flags().IntVarP(&count, "count", "n", 0, "Number of messages to send (0 = unlimited)")
-	cmd.Flags().StringVarP(&tenant, "tenant", "t", fixtureFunctionDefault["tenant"].(string), "Tenant ID")
-
-	return cmd
+	})
+	wsCmd.Aliases = []string{"ws"}
+	return wsCmd
 }
 
 // -- load --------------------------------------------------------------
@@ -269,17 +271,25 @@ func newFixtureLoadCmd() *cobra.Command {
 		noWarmUp    bool
 	)
 
-	cmd := &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "load",
 		Short: "Run a load test against the fixture",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Flags: func(fs *pflag.FlagSet) {
+			fs.IntVarP(&concurrency, "concurrency", "c", 10, "Concurrent requests")
+			fs.IntVarP(&requests, "requests", "n", 100_000, "Total requests to send")
+			fs.BoolVar(&infinite, "infinite", false, "Run until interrupted")
+			fs.DurationVarP(&duration, "duration", "d", 0, "Run for a duration instead of request count (e.g. 30s, 1m)")
+			fs.IntVarP(&tenants, "tenants", "t", 2, "Number of tenants to rotate through")
+			fs.BoolVar(&noWarmUp, "no-warm-up", false, "Skip warm-up (one request per tenant)")
+		},
+		RunE: func(c *cobra.Command, args []string) error {
 			if concurrency <= 0 {
 				return fmt.Errorf("invalid concurrency: %d (must be a positive integer)", concurrency)
 			}
 			if tenants <= 0 {
 				return fmt.Errorf("invalid tenants: %d (must be a positive integer)", tenants)
 			}
-			return runLoad(cmd.Context(), loadOptions{
+			return runLoad(c.Context(), loadOptions{
 				concurrency: concurrency,
 				requests:    requests,
 				infinite:    infinite,
@@ -288,16 +298,7 @@ func newFixtureLoadCmd() *cobra.Command {
 				skipWarmUp:  noWarmUp,
 			})
 		},
-	}
-
-	cmd.Flags().IntVarP(&concurrency, "concurrency", "c", 10, "Concurrent requests")
-	cmd.Flags().IntVarP(&requests, "requests", "n", 100_000, "Total requests to send")
-	cmd.Flags().BoolVar(&infinite, "infinite", false, "Run until interrupted")
-	cmd.Flags().DurationVarP(&duration, "duration", "d", 0, "Run for a duration instead of request count (e.g. 30s, 1m)")
-	cmd.Flags().IntVarP(&tenants, "tenants", "t", 2, "Number of tenants to rotate through")
-	cmd.Flags().BoolVar(&noWarmUp, "no-warm-up", false, "Skip warm-up (one request per tenant)")
-
-	return cmd
+	})
 }
 
 type loadOptions struct {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/spf13/cobra"
 )
@@ -13,11 +14,11 @@ import (
 // newCleanCmd deletes every Kubernetes namespace skipper deploys plus
 // the local krane / paseto / log / test scratch directories.
 func newCleanCmd() *cobra.Command {
-	return &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "clean",
 		Short: "Tear down skipper's K8s namespaces and local scratch dirs",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
+		RunE: func(c *cobra.Command, args []string) error {
+			ctx := c.Context()
 			kubectx := os.Getenv("SKIPPER_KUBECTL_CONTEXT")
 			if kubectx == "" {
 				kubectx = "orbstack"
@@ -56,5 +57,5 @@ func newCleanCmd() *cobra.Command {
 			}
 			return nil
 		},
-	}
+	})
 }

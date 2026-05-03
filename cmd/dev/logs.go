@@ -6,9 +6,11 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 const defaultLogsNamespaces = "skipper-development,skipper-development-fixtures,skipper-test,skipper-test-fixtures"
@@ -39,10 +41,22 @@ func newLogsCmd() *cobra.Command {
 		output    string
 	)
 
-	cmd := &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "logs [flags]",
 		Short: "Stream or view logs from Skipper pods (via stern)",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Flags: func(fs *pflag.FlagSet) {
+			fs.StringVarP(&namespace, "namespace", "n", defaultLogsNamespaces, "Namespaces to stream from")
+			fs.StringVarP(&component, "component", "c", "all", "Filter by component: controller, router, fixtures, all")
+			fs.StringVarP(&level, "level", "l", "", "Filter by log level: trace, debug, info, warn, error")
+			fs.BoolVar(&errorsOn, "errors", false, "Shortcut for --level=error")
+			fs.StringVarP(&since, "since", "s", "", "Only show logs newer than the given duration (e.g. 5m, 1h)")
+			fs.BoolVarP(&follow, "follow", "f", false, "Stream logs continuously")
+			fs.StringVarP(&tail, "tail", "t", "", "Show only the last N lines (default 1000 when not following)")
+			fs.StringVarP(&grep, "grep", "g", "", "Filter logs matching the given regex")
+			fs.StringVarP(&exclude, "exclude", "E", "", "Exclude logs matching the given regex")
+			fs.StringVarP(&output, "output", "o", "text", "Output format: text, json, raw")
+		},
+		RunE: func(c *cobra.Command, args []string) error {
 			if errorsOn {
 				level = "error"
 			}
@@ -101,20 +115,7 @@ func newLogsCmd() *cobra.Command {
 				sternArgs = append(sternArgs, "--color=never")
 			}
 
-			return exec.Run(cmd.Context(), "stern", sternArgs)
+			return exec.Run(c.Context(), "stern", sternArgs)
 		},
-	}
-
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", defaultLogsNamespaces, "Namespaces to stream from")
-	cmd.Flags().StringVarP(&component, "component", "c", "all", "Filter by component: controller, router, fixtures, all")
-	cmd.Flags().StringVarP(&level, "level", "l", "", "Filter by log level: trace, debug, info, warn, error")
-	cmd.Flags().BoolVar(&errorsOn, "errors", false, "Shortcut for --level=error")
-	cmd.Flags().StringVarP(&since, "since", "s", "", "Only show logs newer than the given duration (e.g. 5m, 1h)")
-	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Stream logs continuously")
-	cmd.Flags().StringVarP(&tail, "tail", "t", "", "Show only the last N lines (default 1000 when not following)")
-	cmd.Flags().StringVarP(&grep, "grep", "g", "", "Filter logs matching the given regex")
-	cmd.Flags().StringVarP(&exclude, "exclude", "E", "", "Exclude logs matching the given regex")
-	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text, json, raw")
-
-	return cmd
+	})
 }

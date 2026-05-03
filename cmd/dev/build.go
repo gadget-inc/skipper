@@ -1,10 +1,12 @@
 package main
 
 import (
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/dockerimg"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // newBuildCmd builds the controller / router / fixture container
@@ -23,11 +25,21 @@ func newBuildCmd() *cobra.Command {
 		provenance bool
 	)
 
-	cmd := &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "build [flags]",
 		Short: "Build the controller, router, and fixture images",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
+		Flags: func(fs *pflag.FlagSet) {
+			fs.StringVar(&registry, "registry", "", "Registry of the image")
+			fs.StringVar(&tag, "tag", "", "Build tag (default: sha-<git>-<arch>)")
+			fs.StringVar(&platform, "platform", "", "Platform to build for (default: <os>/<arch> from docker)")
+			fs.StringVar(&only, "only", "controller,router,fixtures", "Only build the given images")
+			fs.BoolVar(&kindLoad, "kind", devenv.IsCI(), "Load images into the kind cluster after build")
+			fs.BoolVar(&load, "load", true, "Load the image into the local docker daemon")
+			fs.BoolVar(&push, "push", false, "Push the image to the registry")
+			fs.BoolVar(&provenance, "provenance", false, "Enable build provenance")
+		},
+		RunE: func(c *cobra.Command, args []string) error {
+			ctx := c.Context()
 
 			if tag == "" {
 				t, err := dockerimg.Tag(ctx)
@@ -116,16 +128,5 @@ func newBuildCmd() *cobra.Command {
 
 			return nil
 		},
-	}
-
-	cmd.Flags().StringVar(&registry, "registry", "", "Registry of the image")
-	cmd.Flags().StringVar(&tag, "tag", "", "Build tag (default: sha-<git>-<arch>)")
-	cmd.Flags().StringVar(&platform, "platform", "", "Platform to build for (default: <os>/<arch> from docker)")
-	cmd.Flags().StringVar(&only, "only", "controller,router,fixtures", "Only build the given images")
-	cmd.Flags().BoolVar(&kindLoad, "kind", devenv.IsCI(), "Load images into the kind cluster after build")
-	cmd.Flags().BoolVar(&load, "load", true, "Load the image into the local docker daemon")
-	cmd.Flags().BoolVar(&push, "push", false, "Push the image to the registry")
-	cmd.Flags().BoolVar(&provenance, "provenance", false, "Enable build provenance")
-
-	return cmd
+	})
 }

@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/gadget-inc/skipper/internal/cmd"
 	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/dockerimg"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/gadget-inc/skipper/internal/dev/krane"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // newDeployCmd builds the requested images, optionally regenerates the
@@ -28,11 +30,20 @@ func newDeployCmd() *cobra.Command {
 
 	ci := devenv.IsCI()
 
-	cmd := &cobra.Command{
+	return cmd.Build(cmd.Spec{
 		Use:   "deploy [flags]",
 		Short: "Build and deploy Skipper components to Kubernetes",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
+		Flags: func(fs *pflag.FlagSet) {
+			fs.BoolVar(&build, "build", true, "Build images before deploying")
+			fs.BoolVar(&generatePasetoKeypair, "generate-paseto-keypair", false,
+				"Generate a paseto keypair (defaults to true when tmp/paseto/{public,private}.pem are missing)")
+			fs.BoolVar(&development, "development", !ci, "Deploy development namespaces")
+			fs.StringVar(&only, "only", "controller,router,fixtures,metrics-server,otel-lgtm", "Comma-separated components to deploy")
+			fs.BoolVar(&otel, "otel", !ci, "Enable OpenTelemetry")
+			fs.BoolVar(&test, "test", true, "Deploy test namespaces")
+		},
+		RunE: func(c *cobra.Command, args []string) error {
+			ctx := c.Context()
 
 			if os.Getenv("SKIPPER_KUBECTL_CONTEXT") == "" {
 				os.Setenv("SKIPPER_KUBECTL_CONTEXT", "orbstack")
@@ -43,7 +54,7 @@ func newDeployCmd() *cobra.Command {
 			// --generate-paseto-keypair defaults to true when the
 			// keypair is missing on disk, false when present; an
 			// explicit flag value wins.
-			if !cmd.Flags().Changed("generate-paseto-keypair") {
+			if !c.Flags().Changed("generate-paseto-keypair") {
 				generatePasetoKeypair = !devenv.PasetoKeypairExists()
 			}
 
@@ -159,17 +170,7 @@ func newDeployCmd() *cobra.Command {
 
 			return nil
 		},
-	}
-
-	cmd.Flags().BoolVar(&build, "build", true, "Build images before deploying")
-	cmd.Flags().BoolVar(&generatePasetoKeypair, "generate-paseto-keypair", false,
-		"Generate a paseto keypair (defaults to true when tmp/paseto/{public,private}.pem are missing)")
-	cmd.Flags().BoolVar(&development, "development", !ci, "Deploy development namespaces")
-	cmd.Flags().StringVar(&only, "only", "controller,router,fixtures,metrics-server,otel-lgtm", "Comma-separated components to deploy")
-	cmd.Flags().BoolVar(&otel, "otel", !ci, "Enable OpenTelemetry")
-	cmd.Flags().BoolVar(&test, "test", true, "Deploy test namespaces")
-
-	return cmd
+	})
 }
 
 // deployMetricsServer applies the cluster-scoped resources (via krane
