@@ -217,15 +217,15 @@ func TestEchoesAfterAssign(t *testing.T) {
 	assert.Equal(t, resp.Header.Get("Content-Type"), "application/json")
 
 	var got struct {
-		Method  string              `json:"method"`
-		URL     string              `json:"url"`
-		Headers map[string][]string `json:"headers"`
-		Body    string              `json:"body"`
+		Method  string            `json:"method"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+		Body    string            `json:"body"`
 	}
 	dec := json.NewDecoder(resp.Body)
 	assert.NilError(t, dec.Decode(&got))
 	assert.Equal(t, got.Method, http.MethodPost)
 	assert.Equal(t, got.URL, "/echo/path?q=1")
 	assert.Equal(t, got.Body, "hello")
-	assert.DeepEqual(t, got.Headers["X-Custom"], []string{"custom-value"})
+	assert.Equal(t, got.Headers["X-Custom"], "custom-value")
 }

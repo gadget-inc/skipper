@@ -74,17 +74,30 @@ func (s *server) handleEcho(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Match the legacy TS fixture's flat-header shape: each header maps
+	// to a single comma-joined string. internal/fixture.FixtureResponse
+	// reverses this with strings.Split on `,`. Go's net/http promotes
+	// Host out of r.Header and into r.Host, so re-attach it explicitly
+	// for parity with Node's request.headers shape.
+	headers := make(map[string]string, len(r.Header)+1)
+	for k, v := range r.Header {
+		headers[k] = strings.Join(v, ", ")
+	}
+	if r.Host != "" {
+		headers["Host"] = r.Host
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	enc := json.NewEncoder(w)
 	if err := enc.Encode(struct {
-		Method  string      `json:"method"`
-		URL     string      `json:"url"`
-		Headers http.Header `json:"headers"`
-		Body    string      `json:"body"`
+		Method  string            `json:"method"`
+		URL     string            `json:"url"`
+		Headers map[string]string `json:"headers"`
+		Body    string            `json:"body"`
 	}{
 		Method:  r.Method,
 		URL:     r.URL.RequestURI(),
-		Headers: r.Header,
+		Headers: headers,
 		Body:    string(body),
 	}); err != nil {
 		log.Error(r.Context(), "failed to encode echo response", key.Error.Slog(err))
