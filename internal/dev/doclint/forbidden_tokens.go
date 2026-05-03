@@ -53,9 +53,6 @@ var forbiddenTokensAllowlist = []forbiddenTokensAllowEntry{
 	// internal/web/testserver_test.go references SKIPPER_PLAYWRIGHT.
 	// drop in phase 8 (file is deleted there).
 	{File: "internal/web/testserver_test.go", Pattern: `SKIPPER_PLAYWRIGHT`},
-	// internal/web/webtest/server.go docstring still mentions playwright.
-	// drop in phase 7 (the docstring is rewritten there).
-	{File: "internal/web/webtest/server.go", Pattern: `(?i)playwright`},
 	// The doclint package's own test fixtures.
 	{File: "internal/dev/doclint/", Pattern: ``},
 	// .claude/rules/docs.md MDX-Conventions section -- drop in phase 8

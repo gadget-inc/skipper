@@ -1,11 +1,8 @@
 // Package exec wraps os/exec.CommandContext with project conventions:
-// commands inherit the parent's environment, default to running from the
-// repo root (resolved via WORKSPACE_DIR), and stream stdout / stderr to
-// the caller. RunOut captures stdout for use as a string; RunQuiet
-// suppresses stdout when only the exit status matters.
-//
-// The package replaces zx's $-tagged template literal style with three
-// thin functions sized to the ported scripts' actual needs.
+// commands inherit the parent's environment, default to running from
+// the repo root (resolved via WORKSPACE_DIR), and stream stdout /
+// stderr to the caller. RunOut captures stdout for use as a string;
+// RunQuiet suppresses stdout when only the exit status matters.
 package exec
 
 import (

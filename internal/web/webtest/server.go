@@ -1,7 +1,8 @@
-// Package webtest exposes the in-process *web.Server fixture used by the
-// chromedp-driven e2e suite. The state mirrors what the original
-// SKIPPER_PLAYWRIGHT=1 boot path served, so URL-state and rendering
-// assertions remain stable across the runner swap.
+// Package webtest exposes the in-process *web.Server fixture used by
+// the chromedp-driven e2e suite. The fixture seeds a controller stub
+// with a deterministic snapshot (functions, instances, controller
+// peers, events, config) so URL-state and rendering assertions are
+// stable run to run.
 package webtest
 
 import (
