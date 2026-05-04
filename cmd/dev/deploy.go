@@ -206,7 +206,7 @@ func deployMetricsServer(ctx context.Context) error {
 	for _, f := range kubeSystemFiles {
 		args = append(args, "-f", f)
 	}
-	args = append(args, "--selector=app.kubernetes.io/managed-by=krane", "--protected-namespaces=default", "kube-public")
+	args = append(args, "--selector=app.kubernetes.io/managed-by=krane", "--protected-namespaces", "default", "kube-public")
 	return exec.Run(ctx, "krane", args)
 }
 
