@@ -28,6 +28,7 @@ Every flag has an environment variable equivalent: `--flag-name` becomes `SKIPPE
 | `--function-assign-timeout`           | duration | `30s`                 | Timeout for assignment HTTP request                         |
 | `--max-concurrent-stale-replacements` | int      | `10`                  | Max concurrent stale pod replacements (must be >= 1)        |
 | `--skip-forbidden-namespaces`         | bool     | `false`               | Skip namespaces the service account lacks access to         |
+| `--web-port`                          | int      | `8080`                | HTTP port for the controller web UI                         |
 
 ## Router configuration
 
