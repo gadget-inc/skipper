@@ -9,10 +9,9 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// newBuildCmd builds the controller / router / fixture container
-// images: docker buildx bake for the controller / router targets,
-// docker buildx build for the fixture container, and an optional
-// `kind load` step for CI.
+// newBuildCmd builds the controller, router, and fixture container
+// images via a single `docker buildx bake` over the targets in
+// docker-bake.hcl, plus an optional `kind load` step for CI.
 func newBuildCmd() *cobra.Command {
 	var (
 		registry   string
@@ -59,73 +58,56 @@ func newBuildCmd() *cobra.Command {
 			components := devenv.ExpandSkipperAlias(only)
 			buildController := components["controller"]
 			buildRouter := components["router"]
+			buildFixtures := components["fixtures"]
 
-			if buildController || buildRouter {
-				targets := []string{}
-				if buildController {
-					targets = append(targets, "controller")
-				}
-				if buildRouter {
-					targets = append(targets, "router")
-				}
-
-				bakeFlags := []string{}
-				if load {
-					bakeFlags = append(bakeFlags, "--load")
-				}
-				if push {
-					bakeFlags = append(bakeFlags, "--push")
-				}
-				if !provenance {
-					bakeFlags = append(bakeFlags, "--provenance=false")
-				}
-
-				env := []string{"TAG=" + tag, "PLATFORM=" + platform}
-				if registry != "" {
-					env = append(env, "REGISTRY="+registry)
-				}
-
-				args := append([]string{"buildx", "bake"}, targets...)
-				args = append(args, bakeFlags...)
-				if err := exec.Run(ctx, "docker", args, exec.Env(env...)); err != nil {
-					return err
-				}
-
-				if kindLoad {
-					if err := devenv.KindLoadImage(ctx, "skipper-controller", registry, tag, buildController); err != nil {
-						return err
-					}
-					if err := devenv.KindLoadImage(ctx, "skipper-router", registry, tag, buildRouter); err != nil {
-						return err
-					}
-				}
+			if !buildController && !buildRouter && !buildFixtures {
+				return nil
 			}
 
-			if components["fixtures"] {
-				imageName := "skipper-fixtures-fixture"
-				buildFlags := []string{
-					"buildx", "build", ".",
-					"--file=fixture/Dockerfile",
-					"--platform=" + platform,
-					"--tag=" + imageName + ":" + tag,
-				}
-				if load {
-					buildFlags = append(buildFlags, "--load")
-				}
-				if !provenance {
-					buildFlags = append(buildFlags, "--provenance=false")
-				}
-				if err := exec.Run(ctx, "docker", buildFlags); err != nil {
-					return err
-				}
-
-				if kindLoad {
-					if err := exec.Run(ctx, "kind", []string{"load", "docker-image", imageName + ":" + tag}); err != nil {
-						return err
-					}
-				}
+			targets := []string{}
+			if buildController {
+				targets = append(targets, "controller")
+			}
+			if buildRouter {
+				targets = append(targets, "router")
+			}
+			if buildFixtures {
+				targets = append(targets, "fixture")
 			}
 
+			bakeFlags := []string{}
+			if load {
+				bakeFlags = append(bakeFlags, "--load")
+			}
+			if push {
+				bakeFlags = append(bakeFlags, "--push")
+			}
+			if !provenance {
+				bakeFlags = append(bakeFlags, "--provenance=false")
+			}
+
+			env := []string{"TAG=" + tag, "PLATFORM=" + platform}
+			if registry != "" {
+				env = append(env, "REGISTRY="+registry)
+			}
+
+			bakeArgs := append([]string{"buildx", "bake"}, targets...)
+			bakeArgs = append(bakeArgs, bakeFlags...)
+			if err := exec.Run(ctx, "docker", bakeArgs, exec.Env(env...)); err != nil {
+				return err
+			}
+
+			if kindLoad {
+				if err := devenv.KindLoadImage(ctx, "skipper-controller", registry, tag, buildController); err != nil {
+					return err
+				}
+				if err := devenv.KindLoadImage(ctx, "skipper-router", registry, tag, buildRouter); err != nil {
+					return err
+				}
+				if err := devenv.KindLoadImage(ctx, "skipper-fixtures-fixture", registry, tag, buildFixtures); err != nil {
+					return err
+				}
+			}
 			return nil
 		},
 	})

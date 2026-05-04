@@ -25,7 +25,6 @@ Every new terminal opened in the repository will automatically provide the corre
 | ------------------- | -------------------------------------------------------------- |
 | `cmd/`              | Binary entry points (`controller`, `router`, `fixture`, `dev`) |
 | `docs/content/`     | Documentation site source (Markdown)                           |
-| `fixture/`          | Dockerfile for the fixture binary build context                |
 | `internal/`         | Skipper source code (Go)                                       |
 | `internal/web/`     | Web UI server, handlers, and HTML templates                    |
 | `nix/`              | Nix development environment                                    |

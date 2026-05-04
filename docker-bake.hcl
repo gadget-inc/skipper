@@ -16,7 +16,7 @@ function "image_name" {
 }
 
 group "default" {
-  targets = ["controller", "router"]
+  targets = ["controller", "router", "fixture"]
 }
 
 target "controller" {
@@ -30,5 +30,12 @@ target "router" {
   dockerfile = "Dockerfile"
   target     = "router"
   tags       = ["${image_name("skipper-router")}:${TAG}"]
+  platforms  = [PLATFORM]
+}
+
+target "fixture" {
+  dockerfile = "Dockerfile"
+  target     = "fixture"
+  tags       = ["${image_name("skipper-fixtures-fixture")}:${TAG}"]
   platforms  = [PLATFORM]
 }
