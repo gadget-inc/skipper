@@ -18,37 +18,50 @@ import (
 	"github.com/gadget-inc/skipper/internal/controller"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
+	"github.com/gadget-inc/skipper/internal/metric"
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/gadget-inc/skipper/internal/timer"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
+// metrics holds every prometheus metric the router package
+// registers, captured for the docs `{{< metricsTable router >}}`
+// shortcode. Help strings are doc-quality (single sentence, optional
+// trailing parenthetical, <= 120 chars).
+var metrics = metric.NewSet(prometheus.DefaultRegisterer)
+
 var (
-	requestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	requestsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "requests_total",
-		Help:      "The number of requests handled by the router",
+		Help:      "Total requests processed by the router.",
 	}, []string{"function_deployment"})
 
-	requestsInFlight = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	requestsInFlight = metrics.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "requests_in_flight",
-		Help:      "The number of requests that are currently being handled by the router",
+		Help:      "Requests currently being handled by the router.",
 	}, []string{"function_deployment"})
 
-	heartbeatsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	heartbeatsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "heartbeats_total",
-		Help:      "The number of heartbeats sent by the router",
+		Help:      "Heartbeats sent to the controller.",
 	}, []string{"function_deployment"})
 )
+
+// Metrics returns the metadata of every prometheus metric registered
+// by the router package. The docs site reads this slice via the
+// `{{< metricsTable router >}}` shortcode.
+func Metrics() []metric.Metric {
+	return metrics.Slice()
+}
 
 type Router struct {
 	config       *Config

@@ -290,6 +290,20 @@ var transportTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*transportTable\s*>\}\
 // [flagTableRe]'s `[a-z][a-z0-9-]*` argument class.
 var messageTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*messageTable\s+([A-Z][A-Za-z0-9]*)\s*>\}\}\s*$`)
 
+// metricsTableRe matches the Prometheus metrics-table shortcode on
+// its own line:
+//
+//	{{< metricsTable controller >}}
+//
+// The captured argument is a component name -- lowercase-leading,
+// matching [flagTableRe]'s argument class.
+//
+// Leading whitespace is restricted to `[ \t]*` (not `\s*`) so the
+// regex does not consume the blank line preceding the shortcode --
+// that blank line is what lets goldmark exit a `<div class=...>`
+// HTML block and resume markdown parsing for the rendered table.
+var metricsTableRe = regexp.MustCompile(`(?m)^[ \t]*\{\{<\s*metricsTable\s+([a-z][a-z0-9-]*)\s*>\}\}\s*$`)
+
 // preprocessShortcodes expands custom shortcodes into raw HTML or
 // markdown before goldmark sees the source: admonition fences
 // (`:::variant`), the flag-table shortcode (`{{< flagtable name >}}`),
@@ -397,6 +411,25 @@ func preprocessShortcodes(src string) (string, error) {
 	})
 	if messageErr != nil {
 		return "", messageErr
+	}
+	var metricsErr error
+	src = metricsTableRe.ReplaceAllStringFunc(src, func(match string) string {
+		if metricsErr != nil {
+			return match
+		}
+		groups := metricsTableRe.FindStringSubmatch(match)
+		if len(groups) < 2 {
+			return match
+		}
+		out, err := renderMetricsTable(groups[1])
+		if err != nil {
+			metricsErr = err
+			return match
+		}
+		return out
+	})
+	if metricsErr != nil {
+		return "", metricsErr
 	}
 	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)

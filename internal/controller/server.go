@@ -9,18 +9,17 @@ import (
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var heartbeatsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+var heartbeatsCounter = metrics.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "skipper",
 	Subsystem: "controller",
 	Name:      "heartbeats_total",
-	Help:      "The number of heartbeats received by the controller",
+	Help:      "Heartbeats received from routers.",
 }, []string{"function_deployment"})
 
 // Server implements the ControllerServiceServer interface.

@@ -38,16 +38,7 @@ The router's HTTP transport and the controller's gRPC server are both instrument
 
 <div class="table-scroll">
 
-| Metric                             | Type      | Labels              | Purpose                                                                    |
-| ---------------------------------- | --------- | ------------------- | -------------------------------------------------------------------------- |
-| `waiting_for_unassigned_pods`      | Gauge     | function_deployment | Functions blocked waiting for pod assignment                               |
-| `assignments_total`                | Counter   | function_deployment | Total pod assignments                                                      |
-| `scale_ups_total`                  | Counter   | function_deployment | Total scale-up operations                                                  |
-| `scale_downs_total`                | Counter   | function_deployment | Total scale-down operations                                                |
-| `heartbeats_total`                 | Counter   | function_deployment | Heartbeats received                                                        |
-| `informer_events_total`            | Counter   | resource, event     | Kubernetes informer events                                                 |
-| `informer_event_lag_seconds`       | Histogram | resource, event     | Lag between object change and informer processing (buckets: 0.0625s--512s) |
-| `informer_last_event_time_seconds` | Gauge     | --                  | Unix timestamp of last informer event                                      |
+{{< metricsTable controller >}}
 
 </div>
 
@@ -55,11 +46,7 @@ The router's HTTP transport and the controller's gRPC server are both instrument
 
 <div class="table-scroll">
 
-| Metric               | Type    | Labels              | Purpose                       |
-| -------------------- | ------- | ------------------- | ----------------------------- |
-| `requests_total`     | Counter | function_deployment | Total requests processed      |
-| `requests_in_flight` | Gauge   | function_deployment | Currently processing requests |
-| `heartbeats_total`   | Counter | function_deployment | Heartbeats sent to controller |
+{{< metricsTable router >}}
 
 </div>
 
