@@ -98,22 +98,6 @@ var messageTableDescriptions = map[string]string{
 	"GetClusterStateResponse.cluster_state": "Snapshot of the cluster's current supervisor, event, and config state.",
 }
 
-// messageTableRe matches the messageTable shortcode on its own
-// line:
-//
-//	{{< messageTable Function >}}
-//
-// The argument is the canonical proto message name --
-// uppercase-leading CamelCase. The pattern intentionally does NOT
-// reuse [flagTableRe]'s `[a-z]`-leading argument class.
-//
-// Defined here (not in render.go alongside the other shortcode
-// regexes) because it has the most domain logic of any of the
-// shortcode patterns.
-//
-// scopeNote: The matching argument shape is the contract; the test
-// fixture exercises it.
-
 // renderMessageTable looks message up in messageTableRegistry,
 // renders one row per field of the corresponding proto descriptor,
 // and joins each row with the description from
