@@ -357,12 +357,14 @@ func runLoad(ctx context.Context, opts loadOptions) error {
 	stopProgress := startProgress(state, &startedAt, opts)
 	defer stopProgress()
 
-	gctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	var gctx context.Context
+	var cancel context.CancelFunc
 	if opts.duration > 0 {
 		gctx, cancel = context.WithDeadline(ctx, deadline)
-		defer cancel()
+	} else {
+		gctx, cancel = context.WithCancel(ctx)
 	}
+	defer cancel()
 
 	work := make(chan struct{})
 	var wg sync.WaitGroup

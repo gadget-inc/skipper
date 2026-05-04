@@ -57,6 +57,7 @@ jobs:
             --only=skipper \
             --registry=us-central1-docker.pkg.dev/gadget-core-production/core-production \
             --push \
+            --load=false \
             --kind=false
 
   merge-manifests:
