@@ -37,10 +37,8 @@ func newTestCmd() *cobra.Command {
 		Short: "Run Go tests via gotestsum (use `test e2e` for the chromedp suite)",
 		Sub:   []*cobra.Command{e2eCmd},
 		RunE: func(c *cobra.Command, args []string) error {
-			for _, a := range args {
-				if a == "--help" || a == "-h" {
-					return c.Help()
-				}
+			if slices.Contains(args, "--help") || slices.Contains(args, "-h") {
+				return c.Help()
 			}
 			return runGoTests(c.Context(), args)
 		},
