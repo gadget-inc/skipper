@@ -2,6 +2,9 @@ package docssite
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -17,8 +20,8 @@ func TestRenderFlagTable_UnknownSection(t *testing.T) {
 
 // TestRenderFlagTable_ControllerHasExpectedFlags asserts the controller
 // section renders a row for every `flag:"…"` tag declared on
-// controller.Config — including the previously-allowlisted dev flags
-// `web-template-dir` and `single-controller-mode`.
+// controller.Config, including the dev-only flags `web-template-dir`
+// and `single-controller-mode`.
 func TestRenderFlagTable_ControllerHasExpectedFlags(t *testing.T) {
 	t.Parallel()
 	out, err := renderFlagTable("controller")
@@ -299,3 +302,74 @@ func countUnescapedPipes(line string) int {
 
 // _ ensures the time import isn't lost when removing tests.
 var _ = time.Duration(0)
+
+// TestBuild_FlagtableShortcodeRendersAllStructFlags is the load-bearing
+// regression test: it renders a fixture markdown body containing each
+// of the three flagtable shortcodes, then asserts every `flag:"…"` tag
+// declared on any bound config struct appears in the rendered HTML.
+// A struct field that loses its tag silently breaks the docs; this
+// test catches it.
+func TestBuild_FlagtableShortcodeRendersAllStructFlags(t *testing.T) {
+	t.Parallel()
+	srcDir := t.TempDir()
+	outDir := t.TempDir()
+
+	page := `---
+title: Configuration Reference
+---
+
+## Controller configuration
+
+{{< flagtable controller >}}
+
+## Router configuration
+
+{{< flagtable router >}}
+
+## Shared configuration
+
+{{< flagtable shared >}}
+`
+	assert.NilError(t, os.WriteFile(filepath.Join(srcDir, "configuration.md"), []byte(page), 0o644))
+
+	err := Build(srcDir, outDir, BuildOptions{})
+	assert.NilError(t, err)
+
+	htmlBytes, err := os.ReadFile(filepath.Join(outDir, "configuration", "index.html"))
+	assert.NilError(t, err)
+	out := string(htmlBytes)
+
+	for _, b := range flagTableBindings {
+		for _, s := range b.Structs {
+			ty := reflect.TypeOf(s)
+			for f := range ty.Fields() {
+				flag := f.Tag.Get("flag")
+				if flag == "" {
+					continue
+				}
+				assert.Assert(t, strings.Contains(out, "--"+flag),
+					"section %q missing --%s in rendered HTML", b.Section, flag)
+			}
+		}
+	}
+}
+
+// TestBuild_FlagtableShortcodeUnknownSectionFails asserts an unknown
+// section slug surfaces as a build-time error rather than a silent
+// no-op.
+func TestBuild_FlagtableShortcodeUnknownSectionFails(t *testing.T) {
+	t.Parallel()
+	srcDir := t.TempDir()
+	outDir := t.TempDir()
+
+	page := `---
+title: Bad
+---
+
+{{< flagtable typo >}}
+`
+	assert.NilError(t, os.WriteFile(filepath.Join(srcDir, "bad.md"), []byte(page), 0o644))
+
+	err := Build(srcDir, outDir, BuildOptions{})
+	assert.ErrorContains(t, err, "typo")
+}

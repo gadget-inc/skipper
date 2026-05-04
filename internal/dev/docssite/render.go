@@ -96,7 +96,10 @@ type pageData struct {
 // returns the fully rendered HTML page. dev controls whether the
 // live-reload script tag is emitted; only Serve sets it.
 func (r *renderInfo) RenderPage(relPath string, source []byte, dev bool) ([]byte, error) {
-	processed := preprocessShortcodes(string(source))
+	processed, err := preprocessShortcodes(string(source))
+	if err != nil {
+		return nil, fmt.Errorf("preprocess shortcodes: %w", err)
+	}
 	processed = rewriteAbsoluteLinks(processed, r.basePath)
 
 	ctx := parser.NewContext()
@@ -249,11 +252,24 @@ var asideRe = regexp.MustCompile(`(?ms)^:::(tip|caution|note)?(?:[ \t]+([^\n]*))
 // the source untouched.
 var widgetRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*([a-z][a-z0-9-]*)\s*>\}\}\s*$`)
 
-// preprocessShortcodes expands custom shortcodes into raw HTML before
-// goldmark sees the source: admonition fences (`:::variant`) and inline
-// widget markers (`{{< widget-name >}}`). The frontmatter `widgets:`
-// path remains the way to opt into a widget without editing the body.
-func preprocessShortcodes(src string) string {
+// flagTableRe matches the configuration-reference shortcode on its
+// own line:
+//
+//	{{< flagtable section-name >}}
+//
+// The captured section name is dispatched to renderFlagTable, which
+// emits the markdown table body.
+var flagTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*flagtable\s+([a-z][a-z0-9-]*)\s*>\}\}\s*$`)
+
+// preprocessShortcodes expands custom shortcodes into raw HTML or
+// markdown before goldmark sees the source: admonition fences
+// (`:::variant`), the flag-table shortcode (`{{< flagtable name >}}`),
+// and inline widget markers (`{{< widget-name >}}`). The frontmatter
+// `widgets:` path remains the way to opt into a widget without
+// editing the body. An unknown flagtable section returns a wrapped
+// error so the build fails loudly; an unknown widget is left in the
+// source untouched.
+func preprocessShortcodes(src string) (string, error) {
 	src = asideRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := asideRe.FindStringSubmatch(match)
 		variant := "note"
@@ -270,7 +286,26 @@ func preprocessShortcodes(src string) string {
 		}
 		return renderAside(variant, title, body)
 	})
-	return widgetRe.ReplaceAllStringFunc(src, func(match string) string {
+	var flagErr error
+	src = flagTableRe.ReplaceAllStringFunc(src, func(match string) string {
+		if flagErr != nil {
+			return match
+		}
+		groups := flagTableRe.FindStringSubmatch(match)
+		if len(groups) < 2 {
+			return match
+		}
+		out, err := renderFlagTable(groups[1])
+		if err != nil {
+			flagErr = err
+			return match
+		}
+		return out
+	})
+	if flagErr != nil {
+		return "", flagErr
+	}
+	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)
 		if len(groups) < 2 {
 			return match
@@ -280,6 +315,7 @@ func preprocessShortcodes(src string) string {
 		}
 		return match
 	})
+	return src, nil
 }
 
 // widgetPartial returns the HTML for a registered widget name, or the
