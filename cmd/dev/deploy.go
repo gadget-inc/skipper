@@ -59,7 +59,7 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			if build {
-				if err := invoke(ctx, "build"); err != nil {
+				if err := invoke(ctx, "build", "--only="+only); err != nil {
 					return err
 				}
 			}
@@ -119,10 +119,12 @@ func newDeployCmd() *cobra.Command {
 					return fmt.Errorf("read paseto private key: %w", err)
 				}
 
-				envBindings := map[string]any{
-					"SKIPPER_TELEMETRY":           otel,
-					"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
-					"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
+				envBindings := func() map[string]any {
+					return map[string]any{
+						"SKIPPER_TELEMETRY":           otel,
+						"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+						"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
+					}
 				}
 
 				if development {
@@ -139,7 +141,7 @@ func newDeployCmd() *cobra.Command {
 						"controller_node_port":                 31021,
 						"controller_web_node_port":             31022,
 						"controller_web_template_host_dir":     filepath.Join(root, "internal", "web"),
-						"env":                                  envBindings,
+						"env":                                  envBindings(),
 					}
 					if err := krane.Deploy(ctx, "skipper-development", bindings); err != nil {
 						return err
@@ -159,7 +161,7 @@ func newDeployCmd() *cobra.Command {
 						"router_node_port":                     31030,
 						"controller_node_port":                 31031,
 						"controller_web_node_port":             31032,
-						"env":                                  envBindings,
+						"env":                                  envBindings(),
 					}
 					if err := krane.Deploy(ctx, "skipper-test", bindings); err != nil {
 						return err
