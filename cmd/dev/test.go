@@ -15,18 +15,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newTestsCmd dispatches the project's test runners. The Go suite goes
-// through gotestsum; e2e is a chromedp Go suite.
-func newTestsCmd() *cobra.Command {
-	goCmd := cmd.Build(cmd.Spec{
-		Use:   "go [flags] [./path/...]",
-		Short: "Run Go tests via gotestsum",
-		RunE: func(c *cobra.Command, args []string) error {
-			return runGoTests(c.Context(), args)
-		},
-	})
-	goCmd.DisableFlagParsing = true
-
+// newTestCmd runs the Go suite via gotestsum by default. The e2e
+// subcommand runs the chromedp suite via `go test ./e2e/...`.
+//
+// DisableFlagParsing on the parent forwards unknown flags (`-short`,
+// `-run`, `-bench`, ...) verbatim to gotestsum. Cobra would otherwise
+// intercept `--help`/`-h`; the parent's RunE handles those explicitly
+// so the discoverable subcommand listing still works.
+func newTestCmd() *cobra.Command {
 	e2eCmd := cmd.Build(cmd.Spec{
 		Use:   "e2e [args...]",
 		Short: "Run the chromedp e2e suite",
@@ -36,25 +32,31 @@ func newTestsCmd() *cobra.Command {
 	})
 	e2eCmd.DisableFlagParsing = true
 
-	allCmd := cmd.Build(cmd.Spec{
-		Use:   "all",
-		Short: "Run all Go tests (not e2e)",
+	root := cmd.Build(cmd.Spec{
+		Use:   "test [flags] [./path/...]",
+		Short: "Run Go tests via gotestsum (use `test e2e` for the chromedp suite)",
+		Sub:   []*cobra.Command{e2eCmd},
 		RunE: func(c *cobra.Command, args []string) error {
-			return runGoTests(c.Context(), nil)
+			for _, a := range args {
+				if a == "--help" || a == "-h" {
+					return c.Help()
+				}
+			}
+			return runGoTests(c.Context(), args)
 		},
 	})
-
-	return cmd.Build(cmd.Spec{
-		Use:   "tests <go|e2e|all> [args...]",
-		Short: "Run test suites",
-		Sub:   []*cobra.Command{goCmd, e2eCmd, allCmd},
-	})
+	root.DisableFlagParsing = true
+	return root
 }
 
 // runGoTests builds the gotestsum invocation: piping through tee to
 // tmp/logs/tests.log, defaulting to ./... when no path is supplied,
 // and adding -count=1, -race, and a follow-up Allocations pass in CI.
 func runGoTests(ctx context.Context, args []string) error {
+	if hasBareAll(args) {
+		return fmt.Errorf("dev test all is not a subcommand; run `dev test` (no args) to run every Go package")
+	}
+
 	logsDir := filepath.Join(devenv.RepoRoot(), "tmp", "logs")
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return fmt.Errorf("create logs dir: %w", err)
@@ -108,10 +110,10 @@ func runWithTee(ctx context.Context, logsDir, name string, appendLog bool, gotes
 	}
 	defer logFile.Close()
 
-	args := append([]string{}, gotestsumFlags...)
-	args = append(args, "--")
-	args = append(args, goTestFlags...)
-	return exec.Run(ctx, "gotestsum", args, exec.Stdout(io.MultiWriter(os.Stdout, logFile)))
+	gotestsumArgs := append([]string{}, gotestsumFlags...)
+	gotestsumArgs = append(gotestsumArgs, "--")
+	gotestsumArgs = append(gotestsumArgs, goTestFlags...)
+	return exec.Run(ctx, "gotestsum", gotestsumArgs, exec.Stdout(io.MultiWriter(os.Stdout, logFile)))
 }
 
 func hasPathArg(args []string) bool {
@@ -126,6 +128,22 @@ func hasPathArg(args []string) bool {
 func hasFlagPrefix(args []string, prefix string) bool {
 	for _, a := range args {
 		if strings.HasPrefix(a, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasBareAll reports whether any positional (non-flag) arg is the
+// literal `all`. Catches the muscle-memory shapes `dev test all`,
+// `dev test all -v`, and `dev test ./pkg all` -- any of which would
+// otherwise reach `go test ./... all` (Go's meta-package).
+func hasBareAll(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		if a == "all" {
 			return true
 		}
 	}

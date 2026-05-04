@@ -17,11 +17,10 @@ dev fixture load -c 10 -n 1000      # Load test the fixture
 dev build                           # Build controller, router, and fixture images
 dev build --only=fixtures           # Build only the fixture image
 dev kube-lint                       # Render template.yaml.erb and lint each binding configuration
-dev tests go ./...                      # Run all Go tests
-dev tests go -short ./...               # Run Go tests without Kubernetes (skips integration tests)
-dev tests go -v ./internal/controller/... # Run specific package tests
-dev tests e2e                           # Run e2e tests
-dev tests all                           # Run all Go tests (not e2e)
+dev test                                # Run all Go tests
+dev test -short ./...                   # Run Go tests without Kubernetes (skips integration tests)
+dev test -v ./internal/controller/...   # Run specific package tests
+dev test e2e                            # Run e2e tests
 dev lint                            # Run kube-lint, lint-docs, and golangci-lint
 dev lint-docs                       # Lint repository documentation
 dev fmt                             # Auto-fix formatting (golangci-lint fmt)

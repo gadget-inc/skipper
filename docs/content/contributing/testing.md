@@ -6,12 +6,13 @@ description: Run tests, linters, and regenerate protobuf code.
 ## Testing
 
 ```bash
-dev tests go                                  # Runs go test ./...
-dev tests go -v ./internal/controller/...     # Verbose tests for the controller package
-dev tests go -short ./...                     # Skips integration tests (no Orbstack required)
+dev test                                  # Runs go test ./...
+dev test -v ./internal/controller/...     # Verbose tests for the controller package
+dev test -short ./...                     # Skips integration tests (no Orbstack required)
+dev test e2e                              # Runs the chromedp e2e suite
 ```
 
-`dev tests go` forwards all arguments to `go test`.
+`dev test` forwards all arguments to `go test`.
 
 :::tip
 Some tests are integration tests that require Skipper to be deployed to Orbstack. Pass `-short` to skip these tests if you haven't deployed yet.

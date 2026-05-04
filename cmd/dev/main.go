@@ -16,7 +16,7 @@ func newRoot() *cobra.Command {
 		Short: "skipper developer-experience commands",
 		Sub: []*cobra.Command{
 			newUpCmd(), newFmtCmd(), newLintCmd(), newCleanCmd(),
-			newGenerateCmd(), newDocsCmd(), newTestsCmd(), newLogsCmd(),
+			newGenerateCmd(), newDocsCmd(), newTestCmd(), newLogsCmd(),
 			newBuildCmd(), newKubeLintCmd(), newLintDocsCmd(),
 			newDeployCmd(), newFixtureCmd(), newProfileCmd(),
 		},

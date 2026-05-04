@@ -5,7 +5,7 @@
 1. Install [Nix](https://nixos.org/download), [direnv](https://direnv.net/), and [Orbstack](https://orbstack.dev/).
 2. `cd` into the repository and run `direnv allow`.
 3. Run `dev deploy` to build and deploy to your local Kubernetes cluster.
-4. Run `dev tests go -short ./...` to verify everything works.
+4. Run `dev test -short ./...` to verify everything works.
 
 ## Debugging
 

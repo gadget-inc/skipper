@@ -6,7 +6,7 @@ description: How to submit changes and build Docker images.
 ## Submitting changes
 
 1. Create a new branch and make your changes.
-2. Confirm `dev deploy`, `dev tests`, `dev lint`, and `dev fmt` all succeed locally.
+2. Confirm `dev deploy`, `dev test`, `dev lint`, and `dev fmt` all succeed locally.
 3. Open a Pull Request — GitHub Actions will run the same scripts in CI.
 4. One approval from a maintainer and passing CI are required to merge.
 

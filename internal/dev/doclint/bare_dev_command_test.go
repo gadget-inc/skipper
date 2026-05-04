@@ -70,7 +70,7 @@ func TestBareDevCommand_DoesNotScanProseOrNonShellFences(t *testing.T) {
 
 	src := strings.Join([]string{
 		"## Heading",
-		"`tests` are run via `dev tests go ./...`",
+		"`test` is run via `dev test ./...`",
 		"```go",
 		"// deploy() does not match outside shell blocks",
 		"deploy()",
@@ -84,11 +84,11 @@ func TestBareDevCommand_DoesNotScanProseOrNonShellFences(t *testing.T) {
 func TestBareDevCommand_RequiresInvocationShape(t *testing.T) {
 	t.Parallel()
 
-	// `tests` followed by a sentence word (not a flag/subcommand/path)
+	// `test` followed by a sentence word (not a flag/subcommand/path)
 	// is plain English -- not a real invocation; do NOT flag.
 	src := strings.Join([]string{
 		"```bash",
-		"tests are run via the dev tests command",
+		"test is run via the dev test command",
 		"```",
 	}, "\n")
 
@@ -96,16 +96,16 @@ func TestBareDevCommand_RequiresInvocationShape(t *testing.T) {
 	assert.Equal(t, len(got), 0, "plain English continuation must not be flagged")
 }
 
-func TestBareDevCommand_FlagsTestsGoInvocation(t *testing.T) {
+func TestBareDevCommand_FlagsBareTestSubcommand(t *testing.T) {
 	t.Parallel()
 
 	src := strings.Join([]string{
 		"```bash",
-		"tests go -short ./...",
+		"test -short ./...",
 		"```",
 	}, "\n")
 
 	got := scanBareDevCommand(File{Path: "CONTRIBUTING.md", Content: []byte(src)})
 	assert.Equal(t, len(got), 1)
-	assert.Equal(t, got[0].Token, "tests")
+	assert.Equal(t, got[0].Token, "test")
 }

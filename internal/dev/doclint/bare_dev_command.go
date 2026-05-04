@@ -6,7 +6,7 @@ import (
 )
 
 // bareDevCommandRule flags shell-block lines whose first token is a
-// known cobra subcommand name (`up`, `deploy`, `tests`, ...) without
+// known cobra subcommand name (`up`, `deploy`, `test`, ...) without
 // the `dev` prefix. The rule scans only `bash`/`sh`/`shell`-tagged
 // fenced blocks in markdown files inside docs/content/, CLAUDE.md,
 // CONTRIBUTING.md, and .claude/.
@@ -38,7 +38,7 @@ func init() { register(bareDevCommandRule{}) }
 var bareDevSubcommands = map[string]bool{
 	"up":        true,
 	"deploy":    true,
-	"tests":     true,
+	"test":      true,
 	"profile":   true,
 	"logs":      true,
 	"build":     true,
@@ -57,9 +57,7 @@ var bareDevSubcommands = map[string]bool{
 // (-/--), a known sub-subcommand identifier, a path-shaped argument,
 // or a shell pipe/redirect.
 var bareDevSubSubcommands = map[string]bool{
-	"go":        true, // tests go
-	"e2e":       true, // tests e2e
-	"all":       true, // tests all
+	"e2e":       true, // test e2e
 	"request":   true, // fixture request
 	"websocket": true, // fixture websocket
 	"load":      true, // fixture load
