@@ -21,15 +21,15 @@ Every new terminal opened in the repository will automatically provide the corre
 
 <div class="table-scroll">
 
-| Path                | Description                                  |
-| ------------------- | -------------------------------------------- |
-| `cmd/dev/`          | The `dev` developer-experience CLI           |
-| `docs/content/`     | Documentation site source (Markdown)         |
-| `fixture/`          | Example fixture server for integration tests |
-| `internal/`         | Skipper source code (Go)                     |
-| `internal/web/`     | Web UI server, handlers, and HTML templates  |
-| `nix/`              | Nix development environment                  |
-| `tmp/`              | Temporary build artifacts (safe to delete)   |
-| `template.yaml.erb` | Krane deployment template                    |
+| Path                | Description                                                    |
+| ------------------- | -------------------------------------------------------------- |
+| `cmd/`              | Binary entry points (`controller`, `router`, `fixture`, `dev`) |
+| `docs/content/`     | Documentation site source (Markdown)                           |
+| `fixture/`          | Dockerfile for the fixture binary build context                |
+| `internal/`         | Skipper source code (Go)                                       |
+| `internal/web/`     | Web UI server, handlers, and HTML templates                    |
+| `nix/`              | Nix development environment                                    |
+| `tmp/`              | Temporary build artifacts (safe to delete)                     |
+| `template.yaml.erb` | Krane deployment template                                      |
 
 </div>
