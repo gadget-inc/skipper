@@ -61,7 +61,7 @@ func (m *mockClientConn) waitForUpdate(t *testing.T) {
 	}
 }
 
-// waitForAddrs waits until the last resolver state contains exactly n addresses,
+// waitForAddrs waits until the last resolver state contains exactly n endpoints,
 // draining intermediate updates (e.g. from informer cache sync).
 func (m *mockClientConn) waitForAddrs(t *testing.T, n int) {
 	t.Helper()
@@ -70,7 +70,7 @@ func (m *mockClientConn) waitForAddrs(t *testing.T, n int) {
 		m.mu.Lock()
 		count := 0
 		if len(m.states) > 0 {
-			count = len(m.states[len(m.states)-1].Addresses)
+			count = len(m.states[len(m.states)-1].Endpoints)
 		}
 		m.mu.Unlock()
 		if count == n {
@@ -79,15 +79,17 @@ func (m *mockClientConn) waitForAddrs(t *testing.T, n int) {
 		select {
 		case <-m.ch:
 		case <-deadline:
-			t.Fatalf("timed out waiting for %d addresses, last state has %d", n, count)
+			t.Fatalf("timed out waiting for %d endpoints, last state has %d", n, count)
 		}
 	}
 }
 
 func sortedAddrs(s resolver.State) []string {
-	out := make([]string, len(s.Addresses))
-	for i, a := range s.Addresses {
-		out[i] = a.Addr
+	out := make([]string, 0, len(s.Endpoints))
+	for _, ep := range s.Endpoints {
+		for _, a := range ep.Addresses {
+			out = append(out, a.Addr)
+		}
 	}
 	sort.Strings(out)
 	return out

@@ -177,7 +177,12 @@ func (r *k8sResolver) resolve(ctx context.Context) {
 		zoneMatch = "same_zone"
 	}
 
-	if err := r.cc.UpdateState(resolver.State{Addresses: addrs}); err != nil {
+	endpoints := make([]resolver.Endpoint, len(addrs))
+	for i, a := range addrs {
+		endpoints[i] = resolver.Endpoint{Addresses: []resolver.Address{a}}
+	}
+
+	if err := r.cc.UpdateState(resolver.State{Endpoints: endpoints}); err != nil {
 		log.Warn(ctx, "failed to update resolver state", key.Error.Slog(err))
 	}
 
