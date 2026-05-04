@@ -19,8 +19,9 @@ import (
 // Optional deps can be provided for testing; if nil, production defaults are used.
 func NewRouter(deps *RouterDeps) *cobra.Command {
 	if deps == nil {
-		deps = DefaultRouterDeps()
+		deps = &RouterDeps{}
 	}
+	deps.applyDefaults()
 	cfg := config.New[router.Config]()
 	return Build(Spec{
 		Use:     "router",

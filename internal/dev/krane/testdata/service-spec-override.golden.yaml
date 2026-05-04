@@ -119,8 +119,9 @@ spec:
               value: "5s"
             - name: SKIPPER_PORT
               value: "50051"
-            - name: SKIPPER_PASETO_PRIVATE_KEY
-              value: "k4.secret.fake-paseto-key-for-linting"
+          envFrom:
+            - secretRef:
+                name: lint-controller
           resources:
             requests:
               memory: "256Mi"
@@ -196,6 +197,8 @@ spec:
       port: 8080
       targetPort: web
       protocol: TCP
+  clusterIP: 10.0.0.100
+  
 ---
 apiVersion: v1
 kind: Service
@@ -418,6 +421,8 @@ spec:
   ports:
     - port: 80
       targetPort: http
+  type: NodePort
+  
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

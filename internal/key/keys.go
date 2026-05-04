@@ -46,4 +46,6 @@ var (
 	URL                       = urlKey("url")
 	UnclampedDesiredInstances = uint32Key("unclamped_desired_instances")
 	UnreadyInstances          = intKey("unready_instances")
+	Zone                      = stringKey("zone")
+	ZoneMatch                 = stringKey("zone_match")
 )

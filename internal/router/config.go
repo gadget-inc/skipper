@@ -17,4 +17,7 @@ type Config struct {
 	ControllerServiceHost         string        `flag:"controller-service-host" description:"The hostname of the controller service." required:"true"`
 	ControllerPort                int           `flag:"controller-port" description:"The port the controller service listens on." default:"50051"`
 	ControllerHeadlessServiceHost string        `flag:"controller-headless-service-host" description:"The hostname of the headless controller service. Falls back to controller-service-host if not set."`
+	ControllerNamespace           string        `flag:"controller-namespace" description:"The namespace of the controller service. Required for zone-aware routing."`
+	ControllerHeadlessServiceName string        `flag:"controller-headless-service-name" description:"The name of the headless controller service. Required for zone-aware routing."`
+	Zone                          string        `flag:"zone" description:"The availability zone this router runs in. Used for zone-aware routing."`
 }

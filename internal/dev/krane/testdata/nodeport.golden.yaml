@@ -93,8 +93,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: K8S_POD_ZONE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['topology.kubernetes.io/zone']
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: k8s.pod.name=$(K8S_POD_NAME),k8s.pod.ip=$(K8S_POD_IP),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME)
+              value: k8s.pod.name=$(K8S_POD_NAME),k8s.pod.ip=$(K8S_POD_IP),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME),k8s.pod.label.topology.kubernetes.io/zone=$(K8S_POD_ZONE)
             - name: SKIPPER_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -230,6 +234,28 @@ kind: ServiceAccount
 metadata:
   name: lint-router
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lint-router
+rules:
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lint-router
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lint-router
+subjects:
+  - kind: ServiceAccount
+    name: lint-router
+    namespace: lint
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -294,8 +320,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: K8S_POD_ZONE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['topology.kubernetes.io/zone']
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: k8s.pod.name=$(K8S_POD_NAME),k8s.pod.ip=$(K8S_POD_IP),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME)
+              value: k8s.pod.name=$(K8S_POD_NAME),k8s.pod.ip=$(K8S_POD_IP),k8s.namespace.name=$(K8S_NAMESPACE_NAME),k8s.node.name=$(K8S_NODE_NAME),k8s.pod.label.topology.kubernetes.io/zone=$(K8S_POD_ZONE)
             - name: SKIPPER_POD_IP
               valueFrom:
                 fieldRef:
@@ -310,6 +340,14 @@ spec:
               value: "50051"
             - name: SKIPPER_CONTROLLER_HEADLESS_SERVICE_HOST
               value: "lint-controller-headless.lint.svc.cluster.local"
+            - name: SKIPPER_CONTROLLER_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SKIPPER_CONTROLLER_HEADLESS_SERVICE_NAME
+              value: "lint-controller-headless"
+            - name: SKIPPER_ZONE
+              value: "$(K8S_POD_ZONE)"
             - name: SKIPPER_SHUTDOWN_TIMEOUT
               value: "5s"
           resources:
