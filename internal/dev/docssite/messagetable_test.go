@@ -79,6 +79,44 @@ func TestRenderMessageTable_MessageTypedFieldsRenderFullName(t *testing.T) {
 	})
 }
 
+// TestRenderMessageTable_RepeatedAndEnumFieldsKeepSemanticType
+// pins the type-column rendering for proto features the original
+// hand-typed docs surfaced: `repeated` lists carry the qualifier,
+// and enum fields render their declared enum name instead of the
+// generic `"enum"` kind string.
+func TestRenderMessageTable_RepeatedAndEnumFieldsKeepSemanticType(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		message  string
+		field    string
+		wantCell string
+	}{
+		// repeated string
+		{"GetInstanceRequest", "exclude_instance_names", "repeated string"},
+		// repeated message (with the local skipper. prefix stripped)
+		{"HeartbeatRequest", "heartbeats", "repeated Heartbeat"},
+		// repeated string in a different message
+		{"HeartbeatRequest", "forwarded_for", "repeated string"},
+		// repeated message in ScaleResponse
+		{"ScaleResponse", "instances", "repeated Instance"},
+		// enum field rendered with declared enum name
+		{"ScaleRequest", "reason", "ScaleReason"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.message+"."+tc.field, func(t *testing.T) {
+			t.Parallel()
+			out, err := renderMessageTable(tc.message)
+			assert.NilError(t, err)
+			row := messageRowFor(t, out, tc.field)
+			assert.Assert(t, strings.Contains(row, " "+tc.wantCell+" "),
+				"%s.%s row should render type %q in its own cell: %q",
+				tc.message, tc.field, tc.wantCell, row)
+		})
+	}
+}
+
 // (a) unknown message name to the shortcode.
 func TestRenderMessageTable_UnknownMessageFails(t *testing.T) {
 	t.Parallel()

@@ -257,15 +257,23 @@ func lookupMessageDescriptor(name string) (protoreflect.MessageDescriptor, error
 
 // messageFieldTypeName renders a single field's type for the Type
 // column. Scalar fields use the proto kind name (`string`,
-// `uint32`, `bool`); message-typed fields render the message's
-// FullName with the local-package prefix stripped, so
+// `uint32`, `bool`); enum and message-typed fields render their
+// FullName with the local `skipper.` prefix stripped, so
 // `skipper.Scale` becomes `Scale` while `google.protobuf.Timestamp`
-// renders unchanged.
+// renders unchanged. Repeated fields receive a `repeated ` prefix.
 func messageFieldTypeName(f protoreflect.FieldDescriptor) string {
-	if f.Kind() != protoreflect.MessageKind {
-		return f.Kind().String()
-	}
-	full := string(f.Message().FullName())
 	const localPrefix = "skipper."
-	return strings.TrimPrefix(full, localPrefix)
+	var name string
+	switch f.Kind() {
+	case protoreflect.MessageKind:
+		name = strings.TrimPrefix(string(f.Message().FullName()), localPrefix)
+	case protoreflect.EnumKind:
+		name = strings.TrimPrefix(string(f.Enum().FullName()), localPrefix)
+	default:
+		name = f.Kind().String()
+	}
+	if f.IsList() {
+		return "repeated " + name
+	}
+	return name
 }
