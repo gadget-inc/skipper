@@ -61,14 +61,14 @@
           yamllint = pkgs.yamllint;
           benchstat = pkgs.buildGoModule {
             pname = "benchstat";
-            version = "0.0.0-unstable-2025-02-16";
+            version = "0.0.0-unstable-2026-04-29";
             src = pkgs.fetchFromGitHub {
               owner = "golang";
               repo = "perf";
-              rev = "8161c38c6cdca9a67a8635da2ae5c19990171269";
-              hash = "sha256-zDoQjHBB5yKF1h+qOh4CKbB/lzilfaLT8fHp48FnFj8=";
+              rev = "8e83ce0f7b1c6c5d6eab4763f10b9322cbe4cecb";
+              hash = "sha256-JIR+ytMsZaiQ5w4vTmLG4JHg6tz3/sAs24C3m5//hy4=";
             };
-            vendorHash = "sha256-kGF184E+rOWncQsvjk1iCpF26/3Ll/IY9CPEh6vhRBQ=";
+            vendorHash = "sha256-5WnH49NE1OUaTFuan3DZYhm0uJxIf7i5pgXK1PuqhA0=";
             subPackages = [ "cmd/benchstat" ];
           };
 

@@ -3426,11 +3426,11 @@ func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
 		Timestamp: timestamppb.New(time.Now().Add(-1 * time.Second)),
 	}.Build())
 
-	ctrl.ctx = ctx
-	supervisor.start(ctx)
-
 	_, exists := ctrl.supervisors.Load(fn.Hash())
 	assert.Assert(t, exists, "supervisor should exist in map initially")
+
+	ctrl.ctx = ctx
+	supervisor.start(ctx)
 
 	// Without the fix, this will timeout because the supervisor
 	// keeps trying to scale up based on the fresh heartbeat.
