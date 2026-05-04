@@ -32,41 +32,24 @@ func (bareDevCommandRule) Check(files []File) ([]Finding, error) {
 
 func init() { register(bareDevCommandRule{}) }
 
-// bareDevSubcommands lists the cobra subcommands registered on the
-// root `dev` command. Updates here MUST stay in sync with
-// cmd/dev/main.go's AddCommand list.
-var bareDevSubcommands = map[string]bool{
-	"up":        true,
-	"deploy":    true,
-	"test":      true,
-	"profile":   true,
-	"logs":      true,
-	"build":     true,
-	"clean":     true,
-	"fixture":   true,
-	"kube-lint": true,
-	"fmt":       true,
-	"lint":      true,
-	"lint-docs": true,
-	"generate":  true,
-	"docs":      true,
-}
+// bareDevSubcommands lists the depth-1 cobra subcommand names, and
+// bareDevSubSubcommands the depth-2 names. Both are populated by an
+// init() in cmd/dev that introspects the live cobra tree, so a new
+// subcommand is recognized automatically. Tests construct fixture
+// maps via SetBareDevSubcommands.
+var (
+	bareDevSubcommands    = map[string]bool{}
+	bareDevSubSubcommands = map[string]bool{}
+)
 
-// bareDevInvocationFollowups lists the second tokens that make a line
-// look like a real `dev <subcommand> <followup>` invocation: a flag
-// (-/--), a known sub-subcommand identifier, a path-shaped argument,
-// or a shell pipe/redirect.
-var bareDevSubSubcommands = map[string]bool{
-	"e2e":       true, // test e2e
-	"request":   true, // fixture request
-	"websocket": true, // fixture websocket
-	"load":      true, // fixture load
-	"fetch":     true, // profile fetch
-	"merge":     true, // profile merge
-	"analyze":   true, // profile analyze
-	"open":      true, // profile open
-	"build":     true, // docs build / build
-	"dev":       true, // direnv exec . dev <...>
+// SetBareDevSubcommands injects the live cobra subcommand snapshot
+// from the dev binary's main package. Called from cmd/dev/invoke.go's
+// init() so the rule sees the same source of truth main() uses,
+// without creating an import cycle (cmd/dev imports doclint, not the
+// other way around). Tests construct their own snapshots inline.
+func SetBareDevSubcommands(sub, subSub map[string]bool) {
+	bareDevSubcommands = sub
+	bareDevSubSubcommands = subSub
 }
 
 // bareDevDirenvPrefix matches `direnv exec . ` at the start of a line.

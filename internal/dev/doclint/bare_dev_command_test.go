@@ -7,8 +7,55 @@ import (
 	"gotest.tools/v3/assert"
 )
 
+// fixtureSubcommands and fixtureSubSubcommands mirror the live cobra
+// tree's subcommand vocabulary. The literals here drift if the cobra
+// tree changes; cmd/dev/invoke_test.go's depth-1 / depth-2 assertions
+// catch drift between this fixture and the real names.
+var (
+	fixtureSubcommands = map[string]bool{
+		"up":        true,
+		"deploy":    true,
+		"test":      true,
+		"profile":   true,
+		"logs":      true,
+		"build":     true,
+		"clean":     true,
+		"fixture":   true,
+		"kube-lint": true,
+		"fmt":       true,
+		"lint":      true,
+		"lint-docs": true,
+		"generate":  true,
+		"docs":      true,
+	}
+	fixtureSubSubcommands = map[string]bool{
+		"e2e":       true,
+		"request":   true,
+		"websocket": true,
+		"load":      true,
+		"fetch":     true,
+		"merge":     true,
+		"analyze":   true,
+		"open":      true,
+		"build":     true,
+		"dev":       true,
+	}
+)
+
+// withFixtureSubcommands installs the fixture maps for the duration of
+// a test and resets them on Cleanup. Tests can no longer run in
+// parallel because the maps are now mutable globals; the assertions
+// are microsecond-fast so the lost parallelism is below noise.
+func withFixtureSubcommands(t *testing.T) {
+	t.Helper()
+	SetBareDevSubcommands(fixtureSubcommands, fixtureSubSubcommands)
+	t.Cleanup(func() {
+		SetBareDevSubcommands(map[string]bool{}, map[string]bool{})
+	})
+}
+
 func TestBareDevCommand_FlagsBareDeployInsideBashBlock(t *testing.T) {
-	t.Parallel()
+	withFixtureSubcommands(t)
 
 	src := strings.Join([]string{
 		"```bash",
@@ -23,7 +70,7 @@ func TestBareDevCommand_FlagsBareDeployInsideBashBlock(t *testing.T) {
 }
 
 func TestBareDevCommand_DoesNotFlagDevDeploy(t *testing.T) {
-	t.Parallel()
+	withFixtureSubcommands(t)
 
 	src := strings.Join([]string{
 		"```bash",
@@ -36,7 +83,7 @@ func TestBareDevCommand_DoesNotFlagDevDeploy(t *testing.T) {
 }
 
 func TestBareDevCommand_FlagsDirenvExecBareSubcommand(t *testing.T) {
-	t.Parallel()
+	withFixtureSubcommands(t)
 
 	src := strings.Join([]string{
 		"```bash",
@@ -52,7 +99,7 @@ func TestBareDevCommand_FlagsDirenvExecBareSubcommand(t *testing.T) {
 }
 
 func TestBareDevCommand_SkipsCommentsAndContinuations(t *testing.T) {
-	t.Parallel()
+	withFixtureSubcommands(t)
 
 	src := strings.Join([]string{
 		"```bash",
@@ -66,7 +113,7 @@ func TestBareDevCommand_SkipsCommentsAndContinuations(t *testing.T) {
 }
 
 func TestBareDevCommand_DoesNotScanProseOrNonShellFences(t *testing.T) {
-	t.Parallel()
+	withFixtureSubcommands(t)
 
 	src := strings.Join([]string{
 		"## Heading",
@@ -82,7 +129,7 @@ func TestBareDevCommand_DoesNotScanProseOrNonShellFences(t *testing.T) {
 }
 
 func TestBareDevCommand_RequiresInvocationShape(t *testing.T) {
-	t.Parallel()
+	withFixtureSubcommands(t)
 
 	// `test` followed by a sentence word (not a flag/subcommand/path)
 	// is plain English -- not a real invocation; do NOT flag.
@@ -97,7 +144,7 @@ func TestBareDevCommand_RequiresInvocationShape(t *testing.T) {
 }
 
 func TestBareDevCommand_FlagsBareTestSubcommand(t *testing.T) {
-	t.Parallel()
+	withFixtureSubcommands(t)
 
 	src := strings.Join([]string{
 		"```bash",
