@@ -160,14 +160,7 @@ message Heartbeat {
 
 ### ScaleReason
 
-| Value                             | Number | Description                     |
-| --------------------------------- | ------ | ------------------------------- |
-| `SCALE_REASON_UNSPECIFIED`        | 0      | Default/unknown                 |
-| `SCALE_REASON_CPU`                | 1      | CPU usage triggered scaling     |
-| `SCALE_REASON_HEARTBEAT_TIMEOUT`  | 2      | No heartbeat within timeout     |
-| `SCALE_REASON_IN_FLIGHT_REQUESTS` | 3      | Request count triggered scaling |
-| `SCALE_REASON_MEMORY`             | 4      | Memory usage triggered scaling  |
-| `SCALE_REASON_NO_READY_INSTANCES` | 5      | No ready instances available    |
+{{< scaleReasonTable >}}
 
 ## Client configuration
 

@@ -270,6 +270,11 @@ var flagTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*flagtable\s+([a-z][a-z0-9-
 // the same table.
 var grpcRetryTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*grpcRetryTable\s*>\}\}\s*$`)
 
+// scaleReasonTableRe matches the ScaleReason enum shortcode on its
+// own line. Zero-argument; renderScaleReasonTable always emits the
+// same table.
+var scaleReasonTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*scaleReasonTable\s*>\}\}\s*$`)
+
 // preprocessShortcodes expands custom shortcodes into raw HTML or
 // markdown before goldmark sees the source: admonition fences
 // (`:::variant`), the flag-table shortcode (`{{< flagtable name >}}`),
@@ -328,6 +333,21 @@ func preprocessShortcodes(src string) (string, error) {
 	})
 	if retryErr != nil {
 		return "", retryErr
+	}
+	var scaleReasonErr error
+	src = scaleReasonTableRe.ReplaceAllStringFunc(src, func(match string) string {
+		if scaleReasonErr != nil {
+			return match
+		}
+		out, err := renderScaleReasonTable()
+		if err != nil {
+			scaleReasonErr = err
+			return match
+		}
+		return out
+	})
+	if scaleReasonErr != nil {
+		return "", scaleReasonErr
 	}
 	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)
