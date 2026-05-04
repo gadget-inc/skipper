@@ -108,55 +108,21 @@ rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse)
 
 ### Function
 
-```protobuf
-message Function {
-  string namespace = 1;
-  string deployment = 2;
-  string tenant = 3;
-  string metadata = 4;
-  Scale scale = 5;
-  bool oneshot = 6;
-}
-```
+{{< messageTable Function >}}
 
 Identity is determined by namespace + deployment + tenant + oneshot. Metadata and scale are excluded from the hash.
 
 ### Scale
 
-```protobuf
-message Scale {
-  uint32 min_instances = 1;
-  uint32 max_instances = 2;
-  uint32 target_cpu_usage_milli = 3;
-  uint32 target_memory_usage_mib = 4;
-  uint32 target_in_flight_requests = 5;
-}
-```
+{{< messageTable Scale >}}
 
 ### Instance
 
-```protobuf
-message Instance {
-  Function function = 1;
-  string name = 2;
-  string addr = 3;
-  string replica_set = 4;
-  google.protobuf.Timestamp assigned_at = 5;
-  google.protobuf.Timestamp ready_at = 6;
-  uint32 cpu_usage_milli = 7;
-  uint32 memory_usage_mib = 8;
-}
-```
+{{< messageTable Instance >}}
 
 ### Heartbeat
 
-```protobuf
-message Heartbeat {
-  Function function = 1;
-  google.protobuf.Timestamp timestamp = 2;
-  uint32 in_flight_requests = 3;
-}
-```
+{{< messageTable Heartbeat >}}
 
 ### ScaleReason
 

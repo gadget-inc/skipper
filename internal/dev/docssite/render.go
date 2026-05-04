@@ -280,6 +280,16 @@ var scaleReasonTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*scaleReasonTable\s*
 // the same table.
 var transportTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*transportTable\s*>\}\}\s*$`)
 
+// messageTableRe matches the protobuf-message shortcode on its own
+// line:
+//
+//	{{< messageTable Function >}}
+//
+// The captured argument is a proto message name -- uppercase-
+// leading CamelCase. It intentionally does NOT reuse
+// [flagTableRe]'s `[a-z][a-z0-9-]*` argument class.
+var messageTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*messageTable\s+([A-Z][A-Za-z0-9]*)\s*>\}\}\s*$`)
+
 // preprocessShortcodes expands custom shortcodes into raw HTML or
 // markdown before goldmark sees the source: admonition fences
 // (`:::variant`), the flag-table shortcode (`{{< flagtable name >}}`),
@@ -368,6 +378,25 @@ func preprocessShortcodes(src string) (string, error) {
 	})
 	if transportErr != nil {
 		return "", transportErr
+	}
+	var messageErr error
+	src = messageTableRe.ReplaceAllStringFunc(src, func(match string) string {
+		if messageErr != nil {
+			return match
+		}
+		groups := messageTableRe.FindStringSubmatch(match)
+		if len(groups) < 2 {
+			return match
+		}
+		out, err := renderMessageTable(groups[1])
+		if err != nil {
+			messageErr = err
+			return match
+		}
+		return out
+	})
+	if messageErr != nil {
+		return "", messageErr
 	}
 	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)
