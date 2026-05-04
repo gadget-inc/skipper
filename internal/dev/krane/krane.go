@@ -59,7 +59,7 @@ func Render(ctx context.Context, namespace string, bindings map[string]any) (str
 	deployDir := filepath.Join(root, "deploy", namespace)
 	renderDir := filepath.Join(root, "tmp", "krane", namespace)
 
-	if err := emptyDir(renderDir); err != nil {
+	if err := EmptyDir(renderDir); err != nil {
 		return "", err
 	}
 
@@ -109,7 +109,7 @@ func Deploy(ctx context.Context, namespace string, bindings map[string]any) erro
 		exec.Stderr(io.Discard),
 	)
 
-	files, err := manifestFiles(renderDir)
+	files, err := ManifestFiles(renderDir)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,9 @@ func workspaceDir() (string, error) {
 	return os.Getwd()
 }
 
-func emptyDir(dir string) error {
+// EmptyDir removes dir if it exists and recreates it empty. Used to
+// clear a render directory before re-rendering bindings into it.
+func EmptyDir(dir string) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
@@ -165,7 +167,9 @@ func copyFile(src, dst string) error {
 	return nil
 }
 
-func manifestFiles(renderDir string) ([]string, error) {
+// ManifestFiles returns the absolute paths of every regular file
+// directly in renderDir, sorted lexicographically.
+func ManifestFiles(renderDir string) ([]string, error) {
 	entries, err := os.ReadDir(renderDir)
 	if err != nil {
 		return nil, err

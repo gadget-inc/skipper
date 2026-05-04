@@ -182,7 +182,7 @@ func deployMetricsServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	clusterFiles, err := manifestFiles(clusterRenderDir)
+	clusterFiles, err := krane.ManifestFiles(clusterRenderDir)
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,7 @@ func deployMetricsServer(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	kubeSystemFiles, err := manifestFiles(kubeSystemRenderDir)
+	kubeSystemFiles, err := krane.ManifestFiles(kubeSystemRenderDir)
 	if err != nil {
 		return err
 	}
@@ -209,19 +209,4 @@ func deployMetricsServer(ctx context.Context) error {
 	}
 	args = append(args, "--selector=app.kubernetes.io/managed-by=krane", "--protected-namespaces", "default", "kube-public")
 	return exec.Run(ctx, "krane", args)
-}
-
-func manifestFiles(renderDir string) ([]string, error) {
-	entries, err := os.ReadDir(renderDir)
-	if err != nil {
-		return nil, err
-	}
-	files := []string{}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		files = append(files, filepath.Join(renderDir, e.Name()))
-	}
-	return files, nil
 }

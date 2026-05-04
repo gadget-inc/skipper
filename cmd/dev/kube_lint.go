@@ -170,7 +170,7 @@ func newKubeLintCmd() *cobra.Command {
 func runKubeLint(ctx context.Context) error {
 	root := devenv.RepoRoot()
 	lintDir := filepath.Join(root, "tmp", "kube-lint")
-	if err := emptyDir(lintDir); err != nil {
+	if err := krane.EmptyDir(lintDir); err != nil {
 		return err
 	}
 
@@ -180,7 +180,7 @@ func runKubeLint(ctx context.Context) error {
 	hasErrors := false
 	for _, cfg := range kubeLintConfigs {
 		configDir := filepath.Join(lintDir, cfg.name)
-		if err := emptyDir(configDir); err != nil {
+		if err := krane.EmptyDir(configDir); err != nil {
 			return err
 		}
 
@@ -302,11 +302,4 @@ func runKubeLinter(ctx context.Context, root, manifest string) error {
 		fmt.Fprintf(os.Stderr, "%s: %s [%s]: %s\n", file, objectName, check, message)
 	}
 	return err
-}
-
-func emptyDir(dir string) error {
-	if err := os.RemoveAll(dir); err != nil {
-		return err
-	}
-	return os.MkdirAll(dir, 0o755)
 }
