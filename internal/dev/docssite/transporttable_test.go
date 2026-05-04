@@ -128,6 +128,26 @@ func TestRenderTransportTable_UnmappedBoolFails(t *testing.T) {
 	assert.ErrorContains(t, got, "Surprise")
 }
 
+// TestRenderTransportTable_StaleProseEntryFails asserts the
+// reverse direction of the drift check: a transportProseMap entry
+// that names a field the struct does not declare fails the docs
+// build. Mirrors the symmetric drift check the other generators in
+// this package already do.
+func TestRenderTransportTable_StaleProseEntryFails(t *testing.T) {
+	t.Parallel()
+
+	stale := map[string]transportProseRow{
+		"ForceAttemptHTTP2":  {Label: "Protocol", TrueText: "x", FalseText: "x"},
+		"DisableCompression": {Label: "Compression", TrueText: "x", FalseText: "x"},
+		"GoneField":          {Label: "Stale", TrueText: "x", FalseText: "x"},
+	}
+	err := checkTransportProseMapCoverage(stale,
+		[]string{"ForceAttemptHTTP2", "DisableCompression"})
+	assert.Assert(t, err != nil)
+	assert.Assert(t, errors.Is(err, errTransportBoolUnmapped))
+	assert.ErrorContains(t, err, "GoneField")
+}
+
 // renderTransportRowsAdverse is a small helper that builds an
 // HTTPTransportSettings-shaped struct WITH an extra bool field
 // not present in the prose-row map, and expects the renderer to

@@ -100,12 +100,22 @@ func renderTransportRows(s router.HTTPTransportSettings) (string, error) {
 }
 
 // checkTransportProseMapCoverage returns errTransportBoolUnmapped
-// (wrapped with the offending field name) when any boolFieldName is
-// not present in m.
+// (wrapped with the offending field name) when m and boolFieldNames
+// disagree on the set of bool fields. Both directions matter: a
+// struct field with no map entry silently drops a row; a map entry
+// with no matching struct field is dead prose.
 func checkTransportProseMapCoverage(m map[string]transportProseRow, boolFieldNames []string) error {
+	known := make(map[string]struct{}, len(boolFieldNames))
 	for _, name := range boolFieldNames {
+		known[name] = struct{}{}
 		if _, ok := m[name]; !ok {
 			return fmt.Errorf("%w: %s", errTransportBoolUnmapped, name)
+		}
+	}
+	for name := range m {
+		if _, ok := known[name]; !ok {
+			return fmt.Errorf("%w: %s names a field not on the struct",
+				errTransportBoolUnmapped, name)
 		}
 	}
 	return nil
