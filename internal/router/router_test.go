@@ -2484,9 +2484,10 @@ func TestRapidRequestsDuringShutdownWindow(t *testing.T) {
 			rw.WriteHeader(http.StatusOK)
 		}), nil
 	})
-	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
-		return nil
-	})
+	// Whether the heartbeat loop fires before the test cancels the
+	// context is timing-dependent (HeartbeatInterval=100ms vs cancel
+	// at 10ms), so the call may or may not happen.
+	mcc.AllowHeartbeat()
 
 	cfg := testConfig()
 	cfg.ShutdownTimeout = 5 * time.Second
