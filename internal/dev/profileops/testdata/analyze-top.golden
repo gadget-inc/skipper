@@ -1,0 +1,11 @@
+File: controller
+Build ID: 12fd1d6ec5c7e5746ea8eaf742acbd94d1af0ba3
+Type: cpu
+Duration: 90s, Total samples = 7750ms ( 8.61%)
+Showing nodes accounting for 1200ms, 15.48% of 7750ms total
+Dropped 488 nodes (cum <= 38.75ms)
+Showing top 3 nodes out of 327
+      flat  flat%   sum%        cum   cum%
+     420ms  5.42%  5.42%      420ms  5.42%  internal/runtime/syscall/linux.Syscall6
+     400ms  5.16% 10.58%      400ms  5.16%  runtime.memmove
+     380ms  4.90% 15.48%      380ms  4.90%  runtime.futex

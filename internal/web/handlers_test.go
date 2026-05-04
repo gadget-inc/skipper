@@ -989,11 +989,11 @@ func TestFunctionsQueryParams(t *testing.T) {
 
 	t.Run("signal initialization escapes quote and ampersand in user input", func(t *testing.T) {
 		t.Parallel()
-		// A bare apostrophe in `search` previously broke the inline string
-		// `'{{.FnSearch}}'`, which made Datastar fail to parse the entire
-		// data-signals expression and disabled the page. The JSON encoding
-		// escapes the apostrophe so the rendered attribute is parseable
-		// after the browser HTML-decodes it.
+		// A bare apostrophe in `search` would close the inline string
+		// `'{{.FnSearch}}'` mid-attribute and make Datastar fail to
+		// parse the entire data-signals expression. JSON-encoding the
+		// signal escapes the apostrophe so the rendered attribute is
+		// parseable after the browser HTML-decodes it.
 		req := httptest.NewRequest(http.MethodGet, "/functions?search=it%27s+%26+more", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)

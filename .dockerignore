@@ -2,15 +2,10 @@
 *
 
 !cmd/
-!fixture/
 !internal/
 !nix/
 !pkg/
-!styles/
 !.envrc
 !go.mod
 !go.sum
 !main.go
-!package.json
-!pnpm-lock.yaml
-!pnpm-workspace.yaml

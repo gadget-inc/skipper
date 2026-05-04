@@ -1,0 +1,72 @@
+---
+title: Building and Deploying
+description: Build Skipper and deploy it to your local Kubernetes cluster.
+---
+
+:::note
+Skipper is designed to run inside Kubernetes. You should not run the code natively (e.g., with `go run .`). All changes should be built and deployed using the provided scripts.
+:::
+
+## Deploying to Kubernetes (Orbstack)
+
+To deploy all the necessary resources to your local Kubernetes cluster:
+
+```bash
+dev deploy
+```
+
+This will build and deploy everything in the `deploy/` directory. The command is implemented in `cmd/dev/deploy.go` and has many options. For example, to deploy only Skipper:
+
+```bash
+dev deploy --only=skipper
+```
+
+Any code changes you make will be picked up when you run `dev deploy` again. The command automatically builds the latest code and updates your Kubernetes environment.
+
+See `dev deploy --help` for available flags.
+
+## Smoke testing with the fixture command
+
+`dev fixture` exposes subcommands that exercise basic request routing, WebSocket handling, and load balancing against the deployed fixture server.
+
+### dev fixture request
+
+Sends a simple HTTP request to the fixture function via Skipper's router and prints the response.
+
+```bash
+dev fixture request
+```
+
+### dev fixture websocket
+
+Opens a WebSocket connection to the fixture function via Skipper's router, sends a test message, and prints the echoed response.
+
+```bash
+dev fixture websocket
+```
+
+### dev fixture load
+
+Sends concurrent requests to the fixture function via Skipper's router. Useful for verifying load balancing and basic performance.
+
+```bash
+dev fixture load
+```
+
+The command is implemented in `cmd/dev/fixture.go` and reaches the cluster through the local router on `127.0.0.1:8081` (override with `SKIPPER_ROUTER_URL`).
+
+## Cleaning up resources
+
+To clean up all deployed resources and temporary files:
+
+```bash
+dev clean
+```
+
+This will:
+
+- Delete all Skipper-related Kubernetes namespaces (development, test, and fixtures).
+- Remove metrics server resources.
+- Clear temporary files (logs, test artifacts, etc.).
+
+Use this when you want to start fresh or remove all traces of Skipper from your local Kubernetes cluster.

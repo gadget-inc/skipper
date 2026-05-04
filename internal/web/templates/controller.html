@@ -1,5 +1,5 @@
 {{define "content"}} {{if not .Found}}
-<div class="text-center py-8 text-fg-muted">Controller not found: {{.IP}}</div>
+<div class="empty-state">Controller not found: {{.IP}}</div>
 {{else}}
 <div data-on-interval__duration.5000ms="@get('/sse/controller/{{pathEscape .IP}}')">
   <div class="page-header">
@@ -32,7 +32,7 @@
   <div>
     <h2>Functions</h2>
     {{if not .Supervisors}}
-    <div class="text-center py-8 text-fg-muted">No functions assigned</div>
+    <div class="empty-state">No functions assigned</div>
     {{else}}
     <div class="table-wrap">
       <table>
@@ -50,7 +50,7 @@
           <tr>
             <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
             <td>{{$fn.GetNamespace}}</td>
-            <td class="font-mono">{{$fn.GetTenant}}</td>
+            <td class="mono">{{$fn.GetTenant}}</td>
             <td class="tabular">{{len .GetInstances}}</td>
             <td class="tabular">{{len .GetRouterHeartbeats}}</td>
           </tr>

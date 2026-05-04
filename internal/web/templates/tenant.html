@@ -1,5 +1,5 @@
 {{define "content"}} {{if not .Found}}
-<div class="text-center py-8 text-fg-muted">Tenant not found: {{.Tenant}}</div>
+<div class="empty-state">Tenant not found: {{.Tenant}}</div>
 {{else}}
 <div data-on-interval__duration.5000ms="@get('/sse/tenant/{{pathEscape .Tenant}}')">
   <div class="page-header">
@@ -77,7 +77,7 @@
             <td>{{$fn.GetNamespace}}</td>
             <td class="tabular">{{len .GetInstances}}</td>
             <td class="tabular">{{if $scale}}{{$scale.GetMinInstances}}–{{$scale.GetMaxInstances}}{{else}}—{{end}}</td>
-            <td class="font-mono">
+            <td class="mono">
               <a href="/controllers/{{pathEscape .GetResponsibleControllerIp}}">{{.GetResponsibleControllerIp}}</a>
             </td>
           </tr>

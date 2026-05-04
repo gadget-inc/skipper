@@ -22,8 +22,6 @@ RUN go mod download && go mod verify
 # Build controller
 FROM deps AS build-controller
 COPY . .
-RUN pnpm install --frozen-lockfile
-RUN pnpm exec tailwindcss --input internal/web/static/input.css --output internal/web/static/css/output.css --minify
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/controller ./cmd/controller
 
@@ -32,6 +30,12 @@ FROM deps AS build-router
 COPY . .
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/router ./cmd/router
+
+# Build fixture
+FROM deps AS build-fixture
+COPY . .
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -v -o /out/fixture ./cmd/fixture
 
 # Runtime base
 FROM debian:bookworm-slim AS runtime-base
@@ -53,3 +57,8 @@ ENTRYPOINT ["./controller"]
 FROM runtime-base AS router
 COPY --from=build-router --chown=1000 /out/router ./router
 ENTRYPOINT ["./router"]
+
+# Fixture image
+FROM runtime-base AS fixture
+COPY --from=build-fixture --chown=1000 /out/fixture ./fixture
+ENTRYPOINT ["./fixture"]

@@ -1,12 +1,12 @@
 {{define "content"}} {{if not .Supervisor}}
-<div class="text-center py-8 text-fg-muted">Function not found: {{.Key}}</div>
+<div class="empty-state">Function not found: {{.Key}}</div>
 {{else}} {{$fn := .Supervisor.GetFunction}} {{$scale := $fn.GetScale}} {{$sup := .Supervisor}}
 <div data-on-interval__duration.5000ms="@get('/sse/function/{{pathEscape .Key}}')">
   <div class="page-header">
     <div class="breadcrumb"><a href="/functions">Functions</a><span class="separator">/</span>{{$fn.GetDeployment}}</div>
     <h1>
       {{$fn.GetDeployment}}
-      <span class="text-fg-muted font-normal text-base">{{$fn.GetTenant}}</span>
+      <span class="h1-suffix">{{$fn.GetTenant}}</span>
     </h1>
   </div>
 
@@ -33,17 +33,13 @@
         </div>
 
         {{if $scale}}
-        <div class="stat-card stat-card-muted mt-4">
-          <div class="stat-label mb-2">Scale Targets</div>
-          <div class="text-[13px] space-y-1">
-            <div class="flex justify-between">
-              <span class="text-fg-muted">CPU</span><span class="font-mono tabular">{{$scale.GetTargetCpuUsageMilli}}m</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-fg-muted">Memory</span><span class="font-mono tabular">{{$scale.GetTargetMemoryUsageMib}}Mi</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-fg-muted">In-Flight</span><span class="font-mono tabular">{{$scale.GetTargetInFlightRequests}}</span>
+        <div class="stat-card stat-card-muted stat-card-spaced">
+          <div class="kv-list">
+            <div class="stat-label">Scale Targets</div>
+            <div class="kv-row"><span class="kv-label">CPU</span><span class="kv-value">{{$scale.GetTargetCpuUsageMilli}}m</span></div>
+            <div class="kv-row"><span class="kv-label">Memory</span><span class="kv-value">{{$scale.GetTargetMemoryUsageMib}}Mi</span></div>
+            <div class="kv-row">
+              <span class="kv-label">In-Flight</span><span class="kv-value">{{$scale.GetTargetInFlightRequests}}</span>
             </div>
           </div>
         </div>
@@ -51,10 +47,10 @@
       </div>
 
       <div>
-        <div class="mb-6">
+        <div class="section">
           <h2>Router Heartbeats</h2>
           {{if not $sup.GetRouterHeartbeats}}
-          <div class="text-center py-8 text-fg-muted">No router heartbeats</div>
+          <div class="empty-state">No router heartbeats</div>
           {{else}}
           <div class="table-wrap">
             <table>
@@ -68,11 +64,11 @@
               <tbody>
                 {{range $sup.GetRouterHeartbeats}}
                 <tr>
-                  <td class="font-mono">
+                  <td class="mono">
                     <a href="/routers/{{pathEscape .GetRouterIp}}">{{.GetRouterIp}}</a>
                   </td>
                   <td class="tabular">{{if .GetHeartbeat}}{{.GetHeartbeat.GetInFlightRequests}}{{else}}0{{end}}</td>
-                  <td class="text-fg-muted">{{if .GetHeartbeat}}{{timeAgo .GetHeartbeat.GetTimestamp}}{{else}}—{{end}}</td>
+                  <td class="muted">{{if .GetHeartbeat}}{{timeAgo .GetHeartbeat.GetTimestamp}}{{else}}—{{end}}</td>
                 </tr>
                 {{end}}
               </tbody>
@@ -84,19 +80,19 @@
     </div>
 
     {{if and $sup.GetActiveReplicaSet .StaleInstances}}
-    <div class="px-4 py-2 rounded-md text-[13px] mb-4 bg-attention/10 border border-attention/30 text-attention">
+    <div class="notice-attention">
       Rollout in progress — {{len .StaleInstances}} stale / {{sub (len $sup.GetInstances) (len .StaleInstances)}} current instances
     </div>
     {{end}}
 
-    <div class="mb-8">
+    <div class="section">
       <h2>Instances</h2>
       <div id="instances-table" class="table-wrap">{{template "instances-table" .}}</div>
     </div>
   </div>
 </div>
 {{end}} {{end}} {{define "instances-table"}} {{if not .Supervisor.GetInstances}}
-<div class="text-center py-8 text-fg-muted">No instances</div>
+<div class="empty-state">No instances</div>
 {{else}}
 <table>
   <thead>
@@ -114,17 +110,17 @@
   <tbody>
     {{$activeRS := .Supervisor.GetActiveReplicaSet}} {{range .Supervisor.GetInstances}}
     <tr>
-      <td class="font-mono"><a href="/instances/{{pathEscape .GetName}}">{{.GetName}}</a></td>
-      <td class="font-mono">{{.GetAddr}}</td>
+      <td class="mono"><a href="/instances/{{pathEscape .GetName}}">{{.GetName}}</a></td>
+      <td class="mono">{{.GetAddr}}</td>
       <td>{{instanceStateBadge . $activeRS}}</td>
       <td class="tabular">{{.GetCpuUsageMilli}}m</td>
       <td class="tabular">{{.GetMemoryUsageMib}}Mi</td>
-      <td class="font-mono">
+      <td class="mono">
         {{.GetReplicaSet}}{{if and $activeRS (ne .GetReplicaSet $activeRS)}}
         <span class="badge badge-yellow">stale</span>{{end}}
       </td>
-      <td class="text-fg-muted">{{timeAgo .GetAssignedAt}}</td>
-      <td class="text-fg-muted">{{if isReady .}}{{timeAgo .GetReadyAt}}{{else}}—{{end}}</td>
+      <td class="muted">{{timeAgo .GetAssignedAt}}</td>
+      <td class="muted">{{if isReady .}}{{timeAgo .GetReadyAt}}{{else}}—{{end}}</td>
     </tr>
     {{end}}
   </tbody>

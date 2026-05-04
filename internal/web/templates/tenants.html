@@ -8,7 +8,7 @@
   </div>
   <input
     type="text"
-    class="bg-bg border border-border rounded-md text-fg px-4 py-2.5 text-[13px] font-mono focus:outline-none focus:border-accent w-full max-w-sm mb-4"
+    class="search-input"
     placeholder="Search tenants…"
     data-bind="tenantSearch"
     data-on:keyup__debounce.300ms="syncParams({search: $tenantSearch, sort: $tenantSort, dir: $tenantSortDir}); @get('/sse/tenants')"
@@ -16,31 +16,31 @@
   <div id="tenants-table" class="table-wrap">{{template "tenants-table" .TenantRows}}</div>
 </div>
 {{end}} {{define "tenants-table"}} {{if not .}}
-<div class="text-center py-8 text-fg-muted">No tenants</div>
+<div class="empty-state">No tenants</div>
 {{else}}
 <table>
   <thead>
     <tr>
       <th
-        class="cursor-pointer select-none"
+        class="sortable"
         data-on:click="$tenantSort = 'tenant'; $tenantSortDir = $tenantSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $tenantSearch, sort: $tenantSort, dir: $tenantSortDir}); $get('/sse/tenants')"
       >
         Tenant
       </th>
       <th
-        class="cursor-pointer select-none"
+        class="sortable"
         data-on:click="$tenantSort = 'functions'; $tenantSortDir = $tenantSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $tenantSearch, sort: $tenantSort, dir: $tenantSortDir}); $get('/sse/tenants')"
       >
         Functions
       </th>
       <th
-        class="cursor-pointer select-none"
+        class="sortable"
         data-on:click="$tenantSort = 'instances'; $tenantSortDir = $tenantSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $tenantSearch, sort: $tenantSort, dir: $tenantSortDir}); $get('/sse/tenants')"
       >
         Instances
       </th>
       <th
-        class="cursor-pointer select-none"
+        class="sortable"
         data-on:click="$tenantSort = 'deployments'; $tenantSortDir = $tenantSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $tenantSearch, sort: $tenantSort, dir: $tenantSortDir}); $get('/sse/tenants')"
       >
         Deployments
@@ -50,7 +50,7 @@
   <tbody>
     {{range .}}
     <tr>
-      <td class="font-mono"><a href="/tenants/{{pathEscape .Tenant}}">{{.Tenant}}</a></td>
+      <td class="mono"><a href="/tenants/{{pathEscape .Tenant}}">{{.Tenant}}</a></td>
       <td class="tabular">{{.Functions}}</td>
       <td class="tabular">{{.ReadyInstances}}/{{.TotalInstances}}</td>
       <td>{{range $i, $d := .Deployments}}{{if $i}}, {{end}}{{$d}}{{end}}</td>

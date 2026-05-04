@@ -2,49 +2,50 @@
 
 ## Commands
 
-All commands must be run with `direnv exec .`:
+**Commands.** `direnv allow` (run once after cloning) auto-loads the dev shell when you `cd` into the repo, so every command in this file Just Works as written. From contexts that don't inherit a shell (some CI runners, agent harnesses), prefix any command with `direnv exec .` to load the same environment. This paragraph is the single source of truth for that qualification -- the rest of this file shows the bare command form.
 
 ```bash
-direnv exec . dev                                 # Run controller, router, and Tailwind locally
-direnv exec . dev --only=tailwind                 # Tailwind CSS watcher only
-direnv exec . dev --only=controller               # Controller only
-direnv exec . dev --only=controller,tailwind      # Controller + Tailwind (no router)
-direnv exec . dev --only=docs                     # Docs dev server only
-direnv exec . deploy                              # Build and deploy to Kubernetes (Orbstack)
-direnv exec . deploy --only=skipper               # Deploy only Skipper
-direnv exec . tests go ./...                      # Run all Go tests
-direnv exec . tests go -short ./...               # Run Go tests without Kubernetes (skips integration tests)
-direnv exec . tests go -v ./internal/controller/... # Run specific package tests
-direnv exec . tests docs                          # Run docs tests
-direnv exec . tests scripts                       # Run script tests (vitest)
-direnv exec . tests e2e                           # Run e2e tests
-direnv exec . tests all                           # Run go + docs + scripts (not e2e)
-direnv exec . lint                                # Run golangci-lint, oxfmt, oxlint
-direnv exec . fmt                                 # Auto-fix formatting
-direnv exec . buf generate                        # Regenerate protobuf Go code from .proto files
-direnv exec . logs                                # Show recent logs and exit
-direnv exec . logs -f                             # Stream logs continuously (follow)
-direnv exec . logs -c controller                  # Show controller logs
-direnv exec . logs --errors --since=5m            # Recent errors only
-direnv exec . docs                                # Start docs dev server
-direnv exec . docs build                          # Build docs site
-direnv exec . docs preview                        # Preview built docs
-direnv exec . clean                               # Delete all Kubernetes resources
-direnv exec . profile fetch                       # Fetch heap profile from local controller
-direnv exec . profile fetch -t cpu -p             # Fetch CPU profile from production
-direnv exec . profile fetch -t cpu -p <pod>       # Fetch from a specific production pod
-direnv exec . profile fetch -t cpu -p --spread    # CPU profiles from all production pods
-direnv exec . profile open <file>                 # Open a saved profile in browser
-direnv exec . profile merge                       # Merge CPU profiles into default.pgo
-direnv exec . profile merge --clean               # Merge and remove source profiles
-direnv exec . profile merge --dry-run             # Preview merge without writing
-direnv exec . profile analyze --pgo               # Top hotspots in committed PGO profile
-direnv exec . profile analyze --pgo --cum         # Sort by cumulative time
-direnv exec . profile analyze --pgo -c router     # Analyze router PGO profile
-direnv exec . profile analyze --pgo --mode=peek -f Hash  # Callers/callees of Hash
-direnv exec . profile analyze --pgo --mode=source -f Hash # Source-annotated view
-direnv exec . profile analyze <file>              # Analyze any .pb.gz profile
-direnv exec . profile analyze --mode=diff --diff-base=before.pb.gz after.pb.gz  # Compare profiles
+dev up                              # Run controller, router, and docs locally
+dev up --only=controller            # Controller only
+dev up --only=controller,router     # Controller + router (no docs)
+dev up --only=docs                  # Docs dev server only
+dev deploy                          # Build and deploy to Kubernetes (Orbstack)
+dev deploy --only=skipper           # Deploy only Skipper
+dev fixture request                 # Send an HTTP request to the fixture
+dev fixture websocket               # Open a WebSocket to the fixture
+dev fixture load -c 10 -n 1000      # Load test the fixture
+dev build                           # Build controller, router, and fixture images
+dev build --only=fixtures           # Build only the fixture image
+dev kube-lint                       # Render template.yaml.erb and lint each binding configuration
+dev test                                # Run all Go tests
+dev test -short ./...                   # Run Go tests without Kubernetes (skips integration and chromedp tests)
+dev test -v ./internal/controller/...   # Run specific package tests
+dev lint                            # Run kube-lint, lint-docs, and golangci-lint
+dev lint-docs                       # Lint repository documentation
+dev fmt                             # Auto-fix formatting (golangci-lint fmt)
+dev generate                        # Regenerate protobuf Go code from .proto files
+dev logs                            # Show recent logs and exit
+dev logs -f                         # Stream logs continuously (follow)
+dev logs -c controller              # Show controller logs
+dev logs --errors --since=5m        # Recent errors only
+dev docs                            # Start docs dev server
+dev docs build                      # Build docs site
+dev clean                           # Delete all Kubernetes resources
+dev profile fetch                       # Fetch heap profile from local controller
+dev profile fetch -t cpu -p             # Fetch CPU profile from production
+dev profile fetch -t cpu -p <pod>       # Fetch from a specific production pod
+dev profile fetch -t cpu -p --spread    # CPU profiles from all production pods
+dev profile open <file>                 # Open a saved profile in browser
+dev profile merge                       # Merge CPU profiles into default.pgo
+dev profile merge --clean               # Merge and remove source profiles
+dev profile merge --dry-run             # Preview merge without writing
+dev profile analyze --pgo               # Top hotspots in committed PGO profile
+dev profile analyze --pgo --cum         # Sort by cumulative time
+dev profile analyze --pgo -c router     # Analyze router PGO profile
+dev profile analyze --pgo --mode=peek -f Hash  # Callers/callees of Hash
+dev profile analyze --pgo --mode=source -f Hash # Source-annotated view
+dev profile analyze <file>              # Analyze any .pb.gz profile
+dev profile analyze --mode=diff --diff-base=before.pb.gz after.pb.gz  # Compare profiles
 ```
 
 ## Local Development
@@ -52,24 +53,24 @@ direnv exec . profile analyze --mode=diff --diff-base=before.pb.gz after.pb.gz  
 First-time setup (fixtures and metrics-server still run in K8s):
 
 ```bash
-direnv exec . deploy --only=fixtures,metrics-server
+dev deploy --only=fixtures,metrics-server
 ```
 
-`dev` runs controller, router, Tailwind, and the docs site as local processes. Local endpoints:
+`dev up` runs controller, router, and the docs site as local processes. Local endpoints:
 
 - Controller gRPC: `127.0.0.1:50051`
 - Web UI: `http://127.0.0.1:8080`
 - Router: `http://127.0.0.1:8081`
-- Docs: `http://localhost:4321`
+- Docs: `http://localhost:4321/skipper/`
 
 ### Debugging
 
-`dev` writes structured JSON logs to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl`. Any command also accepts:
+`dev up` writes structured JSON logs to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl`. Any command also accepts:
 
 ```bash
-direnv exec . controller --log-file=tmp/logs/controller.jsonl                    # Write logs to file and stderr
-direnv exec . controller --log-file=tmp/logs/controller.jsonl --log-file-level=trace  # File at trace, stderr at default
-direnv exec . controller --log-file=tmp/logs/controller.jsonl --log-file-format=text  # File as text, stderr as default
+controller --log-file=tmp/logs/controller.jsonl                    # Write logs to file and stderr
+controller --log-file=tmp/logs/controller.jsonl --log-file-level=trace  # File at trace, stderr at default
+controller --log-file=tmp/logs/controller.jsonl --log-file-format=text  # File as text, stderr as default
 ```
 
 ## Architecture

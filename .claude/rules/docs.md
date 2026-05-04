@@ -34,24 +34,36 @@ These MUST NOT appear in guides:
 
 ## Heading Structure
 
-MUST NOT use `## Overview` as the first heading — Starlight auto-generates an "Overview" entry in the table of contents, so a `## Overview` heading creates a duplicate. Use the space between the frontmatter and the first heading for introductory text instead.
+The page title comes from the frontmatter `title:` field; do NOT repeat it as an H1. Start the body with introductory prose between the frontmatter and the first `##` heading. Section headings begin at `##`.
 
-## MDX Conventions
+## Markdown Conventions
+
+Source files are plain Markdown (`.md`) rendered by the in-tree static-site generator at `internal/dev/docssite` (Goldmark-based). Admonitions and table wrappers are shortcodes / vanilla HTML; the renderer does not accept JSX-style component imports.
 
 Wide tables MUST be wrapped:
 
-```mdx
-<div class="table-scroll">| ... |</div>
+```html
+<div class="table-scroll">
+
+| ... |
+
+</div>
 ```
 
-Aside component:
+Admonitions use the `:::` shortcode syntax:
 
-```mdx
-import { Aside } from "@astrojs/starlight/components";
+```md
+:::tip
+Body text.
+:::
 
-<Aside type="tip">...</Aside>
+:::caution
+Body text.
+:::
+
+:::note
+Body text.
+:::
 ```
-
-Valid types: `tip`, `caution`, or omit `type` for the default style. Import `Aside` only in files that use it.
 
 Internal links MUST use absolute paths with the `/skipper/` base prefix and trailing slashes: `](/skipper/guides/scaling/)`, not `](guides/scaling)` or `](../scaling)`.

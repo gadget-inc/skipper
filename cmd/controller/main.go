@@ -1,19 +1,5 @@
 package main
 
-import (
-	"context"
-	"log"
-	"os/signal"
-	"syscall"
+import "github.com/gadget-inc/skipper/internal/cmd"
 
-	"github.com/gadget-inc/skipper/internal/cmd"
-)
-
-func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
-
-	if err := cmd.NewController(nil).ExecuteContext(ctx); err != nil {
-		log.Fatal(err)
-	}
-}
+func main() { cmd.Main(cmd.NewController(nil)) }

@@ -6,7 +6,7 @@
   <div id="routers-table" class="table-wrap">{{template "routers-table" .RouterRows}}</div>
 </div>
 {{end}} {{define "routers-table"}} {{if not .}}
-<div class="text-center py-8 text-fg-muted">No routers</div>
+<div class="empty-state">No routers</div>
 {{else}}
 <table>
   <thead>
@@ -19,7 +19,7 @@
   <tbody>
     {{range .}}
     <tr>
-      <td class="font-mono"><a href="/routers/{{pathEscape .IP}}">{{.IP}}</a></td>
+      <td class="mono"><a href="/routers/{{pathEscape .IP}}">{{.IP}}</a></td>
       <td class="tabular">{{.Functions}}</td>
       <td class="tabular">{{.InFlight}}</td>
     </tr>

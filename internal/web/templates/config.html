@@ -3,7 +3,7 @@
   <h1>Configuration</h1>
 </div>
 {{if not .State.GetConfig}}
-<div class="text-center py-8 text-fg-muted">No configuration values</div>
+<div class="empty-state">No configuration values</div>
 {{else}}
 <div class="table-wrap">
   <table>
@@ -18,8 +18,8 @@
       {{range .State.GetConfig}}
       <tr>
         <td>{{.GetName}}</td>
-        <td class="font-mono">{{.GetValue}}</td>
-        <td class="text-fg-muted">{{.GetDescription}}</td>
+        <td class="mono">{{.GetValue}}</td>
+        <td class="muted">{{.GetDescription}}</td>
       </tr>
       {{end}}
     </tbody>

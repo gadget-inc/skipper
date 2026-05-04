@@ -25,7 +25,7 @@ Run the benchmark with enough iterations for statistical significance:
 
 ```bash
 mkdir -p tmp/benchmarks
-tests -bench=BenchmarkName -benchmem -count=6 ./internal/<package>/... | tee tmp/benchmarks/<name>-before.txt
+dev test -bench=BenchmarkName -benchmem -count=6 ./internal/<package>/... | tee tmp/benchmarks/<name>-before.txt
 ```
 
 Review the baseline numbers. Note the ns/op, B/op, and allocs/op.
@@ -35,7 +35,7 @@ Review the baseline numbers. Note the ns/op, B/op, and allocs/op.
 Make the change. Keep all existing tests passing:
 
 ```bash
-tests -short ./internal/<package>/...
+dev test -short ./internal/<package>/...
 ```
 
 Common optimization patterns:
@@ -48,7 +48,7 @@ Common optimization patterns:
 ### 5. Measure the optimization
 
 ```bash
-tests -bench=BenchmarkName -benchmem -count=6 ./internal/<package>/... | tee tmp/benchmarks/<name>-after.txt
+dev test -bench=BenchmarkName -benchmem -count=6 ./internal/<package>/... | tee tmp/benchmarks/<name>-after.txt
 ```
 
 ### 6. Compare with benchstat

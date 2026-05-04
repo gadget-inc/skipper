@@ -1,0 +1,89 @@
+---
+title: Scaling
+description: How Skipper's HPA-inspired autoscaler works.
+---
+
+Each function is independently scaled every 15 seconds (configurable via `--scale-interval`). The scaling algorithm is HPA-inspired: it calculates desired instances based on resource metrics relative to targets, then takes the highest recommendation.
+
+Only one controller replica handles scaling for a given function; others track state for failover.
+
+## Scaling metrics
+
+Three metrics can drive scaling: **CPU usage**, **memory usage**, and **in-flight requests**. Each is enabled by setting its target to a non-zero value in the function's scale config. When multiple metrics are enabled, each produces a recommendation and the highest one wins.
+
+The formula is the same for all three:
+
+```
+desired = ⌈current_instances × (average_usage / target)⌉
+```
+
+If average usage equals the target, the ratio is 1 and nothing changes. Above the target, the ratio exceeds 1 and instances are added. Below the target, instances are removed.
+
+Functions always maintain at least 1 instance. The only way a function scales to 0 is when no heartbeat has been received within the timeout window — see [Heartbeats and Lifecycle](/skipper/guides/heartbeats-and-lifecycle/) for details. Oneshot functions behave differently — they scale 1:1 with in-flight requests and have no minimum instance floor. See [Oneshot function scaling](#oneshot-function-scaling) for details.
+
+## The scaling algorithm
+
+For each metric:
+
+1. Collect usage from all instances.
+2. For CPU: ignore pods newer than `--hpa-initial-readiness-delay` (default 30s) to avoid counting startup spikes.
+3. Calculate average usage:
+   ```
+   average = total_usage / instances_with_metrics
+   ```
+4. Calculate usage ratio:
+   ```
+   ratio = average / target
+   ```
+5. If `|ratio − 1.0|` ≤ tolerance (default 0.1 / 10%): no change.
+6. Calculate desired:
+   ```
+   desired = ⌈current_instances × ratio⌉
+   ```
+
+## Handling missing metrics
+
+When some instances lack metrics, the algorithm adjusts conservatively:
+
+- **Scaling down**: assume missing instances are at 100% usage. This prevents scaling down when utilization is unknown.
+- **Scaling up**: assume missing instances are at 0% usage. This prevents unnecessary scale-ups when unmetered instances may already have capacity.
+
+If the adjusted ratio changes direction or crosses the tolerance band, the result is a no-op.
+
+## Try it: scaling calculator
+
+Drag the sliders to see how the autoscaler responds to different load scenarios. The formula is the same for CPU, memory, and in-flight requests — only the metric and target change.
+
+{{< scaling-calculator >}}
+
+In all cases, the result is clamped to `[min_instances, max_instances]`.
+
+## Stabilization window
+
+The stabilization window prevents rapid oscillation during bursty traffic. During downscale, the autoscaler uses the maximum recommendation within the window (`--hpa-downscale-stabilization`, default: 90s).
+
+New controllers delay their first downscale to prevent scaling down functions that were recently active on another replica.
+
+## Oneshot function scaling
+
+Oneshot functions scale 1:1 with in-flight requests -- one pod per request. There is no stabilization window; pods are created and destroyed as requests arrive and complete.
+
+Scale reason: `SCALE_REASON_IN_FLIGHT_REQUESTS`.
+
+After heartbeat timeout (and once the controller has been running long enough to avoid cleaning up pods it inherited), orphaned oneshot pods are deleted.
+
+## Scale execution
+
+- **Scale up**: assign new pods from the deployment pool, up to max_instances.
+- **Scale down**: delete all unready instances first, then the oldest ready instances.
+- When clamping occurs (unclamped desire exceeds max_instances), the controller logs the event.
+
+## Scale reasons
+
+| Reason               | Description                          |
+| -------------------- | ------------------------------------ |
+| `HEARTBEAT_TIMEOUT`  | No heartbeat received within timeout |
+| `IN_FLIGHT_REQUESTS` | Request-based scaling                |
+| `CPU`                | CPU usage exceeded target            |
+| `MEMORY`             | Memory usage exceeded target         |
+| `NO_READY_INSTANCES` | No ready instances available         |

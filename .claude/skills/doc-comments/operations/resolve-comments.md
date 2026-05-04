@@ -1,6 +1,6 @@
 # Resolve Comments
 
-Apply each pending reviewer comment to the MDX source file it targets, delete the resolved JSON file, and report the outcome.
+Apply each pending reviewer comment to the markdown source file it targets, delete the resolved JSON file, and report the outcome.
 
 1. **Load comment list**: The injected listing below shows pending comment files:
 
@@ -10,10 +10,10 @@ Apply each pending reviewer comment to the MDX source file it targets, delete th
 
 2. **Plan batches**: If more than 20 files are listed, process in batches of 10 — resolve one batch fully (through clean up) before starting the next. Files beyond the first 30 are handled in subsequent batches once earlier ones are cleared. Report between batches: "Batch N of M complete — X resolved, Y skipped."
 
-3. **Map pages to source files**: For each comment, derive the MDX source path:
+3. **Map pages to source files**: For each comment, derive the markdown source path:
    - Strip the `/skipper/` prefix and trailing `/` from the `page` field
-   - The source file is `docs/src/content/docs/<remainder>.mdx`
-   - Example: `/skipper/guides/scaling/` -> `docs/src/content/docs/guides/scaling.mdx`
+   - The source file is `docs/content/<remainder>.md`
+   - Example: `/skipper/guides/scaling/` -> `docs/content/guides/scaling.md`
    - If the derived source file does not exist, skip the comment and include it in the final report
 
 4. **Interpret each comment**: Read each comment file individually at the start of its processing. Comments are terse reviewer shorthand — invest effort in understanding what the reviewer means before asking the user:
@@ -27,21 +27,20 @@ Apply each pending reviewer comment to the MDX source file it targets, delete th
    - If after investigation you cannot determine a proposed fix, present your findings and ask the user what they want changed
 
 6. **Resolve each comment**: For each comment in turn (user has already confirmed the fix in step 5):
-   - Read the source MDX file. When multiple comments target the same file, re-read the file before each edit to account for changes from prior edits in this run
+   - Read the source markdown file. When multiple comments target the same file, re-read the file before each edit to account for changes from prior edits in this run
    - Use `selectedText` with `contextBefore` and `contextAfter` to locate the exact text in the file
    - If `selectedText` cannot be found in the file, skip the comment and include it in the final report
    - The confirmed fix may target text other than `selectedText` — possibly elsewhere in the same file or in a different file. Apply the edit where the user confirmed, not necessarily where the comment was placed
    - Apply the confirmed fix
    - MUST follow the project's docs writing rules (loaded automatically via scoped rules for docs files)
    - Handle edits based on the `zone` field in the comment JSON:
-     - **`content` / `title` zones**: edit the MDX source directly
+     - **`content` / `title` zones**: edit the markdown source directly
      - **`toc` zone**: heading structure issues — edit heading levels or text as confirmed
-     - **`sidebar` zone**: navigation config in `docs/astro.config.mjs` — edit as confirmed
    - Report progress after each comment: "Resolved N of M comments."
 
 7. **Clean up**: After successfully resolving a comment, MUST delete its JSON file from `docs/tmp/comments/`. If the file is already gone (e.g., resolved by a parallel run), treat it as a no-op.
 
-8. **Verify**: Run `direnv exec . docs build` after all edits. If the build fails, check the error for the referenced file, revert only that file's edit with `git restore <file>`, and re-run the build to confirm. Restore the comment file for any reverted edit.
+8. **Verify**: Run `dev docs build` after all edits. If the build fails, check the error for the referenced file, revert only that file's edit with `git restore <file>`, and re-run the build to confirm. Restore the comment file for any reverted edit.
 
 9. **Report**: Summarize the outcome as a short bulleted list:
    - Number resolved

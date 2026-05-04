@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Snippet - Skipper</title>
+
+<link rel="stylesheet" href="/skipper/style.css" />
+</head>
+<body>
+<div class="layout">
+<nav class="sidebar" aria-label="Site navigation"><ul class="sidebar-top">
+  <li><a href="/skipper/">Introduction</a></li>
+</ul>
+<details class="sidebar-group" open>
+  <summary>Guides</summary>
+  <ul>
+    <li><a href="/skipper/guides/routing/">Routing</a></li>
+    <li><a href="/skipper/guides/scaling/">Scaling</a></li>
+  </ul>
+</details>
+<details class="sidebar-group" open>
+  <summary>Architecture</summary>
+  <ul>
+    <li><a href="/skipper/architecture/overview/">Overview</a></li>
+  </ul>
+</details>
+<details class="sidebar-group" open>
+  <summary>Reference</summary>
+  <ul>
+    <li><a href="/skipper/reference/api/">API</a></li>
+  </ul>
+</details>
+<details class="sidebar-group" open>
+  <summary>Contributing</summary>
+  <ul>
+    <li><a href="/skipper/contributing/workflow/">Workflow</a></li>
+  </ul>
+</details>
+</nav>
+<main class="content">
+<h1>Snippet</h1>
+<p>Here's a Go snippet:</p>
+<pre style="color:#e6edf3;background-color:#0d1117;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-text-size-adjust:none;"><code><span style="display:flex;"><span><span style="color:#ff7b72">package</span><span style="color:#6e7681"> </span>main<span style="color:#6e7681">
+</span></span></span><span style="display:flex;"><span><span style="color:#6e7681">
+</span></span></span><span style="display:flex;"><span><span style="color:#ff7b72">func</span><span style="color:#6e7681"> </span><span style="color:#d2a8ff;font-weight:bold">main</span>()<span style="color:#6e7681"> </span>{<span style="color:#6e7681">
+</span></span></span><span style="display:flex;"><span><span style="color:#6e7681">    </span>println(<span style="color:#a5d6ff">&#34;hi&#34;</span>)<span style="color:#6e7681">
+</span></span></span><span style="display:flex;"><span>}<span style="color:#6e7681">
+</span></span></span></code></pre>
+
+</main>
+</div>
+
+</body>
+</html>

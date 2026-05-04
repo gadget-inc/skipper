@@ -7,17 +7,17 @@
     <h1>Events</h1>
   </div>
 
-  <div class="flex gap-3 mb-4 items-center">
+  <div class="filter-bar">
     <input
       type="text"
-      class="bg-bg border border-border rounded-md text-fg px-4 py-2.5 text-[13px] font-mono focus:outline-none focus:border-accent"
+      class="filter-input"
       placeholder="Filter by function…"
       data-bind="eventFunction"
       data-on:keyup__debounce.300ms="syncParams({function: $eventFunction, severity: $eventSeverity === 'all' ? '' : $eventSeverity}); @get('/sse/events')"
     />
-    <div class="relative">
+    <div class="filter-select-wrap">
       <select
-        class="appearance-none bg-bg border border-border rounded-md text-fg pl-4 pr-10 py-2.5 text-[13px] font-mono focus:outline-none focus:border-accent cursor-pointer"
+        class="filter-select"
         data-bind="eventSeverity"
         data-on:change="syncParams({function: $eventFunction, severity: $eventSeverity === 'all' ? '' : $eventSeverity}); @get('/sse/events')"
       >
@@ -25,13 +25,7 @@
         <option value="1" {{if eq .SeverityFilter `1`}} selected{{end}}>Info</option>
         <option value="2" {{if eq .SeverityFilter `2`}} selected{{end}}>Warn</option>
       </select>
-      <svg
-        class="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none text-fg-muted"
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
+      <svg class="filter-select-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 9-7 7-7-7" />
       </svg>
     </div>
@@ -40,7 +34,7 @@
   <div id="events-table" class="table-wrap">{{template "events-table" .FilteredEvents}}</div>
 </div>
 {{end}} {{define "events-table"}} {{if not .}}
-<div class="text-center py-8 text-fg-muted">No events</div>
+<div class="empty-state">No events</div>
 {{else}}
 <table>
   <thead>
@@ -55,10 +49,10 @@
   <tbody>
     {{range .}}
     <tr>
-      <td class="font-mono text-fg-muted">{{formatTimestamp .GetTimestamp}}</td>
+      <td class="mono muted">{{formatTimestamp .GetTimestamp}}</td>
       <td>{{if .GetFunction}}<a href="{{functionPath .GetFunction}}">{{functionKey .GetFunction}}</a>{{else}}—{{end}}</td>
       <td>{{eventTypeLabel .GetType}}</td>
-      <td class="text-fg-muted">{{.GetMessage}}</td>
+      <td class="muted">{{.GetMessage}}</td>
       <td>{{eventSeverityBadge .GetSeverity}}</td>
     </tr>
     {{end}}

@@ -1,0 +1,25 @@
+---
+title: Watching Logs
+description: Stream and filter logs from Skipper pods during development.
+---
+
+The `dev logs` command streams logs from Skipper pods running in your local Kubernetes cluster.
+
+```bash
+dev logs                           # All pods, current logs
+dev logs -f                        # Stream continuously
+dev logs -c controller             # Controller only
+dev logs -c router --level=warn    # Router warnings and errors
+dev logs --grep="trace_id=<id>"    # Filter by trace ID
+dev logs --errors --since=5m       # Recent errors
+```
+
+See `dev logs --help` for all available flags including output formats and filtering options.
+
+:::note
+By default, `dev logs` shows current logs and exits. Use `-f` or `--follow` to stream continuously.
+:::
+
+## Log format
+
+Skipper emits structured JSON logs by default. Each log line includes contextual fields that accumulate through the call chain. See [Observability](/skipper/guides/observability/) for details on log format, trace correlation, and the available Prometheus metrics.

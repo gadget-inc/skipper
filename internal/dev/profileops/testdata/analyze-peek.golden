@@ -1,0 +1,19 @@
+File: controller
+Build ID: 12fd1d6ec5c7e5746ea8eaf742acbd94d1af0ba3
+Type: cpu
+Duration: 90s, Total samples = 7.75s ( 8.61%)
+Showing nodes accounting for 7.75s, 100% of 7.75s total
+----------------------------------------------------------+-------------
+      flat  flat%   sum%        cum   cum%   calls calls% + context 	 	 
+----------------------------------------------------------+-------------
+                                             0.09s 22.50% |   google.golang.org/protobuf/encoding/protowire.AppendString
+                                             0.08s 20.00% |   github.com/cespare/xxhash/v2.(*Digest).Write
+                                             0.08s 20.00% |   runtime.concatstrings
+                                             0.07s 17.50% |   runtime.copystack
+                                             0.04s 10.00% |   runtime.typedslicecopy
+                                             0.01s  2.50% |   bytes.(*Reader).Read
+                                             0.01s  2.50% |   compress/flate.(*dictDecoder).writeCopy
+                                             0.01s  2.50% |   google.golang.org/protobuf/encoding/protowire.AppendBytes
+                                             0.01s  2.50% |   io.ReadAll
+     0.40s  5.16%  5.16%      0.40s  5.16%                | runtime.memmove
+----------------------------------------------------------+-------------

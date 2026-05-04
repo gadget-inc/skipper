@@ -2,58 +2,56 @@
 <div data-on-interval__duration.5000ms="@get('/sse/dashboard')">
   <div class="page-header">
     <h1>Dashboard</h1>
-    <p class="text-[13px] text-fg-muted">Cluster overview and health status</p>
+    <p class="page-subtitle">Cluster overview and health status</p>
   </div>
 
   <div id="health-indicators">{{template "health-indicators" .State}}</div>
 
   <div id="dashboard-stats">{{template "dashboard-stats" .}}</div>
 
-  <div class="mb-8">
+  <div class="section">
     <h2>Top Deployments</h2>
     <div id="top-deployments" class="table-wrap">{{template "top-deployments" .}}</div>
   </div>
 
-  <div class="mb-8">
+  <div class="section">
     <h2>Controller Ring</h2>
-    <p class="font-mono text-fg-muted text-[13px] mb-4">
+    <p class="section-prose">
       {{range $i, $ip := .State.GetControllerIps}}{{if $i}} · {{end}}<a href="/controllers/{{pathEscape $ip}}"
         >{{$ip}}{{if eq $ip $.State.GetPodIp}} (self){{end}}</a
       >{{end}}
     </p>
   </div>
 
-  <div class="mb-8">
+  <div class="section">
     <h2>Supervisors</h2>
     <div id="supervisors-table" class="table-wrap">{{template "supervisors-table" .}}</div>
   </div>
 
-  <div class="mb-8">
+  <div class="section">
     <h2>Recent Activity</h2>
     <div id="recent-activity" class="table-wrap">{{template "recent-activity" .}}</div>
   </div>
 </div>
 {{end}} {{define "health-indicators"}} {{$issues := healthIssues .}} {{if not $issues}}
-<div class="flex flex-wrap gap-3 mb-6 px-4 py-3 bg-bg-muted border border-border rounded-lg">
-  <div class="flex items-center gap-2 text-[13px]">
-    <div class="w-2 h-2 rounded-full bg-success shrink-0"></div>
+<div class="health-banner">
+  <div class="health-item">
+    <div class="dot dot-success"></div>
     <span>All healthy</span>
   </div>
 </div>
 {{else}}
-<div class="flex flex-wrap gap-3 mb-6 px-4 py-3 bg-bg-muted border border-border rounded-lg">
+<div class="health-banner">
   {{range $issues}}
-  <a href="{{.Link}}" class="flex items-center gap-2 text-[13px] no-underline text-inherit">
-    <div
-      class="w-2 h-2 rounded-full shrink-0 {{if eq .Color `green`}}bg-success{{else if eq .Color `yellow`}}bg-attention{{else}}bg-danger{{end}}"
-    ></div>
+  <a href="{{.Link}}" class="health-item">
+    <div class="dot {{if eq .Color `green`}}dot-success{{else if eq .Color `yellow`}}dot-attention{{else}}dot-danger{{end}}"></div>
     <span>{{.Label}}</span>
     <span class="badge badge-{{.Color}}">{{.Count}}</span>
   </a>
   {{end}}
 </div>
 {{end}} {{end}} {{define "dashboard-stats"}}
-<div id="dashboard-cards" class="grid gap-4 mb-6" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))">
+<div id="dashboard-cards" class="stats-grid">
   <div class="stat-card">
     <div class="stat-label">Tenants</div>
     <div class="stat-value">{{.TotalTenants}}</div>
@@ -70,29 +68,29 @@
     <div class="stat-label">Instances</div>
     <div class="stat-value">{{.ReadyInstances}}/{{.TotalInstances}}</div>
     {{if .PendingInstances}}
-    <div class="text-[12px] text-fg-muted mt-1">{{.PendingInstances}} pending</div>
+    <div class="stat-pending">{{.PendingInstances}} pending</div>
     {{end}}
   </div>
   <div class="stat-card stat-card-muted">
     <div class="stat-label">Uptime</div>
-    <div class="stat-value-sm mt-1">{{timeAgo .State.GetStartedAt}}</div>
+    <div class="stat-value-sm">{{timeAgo .State.GetStartedAt}}</div>
   </div>
 </div>
 {{if .TotalInstances}}
-<div class="mb-6">
-  <div class="text-[13px] text-fg-muted mb-1">
+<div class="utilization-block">
+  <div class="utilization-label">
     Instance utilization: {{pct .ReadyInstances .TotalInstances}}% ({{.ReadyInstances}} ready / {{.TotalInstances}} total)
   </div>
-  <div class="w-full h-2 bg-bg-muted rounded-full overflow-hidden">
+  <div class="progress">
     {{$utilPct := pct .ReadyInstances .TotalInstances}}
     <div
-      class="h-full rounded-full {{if gt $utilPct 70}}bg-success{{else if gt $utilPct 40}}bg-attention{{else}}bg-danger{{end}}"
+      class="progress-fill {{if gt $utilPct 70}}progress-fill-success{{else if gt $utilPct 40}}progress-fill-attention{{else}}progress-fill-danger{{end}}"
       style="width: {{$utilPct}}%"
     ></div>
   </div>
 </div>
 {{end}} {{end}} {{define "top-deployments"}} {{if not .TopDeployments}}
-<div class="text-center py-8 text-fg-muted">No deployments</div>
+<div class="empty-state">No deployments</div>
 {{else}}
 <table>
   <thead>
@@ -113,25 +111,25 @@
       <td class="tabular">{{.ReadyInstances}}/{{.TotalInstances}}</td>
       <td>
         {{if .TotalInstances}}
-        <div class="flex items-center gap-2">
-          <div class="w-16 h-1.5 bg-bg-muted rounded-full overflow-hidden">
+        <div class="utilization-row">
+          <div class="progress progress-sm">
             {{$pct := pct .ReadyInstances .TotalInstances}}
             <div
-              class="h-full rounded-full {{if gt $pct 70}}bg-success{{else if gt $pct 40}}bg-attention{{else}}bg-danger{{end}}"
+              class="progress-fill {{if gt $pct 70}}progress-fill-success{{else if gt $pct 40}}progress-fill-attention{{else}}progress-fill-danger{{end}}"
               style="width: {{$pct}}%"
             ></div>
           </div>
-          <span class="text-[12px] text-fg-muted">{{pct .ReadyInstances .TotalInstances}}%</span>
+          <span class="utilization-pct">{{pct .ReadyInstances .TotalInstances}}%</span>
         </div>
-        {{else}}<span class="text-fg-muted">-</span>{{end}}
+        {{else}}<span class="muted">-</span>{{end}}
       </td>
     </tr>
     {{end}}
   </tbody>
 </table>
-<p class="mt-2 text-[13px]"><a href="/deployments">View all deployments →</a></p>
+<p class="view-all"><a href="/deployments">View all deployments →</a></p>
 {{end}} {{end}} {{define "supervisors-table"}} {{if not .State.GetSupervisors}}
-<div class="text-center py-8 text-fg-muted">No active supervisors</div>
+<div class="empty-state">No active supervisors</div>
 {{else}}
 <table>
   <thead>
@@ -149,7 +147,7 @@
     <tr>
       <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
       <td>{{$fn.GetNamespace}}</td>
-      <td class="font-mono">{{$fn.GetTenant}}</td>
+      <td class="mono">{{$fn.GetTenant}}</td>
       <td class="tabular">{{$total}}</td>
       <td class="tabular">{{len .GetRouterHeartbeats}}</td>
       <td>
@@ -165,7 +163,7 @@
   </tbody>
 </table>
 {{end}} {{end}} {{define "recent-activity"}} {{if not .RecentEvents}}
-<div class="text-center py-8 text-fg-muted">No recent activity</div>
+<div class="empty-state">No recent activity</div>
 {{else}}
 <table>
   <thead>
@@ -180,14 +178,14 @@
   <tbody>
     {{range .RecentEvents}}
     <tr>
-      <td class="font-mono text-fg-muted">{{formatTimestamp .GetTimestamp}}</td>
+      <td class="mono muted">{{formatTimestamp .GetTimestamp}}</td>
       <td>{{if .GetFunction}}<a href="{{functionPath .GetFunction}}">{{functionKey .GetFunction}}</a>{{else}}—{{end}}</td>
       <td>{{eventTypeLabel .GetType}}</td>
-      <td class="text-fg-muted">{{.GetMessage}}</td>
+      <td class="muted">{{.GetMessage}}</td>
       <td>{{eventSeverityBadge .GetSeverity}}</td>
     </tr>
     {{end}}
   </tbody>
 </table>
-<p class="mt-2 text-[13px]"><a href="/events">View all events →</a></p>
+<p class="view-all"><a href="/events">View all events →</a></p>
 {{end}} {{end}}

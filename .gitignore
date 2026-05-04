@@ -6,8 +6,4 @@
 .vscode/**
 !.vscode/settings.example.json
 !.vscode/extensions.json
-node_modules/
-scripts/local/
 tmp/
-e2e/test-results/
-e2e/playwright-report/
