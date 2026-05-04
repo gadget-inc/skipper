@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 
 	"github.com/gadget-inc/skipper/internal/controller"
@@ -159,19 +158,13 @@ func flagTypeName(t reflect.Type) string {
 // Anything else is rejected so a typo like `required:"yes"` fails the
 // docs build instead of silently behaving as not-required.
 func parseBoolTag(v string) (bool, error) {
-	if v == "" {
+	switch v {
+	case "", "false":
 		return false, nil
+	case "true":
+		return true, nil
 	}
-	b, err := strconv.ParseBool(v)
-	if err != nil {
-		return false, fmt.Errorf("invalid bool %q: %w", v, err)
-	}
-	// strconv.ParseBool accepts "1"/"0"/"t"/"f"/etc; restrict to the
-	// canonical pair so struct tags remain unambiguous.
-	if v != "true" && v != "false" {
-		return false, fmt.Errorf("invalid bool %q: want \"true\" or \"false\"", v)
-	}
-	return b, nil
+	return false, fmt.Errorf("invalid bool %q: want \"true\" or \"false\"", v)
 }
 
 // escapePipes escapes a literal `|` so it does not split a markdown

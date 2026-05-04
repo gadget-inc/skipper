@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"gotest.tools/v3/assert"
 )
@@ -299,9 +298,6 @@ func countUnescapedPipes(line string) int {
 	}
 	return n
 }
-
-// _ ensures the time import isn't lost when removing tests.
-var _ = time.Duration(0)
 
 // TestBuild_FlagtableShortcodeRendersAllStructFlags is the load-bearing
 // regression test: it renders a fixture markdown body containing each
