@@ -103,19 +103,19 @@ func runWithTee(ctx context.Context, logsDir, name string, appendLog bool, gotes
 	return exec.Run(ctx, "gotestsum", gotestsumArgs, exec.Stdout(io.MultiWriter(os.Stdout, logFile)))
 }
 
-// hasPathArg reports whether any positional (non-flag) arg looks like
-// a Go package path (contains `./` or `/...`). Flag values such as
-// `-run=./pattern` or `-bench=foo./bar` MUST NOT count -- they are
-// regex inputs, not package paths, and a regex like that with no
-// other arguments should still default to running across `./...`.
+// hasPathArg reports whether the user supplied any positional (non-
+// flag) target -- a relative package path (`./internal/...`), a bare
+// module-relative path (`internal/controller/...`), a fully-qualified
+// import path, or a gofmt-style `*_test.go` filename. When no
+// positional is present, the runner prepends `./...`. The bare token
+// `all` is rejected upstream by `hasBareAll`, so any other positional
+// is treated as a deliberate scope.
 func hasPathArg(args []string) bool {
 	for _, a := range args {
 		if strings.HasPrefix(a, "-") {
 			continue
 		}
-		if strings.Contains(a, "./") {
-			return true
-		}
+		return true
 	}
 	return false
 }

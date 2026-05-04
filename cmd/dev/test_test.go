@@ -69,19 +69,30 @@ func TestRunGoTests_AllowsAllAsFlagValue(t *testing.T) {
 	assert.Assert(t, !hasBareAll(args), "flag value `all` must not trigger guard")
 }
 
-// TestHasPathArg_IgnoresFlagValues asserts that `./` inside a flag
-// value (e.g. `-run=./pattern` for the test-name regex) does not
-// satisfy the path detection -- otherwise the default `./...` package
-// arg gets dropped and `go test` runs against the current directory
-// only.
-func TestHasPathArg_IgnoresFlagValues(t *testing.T) {
+// TestHasPathArg_DetectsPositionalShapes covers the package-path
+// detection rules:
+//   - flag tokens like `-run=./pattern` MUST NOT count; otherwise the
+//     default `./...` is dropped and `go test` runs against the
+//     current directory only.
+//   - any positional (non-flag) arg counts -- `./internal/...`, the
+//     bare `internal/controller/...`, fully qualified import paths,
+//     and gofmt-style `*_test.go` filenames all get respected.
+func TestHasPathArg_DetectsPositionalShapes(t *testing.T) {
 	t.Parallel()
 	assert.Assert(t, !hasPathArg([]string{"-run=./pattern"}),
 		"regex with `./` must not look like a package path")
 	assert.Assert(t, !hasPathArg([]string{"-bench=foo./bar"}),
 		"bench regex with `./` must not look like a package path")
+	assert.Assert(t, !hasPathArg([]string{"-v", "-count=1"}),
+		"flags only, no positional, must not count as a path")
 	assert.Assert(t, hasPathArg([]string{"-run=Foo", "./internal/..."}),
-		"actual package path must be detected alongside flags")
+		"./-prefixed path must be detected alongside flags")
 	assert.Assert(t, hasPathArg([]string{"./..."}),
 		"bare ./... must be detected")
+	assert.Assert(t, hasPathArg([]string{"internal/controller/..."}),
+		"bare module-relative `/...` path must be detected")
+	assert.Assert(t, hasPathArg([]string{"github.com/gadget-inc/skipper/internal/controller"}),
+		"fully qualified import path must be detected")
+	assert.Assert(t, hasPathArg([]string{"foo_test.go"}),
+		"gofmt-style filename must be detected")
 }
