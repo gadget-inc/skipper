@@ -1,8 +1,8 @@
 // Package webtest exposes the in-process *web.Server fixture used by
-// the chromedp-driven e2e suite. The fixture seeds a controller stub
-// with a deterministic snapshot (functions, instances, controller
-// peers, events, config) so URL-state and rendering assertions are
-// stable run to run.
+// the chromedp-driven URL-state suite in internal/web. The fixture
+// seeds a controller stub with a deterministic snapshot (functions,
+// instances, controller peers, events, config) so URL-state and
+// rendering assertions are stable run to run.
 package webtest
 
 import (

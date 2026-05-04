@@ -15,27 +15,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newTestCmd runs the Go suite via gotestsum by default. The e2e
-// subcommand runs the chromedp suite via `go test ./e2e/...`.
-//
-// DisableFlagParsing on the parent forwards unknown flags (`-short`,
-// `-run`, `-bench`, ...) verbatim to gotestsum. Cobra would otherwise
-// intercept `--help`/`-h`; the parent's RunE handles those explicitly
-// so the discoverable subcommand listing still works.
+// newTestCmd runs the Go suite via gotestsum, forwarding all args
+// (including the chromedp suite under internal/web). DisableFlagParsing
+// passes unknown flags (`-short`, `-run`, `-bench`, ...) verbatim to
+// gotestsum; the RunE intercepts `--help`/`-h` so they show cobra's
+// Short description rather than reaching `go test`, which rejects
+// `--help` as an unknown flag.
 func newTestCmd() *cobra.Command {
-	e2eCmd := cmd.Build(cmd.Spec{
-		Use:   "e2e [args...]",
-		Short: "Run the chromedp e2e suite",
-		RunE: func(c *cobra.Command, args []string) error {
-			return exec.Run(c.Context(), "go", append([]string{"test", "./e2e/..."}, args...))
-		},
-	})
-	e2eCmd.DisableFlagParsing = true
-
 	root := cmd.Build(cmd.Spec{
 		Use:   "test [flags] [./path/...]",
-		Short: "Run Go tests via gotestsum (use `test e2e` for the chromedp suite)",
-		Sub:   []*cobra.Command{e2eCmd},
+		Short: "Run Go tests via gotestsum",
 		RunE: func(c *cobra.Command, args []string) error {
 			if slices.Contains(args, "--help") || slices.Contains(args, "-h") {
 				return c.Help()

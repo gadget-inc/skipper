@@ -10,25 +10,20 @@ import (
 )
 
 // TestNewTestCmd_DispatchShape asserts the cobra tree wired by
-// newTestCmd: a single root with RunE set, exactly one child named
-// `e2e`, both leaves with DisableFlagParsing = true.
+// newTestCmd: a single leaf with RunE set, no children, and
+// DisableFlagParsing so unknown flags forward to gotestsum.
 func TestNewTestCmd_DispatchShape(t *testing.T) {
 	t.Parallel()
 	root := newTestCmd()
 	assert.Assert(t, root.RunE != nil, "root must have RunE")
 	assert.Assert(t, root.DisableFlagParsing, "root must disable flag parsing")
-
-	subs := root.Commands()
-	assert.Equal(t, len(subs), 1, "expected exactly one child")
-	e2e := subs[0]
-	assert.Equal(t, e2e.Name(), "e2e")
-	assert.Assert(t, e2e.DisableFlagParsing, "e2e must disable flag parsing")
+	assert.Equal(t, len(root.Commands()), 0, "test must have no subcommands")
 }
 
 // TestNewTestCmd_HelpFlagShowsCobraHelp asserts that `--help` and `-h`
-// at the parent level are intercepted and produce cobra's discoverable
-// help (which lists the e2e child) rather than being forwarded to the
-// Go runner.
+// are intercepted and produce cobra's Short description rather than
+// being forwarded to `go test`, which rejects `--help` as an unknown
+// flag.
 func TestNewTestCmd_HelpFlagShowsCobraHelp(t *testing.T) {
 	t.Parallel()
 	for _, flag := range []string{"--help", "-h"} {
@@ -39,8 +34,8 @@ func TestNewTestCmd_HelpFlagShowsCobraHelp(t *testing.T) {
 		err := root.ExecuteContext(context.Background())
 		assert.NilError(t, err, "%s should produce help, not run gotestsum", flag)
 		out := buf.String()
-		assert.Assert(t, strings.Contains(out, "e2e"),
-			"%s output should list e2e child:\n%s", flag, out)
+		assert.Assert(t, strings.Contains(out, "Run Go tests"),
+			"%s output should show cobra help:\n%s", flag, out)
 	}
 }
 

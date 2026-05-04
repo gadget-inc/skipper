@@ -60,7 +60,7 @@ func TestSubcommandNames_Depth2(t *testing.T) {
 	_, subSub := subcommandNames()
 
 	want := []string{
-		"analyze", "build", "dev", "e2e", "fetch", "load", "merge",
+		"analyze", "build", "dev", "fetch", "load", "merge",
 		"open", "request", "websocket",
 	}
 	got := keys(subSub)

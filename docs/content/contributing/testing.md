@@ -8,14 +8,13 @@ description: Run tests, linters, and regenerate protobuf code.
 ```bash
 dev test                                  # Runs go test ./...
 dev test -v ./internal/controller/...     # Verbose tests for the controller package
-dev test -short ./...                     # Skips integration tests (no Orbstack required)
-dev test e2e                              # Runs the chromedp e2e suite
+dev test -short ./...                     # Skips integration and chromedp tests (no Orbstack or browser required)
 ```
 
 `dev test` forwards all arguments to `go test`.
 
 :::tip
-Some tests are integration tests that require Skipper to be deployed to Orbstack. Pass `-short` to skip these tests if you haven't deployed yet.
+Some tests require Skipper to be deployed to Orbstack; the chromedp suite under `internal/web` requires a headless Chrome / Chromium binary. Pass `-short` to skip both groups if you haven't set them up yet.
 :::
 
 ## Linting and formatting

@@ -18,9 +18,8 @@ dev build                           # Build controller, router, and fixture imag
 dev build --only=fixtures           # Build only the fixture image
 dev kube-lint                       # Render template.yaml.erb and lint each binding configuration
 dev test                                # Run all Go tests
-dev test -short ./...                   # Run Go tests without Kubernetes (skips integration tests)
+dev test -short ./...                   # Run Go tests without Kubernetes (skips integration and chromedp tests)
 dev test -v ./internal/controller/...   # Run specific package tests
-dev test e2e                            # Run e2e tests
 dev lint                            # Run kube-lint, lint-docs, and golangci-lint
 dev lint-docs                       # Lint repository documentation
 dev fmt                             # Auto-fix formatting (golangci-lint fmt)

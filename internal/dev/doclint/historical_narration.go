@@ -26,7 +26,6 @@ func (historicalNarrationRule) Globs() []string {
 		"internal/**/*.go",
 		"cmd/**/*.go",
 		"pkg/**/*.go",
-		"e2e/**/*.go",
 		"docs/content/**/*.md",
 		"CLAUDE.md",
 		"CONTRIBUTING.md",

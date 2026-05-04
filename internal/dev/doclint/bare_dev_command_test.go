@@ -29,7 +29,6 @@ var (
 		"docs":      true,
 	}
 	fixtureSubSubcommands = map[string]bool{
-		"e2e":       true,
 		"request":   true,
 		"websocket": true,
 		"load":      true,

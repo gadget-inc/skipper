@@ -1,9 +1,9 @@
-// Package e2e drives the in-process web UI through headless Chromium and
-// asserts the URL-state behaviors the dashboard depends on. The suite
-// boots a *web.Server seeded by webtest.New() at 127.0.0.1:8077 and
-// relies on the project's preinstalled Chrome / Chromium binary; tests
-// fail fast with a clear error if neither is available.
-package e2e
+// Chromedp-driven tests for the web UI's URL <-> form state binding.
+// The suite boots a *web.Server seeded by webtest.New() at
+// 127.0.0.1:8077 and relies on the project's preinstalled Chrome /
+// Chromium binary; tests skip under -short and fail fast with a clear
+// error if neither browser is available.
+package web_test
 
 import (
 	"context"
@@ -55,7 +55,7 @@ func browserContext(t *testing.T) (context.Context, context.CancelFunc) {
 func ensureServer(t *testing.T) {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("e2e suite needs headless Chrome; skipped under -short")
+		t.Skip("chromedp suite needs headless Chrome; skipped under -short")
 	}
 	serverOnce.Do(func() {
 		ln, err := net.Listen("tcp", "127.0.0.1:8077")
@@ -66,13 +66,13 @@ func ensureServer(t *testing.T) {
 		srv := webtest.New()
 		go func() {
 			if err := http.Serve(ln, srv.Handler()); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				fmt.Fprintln(os.Stderr, "e2e server stopped:", err)
+				fmt.Fprintln(os.Stderr, "chromedp server stopped:", err)
 			}
 		}()
 		serverErr = waitForReady(baseURL+"/healthz", 5*time.Second)
 	})
 	if serverErr != nil {
-		t.Fatalf("e2e server failed to boot: %v", serverErr)
+		t.Fatalf("chromedp server failed to boot: %v", serverErr)
 	}
 }
 
