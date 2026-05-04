@@ -86,8 +86,9 @@ func TestRenderMetricsTable_ControllerRowsExpected(t *testing.T) {
 
 // TestRenderMetricsTable_HistogramSecondsBuckets asserts a histogram
 // metric whose name ends in `_seconds` gets a duration-formatted
-// bucket suffix appended to the Purpose column, matching the
-// existing `(buckets: 0.0625s--512s)` prose.
+// bucket suffix appended to the Purpose column, formatted via
+// [time.Duration.String] (so 0.0625s--512s renders as
+// `62.5ms--8m32s` -- the natural-unit form Go produces).
 func TestRenderMetricsTable_HistogramSecondsBuckets(t *testing.T) {
 	t.Parallel()
 
