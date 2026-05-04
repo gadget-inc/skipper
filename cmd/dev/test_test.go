@@ -68,3 +68,20 @@ func TestRunGoTests_AllowsAllAsFlagValue(t *testing.T) {
 	args := []string{"-run=all", "./internal/..."}
 	assert.Assert(t, !hasBareAll(args), "flag value `all` must not trigger guard")
 }
+
+// TestHasPathArg_IgnoresFlagValues asserts that `./` inside a flag
+// value (e.g. `-run=./pattern` for the test-name regex) does not
+// satisfy the path detection -- otherwise the default `./...` package
+// arg gets dropped and `go test` runs against the current directory
+// only.
+func TestHasPathArg_IgnoresFlagValues(t *testing.T) {
+	t.Parallel()
+	assert.Assert(t, !hasPathArg([]string{"-run=./pattern"}),
+		"regex with `./` must not look like a package path")
+	assert.Assert(t, !hasPathArg([]string{"-bench=foo./bar"}),
+		"bench regex with `./` must not look like a package path")
+	assert.Assert(t, hasPathArg([]string{"-run=Foo", "./internal/..."}),
+		"actual package path must be detected alongside flags")
+	assert.Assert(t, hasPathArg([]string{"./..."}),
+		"bare ./... must be detected")
+}
