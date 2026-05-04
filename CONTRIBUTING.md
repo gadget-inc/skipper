@@ -10,7 +10,7 @@
 
 ## Debugging
 
-When running `dev`, controller and router logs are written to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl` as structured JSON. These files are truncated on each restart.
+When running `dev up`, controller and router logs are written to `tmp/logs/controller.jsonl` and `tmp/logs/router.jsonl` as structured JSON. These files are truncated on each restart.
 
 You can also pass `--log-file`, `--log-file-level`, and `--log-file-format` to any command to write logs to a file. When `--log-file` is set, logs go to both stderr and the file. Level and format default to the main `--log-level` and `--log-format`.
 
