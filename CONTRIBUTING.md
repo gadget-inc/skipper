@@ -4,8 +4,9 @@
 
 1. Install [Nix](https://nixos.org/download), [direnv](https://direnv.net/), and [Orbstack](https://orbstack.dev/).
 2. `cd` into the repository and run `direnv allow`.
-3. Run `dev deploy` to build and deploy to your local Kubernetes cluster.
-4. Run `dev test -short ./...` to verify everything works.
+3. Run `git config core.hooksPath .githooks` to enable the repo's git hooks (`dev lint` on commit, `dev test -short ./...` on push). Bypass with `--no-verify` when needed.
+4. Run `dev deploy` to build and deploy to your local Kubernetes cluster.
+5. Run `dev test -short ./...` to verify everything works.
 
 ## Debugging
 
