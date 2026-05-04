@@ -80,12 +80,6 @@ Stuck instances -- pods that were assigned but never became ready after 2x the a
 
 Scale parameters control autoscaling behavior per function:
 
-| Field                       | Description                                        |
-| --------------------------- | -------------------------------------------------- |
-| `min_instances`             | Minimum instances to maintain (floor)              |
-| `max_instances`             | Maximum instances allowed (ceiling)                |
-| `target_cpu_usage_milli`    | Target CPU in millicores for autoscaling decisions |
-| `target_memory_usage_mib`   | Target memory in MiB for autoscaling decisions     |
-| `target_in_flight_requests` | Target in-flight requests per instance             |
+{{< messageTable Scale >}}
 
 The autoscaler evaluates each metric independently and takes the highest recommendation, similar to the Kubernetes HPA algorithm. Instances are never scaled below `min_instances` or above `max_instances`.

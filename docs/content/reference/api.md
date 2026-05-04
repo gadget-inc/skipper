@@ -17,16 +17,11 @@ rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse)
 
 **Request:**
 
-| Field                    | Type            | Description                                     |
-| ------------------------ | --------------- | ----------------------------------------------- |
-| `function`               | Function        | The function to get an instance for (required)  |
-| `exclude_instance_names` | repeated string | Instance names to exclude (for retry scenarios) |
+{{< messageTable GetInstanceRequest >}}
 
 **Response:**
 
-| Field      | Type     | Description                  |
-| ---------- | -------- | ---------------------------- |
-| `instance` | Instance | The assigned, ready instance |
+{{< messageTable GetInstanceResponse >}}
 
 **Behavior:**
 
@@ -44,11 +39,7 @@ rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse)
 
 **Request:**
 
-| Field           | Type               | Description                                                       |
-| --------------- | ------------------ | ----------------------------------------------------------------- |
-| `router_ip`     | string             | IP of the sending router                                          |
-| `heartbeats`    | repeated Heartbeat | Heartbeat for each active function                                |
-| `forwarded_for` | repeated string    | IPs that have already processed this heartbeat (cycle prevention) |
+{{< messageTable HeartbeatRequest >}}
 
 **Response:** Empty.
 
@@ -67,17 +58,11 @@ rpc Scale(ScaleRequest) returns (ScaleResponse)
 
 **Request:**
 
-| Field               | Type        | Description                    |
-| ------------------- | ----------- | ------------------------------ |
-| `function`          | Function    | The function to scale          |
-| `desired_instances` | uint32      | Target instance count          |
-| `reason`            | ScaleReason | Why scaling is being triggered |
+{{< messageTable ScaleRequest >}}
 
 **Response:**
 
-| Field       | Type              | Description                           |
-| ----------- | ----------------- | ------------------------------------- |
-| `instances` | repeated Instance | Current ready instances after scaling |
+{{< messageTable ScaleResponse >}}
 
 **Behavior:**
 
@@ -94,9 +79,7 @@ rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse)
 
 **Request:**
 
-| Field      | Type     | Description             |
-| ---------- | -------- | ----------------------- |
-| `instance` | Instance | The instance to release |
+{{< messageTable ReleaseInstanceRequest >}}
 
 **Response:** Empty.
 

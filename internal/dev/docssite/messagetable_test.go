@@ -4,9 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/gadget-inc/skipper/internal/skipper"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"gotest.tools/v3/assert"
 )
 
@@ -84,10 +87,43 @@ func TestRenderMessageTable_UnknownMessageFails(t *testing.T) {
 	assert.Assert(t, err != nil)
 	assert.Assert(t, errors.Is(err, errMessageUnknown))
 	assert.ErrorContains(t, err, "Event")
-	// The error should also list the registered messages.
-	for _, msg := range []string{"Function", "Scale", "Instance", "Heartbeat"} {
+	// The error should also list every registered message.
+	for _, msg := range messageTableRegistry {
 		assert.Assert(t, strings.Contains(err.Error(), msg),
 			"error message should list registered message %q: %v", msg, err)
+	}
+}
+
+// TestRenderMessageTable_RequestResponseRegistry asserts every
+// request/response message added in the round-2 registry expansion
+// renders end-to-end: it's whitelisted, has a wired descriptor, and
+// its fields all have description-map entries.
+func TestRenderMessageTable_RequestResponseRegistry(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		fields []string
+	}{
+		{"GetInstanceRequest", []string{"function", "exclude_instance_names"}},
+		{"GetInstanceResponse", []string{"instance"}},
+		{"HeartbeatRequest", []string{"router_ip", "heartbeats", "forwarded_for"}},
+		{"ScaleRequest", []string{"function", "desired_instances", "reason"}},
+		{"ScaleResponse", []string{"instances"}},
+		{"ReleaseInstanceRequest", []string{"instance"}},
+		{"GetClusterStateResponse", []string{"cluster_state"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out, err := renderMessageTable(tc.name)
+			assert.NilError(t, err)
+			for _, f := range tc.fields {
+				assert.Assert(t, strings.Contains(out, "`"+f+"`"),
+					"%s table missing field %q\n%s", tc.name, f, out)
+			}
+		})
 	}
 }
 
@@ -158,6 +194,32 @@ func messageRowFor(t *testing.T, table, field string) string {
 	}
 	t.Fatalf("no row for %s in:\n%s", field, table)
 	return ""
+}
+
+// TestMessageTableRegistry_CoversControllerServiceMessages asserts
+// every ControllerService method's Request and Response message
+// (with at least one field) is registered. A future RPC method
+// that introduces a non-empty request/response shape without
+// updating the registry fails this test.
+func TestMessageTableRegistry_CoversControllerServiceMessages(t *testing.T) {
+	t.Parallel()
+
+	svc := skipper.File_controller_proto.Services().ByName("ControllerService")
+	assert.Assert(t, svc != nil, "ControllerService not found on file descriptor")
+
+	methods := svc.Methods()
+	for i := range methods.Len() {
+		m := methods.Get(i)
+		for _, io := range []protoreflect.MessageDescriptor{m.Input(), m.Output()} {
+			if io.Fields().Len() == 0 {
+				continue
+			}
+			name := string(io.Name())
+			assert.Assert(t, slices.Contains(messageTableRegistry, name),
+				"messageTableRegistry missing %s (referenced by %s)",
+				name, m.Name())
+		}
+	}
 }
 
 func TestBuild_MessageTableShortcodeRendersAllFields(t *testing.T) {

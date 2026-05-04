@@ -27,7 +27,24 @@ var errMessageDescriptionDrift = errors.New("docssite: messageTable description 
 // messageTableRegistry is the whitelist of proto messages the
 // shortcode can render. Names match the bare proto message name
 // (lookup against [protoreflect.MessageDescriptor.Name]).
-var messageTableRegistry = []string{"Function", "Scale", "Instance", "Heartbeat"}
+//
+// Empty request/response messages (`HeartbeatResponse`,
+// `ReleaseInstanceResponse`, `GetClusterStateRequest`) are
+// intentionally excluded -- they render as `**Response:** Empty.`
+// prose in the docs, not via this shortcode.
+var messageTableRegistry = []string{
+	"Function",
+	"Scale",
+	"Instance",
+	"Heartbeat",
+	"GetInstanceRequest",
+	"GetInstanceResponse",
+	"HeartbeatRequest",
+	"ScaleRequest",
+	"ScaleResponse",
+	"ReleaseInstanceRequest",
+	"GetClusterStateResponse",
+}
 
 // messageTableDescriptions is the prose for each (Message, field)
 // pair. Keys are `MessageName.proto_field_name` (the proto name,
@@ -60,6 +77,25 @@ var messageTableDescriptions = map[string]string{
 	"Heartbeat.function":           "Function the heartbeat is for.",
 	"Heartbeat.timestamp":          "Sender's clock reading at the time the batch was assembled.",
 	"Heartbeat.in_flight_requests": "In-flight request count at the time the batch was assembled.",
+
+	"GetInstanceRequest.function":               "Function to get an instance for.",
+	"GetInstanceRequest.exclude_instance_names": "Instance names to exclude; used by routers retrying after a failed dial.",
+
+	"GetInstanceResponse.instance": "Assigned, ready instance.",
+
+	"HeartbeatRequest.router_ip":     "IP of the router sending the heartbeat batch.",
+	"HeartbeatRequest.heartbeats":    "One heartbeat per function with active in-flight requests.",
+	"HeartbeatRequest.forwarded_for": "Controller IPs that have already processed this batch; used to break forwarding cycles.",
+
+	"ScaleRequest.function":          "Function being scaled.",
+	"ScaleRequest.desired_instances": "Target ready-instance count after scaling.",
+	"ScaleRequest.reason":            "Reason the scale was triggered.",
+
+	"ScaleResponse.instances": "Ready instances after the scale decision was applied.",
+
+	"ReleaseInstanceRequest.instance": "Instance to release.",
+
+	"GetClusterStateResponse.cluster_state": "Snapshot of the cluster's current supervisor, event, and config state.",
 }
 
 // messageTableRe matches the messageTable shortcode on its own
@@ -195,6 +231,20 @@ func lookupMessageDescriptor(name string) (protoreflect.MessageDescriptor, error
 		msg = (&skipper.Instance{})
 	case "Heartbeat":
 		msg = (&skipper.Heartbeat{})
+	case "GetInstanceRequest":
+		msg = (&skipper.GetInstanceRequest{})
+	case "GetInstanceResponse":
+		msg = (&skipper.GetInstanceResponse{})
+	case "HeartbeatRequest":
+		msg = (&skipper.HeartbeatRequest{})
+	case "ScaleRequest":
+		msg = (&skipper.ScaleRequest{})
+	case "ScaleResponse":
+		msg = (&skipper.ScaleResponse{})
+	case "ReleaseInstanceRequest":
+		msg = (&skipper.ReleaseInstanceRequest{})
+	case "GetClusterStateResponse":
+		msg = (&skipper.GetClusterStateResponse{})
 	default:
 		// renderMessageRows already gates on the registry; this
 		// branch is defensive against a future registry edit that
