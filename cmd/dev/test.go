@@ -103,16 +103,75 @@ func runWithTee(ctx context.Context, logsDir, name string, appendLog bool, gotes
 	return exec.Run(ctx, "gotestsum", gotestsumArgs, exec.Stdout(io.MultiWriter(os.Stdout, logFile)))
 }
 
+// goTestValueFlags lists the `go test` and built-in `testing` flags
+// whose value is the next argv element when written in the space form
+// (`-run TestFoo`). The `-flag=value` form is self-contained and
+// handled by the equals check in flagConsumesNext directly. Boolean
+// flags (`-v`, `-race`, `-cover`, `-short`, `-failfast`, ...) and the
+// argv-terminator `-args` deliberately do NOT appear -- the next
+// token after them is positional, not a flag value.
+var goTestValueFlags = map[string]bool{
+	"-asmflags":             true,
+	"-bench":                true,
+	"-benchtime":            true,
+	"-blockprofile":         true,
+	"-blockprofilerate":     true,
+	"-count":                true,
+	"-coverpkg":             true,
+	"-coverprofile":         true,
+	"-cpu":                  true,
+	"-cpuprofile":           true,
+	"-fuzz":                 true,
+	"-fuzzminimizetime":     true,
+	"-fuzztime":             true,
+	"-gccgoflags":           true,
+	"-gcflags":              true,
+	"-ldflags":              true,
+	"-list":                 true,
+	"-memprofile":           true,
+	"-memprofilerate":       true,
+	"-mutexprofile":         true,
+	"-mutexprofilefraction": true,
+	"-outputdir":            true,
+	"-parallel":             true,
+	"-run":                  true,
+	"-shuffle":              true,
+	"-skip":                 true,
+	"-tags":                 true,
+	"-testlogfile":          true,
+	"-timeout":              true,
+	"-trace":                true,
+}
+
+// flagConsumesNext reports whether arg is a `go test` flag whose
+// value is supplied as the next argv element (the space form). The
+// `--flag` and `-flag` forms map to the same flag for Go's flag
+// package, so both are accepted. The `-flag=value` form is
+// self-contained -- it is NOT a value-consuming token under this
+// rule.
+func flagConsumesNext(arg string) bool {
+	if !strings.HasPrefix(arg, "-") || strings.Contains(arg, "=") {
+		return false
+	}
+	return goTestValueFlags["-"+strings.TrimLeft(arg, "-")]
+}
+
 // hasPathArg reports whether the user supplied any positional (non-
 // flag) target -- a relative package path (`./internal/...`), a bare
 // module-relative path (`internal/controller/...`), a fully-qualified
 // import path, or a gofmt-style `*_test.go` filename. When no
 // positional is present, the runner prepends `./...`. The bare token
 // `all` is rejected upstream by `hasBareAll`, so any other positional
-// is treated as a deliberate scope.
+// is treated as a deliberate scope. Space-separated flag values
+// (`-run TestFoo`) are skipped via goTestValueFlags so the value
+// token is not misread as a path.
 func hasPathArg(args []string) bool {
-	for _, a := range args {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		if strings.HasPrefix(a, "-") {
+			if flagConsumesNext(a) && i+1 < len(args) {
+				i++
+			}
 			continue
 		}
 		return true
@@ -132,10 +191,16 @@ func hasFlagPrefix(args []string, prefix string) bool {
 // hasBareAll reports whether any positional (non-flag) arg is the
 // literal `all`. Catches the muscle-memory shapes `dev test all`,
 // `dev test all -v`, and `dev test ./pkg all` -- any of which would
-// otherwise reach `go test ./... all` (Go's meta-package).
+// otherwise reach `go test ./... all` (Go's meta-package). Space-
+// separated flag values (`-run all`) are skipped so the value is not
+// mistaken for a positional.
 func hasBareAll(args []string) bool {
-	for _, a := range args {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		if strings.HasPrefix(a, "-") {
+			if flagConsumesNext(a) && i+1 < len(args) {
+				i++
+			}
 			continue
 		}
 		if a == "all" {

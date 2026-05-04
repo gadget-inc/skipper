@@ -74,6 +74,9 @@ func TestRunGoTests_AllowsAllAsFlagValue(t *testing.T) {
 //   - flag tokens like `-run=./pattern` MUST NOT count; otherwise the
 //     default `./...` is dropped and `go test` runs against the
 //     current directory only.
+//   - the value tokens after space-form flags (`-run TestFoo`,
+//     `-bench BenchX`, `-count 3`) MUST NOT count -- they are flag
+//     values, not positionals.
 //   - any positional (non-flag) arg counts -- `./internal/...`, the
 //     bare `internal/controller/...`, fully qualified import paths,
 //     and gofmt-style `*_test.go` filenames all get respected.
@@ -85,8 +88,16 @@ func TestHasPathArg_DetectsPositionalShapes(t *testing.T) {
 		"bench regex with `./` must not look like a package path")
 	assert.Assert(t, !hasPathArg([]string{"-v", "-count=1"}),
 		"flags only, no positional, must not count as a path")
+	assert.Assert(t, !hasPathArg([]string{"-run", "TestFoo"}),
+		"space-form `-run TestFoo` must not classify the value as a path")
+	assert.Assert(t, !hasPathArg([]string{"-bench", "BenchmarkX", "-count", "3"}),
+		"chained space-form flags must skip every value token")
+	assert.Assert(t, !hasPathArg([]string{"--run", "TestFoo"}),
+		"double-dash form must skip the value token too")
 	assert.Assert(t, hasPathArg([]string{"-run=Foo", "./internal/..."}),
 		"./-prefixed path must be detected alongside flags")
+	assert.Assert(t, hasPathArg([]string{"-run", "TestFoo", "./internal/..."}),
+		"path after a space-form flag value must still be detected")
 	assert.Assert(t, hasPathArg([]string{"./..."}),
 		"bare ./... must be detected")
 	assert.Assert(t, hasPathArg([]string{"internal/controller/..."}),
@@ -95,4 +106,22 @@ func TestHasPathArg_DetectsPositionalShapes(t *testing.T) {
 		"fully qualified import path must be detected")
 	assert.Assert(t, hasPathArg([]string{"foo_test.go"}),
 		"gofmt-style filename must be detected")
+}
+
+// TestHasBareAll_IgnoresSpaceFormFlagValues covers the muscle-memory
+// guard's awareness of flag value tokens. `-run all` MUST be allowed
+// (the regex value is `all`, not a positional) but the literal
+// positional `all` MUST still be rejected.
+func TestHasBareAll_IgnoresSpaceFormFlagValues(t *testing.T) {
+	t.Parallel()
+	assert.Assert(t, !hasBareAll([]string{"-run", "all"}),
+		"space-form `-run all` must not trigger the guard")
+	assert.Assert(t, !hasBareAll([]string{"-bench", "all"}),
+		"space-form `-bench all` must not trigger the guard")
+	assert.Assert(t, !hasBareAll([]string{"--run", "all"}),
+		"double-dash space-form must not trigger the guard")
+	assert.Assert(t, hasBareAll([]string{"-run", "TestFoo", "all"}),
+		"positional `all` after a space-form flag value must still trigger")
+	assert.Assert(t, hasBareAll([]string{"all"}),
+		"bare `all` must still trigger")
 }
