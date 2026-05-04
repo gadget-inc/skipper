@@ -173,11 +173,6 @@ message Heartbeat {
 
 Default retry policies for gRPC clients:
 
-| Method          | Max Retries | Max Backoff | Retry On    |
-| --------------- | ----------- | ----------- | ----------- |
-| GetInstance     | 3           | 100ms       | UNAVAILABLE |
-| Heartbeat       | 2           | 50ms        | UNAVAILABLE |
-| Scale           | 3           | 500ms       | UNAVAILABLE |
-| ReleaseInstance | 2           | 50ms        | UNAVAILABLE |
+{{< grpcRetryTable >}}
 
 Connection uses the `dns:///` scheme with round-robin load balancing for headless service discovery.

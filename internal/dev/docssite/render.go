@@ -261,6 +261,15 @@ var widgetRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*([a-z][a-z0-9-]*)\s*>\}\}\s*$
 // emits the markdown table body.
 var flagTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*flagtable\s+([a-z][a-z0-9-]*)\s*>\}\}\s*$`)
 
+// grpcRetryTableRe matches the gRPC retry-policy shortcode on its own
+// line:
+//
+//	{{< grpcRetryTable >}}
+//
+// The shortcode takes no argument; renderGrpcRetryTable always emits
+// the same table.
+var grpcRetryTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*grpcRetryTable\s*>\}\}\s*$`)
+
 // preprocessShortcodes expands custom shortcodes into raw HTML or
 // markdown before goldmark sees the source: admonition fences
 // (`:::variant`), the flag-table shortcode (`{{< flagtable name >}}`),
@@ -304,6 +313,21 @@ func preprocessShortcodes(src string) (string, error) {
 	})
 	if flagErr != nil {
 		return "", flagErr
+	}
+	var retryErr error
+	src = grpcRetryTableRe.ReplaceAllStringFunc(src, func(match string) string {
+		if retryErr != nil {
+			return match
+		}
+		out, err := renderGrpcRetryTable()
+		if err != nil {
+			retryErr = err
+			return match
+		}
+		return out
+	})
+	if retryErr != nil {
+		return "", retryErr
 	}
 	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)

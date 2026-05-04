@@ -45,11 +45,6 @@ The controller exposes a gRPC service on port 50051 (default). Routers connect u
 
 ### Retry policies
 
-| Method          | Max Retries | Max Backoff | Retry On    |
-| --------------- | ----------- | ----------- | ----------- |
-| GetInstance     | 3           | 100ms       | UNAVAILABLE |
-| Heartbeat       | 2           | 50ms        | UNAVAILABLE |
-| Scale           | 3           | 500ms       | UNAVAILABLE |
-| ReleaseInstance | 2           | 50ms        | UNAVAILABLE |
+{{< grpcRetryTable >}}
 
 All retries trigger only on the UNAVAILABLE status code. Every RPC is instrumented with OpenTelemetry.
