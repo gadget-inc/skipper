@@ -95,7 +95,6 @@ func newDeployCmd() *cobra.Command {
 						"fixture_image_tag": imageTag,
 						"env": map[string]any{
 							"SKIPPER_TELEMETRY":           otel,
-							"OTEL_DENO":                   otel,
 							"OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
 							"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel-lgtm.otel-lgtm.svc.cluster.local:4318",
 						},

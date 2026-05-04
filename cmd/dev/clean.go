@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/gadget-inc/skipper/internal/cmd"
+	"github.com/gadget-inc/skipper/internal/dev/devenv"
 	"github.com/gadget-inc/skipper/internal/dev/exec"
 	"github.com/spf13/cobra"
 )
@@ -47,10 +48,9 @@ func newCleanCmd() *cobra.Command {
 				)
 			}
 
-			workspace := os.Getenv("WORKSPACE_DIR")
 			scratch := []string{"tmp/krane", "tmp/logs", "tmp/paseto", "tmp/test"}
 			for _, sub := range scratch {
-				path := filepath.Join(workspace, sub)
+				path := filepath.Join(devenv.RepoRoot(), sub)
 				if err := os.RemoveAll(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 					return err
 				}
