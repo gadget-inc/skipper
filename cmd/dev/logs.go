@@ -73,12 +73,12 @@ func newLogsCmd() *cobra.Command {
 				return fmt.Errorf("unknown output format %q (available: text, json, raw)", output)
 			}
 
-			ctx := os.Getenv("SKIPPER_KUBECTL_CONTEXT")
-			if ctx == "" {
-				ctx = "orbstack"
+			kubectx := os.Getenv("SKIPPER_KUBECTL_CONTEXT")
+			if kubectx == "" {
+				kubectx = "orbstack"
 			}
 
-			sternArgs := []string{podPattern, "--context=" + ctx, "--namespace=" + namespace}
+			sternArgs := []string{podPattern, "--context=" + kubectx, "--namespace=" + namespace}
 			switch output {
 			case "text":
 				sternArgs = append(sternArgs, `--template={{ printf "%s/%s: %s\n" .Namespace .PodName .Message }}`)

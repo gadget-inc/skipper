@@ -61,7 +61,7 @@ dev deploy --only=fixtures,metrics-server
 - Controller gRPC: `127.0.0.1:50051`
 - Web UI: `http://127.0.0.1:8080`
 - Router: `http://127.0.0.1:8081`
-- Docs: `http://localhost:4321`
+- Docs: `http://localhost:4321/skipper/`
 
 ### Debugging
 

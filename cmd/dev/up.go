@@ -235,6 +235,6 @@ func printEndpoints(controller, router, docs bool) {
 		fmt.Println("Router:          http://127.0.0.1:8081")
 	}
 	if docs {
-		fmt.Println("Docs:            http://localhost:4321")
+		fmt.Printf("Docs:            http://localhost:4321%s/\n", docsBasePath)
 	}
 }
