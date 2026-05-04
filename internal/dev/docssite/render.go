@@ -342,127 +342,27 @@ func preprocessShortcodes(src string) (string, error) {
 		}
 		return renderAside(variant, title, body)
 	})
-	var flagErr error
-	src = flagTableRe.ReplaceAllStringFunc(src, func(match string) string {
-		if flagErr != nil {
-			return match
-		}
-		groups := flagTableRe.FindStringSubmatch(match)
-		if len(groups) < 2 {
-			return match
-		}
-		out, err := renderFlagTable(groups[1])
-		if err != nil {
-			flagErr = err
-			return match
-		}
-		return out
-	})
-	if flagErr != nil {
-		return "", flagErr
+
+	expansions := []struct {
+		re     *regexp.Regexp
+		render func(match string) (string, error)
+	}{
+		{flagTableRe, oneArgShortcode(flagTableRe, renderFlagTable)},
+		{grpcRetryTableRe, zeroArgShortcode(renderGrpcRetryTable)},
+		{scaleReasonTableRe, zeroArgShortcode(renderScaleReasonTable)},
+		{transportTableRe, zeroArgShortcode(renderTransportTable)},
+		{messageTableRe, oneArgShortcode(messageTableRe, renderMessageTable)},
+		{metricsTableRe, oneArgShortcode(metricsTableRe, renderMetricsTable)},
+		{serviceMethodRe, oneArgShortcode(serviceMethodRe, renderServiceMethod)},
 	}
-	var retryErr error
-	src = grpcRetryTableRe.ReplaceAllStringFunc(src, func(match string) string {
-		if retryErr != nil {
-			return match
-		}
-		out, err := renderGrpcRetryTable()
+	for _, e := range expansions {
+		var err error
+		src, err = expandShortcode(src, e.re, e.render)
 		if err != nil {
-			retryErr = err
-			return match
+			return "", err
 		}
-		return out
-	})
-	if retryErr != nil {
-		return "", retryErr
 	}
-	var scaleReasonErr error
-	src = scaleReasonTableRe.ReplaceAllStringFunc(src, func(match string) string {
-		if scaleReasonErr != nil {
-			return match
-		}
-		out, err := renderScaleReasonTable()
-		if err != nil {
-			scaleReasonErr = err
-			return match
-		}
-		return out
-	})
-	if scaleReasonErr != nil {
-		return "", scaleReasonErr
-	}
-	var transportErr error
-	src = transportTableRe.ReplaceAllStringFunc(src, func(match string) string {
-		if transportErr != nil {
-			return match
-		}
-		out, err := renderTransportTable()
-		if err != nil {
-			transportErr = err
-			return match
-		}
-		return out
-	})
-	if transportErr != nil {
-		return "", transportErr
-	}
-	var messageErr error
-	src = messageTableRe.ReplaceAllStringFunc(src, func(match string) string {
-		if messageErr != nil {
-			return match
-		}
-		groups := messageTableRe.FindStringSubmatch(match)
-		if len(groups) < 2 {
-			return match
-		}
-		out, err := renderMessageTable(groups[1])
-		if err != nil {
-			messageErr = err
-			return match
-		}
-		return out
-	})
-	if messageErr != nil {
-		return "", messageErr
-	}
-	var metricsErr error
-	src = metricsTableRe.ReplaceAllStringFunc(src, func(match string) string {
-		if metricsErr != nil {
-			return match
-		}
-		groups := metricsTableRe.FindStringSubmatch(match)
-		if len(groups) < 2 {
-			return match
-		}
-		out, err := renderMetricsTable(groups[1])
-		if err != nil {
-			metricsErr = err
-			return match
-		}
-		return out
-	})
-	if metricsErr != nil {
-		return "", metricsErr
-	}
-	var serviceMethodErr error
-	src = serviceMethodRe.ReplaceAllStringFunc(src, func(match string) string {
-		if serviceMethodErr != nil {
-			return match
-		}
-		groups := serviceMethodRe.FindStringSubmatch(match)
-		if len(groups) < 2 {
-			return match
-		}
-		out, err := renderServiceMethod(groups[1])
-		if err != nil {
-			serviceMethodErr = err
-			return match
-		}
-		return out
-	})
-	if serviceMethodErr != nil {
-		return "", serviceMethodErr
-	}
+
 	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)
 		if len(groups) < 2 {
@@ -474,6 +374,49 @@ func preprocessShortcodes(src string) (string, error) {
 		return match
 	})
 	return src, nil
+}
+
+// expandShortcode runs re over src, calling render for each match.
+// The first error from render short-circuits remaining matches and
+// propagates out -- subsequent matches are left untouched in the
+// source. On success the rewritten src is returned.
+func expandShortcode(src string, re *regexp.Regexp, render func(match string) (string, error)) (string, error) {
+	var firstErr error
+	out := re.ReplaceAllStringFunc(src, func(match string) string {
+		if firstErr != nil {
+			return match
+		}
+		result, err := render(match)
+		if err != nil {
+			firstErr = err
+			return match
+		}
+		return result
+	})
+	if firstErr != nil {
+		return "", firstErr
+	}
+	return out, nil
+}
+
+// zeroArgShortcode adapts a no-argument renderer (e.g.
+// renderGrpcRetryTable) to expandShortcode's render signature.
+func zeroArgShortcode(render func() (string, error)) func(match string) (string, error) {
+	return func(string) (string, error) { return render() }
+}
+
+// oneArgShortcode adapts a single-argument renderer (e.g.
+// renderFlagTable) to expandShortcode's render signature, pulling
+// the first capture group from re. A match with too few groups
+// passes through unchanged.
+func oneArgShortcode(re *regexp.Regexp, render func(string) (string, error)) func(match string) (string, error) {
+	return func(match string) (string, error) {
+		groups := re.FindStringSubmatch(match)
+		if len(groups) < 2 {
+			return match, nil
+		}
+		return render(groups[1])
+	}
 }
 
 // widgetPartial returns the HTML for a registered widget name, or the
