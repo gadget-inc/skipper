@@ -290,6 +290,19 @@ var transportTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*transportTable\s*>\}\
 // [flagTableRe]'s `[a-z][a-z0-9-]*` argument class.
 var messageTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*messageTable\s+([A-Z][A-Za-z0-9]*)\s*>\}\}\s*$`)
 
+// serviceMethodRe matches the gRPC service-method shortcode on its
+// own line:
+//
+//	{{< serviceMethod GetInstance >}}
+//
+// The captured argument is a proto method name -- uppercase-leading
+// CamelCase, sharing the argument class with [messageTableRe].
+//
+// Leading whitespace is restricted to `[ \t]*` (not `\s*`) for the
+// same reason as [metricsTableRe]: the shortcode may sit between
+// raw HTML blocks where the preceding blank line is load-bearing.
+var serviceMethodRe = regexp.MustCompile(`(?m)^[ \t]*\{\{<\s*serviceMethod\s+([A-Z][A-Za-z0-9]*)\s*>\}\}\s*$`)
+
 // metricsTableRe matches the Prometheus metrics-table shortcode on
 // its own line:
 //
@@ -430,6 +443,25 @@ func preprocessShortcodes(src string) (string, error) {
 	})
 	if metricsErr != nil {
 		return "", metricsErr
+	}
+	var serviceMethodErr error
+	src = serviceMethodRe.ReplaceAllStringFunc(src, func(match string) string {
+		if serviceMethodErr != nil {
+			return match
+		}
+		groups := serviceMethodRe.FindStringSubmatch(match)
+		if len(groups) < 2 {
+			return match
+		}
+		out, err := renderServiceMethod(groups[1])
+		if err != nil {
+			serviceMethodErr = err
+			return match
+		}
+		return out
+	})
+	if serviceMethodErr != nil {
+		return "", serviceMethodErr
 	}
 	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)

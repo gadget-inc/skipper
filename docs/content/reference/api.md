@@ -11,9 +11,7 @@ The controller exposes a gRPC service (`ControllerService`) on port 50051 (defau
 
 Get a ready instance for a function. If no ready instance exists, the controller assigns an unassigned pod.
 
-```protobuf
-rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse)
-```
+{{< serviceMethod GetInstance >}}
 
 **Request:**
 
@@ -33,9 +31,7 @@ rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse)
 
 Send heartbeat signals for active functions. Heartbeats prevent function timeout and inform scaling decisions.
 
-```protobuf
-rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse)
-```
+{{< serviceMethod Heartbeat >}}
 
 **Request:**
 
@@ -52,9 +48,7 @@ rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse)
 
 Scale a function to a desired number of instances.
 
-```protobuf
-rpc Scale(ScaleRequest) returns (ScaleResponse)
-```
+{{< serviceMethod Scale >}}
 
 **Request:**
 
@@ -73,9 +67,7 @@ rpc Scale(ScaleRequest) returns (ScaleResponse)
 
 Release (delete) a pod. Used by routers after oneshot requests complete.
 
-```protobuf
-rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse)
-```
+{{< serviceMethod ReleaseInstance >}}
 
 **Request:**
 
@@ -86,6 +78,22 @@ rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse)
 **Behavior:**
 
 - Deletes the pod (idempotent -- returns success even if the pod does not exist)
+
+### GetClusterState
+
+Return a snapshot of the cluster's current state -- supervisors, recent events, and active configuration. Used by the web UI and operator tooling.
+
+{{< serviceMethod GetClusterState >}}
+
+**Request:** Empty.
+
+**Response:**
+
+{{< messageTable GetClusterStateResponse >}}
+
+**Behavior:**
+
+- Aggregates state from every controller in the ring; each controller contributes the supervisors it owns
 
 ## Types
 
