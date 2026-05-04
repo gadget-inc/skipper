@@ -27,10 +27,10 @@ var (
 	}.Build()
 
 	goldenFunction = Function_builder{
-		Namespace:  proto.String("skipper-production"),
-		Deployment: proto.String("my-app"),
-		Tenant:     proto.String("tenant-123"),
-		Metadata:   proto.String("metadata-value"),
+		Namespace:  new("skipper-production"),
+		Deployment: new("my-app"),
+		Tenant:     new("tenant-123"),
+		Metadata:   new("metadata-value"),
 		Scale:      goldenScale,
 	}.Build()
 
@@ -42,9 +42,9 @@ var (
 
 	goldenInstance = Instance_builder{
 		Function:       goldenFunction,
-		Name:           proto.String("my-app-abc123"),
-		Addr:           proto.String("10.0.0.1:8080"),
-		ReplicaSet:     proto.String("my-app-5f4b8c"),
+		Name:           new("my-app-abc123"),
+		Addr:           new("10.0.0.1:8080"),
+		ReplicaSet:     new("my-app-5f4b8c"),
 		AssignedAt:     timestamppb.New(goldenTime),
 		ReadyAt:        timestamppb.New(goldenTime.Add(5 * time.Second)),
 		CpuUsageMilli:  proto.Uint32(250),
@@ -56,14 +56,14 @@ var (
 		UnclampedDesiredInstances: proto.Uint32(5),
 		Reason:                    ScaleReason_SCALE_REASON_CPU.Enum(),
 		Metrics: []*ScaleMetric{
-			ScaleMetric_builder{Name: proto.String("cpu"), Value: proto.Float64(0.75)}.Build(),
-			ScaleMetric_builder{Name: proto.String("memory"), Value: proto.Float64(0.5)}.Build(),
+			ScaleMetric_builder{Name: new("cpu"), Value: new(0.75)}.Build(),
+			ScaleMetric_builder{Name: new("memory"), Value: new(0.5)}.Build(),
 		},
 	}.Build()
 
 	goldenScaleMetric = ScaleMetric_builder{
-		Name:  proto.String("in_flight_requests"),
-		Value: proto.Float64(1.5),
+		Name:  new("in_flight_requests"),
+		Value: new(1.5),
 	}.Build()
 )
 

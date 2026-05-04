@@ -35,29 +35,29 @@ func TestFunctionKeyEquivalence(t *testing.T) {
 		{
 			name: "minimal required fields",
 			fn: Function_builder{
-				Namespace:  proto.String("ns"),
-				Deployment: proto.String("deploy"),
-				Tenant:     proto.String("tenant"),
+				Namespace:  new("ns"),
+				Deployment: new("deploy"),
+				Tenant:     new("tenant"),
 				Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(1)}.Build(),
 			}.Build(),
 		},
 		{
 			name: "oneshot true",
 			fn: Function_builder{
-				Namespace:  proto.String("ns"),
-				Deployment: proto.String("deploy"),
-				Tenant:     proto.String("tenant"),
-				Oneshot:    proto.Bool(true),
+				Namespace:  new("ns"),
+				Deployment: new("deploy"),
+				Tenant:     new("tenant"),
+				Oneshot:    new(true),
 				Scale:      Scale_builder{MinInstances: proto.Uint32(0), MaxInstances: proto.Uint32(10)}.Build(),
 			}.Build(),
 		},
 		{
 			name: "empty metadata",
 			fn: Function_builder{
-				Namespace:  proto.String("ns"),
-				Deployment: proto.String("deploy"),
-				Tenant:     proto.String("tenant"),
-				Metadata:   proto.String(""),
+				Namespace:  new("ns"),
+				Deployment: new("deploy"),
+				Tenant:     new("tenant"),
+				Metadata:   new(""),
 				Scale:      Scale_builder{MaxInstances: proto.Uint32(5)}.Build(),
 			}.Build(),
 		},
@@ -80,10 +80,10 @@ func TestFunctionKeyConcurrent(t *testing.T) {
 	t.Parallel()
 
 	fn := Function_builder{
-		Namespace:  proto.String("concurrent-ns"),
-		Deployment: proto.String("concurrent-deploy"),
-		Tenant:     proto.String("concurrent-tenant"),
-		Metadata:   proto.String("concurrent-meta"),
+		Namespace:  new("concurrent-ns"),
+		Deployment: new("concurrent-deploy"),
+		Tenant:     new("concurrent-tenant"),
+		Metadata:   new("concurrent-meta"),
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
@@ -110,10 +110,10 @@ func TestFunctionKeyConcurrent(t *testing.T) {
 
 func BenchmarkFunctionKeyAttr(b *testing.B) {
 	fn := Function_builder{
-		Namespace:  proto.String("bench-ns"),
-		Deployment: proto.String("bench-deploy"),
-		Tenant:     proto.String("bench-tenant"),
-		Metadata:   proto.String("bench-meta"),
+		Namespace:  new("bench-ns"),
+		Deployment: new("bench-deploy"),
+		Tenant:     new("bench-tenant"),
+		Metadata:   new("bench-meta"),
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 

@@ -16,9 +16,9 @@ import (
 
 func testState() *skipper.ClusterState {
 	fn := skipper.Function_builder{
-		Namespace:  proto.String("default"),
-		Deployment: proto.String("web-app"),
-		Tenant:     proto.String("tenant-1"),
+		Namespace:  new("default"),
+		Deployment: new("web-app"),
+		Tenant:     new("tenant-1"),
 		Scale: skipper.Scale_builder{
 			MinInstances:           proto.Uint32(1),
 			MaxInstances:           proto.Uint32(10),
@@ -30,9 +30,9 @@ func testState() *skipper.ClusterState {
 
 	inst := skipper.Instance_builder{
 		Function:       fn,
-		Name:           proto.String("web-app-abc123"),
-		Addr:           proto.String("10.0.1.1:8080"),
-		ReplicaSet:     proto.String("web-app-rs-1"),
+		Name:           new("web-app-abc123"),
+		Addr:           new("10.0.1.1:8080"),
+		ReplicaSet:     new("web-app-rs-1"),
 		AssignedAt:     timestamppb.Now(),
 		ReadyAt:        timestamppb.Now(),
 		CpuUsageMilli:  proto.Uint32(50),
@@ -183,9 +183,9 @@ func TestEventsFiltering(t *testing.T) {
 	t.Parallel()
 
 	fn := skipper.Function_builder{
-		Namespace:  proto.String("default"),
-		Deployment: proto.String("web-app"),
-		Tenant:     proto.String("tenant-1"),
+		Namespace:  new("default"),
+		Deployment: new("web-app"),
+		Tenant:     new("tenant-1"),
 	}.Build()
 
 	event1 := &skipper.Event{}
@@ -262,14 +262,14 @@ func TestCountInstances(t *testing.T) {
 			name: "non-ready instance",
 			state: func() *skipper.ClusterState {
 				fn := skipper.Function_builder{
-					Namespace:  proto.String("default"),
-					Deployment: proto.String("app"),
-					Tenant:     proto.String("t1"),
+					Namespace:  new("default"),
+					Deployment: new("app"),
+					Tenant:     new("t1"),
 				}.Build()
 				inst := skipper.Instance_builder{
 					Function:   fn,
-					Name:       proto.String("app-xyz"),
-					Addr:       proto.String("10.0.0.2:8080"),
+					Name:       new("app-xyz"),
+					Addr:       new("10.0.0.2:8080"),
 					AssignedAt: timestamppb.Now(),
 					// No ReadyAt — pending instance
 				}.Build()
@@ -299,11 +299,11 @@ func TestCountReady(t *testing.T) {
 	t.Parallel()
 
 	readyInst := skipper.Instance_builder{
-		Name:    proto.String("ready"),
+		Name:    new("ready"),
 		ReadyAt: timestamppb.Now(),
 	}.Build()
 	pendingInst := skipper.Instance_builder{
-		Name: proto.String("pending"),
+		Name: new("pending"),
 	}.Build()
 
 	tests := []struct {
@@ -363,8 +363,8 @@ func TestStaleInstances(t *testing.T) {
 			name: "all match active RS",
 			setup: func() *skipper.SupervisorState {
 				inst := skipper.Instance_builder{
-					Name:       proto.String("pod-1"),
-					ReplicaSet: proto.String("rs-1"),
+					Name:       new("pod-1"),
+					ReplicaSet: new("rs-1"),
 				}.Build()
 				sup := &skipper.SupervisorState{}
 				sup.SetInstances([]*skipper.Instance{inst})
@@ -377,8 +377,8 @@ func TestStaleInstances(t *testing.T) {
 			name: "one stale instance",
 			setup: func() *skipper.SupervisorState {
 				inst := skipper.Instance_builder{
-					Name:       proto.String("pod-1"),
-					ReplicaSet: proto.String("rs-old"),
+					Name:       new("pod-1"),
+					ReplicaSet: new("rs-old"),
 				}.Build()
 				sup := &skipper.SupervisorState{}
 				sup.SetInstances([]*skipper.Instance{inst})
@@ -391,12 +391,12 @@ func TestStaleInstances(t *testing.T) {
 			name: "mixed stale and current",
 			setup: func() *skipper.SupervisorState {
 				current := skipper.Instance_builder{
-					Name:       proto.String("pod-current"),
-					ReplicaSet: proto.String("rs-new"),
+					Name:       new("pod-current"),
+					ReplicaSet: new("rs-new"),
 				}.Build()
 				stale := skipper.Instance_builder{
-					Name:       proto.String("pod-stale"),
-					ReplicaSet: proto.String("rs-old"),
+					Name:       new("pod-stale"),
+					ReplicaSet: new("rs-old"),
 				}.Build()
 				sup := &skipper.SupervisorState{}
 				sup.SetInstances([]*skipper.Instance{current, stale})
@@ -409,8 +409,8 @@ func TestStaleInstances(t *testing.T) {
 			name: "no active RS set",
 			setup: func() *skipper.SupervisorState {
 				inst := skipper.Instance_builder{
-					Name:       proto.String("pod-1"),
-					ReplicaSet: proto.String("rs-1"),
+					Name:       new("pod-1"),
+					ReplicaSet: new("rs-1"),
 				}.Build()
 				sup := &skipper.SupervisorState{}
 				sup.SetInstances([]*skipper.Instance{inst})
@@ -450,13 +450,13 @@ func TestBuildControllerDataImbalanced(t *testing.T) {
 	t.Parallel()
 
 	fn1 := skipper.Function_builder{
-		Namespace: proto.String("default"), Deployment: proto.String("app1"), Tenant: proto.String("t1"),
+		Namespace: new("default"), Deployment: new("app1"), Tenant: new("t1"),
 	}.Build()
 	fn2 := skipper.Function_builder{
-		Namespace: proto.String("default"), Deployment: proto.String("app2"), Tenant: proto.String("t1"),
+		Namespace: new("default"), Deployment: new("app2"), Tenant: new("t1"),
 	}.Build()
 	fn3 := skipper.Function_builder{
-		Namespace: proto.String("default"), Deployment: proto.String("app3"), Tenant: proto.String("t1"),
+		Namespace: new("default"), Deployment: new("app3"), Tenant: new("t1"),
 	}.Build()
 
 	sup1 := &skipper.SupervisorState{}
@@ -495,7 +495,7 @@ func TestBuildRouterRows(t *testing.T) {
 	t.Run("with heartbeats", func(t *testing.T) {
 		t.Parallel()
 		fn := skipper.Function_builder{
-			Namespace: proto.String("default"), Deployment: proto.String("app"), Tenant: proto.String("t1"),
+			Namespace: new("default"), Deployment: new("app"), Tenant: new("t1"),
 		}.Build()
 		hb := &skipper.HeartbeatState{}
 		hb.SetRouterIp("10.0.1.1")
@@ -530,7 +530,7 @@ func TestBuildRouterEntries(t *testing.T) {
 	t.Run("matching IP", func(t *testing.T) {
 		t.Parallel()
 		fn := skipper.Function_builder{
-			Namespace: proto.String("default"), Deployment: proto.String("app"), Tenant: proto.String("t1"),
+			Namespace: new("default"), Deployment: new("app"), Tenant: new("t1"),
 		}.Build()
 		hb := &skipper.HeartbeatState{}
 		hb.SetRouterIp("10.0.1.1")
@@ -632,14 +632,14 @@ func TestBuildTenantRows(t *testing.T) {
 		t.Parallel()
 
 		fn1 := skipper.Function_builder{
-			Namespace:  proto.String("default"),
-			Deployment: proto.String("web-app"),
-			Tenant:     proto.String("tenant-1"),
+			Namespace:  new("default"),
+			Deployment: new("web-app"),
+			Tenant:     new("tenant-1"),
 		}.Build()
 		inst1 := skipper.Instance_builder{
 			Function:   fn1,
-			Name:       proto.String("web-app-abc123"),
-			Addr:       proto.String("10.0.1.1:8080"),
+			Name:       new("web-app-abc123"),
+			Addr:       new("10.0.1.1:8080"),
 			AssignedAt: timestamppb.Now(),
 			ReadyAt:    timestamppb.Now(),
 		}.Build()
@@ -648,21 +648,21 @@ func TestBuildTenantRows(t *testing.T) {
 		sup1.SetInstances([]*skipper.Instance{inst1})
 
 		fn2 := skipper.Function_builder{
-			Namespace:  proto.String("default"),
-			Deployment: proto.String("api-server"),
-			Tenant:     proto.String("tenant-2"),
+			Namespace:  new("default"),
+			Deployment: new("api-server"),
+			Tenant:     new("tenant-2"),
 		}.Build()
 		inst2 := skipper.Instance_builder{
 			Function:   fn2,
-			Name:       proto.String("api-server-def456"),
-			Addr:       proto.String("10.0.1.2:8080"),
+			Name:       new("api-server-def456"),
+			Addr:       new("10.0.1.2:8080"),
 			AssignedAt: timestamppb.Now(),
 			ReadyAt:    timestamppb.Now(),
 		}.Build()
 		inst3 := skipper.Instance_builder{
 			Function:   fn2,
-			Name:       proto.String("api-server-ghi789"),
-			Addr:       proto.String("10.0.1.3:8080"),
+			Name:       new("api-server-ghi789"),
+			Addr:       new("10.0.1.3:8080"),
 			AssignedAt: timestamppb.Now(),
 			// No ReadyAt — pending instance
 		}.Build()
@@ -717,17 +717,17 @@ func TestBuildDeploymentRows(t *testing.T) {
 		t.Parallel()
 
 		fn1 := skipper.Function_builder{
-			Namespace:  proto.String("default"),
-			Deployment: proto.String("api"),
-			Tenant:     proto.String("t1"),
+			Namespace:  new("default"),
+			Deployment: new("api"),
+			Tenant:     new("t1"),
 		}.Build()
 		sup1 := &skipper.SupervisorState{}
 		sup1.SetFunction(fn1)
 
 		fn2 := skipper.Function_builder{
-			Namespace:  proto.String("default"),
-			Deployment: proto.String("web"),
-			Tenant:     proto.String("t1"),
+			Namespace:  new("default"),
+			Deployment: new("web"),
+			Tenant:     new("t1"),
 		}.Build()
 		sup2 := &skipper.SupervisorState{}
 		sup2.SetFunction(fn2)
@@ -777,14 +777,14 @@ func TestBuildTenantData(t *testing.T) {
 			name: "multiple deployments",
 			state: func() *skipper.ClusterState {
 				fn1 := skipper.Function_builder{
-					Namespace:  proto.String("default"),
-					Deployment: proto.String("web-app"),
-					Tenant:     proto.String("tenant-1"),
+					Namespace:  new("default"),
+					Deployment: new("web-app"),
+					Tenant:     new("tenant-1"),
 				}.Build()
 				inst1 := skipper.Instance_builder{
 					Function:   fn1,
-					Name:       proto.String("web-app-abc"),
-					Addr:       proto.String("10.0.1.1:8080"),
+					Name:       new("web-app-abc"),
+					Addr:       new("10.0.1.1:8080"),
 					AssignedAt: timestamppb.Now(),
 					ReadyAt:    timestamppb.Now(),
 				}.Build()
@@ -793,14 +793,14 @@ func TestBuildTenantData(t *testing.T) {
 				sup1.SetInstances([]*skipper.Instance{inst1})
 
 				fn2 := skipper.Function_builder{
-					Namespace:  proto.String("default"),
-					Deployment: proto.String("api-server"),
-					Tenant:     proto.String("tenant-1"),
+					Namespace:  new("default"),
+					Deployment: new("api-server"),
+					Tenant:     new("tenant-1"),
 				}.Build()
 				inst2 := skipper.Instance_builder{
 					Function:   fn2,
-					Name:       proto.String("api-server-def"),
-					Addr:       proto.String("10.0.1.2:8080"),
+					Name:       new("api-server-def"),
+					Addr:       new("10.0.1.2:8080"),
 					AssignedAt: timestamppb.Now(),
 					// No ReadyAt — pending
 				}.Build()
@@ -873,16 +873,16 @@ func TestTenantDetail(t *testing.T) {
 
 func makeSup(ns, deploy, tenant string, instanceCount int) *skipper.SupervisorState {
 	fn := skipper.Function_builder{
-		Namespace:  proto.String(ns),
-		Deployment: proto.String(deploy),
-		Tenant:     proto.String(tenant),
+		Namespace:  new(ns),
+		Deployment: new(deploy),
+		Tenant:     new(tenant),
 	}.Build()
 	instances := make([]*skipper.Instance, instanceCount)
 	for i := range instances {
 		instances[i] = skipper.Instance_builder{
 			Function: fn,
-			Name:     proto.String(fmt.Sprintf("%s-%d", deploy, i)),
-			Addr:     proto.String(fmt.Sprintf("10.0.0.%d:8080", i)),
+			Name:     new(fmt.Sprintf("%s-%d", deploy, i)),
+			Addr:     new(fmt.Sprintf("10.0.0.%d:8080", i)),
 			ReadyAt:  timestamppb.Now(),
 		}.Build()
 	}
@@ -1120,14 +1120,14 @@ func TestSortSupervisors(t *testing.T) {
 func eventsServer() *Server {
 	return New(func(ctx context.Context) *skipper.ClusterState {
 		fn1 := skipper.Function_builder{
-			Namespace:  proto.String("default"),
-			Deployment: proto.String("web-app"),
-			Tenant:     proto.String("tenant-1"),
+			Namespace:  new("default"),
+			Deployment: new("web-app"),
+			Tenant:     new("tenant-1"),
 		}.Build()
 		fn2 := skipper.Function_builder{
-			Namespace:  proto.String("staging"),
-			Deployment: proto.String("api-server"),
-			Tenant:     proto.String("tenant-2"),
+			Namespace:  new("staging"),
+			Deployment: new("api-server"),
+			Tenant:     new("tenant-2"),
 		}.Build()
 
 		event1 := &skipper.Event{}

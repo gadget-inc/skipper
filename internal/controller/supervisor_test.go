@@ -573,7 +573,7 @@ func TestScale(t *testing.T) {
 			assert.NilError(t, err)
 
 			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, skipper.ScaleDecision_builder{
-				DesiredInstances: proto.Uint32(tc.desiredInstances),
+				DesiredInstances: new(tc.desiredInstances),
 				Reason:           skipper.ScaleReason_SCALE_REASON_UNSPECIFIED.Enum(),
 			}.Build())
 			if tc.err != nil {
@@ -3702,7 +3702,7 @@ func TestCalculateDesiredInstancesOneshot(t *testing.T) {
 			name: "oneshot scales to in-flight count",
 			heartbeat: skipper.Heartbeat_builder{
 				Function: skipper.Function_builder{
-					Oneshot: proto.Bool(true),
+					Oneshot: new(true),
 					Scale: skipper.Scale_builder{
 						MinInstances: proto.Uint32(0),
 						MaxInstances: proto.Uint32(10),
@@ -3724,7 +3724,7 @@ func TestCalculateDesiredInstancesOneshot(t *testing.T) {
 			name: "oneshot with zero in-flight desires zero",
 			heartbeat: skipper.Heartbeat_builder{
 				Function: skipper.Function_builder{
-					Oneshot: proto.Bool(true),
+					Oneshot: new(true),
 					Scale: skipper.Scale_builder{
 						MinInstances: proto.Uint32(0),
 						MaxInstances: proto.Uint32(10),
@@ -3746,7 +3746,7 @@ func TestCalculateDesiredInstancesOneshot(t *testing.T) {
 			name: "oneshot heartbeat timeout scales to zero",
 			heartbeat: skipper.Heartbeat_builder{
 				Function: skipper.Function_builder{
-					Oneshot: proto.Bool(true),
+					Oneshot: new(true),
 					Scale: skipper.Scale_builder{
 						MinInstances: proto.Uint32(0),
 						MaxInstances: proto.Uint32(10),
@@ -3768,7 +3768,7 @@ func TestCalculateDesiredInstancesOneshot(t *testing.T) {
 			name: "oneshot respects max instances clamping",
 			heartbeat: skipper.Heartbeat_builder{
 				Function: skipper.Function_builder{
-					Oneshot: proto.Bool(true),
+					Oneshot: new(true),
 					Scale: skipper.Scale_builder{
 						MinInstances: proto.Uint32(0),
 						MaxInstances: proto.Uint32(3),
@@ -3790,7 +3790,7 @@ func TestCalculateDesiredInstancesOneshot(t *testing.T) {
 			name: "oneshot respects min instances clamping",
 			heartbeat: skipper.Heartbeat_builder{
 				Function: skipper.Function_builder{
-					Oneshot: proto.Bool(true),
+					Oneshot: new(true),
 					Scale: skipper.Scale_builder{
 						MinInstances: proto.Uint32(3),
 						MaxInstances: proto.Uint32(10),
@@ -3842,14 +3842,14 @@ func TestReleaseInstanceRejectsInvalidRequest(t *testing.T) {
 		{
 			name: "missing namespace",
 			instance: skipper.Instance_builder{
-				Name: proto.String("pod-1"),
+				Name: new("pod-1"),
 			}.Build(),
 		},
 		{
 			name: "missing name",
 			instance: skipper.Instance_builder{
 				Function: skipper.Function_builder{
-					Namespace: proto.String("ns-1"),
+					Namespace: new("ns-1"),
 				}.Build(),
 			}.Build(),
 		},

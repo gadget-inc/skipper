@@ -8,17 +8,16 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
-	"google.golang.org/protobuf/proto"
 )
 
 var sinkCtx context.Context
 
 func BenchmarkWith(b *testing.B) {
 	fn := skipper.Function_builder{
-		Tenant:     proto.String("bench-tenant"),
-		Metadata:   proto.String("bench-metadata"),
-		Namespace:  proto.String("bench-ns"),
-		Deployment: proto.String("bench-deploy"),
+		Tenant:     new("bench-tenant"),
+		Metadata:   new("bench-metadata"),
+		Namespace:  new("bench-ns"),
+		Deployment: new("bench-deploy"),
 	}.Build()
 
 	req, _ := http.NewRequest(http.MethodGet, "http://example.com/test", nil)

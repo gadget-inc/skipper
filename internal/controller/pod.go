@@ -301,7 +301,7 @@ func (ctrl *Controller) patchPodWithRetry(ctx context.Context, namespace, name s
 	opts := metav1.PatchOptions{FieldManager: key.Controller.Label}
 
 	var lastErr error
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := range maxAttempts {
 		_, lastErr = ctrl.patchPod(ctx, namespace, name, types.JSONPatchType, patches, opts)
 		if lastErr == nil {
 			return nil
