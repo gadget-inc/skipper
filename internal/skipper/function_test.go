@@ -13,10 +13,10 @@ import (
 )
 
 var testFunction = Function_builder{
-	Namespace:  proto.String("skipper-production"),
-	Deployment: proto.String("my-awesome-app-deployment"),
-	Tenant:     proto.String("tenant-12345-abcdef"),
-	Metadata:   proto.String("some-metadata-value"),
+	Namespace:  new("skipper-production"),
+	Deployment: new("my-awesome-app-deployment"),
+	Tenant:     new("tenant-12345-abcdef"),
+	Metadata:   new("some-metadata-value"),
 	Scale: Scale_builder{
 		MinInstances:           proto.Uint32(1),
 		MaxInstances:           proto.Uint32(10),
@@ -27,19 +27,19 @@ var testFunction = Function_builder{
 }.Build()
 
 var testFunctions = []*Function{
-	Function_builder{Namespace: proto.String("ns1"), Deployment: proto.String("deploy1"), Tenant: proto.String("tenant1"), Metadata: proto.String("meta1"), Scale: Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10), TargetCpuUsageMilli: proto.Uint32(500), TargetMemoryUsageMib: proto.Uint32(256), TargetInFlightRequests: proto.Uint32(100)}.Build()}.Build(),
-	Function_builder{Namespace: proto.String("ns2"), Deployment: proto.String("deploy2"), Tenant: proto.String("tenant2"), Metadata: proto.String("meta2"), Scale: Scale_builder{MinInstances: proto.Uint32(2), MaxInstances: proto.Uint32(20), TargetCpuUsageMilli: proto.Uint32(600), TargetMemoryUsageMib: proto.Uint32(512), TargetInFlightRequests: proto.Uint32(200)}.Build()}.Build(),
-	Function_builder{Namespace: proto.String("ns3"), Deployment: proto.String("deploy3"), Tenant: proto.String("tenant3"), Metadata: proto.String("meta3"), Scale: Scale_builder{MinInstances: proto.Uint32(3), MaxInstances: proto.Uint32(30), TargetCpuUsageMilli: proto.Uint32(700), TargetMemoryUsageMib: proto.Uint32(1024), TargetInFlightRequests: proto.Uint32(300)}.Build()}.Build(),
-	Function_builder{Namespace: proto.String("ns4"), Deployment: proto.String("deploy4"), Tenant: proto.String("tenant4"), Metadata: proto.String("meta4"), Scale: Scale_builder{MinInstances: proto.Uint32(4), MaxInstances: proto.Uint32(40), TargetCpuUsageMilli: proto.Uint32(800), TargetMemoryUsageMib: proto.Uint32(2048), TargetInFlightRequests: proto.Uint32(400)}.Build()}.Build(),
-	Function_builder{Namespace: proto.String("ns5"), Deployment: proto.String("deploy5"), Tenant: proto.String("tenant5"), Metadata: proto.String("meta5"), Scale: Scale_builder{MinInstances: proto.Uint32(5), MaxInstances: proto.Uint32(50), TargetCpuUsageMilli: proto.Uint32(900), TargetMemoryUsageMib: proto.Uint32(4096), TargetInFlightRequests: proto.Uint32(500)}.Build()}.Build(),
+	Function_builder{Namespace: new("ns1"), Deployment: new("deploy1"), Tenant: new("tenant1"), Metadata: new("meta1"), Scale: Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10), TargetCpuUsageMilli: proto.Uint32(500), TargetMemoryUsageMib: proto.Uint32(256), TargetInFlightRequests: proto.Uint32(100)}.Build()}.Build(),
+	Function_builder{Namespace: new("ns2"), Deployment: new("deploy2"), Tenant: new("tenant2"), Metadata: new("meta2"), Scale: Scale_builder{MinInstances: proto.Uint32(2), MaxInstances: proto.Uint32(20), TargetCpuUsageMilli: proto.Uint32(600), TargetMemoryUsageMib: proto.Uint32(512), TargetInFlightRequests: proto.Uint32(200)}.Build()}.Build(),
+	Function_builder{Namespace: new("ns3"), Deployment: new("deploy3"), Tenant: new("tenant3"), Metadata: new("meta3"), Scale: Scale_builder{MinInstances: proto.Uint32(3), MaxInstances: proto.Uint32(30), TargetCpuUsageMilli: proto.Uint32(700), TargetMemoryUsageMib: proto.Uint32(1024), TargetInFlightRequests: proto.Uint32(300)}.Build()}.Build(),
+	Function_builder{Namespace: new("ns4"), Deployment: new("deploy4"), Tenant: new("tenant4"), Metadata: new("meta4"), Scale: Scale_builder{MinInstances: proto.Uint32(4), MaxInstances: proto.Uint32(40), TargetCpuUsageMilli: proto.Uint32(800), TargetMemoryUsageMib: proto.Uint32(2048), TargetInFlightRequests: proto.Uint32(400)}.Build()}.Build(),
+	Function_builder{Namespace: new("ns5"), Deployment: new("deploy5"), Tenant: new("tenant5"), Metadata: new("meta5"), Scale: Scale_builder{MinInstances: proto.Uint32(5), MaxInstances: proto.Uint32(50), TargetCpuUsageMilli: proto.Uint32(900), TargetMemoryUsageMib: proto.Uint32(4096), TargetInFlightRequests: proto.Uint32(500)}.Build()}.Build(),
 }
 
 func TestHashNoCollisions(t *testing.T) {
 	// Test that different identity fields produce different hashes (separator collision prevention)
-	f1 := Function_builder{Namespace: proto.String("ab"), Deployment: proto.String("cd"), Tenant: proto.String(""), Scale: Scale_builder{}.Build()}.Build()
-	f2 := Function_builder{Namespace: proto.String("abc"), Deployment: proto.String("d"), Tenant: proto.String(""), Scale: Scale_builder{}.Build()}.Build()
-	f3 := Function_builder{Namespace: proto.String("a"), Deployment: proto.String("bcd"), Tenant: proto.String(""), Scale: Scale_builder{}.Build()}.Build()
-	f4 := Function_builder{Namespace: proto.String("abcd"), Deployment: proto.String(""), Tenant: proto.String(""), Scale: Scale_builder{}.Build()}.Build()
+	f1 := Function_builder{Namespace: new("ab"), Deployment: new("cd"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
+	f2 := Function_builder{Namespace: new("abc"), Deployment: new("d"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
+	f3 := Function_builder{Namespace: new("a"), Deployment: new("bcd"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
+	f4 := Function_builder{Namespace: new("abcd"), Deployment: new(""), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
 
 	assert.Assert(t, f1.Hash() != f2.Hash(), "f1 and f2 should have different hashes")
 	assert.Assert(t, f1.Hash() != f3.Hash(), "f1 and f3 should have different hashes")
@@ -49,18 +49,18 @@ func TestHashNoCollisions(t *testing.T) {
 	assert.Assert(t, f3.Hash() != f4.Hash(), "f3 and f4 should have different hashes")
 
 	// Also test across Tenant field
-	f5 := Function_builder{Namespace: proto.String("ns"), Deployment: proto.String("dep"), Tenant: proto.String("ab"), Scale: Scale_builder{}.Build()}.Build()
-	f6 := Function_builder{Namespace: proto.String("ns"), Deployment: proto.String("dep"), Tenant: proto.String("abc"), Scale: Scale_builder{}.Build()}.Build()
+	f5 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("ab"), Scale: Scale_builder{}.Build()}.Build()
+	f6 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("abc"), Scale: Scale_builder{}.Build()}.Build()
 	assert.Assert(t, f5.Hash() != f6.Hash(), "f5 and f6 should have different hashes")
 
 	// Identical identity should have identical hashes regardless of metadata/scale
-	f7 := Function_builder{Namespace: proto.String("ns"), Deployment: proto.String("dep"), Tenant: proto.String("tenant"), Metadata: proto.String("meta-a"), Scale: Scale_builder{MaxInstances: proto.Uint32(1)}.Build()}.Build()
-	f8 := Function_builder{Namespace: proto.String("ns"), Deployment: proto.String("dep"), Tenant: proto.String("tenant"), Metadata: proto.String("meta-b"), Scale: Scale_builder{MaxInstances: proto.Uint32(99)}.Build()}.Build()
+	f7 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Metadata: new("meta-a"), Scale: Scale_builder{MaxInstances: proto.Uint32(1)}.Build()}.Build()
+	f8 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Metadata: new("meta-b"), Scale: Scale_builder{MaxInstances: proto.Uint32(99)}.Build()}.Build()
 	assert.Assert(t, f7.Hash() == f8.Hash(), "same identity with different metadata/scale should have the same hash")
 
 	// Oneshot changes identity
-	f9 := Function_builder{Namespace: proto.String("ns"), Deployment: proto.String("dep"), Tenant: proto.String("tenant"), Oneshot: proto.Bool(false), Scale: Scale_builder{}.Build()}.Build()
-	f10 := Function_builder{Namespace: proto.String("ns"), Deployment: proto.String("dep"), Tenant: proto.String("tenant"), Oneshot: proto.Bool(true), Scale: Scale_builder{}.Build()}.Build()
+	f9 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Oneshot: new(false), Scale: Scale_builder{}.Build()}.Build()
+	f10 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Oneshot: new(true), Scale: Scale_builder{}.Build()}.Build()
 	assert.Assert(t, f9.Hash() != f10.Hash(), "oneshot true vs false should have different hashes")
 }
 
@@ -102,10 +102,10 @@ func BenchmarkMapLookup(b *testing.B) {
 
 func TestFunctionFromHeader(t *testing.T) {
 	validFn := Function_builder{
-		Namespace:  proto.String("test-ns"),
-		Deployment: proto.String("test-deploy"),
-		Tenant:     proto.String("test-tenant"),
-		Metadata:   proto.String("test-metadata"),
+		Namespace:  new("test-ns"),
+		Deployment: new("test-deploy"),
+		Tenant:     new("test-tenant"),
+		Metadata:   new("test-metadata"),
 		Scale: Scale_builder{
 			MinInstances:           proto.Uint32(1),
 			MaxInstances:           proto.Uint32(10),
@@ -224,9 +224,9 @@ func TestFunctionHeaderCacheBounded(t *testing.T) {
 	c := newFunctionHeaderCache(cap)
 
 	fn := Function_builder{
-		Namespace:  proto.String("ns"),
-		Deployment: proto.String("deploy"),
-		Tenant:     proto.String("tenant"),
+		Namespace:  new("ns"),
+		Deployment: new("deploy"),
+		Tenant:     new("tenant"),
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
@@ -244,9 +244,9 @@ func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 	c := newFunctionHeaderCache(cap)
 
 	fn := Function_builder{
-		Namespace:  proto.String("ns"),
-		Deployment: proto.String("deploy"),
-		Tenant:     proto.String("tenant"),
+		Namespace:  new("ns"),
+		Deployment: new("deploy"),
+		Tenant:     new("tenant"),
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
@@ -300,9 +300,9 @@ func TestFunctionHeaderCacheConcurrentAccess(t *testing.T) {
 	c := newFunctionHeaderCache(16)
 
 	fn := Function_builder{
-		Namespace:  proto.String("ns"),
-		Deployment: proto.String("deploy"),
-		Tenant:     proto.String("tenant"),
+		Namespace:  new("ns"),
+		Deployment: new("deploy"),
+		Tenant:     new("tenant"),
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 

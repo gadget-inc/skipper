@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/skipper"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/assert"
 )
@@ -19,9 +18,9 @@ func makeState(supervisors ...*skipper.SupervisorState) *skipper.ClusterState {
 func makeSupervisor(instances []*skipper.Instance, heartbeats []*skipper.HeartbeatState, activeRS string) *skipper.SupervisorState {
 	sup := &skipper.SupervisorState{}
 	fn := skipper.Function_builder{
-		Namespace:  proto.String("default"),
-		Deployment: proto.String("web-app"),
-		Tenant:     proto.String("tenant-1"),
+		Namespace:  new("default"),
+		Deployment: new("web-app"),
+		Tenant:     new("tenant-1"),
 	}.Build()
 	sup.SetFunction(fn)
 	sup.SetInstances(instances)
@@ -34,8 +33,8 @@ func makeSupervisor(instances []*skipper.Instance, heartbeats []*skipper.Heartbe
 
 func makeInstance(name string, assignedAgo, readyAgo time.Duration, replicaSet string) *skipper.Instance {
 	inst := skipper.Instance_builder{
-		Name:       proto.String(name),
-		ReplicaSet: proto.String(replicaSet),
+		Name:       new(name),
+		ReplicaSet: new(replicaSet),
 		AssignedAt: timestamppb.New(time.Now().Add(-assignedAgo)),
 	}.Build()
 	if readyAgo >= 0 {

@@ -369,13 +369,11 @@ func runLoad(ctx context.Context, opts loadOptions) error {
 	work := make(chan struct{})
 	var wg sync.WaitGroup
 	for i := 0; i < opts.concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range work {
 				sendLoadRequest(gctx, client, tenants, state)
 			}
-		}()
+		})
 	}
 
 	go func() {

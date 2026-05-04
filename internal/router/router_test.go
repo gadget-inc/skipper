@@ -710,8 +710,8 @@ func TestInstanceExclusion(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				failingInstance := skipper.Instance_builder{
 					Function: state.fn,
-					Name:     proto.String("failing-instance"),
-					Addr:     proto.String("127.0.0.1:59999"), // non-existent address
+					Name:     new("failing-instance"),
+					Addr:     new("127.0.0.1:59999"), // non-existent address
 				}.Build()
 				successInstance := fixture.NewInstance(t, state.fn, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(http.StatusOK)

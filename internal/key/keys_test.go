@@ -17,7 +17,6 @@ import (
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/golden"
 	appsv1 "k8s.io/api/apps/v1"
@@ -152,43 +151,43 @@ var (
 	fakeStringMap   = map[string]string{"key": "value"}
 
 	fakeScale = skipper.Scale_builder{
-		MinInstances:           proto.Uint32(fakeUint32),
-		MaxInstances:           proto.Uint32(fakeUint32),
-		TargetCpuUsageMilli:    proto.Uint32(fakeUint32),
-		TargetMemoryUsageMib:   proto.Uint32(fakeUint32),
-		TargetInFlightRequests: proto.Uint32(fakeUint32),
+		MinInstances:           new(fakeUint32),
+		MaxInstances:           new(fakeUint32),
+		TargetCpuUsageMilli:    new(fakeUint32),
+		TargetMemoryUsageMib:   new(fakeUint32),
+		TargetInFlightRequests: new(fakeUint32),
 	}.Build()
 
 	fakeFunction = skipper.Function_builder{
-		Namespace:  proto.String(fakeString),
-		Deployment: proto.String(fakeString),
-		Tenant:     proto.String(fakeString),
-		Metadata:   proto.String(fakeString),
+		Namespace:  new(fakeString),
+		Deployment: new(fakeString),
+		Tenant:     new(fakeString),
+		Metadata:   new(fakeString),
 		Scale:      fakeScale,
 	}.Build()
 
 	fakeHeartbeat = skipper.Heartbeat_builder{
 		Function:         fakeFunction,
 		Timestamp:        timestamppb.New(fakeTime),
-		InFlightRequests: proto.Uint32(fakeUint32),
+		InFlightRequests: new(fakeUint32),
 	}.Build()
 
 	fakeInstance = skipper.Instance_builder{
 		Function:       fakeFunction,
-		Name:           proto.String(fakeString),
-		Addr:           proto.String(fakeString),
-		ReplicaSet:     proto.String(fakeString),
+		Name:           new(fakeString),
+		Addr:           new(fakeString),
+		ReplicaSet:     new(fakeString),
 		AssignedAt:     timestamppb.New(fakeTime),
 		ReadyAt:        timestamppb.New(fakeTime),
-		CpuUsageMilli:  proto.Uint32(fakeUint32),
-		MemoryUsageMib: proto.Uint32(fakeUint32),
+		CpuUsageMilli:  new(fakeUint32),
+		MemoryUsageMib: new(fakeUint32),
 	}.Build()
 
 	fakeScaleDecision = skipper.ScaleDecision_builder{
-		DesiredInstances:          proto.Uint32(fakeUint32),
-		UnclampedDesiredInstances: proto.Uint32(fakeUint32),
+		DesiredInstances:          new(fakeUint32),
+		UnclampedDesiredInstances: new(fakeUint32),
 		Reason:                    skipper.ScaleReason_SCALE_REASON_CPU.Enum(),
-		Metrics:                   []*skipper.ScaleMetric{skipper.ScaleMetric_builder{Name: proto.String(fakeString), Value: proto.Float64(fakeFloat)}.Build()},
+		Metrics:                   []*skipper.ScaleMetric{skipper.ScaleMetric_builder{Name: new(fakeString), Value: new(fakeFloat)}.Build()},
 	}.Build()
 
 	fakePod = &v1.Pod{

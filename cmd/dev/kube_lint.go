@@ -229,7 +229,7 @@ func runYamllint(ctx context.Context, configPath, manifest string) error {
 	if output == "" {
 		output = strings.TrimSpace(stderr.String())
 	}
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		if line == "" {
 			continue
 		}

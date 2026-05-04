@@ -104,9 +104,7 @@ func TestClusterState(t *testing.T) {
 		const iterations = 500
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range iterations {
 				if i%2 == 0 {
 					sup.fn.Store(fn)
@@ -114,7 +112,7 @@ func TestClusterState(t *testing.T) {
 					sup.fn.Store(fnUpdated)
 				}
 			}
-		}()
+		})
 
 		for range iterations {
 			state := ctrl.ClusterState(t.Context())

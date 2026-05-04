@@ -22,10 +22,10 @@ const (
 func NewFunction(t testing.TB) *skipper.Function {
 	t.Helper()
 	return skipper.Function_builder{
-		Tenant:     proto.String("tenant-" + uuid.NewString()[:8]),
-		Metadata:   proto.String(uuid.NewString()),
-		Namespace:  proto.String(FunctionNamespace),
-		Deployment: proto.String(FunctionDeployment),
+		Tenant:     new("tenant-" + uuid.NewString()[:8]),
+		Metadata:   new(uuid.NewString()),
+		Namespace:  new(FunctionNamespace),
+		Deployment: new(FunctionDeployment),
 		Scale: skipper.Scale_builder{
 			MinInstances:           proto.Uint32(0),
 			MaxInstances:           proto.Uint32(5),
@@ -52,9 +52,9 @@ func NewInstance(t *testing.T, fn *skipper.Function, handler http.HandlerFunc) *
 
 	return skipper.Instance_builder{
 		Function:   fn,
-		Name:       proto.String(uuid.NewString()),
-		Addr:       proto.String(testServer.Listener.Addr().String()),
-		ReplicaSet: proto.String(CurrentReplicaSetName(fn)),
+		Name:       new(uuid.NewString()),
+		Addr:       new(testServer.Listener.Addr().String()),
+		ReplicaSet: new(CurrentReplicaSetName(fn)),
 		AssignedAt: timestamppb.Now(),
 		ReadyAt:    timestamppb.Now(),
 	}.Build()

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/skipper"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/assert"
 )
@@ -80,9 +79,9 @@ func TestFunctionKey(t *testing.T) {
 	t.Parallel()
 
 	fn := skipper.Function_builder{
-		Namespace:  proto.String("default"),
-		Deployment: proto.String("web-app"),
-		Tenant:     proto.String("tenant-1"),
+		Namespace:  new("default"),
+		Deployment: new("web-app"),
+		Tenant:     new("tenant-1"),
 	}.Build()
 
 	assert.Equal(t, functionKey(fn), "default:web-app:tenant-1")
@@ -93,9 +92,9 @@ func TestFunctionPath(t *testing.T) {
 	t.Parallel()
 
 	fn := skipper.Function_builder{
-		Namespace:  proto.String("default"),
-		Deployment: proto.String("web-app"),
-		Tenant:     proto.String("tenant-1"),
+		Namespace:  new("default"),
+		Deployment: new("web-app"),
+		Tenant:     new("tenant-1"),
 	}.Build()
 
 	assert.Equal(t, functionPath(fn), "/functions/default:web-app:tenant-1")
@@ -180,8 +179,8 @@ func TestInstanceState(t *testing.T) {
 		{
 			name: "ready instance on active RS",
 			inst: skipper.Instance_builder{
-				Name:       proto.String("pod-1"),
-				ReplicaSet: proto.String("rs-1"),
+				Name:       new("pod-1"),
+				ReplicaSet: new("rs-1"),
 				ReadyAt:    timestamppb.Now(),
 			}.Build(),
 			activeRS: "rs-1",
@@ -190,8 +189,8 @@ func TestInstanceState(t *testing.T) {
 		{
 			name: "pending instance on active RS",
 			inst: skipper.Instance_builder{
-				Name:       proto.String("pod-2"),
-				ReplicaSet: proto.String("rs-1"),
+				Name:       new("pod-2"),
+				ReplicaSet: new("rs-1"),
 			}.Build(),
 			activeRS: "rs-1",
 			want:     "pending",
@@ -199,8 +198,8 @@ func TestInstanceState(t *testing.T) {
 		{
 			name: "ready instance on non-active RS",
 			inst: skipper.Instance_builder{
-				Name:       proto.String("pod-3"),
-				ReplicaSet: proto.String("rs-old"),
+				Name:       new("pod-3"),
+				ReplicaSet: new("rs-old"),
 				ReadyAt:    timestamppb.Now(),
 			}.Build(),
 			activeRS: "rs-1",
@@ -209,8 +208,8 @@ func TestInstanceState(t *testing.T) {
 		{
 			name: "ready instance with empty activeRS",
 			inst: skipper.Instance_builder{
-				Name:       proto.String("pod-4"),
-				ReplicaSet: proto.String("rs-1"),
+				Name:       new("pod-4"),
+				ReplicaSet: new("rs-1"),
 				ReadyAt:    timestamppb.Now(),
 			}.Build(),
 			activeRS: "",
@@ -239,8 +238,8 @@ func TestInstanceStateBadge(t *testing.T) {
 		{
 			name: "ready instance on active RS",
 			inst: skipper.Instance_builder{
-				Name:       proto.String("pod-1"),
-				ReplicaSet: proto.String("rs-1"),
+				Name:       new("pod-1"),
+				ReplicaSet: new("rs-1"),
 				ReadyAt:    timestamppb.Now(),
 			}.Build(),
 			activeRS: "rs-1",
@@ -249,8 +248,8 @@ func TestInstanceStateBadge(t *testing.T) {
 		{
 			name: "pending instance on active RS",
 			inst: skipper.Instance_builder{
-				Name:       proto.String("pod-2"),
-				ReplicaSet: proto.String("rs-1"),
+				Name:       new("pod-2"),
+				ReplicaSet: new("rs-1"),
 			}.Build(),
 			activeRS: "rs-1",
 			want:     `<span class="badge badge-yellow">pending</span>`,
@@ -258,8 +257,8 @@ func TestInstanceStateBadge(t *testing.T) {
 		{
 			name: "ready instance on non-active RS",
 			inst: skipper.Instance_builder{
-				Name:       proto.String("pod-3"),
-				ReplicaSet: proto.String("rs-old"),
+				Name:       new("pod-3"),
+				ReplicaSet: new("rs-old"),
 				ReadyAt:    timestamppb.Now(),
 			}.Build(),
 			activeRS: "rs-1",
@@ -268,8 +267,8 @@ func TestInstanceStateBadge(t *testing.T) {
 		{
 			name: "ready instance with empty activeRS",
 			inst: skipper.Instance_builder{
-				Name:       proto.String("pod-4"),
-				ReplicaSet: proto.String("rs-1"),
+				Name:       new("pod-4"),
+				ReplicaSet: new("rs-1"),
 				ReadyAt:    timestamppb.Now(),
 			}.Build(),
 			activeRS: "",
@@ -299,15 +298,15 @@ func TestMetricsString(t *testing.T) {
 		{
 			name: "single metric",
 			metrics: []*skipper.ScaleMetric{
-				skipper.ScaleMetric_builder{Name: proto.String("cpu"), Value: proto.Float64(1.0)}.Build(),
+				skipper.ScaleMetric_builder{Name: new("cpu"), Value: new(1.0)}.Build(),
 			},
 			want: "cpu: 1.0",
 		},
 		{
 			name: "multiple metrics",
 			metrics: []*skipper.ScaleMetric{
-				skipper.ScaleMetric_builder{Name: proto.String("cpu"), Value: proto.Float64(50.0)}.Build(),
-				skipper.ScaleMetric_builder{Name: proto.String("memory"), Value: proto.Float64(128.0)}.Build(),
+				skipper.ScaleMetric_builder{Name: new("cpu"), Value: new(50.0)}.Build(),
+				skipper.ScaleMetric_builder{Name: new("memory"), Value: new(128.0)}.Build(),
 			},
 			want: "cpu: 50.0, memory: 128.0",
 		},

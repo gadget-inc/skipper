@@ -11,7 +11,6 @@ import (
 
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"github.com/gadget-inc/skipper/internal/web"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -36,16 +35,16 @@ func New() *web.Server {
 
 func supervisor(ns, deploy, tenant string, instanceCount int) *skipper.SupervisorState {
 	fn := skipper.Function_builder{
-		Namespace:  proto.String(ns),
-		Deployment: proto.String(deploy),
-		Tenant:     proto.String(tenant),
+		Namespace:  new(ns),
+		Deployment: new(deploy),
+		Tenant:     new(tenant),
 	}.Build()
 	instances := make([]*skipper.Instance, instanceCount)
 	for i := range instances {
 		instances[i] = skipper.Instance_builder{
 			Function: fn,
-			Name:     proto.String(fmt.Sprintf("%s-%d", deploy, i)),
-			Addr:     proto.String(fmt.Sprintf("10.0.0.%d:8080", i)),
+			Name:     new(fmt.Sprintf("%s-%d", deploy, i)),
+			Addr:     new(fmt.Sprintf("10.0.0.%d:8080", i)),
 			ReadyAt:  timestamppb.Now(),
 		}.Build()
 	}
