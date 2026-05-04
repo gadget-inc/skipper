@@ -59,7 +59,7 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			if build {
-				if err := exec.Run(ctx, "go", []string{"run", "./cmd/dev", "build"}); err != nil {
+				if err := invoke(ctx, "build"); err != nil {
 					return err
 				}
 			}
