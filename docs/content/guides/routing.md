@@ -70,14 +70,6 @@ The function remains marked as active for the duration of the WebSocket session,
 
 The router's HTTP transport is tuned for proxying workloads:
 
-| Setting                 | Value                                                    |
-| ----------------------- | -------------------------------------------------------- |
-| Dial timeout            | 2s                                                       |
-| Keep-alive              | 30s                                                      |
-| Protocol                | HTTP/2 attempted (falls back to HTTP/1.1 if unsupported) |
-| Max idle connections    | 100                                                      |
-| Idle connection timeout | 90s                                                      |
-| TLS handshake timeout   | 10s                                                      |
-| Compression             | Disabled (no `Accept-Encoding` sent)                     |
+{{< transportTable >}}
 
 The transport is wrapped with OpenTelemetry instrumentation for distributed tracing.

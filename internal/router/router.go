@@ -60,22 +60,10 @@ type Router struct {
 
 func New(cfg *Config, ctrl controller.Client) *Router {
 	r := &Router{
-		config:     cfg,
-		ctrl:       ctrl,
-		heartbeats: xsync.NewMap[skipper.FunctionHash, *heartbeatState](),
-		roundTripper: otelhttp.NewTransport(&http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   2 * time.Second, // default is 30 seconds
-				KeepAlive: 30 * time.Second,
-			}).DialContext,
-			ForceAttemptHTTP2:     true,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-			DisableCompression:    true, // disable the Accept-Encoding header
-		}),
+		config:       cfg,
+		ctrl:         ctrl,
+		heartbeats:   xsync.NewMap[skipper.FunctionHash, *heartbeatState](),
+		roundTripper: otelhttp.NewTransport(newHTTPTransport(DefaultHTTPTransportSettings)),
 	}
 
 	r.reverseProxy = &httputil.ReverseProxy{

@@ -275,6 +275,11 @@ var grpcRetryTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*grpcRetryTable\s*>\}\
 // same table.
 var scaleReasonTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*scaleReasonTable\s*>\}\}\s*$`)
 
+// transportTableRe matches the HTTP transport-settings shortcode on
+// its own line. Zero-argument; renderTransportTable always emits
+// the same table.
+var transportTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*transportTable\s*>\}\}\s*$`)
+
 // preprocessShortcodes expands custom shortcodes into raw HTML or
 // markdown before goldmark sees the source: admonition fences
 // (`:::variant`), the flag-table shortcode (`{{< flagtable name >}}`),
@@ -348,6 +353,21 @@ func preprocessShortcodes(src string) (string, error) {
 	})
 	if scaleReasonErr != nil {
 		return "", scaleReasonErr
+	}
+	var transportErr error
+	src = transportTableRe.ReplaceAllStringFunc(src, func(match string) string {
+		if transportErr != nil {
+			return match
+		}
+		out, err := renderTransportTable()
+		if err != nil {
+			transportErr = err
+			return match
+		}
+		return out
+	})
+	if transportErr != nil {
+		return "", transportErr
 	}
 	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)
