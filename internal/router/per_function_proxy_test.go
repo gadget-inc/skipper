@@ -150,3 +150,40 @@ func TestHeartbeatStateUpdateFunctionOnPolicyChange(t *testing.T) {
 		"updateFunction should swap to the request that carries the new proxy policy")
 	assert.Equal(t, hb.GetFunction().MaxRoundTripAttempts(0), uint32(10))
 }
+
+// TestRoundTripPerFunctionInvertedBackoffBoundsClamps guards the
+// hybrid-resolution case: a tenant sets only retry_min_backoff (e.g., 5s)
+// while leaving retry_max_backoff unset, and the cluster default for max is
+// shorter (1s). Function.Validate cannot catch this because the function-side
+// value is consistent in isolation. The router must clamp at the call site so
+// the resolved pair is never inverted; otherwise calculateBackoff's min(...)
+// silently caps at the cluster max and the tenant's minimum is lost.
+func TestRoundTripPerFunctionInvertedBackoffBoundsClamps(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.RoundTripRetryMinTimeout = 100 * time.Millisecond
+	cfg.RoundTripRetryMaxTimeout = time.Second // cluster cap
+
+	// Tenant sets only min, larger than the cluster max.
+	fn := withProxyPolicy(fixture.NewFunction(t), skipper.ProxyPolicy_builder{
+		RetryMinBackoff: durationpb.New(5 * time.Second),
+	}.Build())
+
+	// Simulate the resolution that happens at the top of RoundTrip.
+	minBackoff := fn.RetryMinBackoff(cfg.RoundTripRetryMinTimeout)
+	maxBackoff := fn.RetryMaxBackoff(cfg.RoundTripRetryMaxTimeout)
+	resolvedMin, resolvedMax := clampBackoffBounds(minBackoff, maxBackoff)
+
+	assert.Assert(t, resolvedMin <= resolvedMax,
+		"clamped bounds must satisfy min <= max; got min=%s max=%s", resolvedMin, resolvedMax)
+	assert.Equal(t, resolvedMax, cfg.RoundTripRetryMaxTimeout,
+		"cluster max ceiling stays in force when the tenant did not override it")
+
+	// Backoff must be within the clamped pair on every attempt.
+	for attempt := 1; attempt < 6; attempt++ {
+		got := calculateBackoff(attempt, resolvedMin, resolvedMax)
+		assert.Assert(t, got <= resolvedMax,
+			"attempt %d backoff %s exceeded resolved max %s", attempt, got, resolvedMax)
+	}
+}

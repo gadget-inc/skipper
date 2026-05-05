@@ -196,8 +196,13 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	maxAttempts := fn.MaxRoundTripAttempts(uint32(r.config.MaxRoundTripAttempts))
-	minBackoff := fn.RetryMinBackoff(r.config.RoundTripRetryMinTimeout)
-	maxBackoff := fn.RetryMaxBackoff(r.config.RoundTripRetryMaxTimeout)
+	// Resolve min and max independently, then clamp -- a tenant who sets only
+	// one half of the pair against a cluster default for the other can produce
+	// an inverted runtime pair that Function.Validate cannot catch.
+	minBackoff, maxBackoff := clampBackoffBounds(
+		fn.RetryMinBackoff(r.config.RoundTripRetryMinTimeout),
+		fn.RetryMaxBackoff(r.config.RoundTripRetryMaxTimeout),
+	)
 
 	var excludedInstanceNames []string
 	getInstanceDuration := time.Duration(0)
@@ -360,4 +365,18 @@ func calculateBackoff(attempt int, minBackoff, maxBackoff time.Duration) time.Du
 	maxTimeout := float64(maxBackoff)
 	factor := 1 + rand.Float64() // randomize the factor between 1 and 2 to add jitter
 	return time.Duration(min(factor*minTimeout*math.Pow(2, float64(attempt)), maxTimeout))
+}
+
+// clampBackoffBounds enforces min <= max on the resolved retry-backoff pair.
+// Function.Validate already rejects inverted pairs that come purely from the
+// proto, but the resolver pair (function value, cluster default) can land
+// inverted when the function sets only one half and the cluster default for
+// the other half is on the wrong side. Clamping the minimum to the maximum
+// preserves the operator's hard ceiling on a single backoff while keeping the
+// math in calculateBackoff well-defined.
+func clampBackoffBounds(minBackoff, maxBackoff time.Duration) (time.Duration, time.Duration) {
+	if minBackoff > maxBackoff {
+		minBackoff = maxBackoff
+	}
+	return minBackoff, maxBackoff
 }

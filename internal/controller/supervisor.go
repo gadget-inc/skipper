@@ -850,9 +850,9 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, fn *skipper.Fun
 	}
 
 	// Oneshot functions scale 1:1 with in-flight requests.
-	if heartbeat.GetFunction().GetOneshot() {
+	if fn.GetOneshot() {
 		desiredInstances := int(heartbeat.GetInFlightRequests())
-		scale := heartbeat.GetFunction().GetScale()
+		scale := fn.GetScale()
 		clamped := min(max(uint32(desiredInstances), scale.GetMinInstances()), scale.GetMaxInstances())
 
 		metric := &skipper.ScaleMetric{}
@@ -873,7 +873,7 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, fn *skipper.Fun
 	var scaleReason skipper.ScaleReason
 	var scaleMetrics []*skipper.ScaleMetric
 
-	scale := heartbeat.GetFunction().GetScale()
+	scale := fn.GetScale()
 
 	if scale.GetTargetInFlightRequests() > 0 {
 		desiredInstances := int(math.Ceil(float64(heartbeat.GetInFlightRequests()) / float64(scale.GetTargetInFlightRequests())))
