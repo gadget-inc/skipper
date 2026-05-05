@@ -1191,7 +1191,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				}
 			}
 
-			instances, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, tc.metricName, tc.podMetrics)
+			instances, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, tc.podMetrics[0].GetFunction(), tc.metricName, tc.podMetrics)
 			assert.Assert(t, instances == tc.expectedInstances)
 		})
 	}
