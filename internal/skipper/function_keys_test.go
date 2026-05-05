@@ -3,21 +3,27 @@ package skipper
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"gotest.tools/v3/assert"
 )
 
 // Compile-time gate: each domain key binds to its concrete *T.
 var (
-	_ *key.Key[*Function]      = FunctionKey
-	_ *key.Key[*Heartbeat]     = HeartbeatKey
-	_ *key.Key[*Instance]      = InstanceKey
-	_ *key.Key[*Scale]         = ScaleKey
-	_ *key.Key[*ScaleDecision] = ScaleDecisionKey
+	_ *key.Key[*Function]        = FunctionKey
+	_ *key.Key[*Heartbeat]       = HeartbeatKey
+	_ *key.Key[*HeartbeatPolicy] = HeartbeatPolicyKey
+	_ *key.Key[*HpaPolicy]       = HpaPolicyKey
+	_ *key.Key[*Instance]        = InstanceKey
+	_ *key.Key[*LifecyclePolicy] = LifecyclePolicyKey
+	_ *key.Key[*ProxyPolicy]     = ProxyPolicyKey
+	_ *key.Key[*Scale]           = ScaleKey
+	_ *key.Key[*ScaleDecision]   = ScaleDecisionKey
 )
 
 // TestFunctionKeyEquivalence pins the cached path's output to the uncached
@@ -59,6 +65,30 @@ func TestFunctionKeyEquivalence(t *testing.T) {
 				Tenant:     new("tenant"),
 				Metadata:   new(""),
 				Scale:      Scale_builder{MaxInstances: proto.Uint32(5)}.Build(),
+			}.Build(),
+		},
+		{
+			name: "with all policies",
+			fn: Function_builder{
+				Namespace:  new("ns"),
+				Deployment: new("deploy"),
+				Tenant:     new("tenant"),
+				Scale:      Scale_builder{MaxInstances: proto.Uint32(5)}.Build(),
+				Hpa: HpaPolicy_builder{
+					Tolerance:              new(0.05),
+					DownscaleStabilization: durationpb.New(time.Minute),
+					InitialReadinessDelay:  durationpb.New(time.Minute),
+				}.Build(),
+				Heartbeat: HeartbeatPolicy_builder{Timeout: durationpb.New(time.Minute)}.Build(),
+				Proxy: ProxyPolicy_builder{
+					MaxAttempts:     new(uint32(5)),
+					RetryMinBackoff: durationpb.New(10 * time.Millisecond),
+					RetryMaxBackoff: durationpb.New(time.Second),
+				}.Build(),
+				Lifecycle: LifecyclePolicy_builder{
+					AssignTimeout: durationpb.New(time.Minute),
+					TokenTtl:      durationpb.New(time.Hour),
+				}.Build(),
 			}.Build(),
 		},
 	}

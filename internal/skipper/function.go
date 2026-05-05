@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/gadget-inc/skipper/internal/key"
@@ -65,6 +66,10 @@ func (f *Function) LogValue() slog.Value {
 		key.Metadata.Slog(f.GetMetadata()),
 		key.Oneshot.Slog(f.GetOneshot()),
 		ScaleKey.Slog(f.GetScale()),
+		HpaPolicyKey.Slog(f.GetHpa()),
+		HeartbeatPolicyKey.Slog(f.GetHeartbeat()),
+		ProxyPolicyKey.Slog(f.GetProxy()),
+		LifecyclePolicyKey.Slog(f.GetLifecycle()),
 	)
 }
 
@@ -88,7 +93,122 @@ func (f *Function) Validate() error {
 	if scale.GetMinInstances() > scale.GetMaxInstances() {
 		return fmt.Errorf("scale.min_instances (%d) must be <= scale.max_instances (%d)", scale.GetMinInstances(), scale.GetMaxInstances())
 	}
+	if hpa := f.GetHpa(); hpa != nil {
+		if d := hpa.GetDownscaleStabilization().AsDuration(); d < 0 {
+			return fmt.Errorf("hpa.downscale_stabilization (%s) must be >= 0", d)
+		}
+		if d := hpa.GetInitialReadinessDelay().AsDuration(); d < 0 {
+			return fmt.Errorf("hpa.initial_readiness_delay (%s) must be >= 0", d)
+		}
+	}
+	if hb := f.GetHeartbeat(); hb != nil {
+		if d := hb.GetTimeout().AsDuration(); d < 0 {
+			return fmt.Errorf("heartbeat.timeout (%s) must be >= 0", d)
+		}
+	}
+	if proxy := f.GetProxy(); proxy != nil {
+		minBackoff := proxy.GetRetryMinBackoff().AsDuration()
+		maxBackoff := proxy.GetRetryMaxBackoff().AsDuration()
+		if minBackoff < 0 {
+			return fmt.Errorf("proxy.retry_min_backoff (%s) must be >= 0", minBackoff)
+		}
+		if maxBackoff < 0 {
+			return fmt.Errorf("proxy.retry_max_backoff (%s) must be >= 0", maxBackoff)
+		}
+		if minBackoff > 0 && maxBackoff > 0 && minBackoff > maxBackoff {
+			return fmt.Errorf("proxy.retry_min_backoff (%s) must be <= proxy.retry_max_backoff (%s)", minBackoff, maxBackoff)
+		}
+	}
+	if lc := f.GetLifecycle(); lc != nil {
+		if d := lc.GetAssignTimeout().AsDuration(); d < 0 {
+			return fmt.Errorf("lifecycle.assign_timeout (%s) must be >= 0", d)
+		}
+		if d := lc.GetTokenTtl().AsDuration(); d < 0 {
+			return fmt.Errorf("lifecycle.token_ttl (%s) must be >= 0", d)
+		}
+	}
 	return nil
+}
+
+// HPATolerance returns the per-function HPA tolerance, falling back to
+// clusterDefault when the function does not set one.
+func (f *Function) HPATolerance(clusterDefault float64) float64 {
+	if v := f.GetHpa().GetTolerance(); v != 0 {
+		return v
+	}
+	return clusterDefault
+}
+
+// HPADownscaleStabilization returns the per-function downscale-stabilization
+// window, falling back to clusterDefault when the function does not set one.
+func (f *Function) HPADownscaleStabilization(clusterDefault time.Duration) time.Duration {
+	if v := f.GetHpa().GetDownscaleStabilization().AsDuration(); v != 0 {
+		return v
+	}
+	return clusterDefault
+}
+
+// HPAInitialReadinessDelay returns the per-function initial-readiness delay,
+// falling back to clusterDefault when the function does not set one.
+func (f *Function) HPAInitialReadinessDelay(clusterDefault time.Duration) time.Duration {
+	if v := f.GetHpa().GetInitialReadinessDelay().AsDuration(); v != 0 {
+		return v
+	}
+	return clusterDefault
+}
+
+// HeartbeatTimeout returns the per-function heartbeat timeout, falling back to
+// clusterDefault when the function does not set one.
+func (f *Function) HeartbeatTimeout(clusterDefault time.Duration) time.Duration {
+	if v := f.GetHeartbeat().GetTimeout().AsDuration(); v != 0 {
+		return v
+	}
+	return clusterDefault
+}
+
+// MaxRoundTripAttempts returns the per-function maximum number of retry
+// attempts, falling back to clusterDefault when the function does not set one.
+func (f *Function) MaxRoundTripAttempts(clusterDefault uint32) uint32 {
+	if v := f.GetProxy().GetMaxAttempts(); v != 0 {
+		return v
+	}
+	return clusterDefault
+}
+
+// RetryMinBackoff returns the per-function minimum retry backoff, falling
+// back to clusterDefault when the function does not set one.
+func (f *Function) RetryMinBackoff(clusterDefault time.Duration) time.Duration {
+	if v := f.GetProxy().GetRetryMinBackoff().AsDuration(); v != 0 {
+		return v
+	}
+	return clusterDefault
+}
+
+// RetryMaxBackoff returns the per-function maximum retry backoff, falling
+// back to clusterDefault when the function does not set one.
+func (f *Function) RetryMaxBackoff(clusterDefault time.Duration) time.Duration {
+	if v := f.GetProxy().GetRetryMaxBackoff().AsDuration(); v != 0 {
+		return v
+	}
+	return clusterDefault
+}
+
+// AssignTimeout returns the per-function instance-assignment timeout, falling
+// back to clusterDefault when the function does not set one.
+func (f *Function) AssignTimeout(clusterDefault time.Duration) time.Duration {
+	if v := f.GetLifecycle().GetAssignTimeout().AsDuration(); v != 0 {
+		return v
+	}
+	return clusterDefault
+}
+
+// TokenTTL returns the per-function PASETO token lifetime, falling back to
+// clusterDefault when the function does not set one.
+func (f *Function) TokenTTL(clusterDefault time.Duration) time.Duration {
+	if v := f.GetLifecycle().GetTokenTtl().AsDuration(); v != 0 {
+		return v
+	}
+	return clusterDefault
 }
 
 func (f *Function) SetHeader(r *http.Request) {

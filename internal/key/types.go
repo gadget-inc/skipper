@@ -77,6 +77,10 @@ func uint32Key(name string) *Key[uint32] {
 	return newKey(name, func(n Names, v uint32) slog.Attr { return slog.Int(n.Name, int(v)) })
 }
 
+func float64Key(name string) *Key[float64] {
+	return newKey(name, func(n Names, v float64) slog.Attr { return slog.Float64(n.Name, v) })
+}
+
 func stringSliceKey(name string) *Key[[]string] {
 	return newKey(name, func(n Names, v []string) slog.Attr { return slog.Any(n.Name, v) })
 }

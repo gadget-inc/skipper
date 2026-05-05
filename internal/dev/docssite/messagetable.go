@@ -35,6 +35,10 @@ var errMessageDescriptionDrift = errors.New("docssite: messageTable description 
 var messageTableRegistry = []string{
 	"Function",
 	"Scale",
+	"HpaPolicy",
+	"HeartbeatPolicy",
+	"ProxyPolicy",
+	"LifecyclePolicy",
 	"Instance",
 	"Heartbeat",
 	"GetInstanceRequest",
@@ -58,12 +62,29 @@ var messageTableDescriptions = map[string]string{
 	"Function.metadata":   "Opaque string passed verbatim to the assigned pod; not part of the function hash.",
 	"Function.scale":      "Per-function scaling targets (min, max, CPU, memory, in-flight requests).",
 	"Function.oneshot":    "True if each request gets a fresh pod; assigned pods are released after the request completes.",
+	"Function.hpa":        "Per-function HPA tuning that overrides cluster defaults; unset fields fall back to the cluster flags.",
+	"Function.heartbeat":  "Per-function heartbeat policy (idle timeout) that overrides the cluster default.",
+	"Function.proxy":      "Per-function proxy retry policy (attempt count and backoff bounds) that overrides the cluster defaults.",
+	"Function.lifecycle":  "Per-function pod-lifecycle policy (assignment timeout, token TTL) that overrides the cluster defaults.",
 
 	"Scale.min_instances":             "Minimum ready-instance floor (0 enables scale-to-zero).",
 	"Scale.max_instances":             "Hard ceiling on ready instances.",
 	"Scale.target_cpu_usage_milli":    "Per-instance CPU target in millicores; the controller scales toward this average.",
 	"Scale.target_memory_usage_mib":   "Per-instance memory target in mebibytes.",
 	"Scale.target_in_flight_requests": "Per-instance in-flight-request target.",
+
+	"HpaPolicy.tolerance":               "Fractional dead-band on the scale-up/down trigger; smaller values react sooner. Zero means use the cluster default.",
+	"HpaPolicy.downscale_stabilization": "Minimum time a lower target must persist before the controller scales down. Zero means use the cluster default.",
+	"HpaPolicy.initial_readiness_delay": "Grace period after a pod becomes ready during which scale-down is suppressed. Zero means use the cluster default.",
+
+	"HeartbeatPolicy.timeout": "Idle window after which the controller scales the function to zero. Zero means use the cluster default.",
+
+	"ProxyPolicy.max_attempts":      "Maximum number of proxy attempts per request. Zero means use the cluster default.",
+	"ProxyPolicy.retry_min_backoff": "Lower bound on backoff between retry attempts. Zero means use the cluster default.",
+	"ProxyPolicy.retry_max_backoff": "Upper bound on backoff between retry attempts. Zero means use the cluster default.",
+
+	"LifecyclePolicy.assign_timeout": "Maximum wait for a pod to confirm assignment before it is considered stuck. Zero means use the cluster default.",
+	"LifecyclePolicy.token_ttl":      "PASETO token lifetime issued to assigned pods. Zero means use the cluster default.",
 
 	"Instance.function":         "Function this instance is assigned to.",
 	"Instance.name":             "Pod name in the cluster.",
@@ -211,6 +232,14 @@ func lookupMessageDescriptor(name string) (protoreflect.MessageDescriptor, error
 		msg = (&skipper.Function{})
 	case "Scale":
 		msg = (&skipper.Scale{})
+	case "HpaPolicy":
+		msg = (&skipper.HpaPolicy{})
+	case "HeartbeatPolicy":
+		msg = (&skipper.HeartbeatPolicy{})
+	case "ProxyPolicy":
+		msg = (&skipper.ProxyPolicy{})
+	case "LifecyclePolicy":
+		msg = (&skipper.LifecyclePolicy{})
 	case "Instance":
 		msg = (&skipper.Instance{})
 	case "Heartbeat":

@@ -14,9 +14,18 @@
 			"b"
 		],
 		"function.deployment": "test",
+		"function.heartbeat_policy.heartbeat_timeout_ms": 0,
+		"function.hpa.downscale_stabilization_ms": 0,
+		"function.hpa.initial_readiness_delay_ms": 0,
+		"function.hpa.tolerance": 0,
+		"function.lifecycle.assign_timeout_ms": 0,
+		"function.lifecycle.token_ttl_ms": 0,
 		"function.metadata": "test",
 		"function.namespace": "test",
 		"function.oneshot": false,
+		"function.proxy.max_attempts": 0,
+		"function.proxy.retry_max_backoff_ms": 0,
+		"function.proxy.retry_min_backoff_ms": 0,
 		"function.scale.max_instances": 42,
 		"function.scale.min_instances": 42,
 		"function.scale.target_cpu_usage_milli": 42,
@@ -114,9 +123,26 @@
 		],
 		"function": {
 			"deployment": "test",
+			"heartbeat_policy": {
+				"heartbeat_timeout_ms": 0
+			},
+			"hpa": {
+				"downscale_stabilization_ms": 0,
+				"initial_readiness_delay_ms": 0,
+				"tolerance": 0
+			},
+			"lifecycle": {
+				"assign_timeout_ms": 0,
+				"token_ttl_ms": 0
+			},
 			"metadata": "test",
 			"namespace": "test",
 			"oneshot": false,
+			"proxy": {
+				"max_attempts": 0,
+				"retry_max_backoff_ms": 0,
+				"retry_min_backoff_ms": 0
+			},
 			"scale": {
 				"max_instances": 42,
 				"min_instances": 42,

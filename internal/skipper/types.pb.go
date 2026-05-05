@@ -10,6 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	_ "google.golang.org/protobuf/types/gofeaturespb"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	unsafe "unsafe"
@@ -373,6 +374,417 @@ func (b0 Scale_builder) Build() *Scale {
 	return m0
 }
 
+type HpaPolicy struct {
+	state                             protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Tolerance              float64                `protobuf:"fixed64,1,opt,name=tolerance"`
+	xxx_hidden_DownscaleStabilization *durationpb.Duration   `protobuf:"bytes,2,opt,name=downscale_stabilization,json=downscaleStabilization"`
+	xxx_hidden_InitialReadinessDelay  *durationpb.Duration   `protobuf:"bytes,3,opt,name=initial_readiness_delay,json=initialReadinessDelay"`
+	XXX_raceDetectHookData            protoimpl.RaceDetectHookData
+	XXX_presence                      [1]uint32
+	unknownFields                     protoimpl.UnknownFields
+	sizeCache                         protoimpl.SizeCache
+}
+
+func (x *HpaPolicy) Reset() {
+	*x = HpaPolicy{}
+	mi := &file_types_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HpaPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HpaPolicy) ProtoMessage() {}
+
+func (x *HpaPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *HpaPolicy) GetTolerance() float64 {
+	if x != nil {
+		return x.xxx_hidden_Tolerance
+	}
+	return 0
+}
+
+func (x *HpaPolicy) GetDownscaleStabilization() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_DownscaleStabilization
+	}
+	return nil
+}
+
+func (x *HpaPolicy) GetInitialReadinessDelay() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_InitialReadinessDelay
+	}
+	return nil
+}
+
+func (x *HpaPolicy) SetTolerance(v float64) {
+	x.xxx_hidden_Tolerance = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+}
+
+func (x *HpaPolicy) SetDownscaleStabilization(v *durationpb.Duration) {
+	x.xxx_hidden_DownscaleStabilization = v
+}
+
+func (x *HpaPolicy) SetInitialReadinessDelay(v *durationpb.Duration) {
+	x.xxx_hidden_InitialReadinessDelay = v
+}
+
+func (x *HpaPolicy) HasTolerance() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *HpaPolicy) HasDownscaleStabilization() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_DownscaleStabilization != nil
+}
+
+func (x *HpaPolicy) HasInitialReadinessDelay() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_InitialReadinessDelay != nil
+}
+
+func (x *HpaPolicy) ClearTolerance() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_Tolerance = 0
+}
+
+func (x *HpaPolicy) ClearDownscaleStabilization() {
+	x.xxx_hidden_DownscaleStabilization = nil
+}
+
+func (x *HpaPolicy) ClearInitialReadinessDelay() {
+	x.xxx_hidden_InitialReadinessDelay = nil
+}
+
+type HpaPolicy_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Tolerance              *float64
+	DownscaleStabilization *durationpb.Duration
+	InitialReadinessDelay  *durationpb.Duration
+}
+
+func (b0 HpaPolicy_builder) Build() *HpaPolicy {
+	m0 := &HpaPolicy{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.Tolerance != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		x.xxx_hidden_Tolerance = *b.Tolerance
+	}
+	x.xxx_hidden_DownscaleStabilization = b.DownscaleStabilization
+	x.xxx_hidden_InitialReadinessDelay = b.InitialReadinessDelay
+	return m0
+}
+
+type HeartbeatPolicy struct {
+	state              protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Timeout *durationpb.Duration   `protobuf:"bytes,1,opt,name=timeout"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *HeartbeatPolicy) Reset() {
+	*x = HeartbeatPolicy{}
+	mi := &file_types_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HeartbeatPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HeartbeatPolicy) ProtoMessage() {}
+
+func (x *HeartbeatPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *HeartbeatPolicy) GetTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_Timeout
+	}
+	return nil
+}
+
+func (x *HeartbeatPolicy) SetTimeout(v *durationpb.Duration) {
+	x.xxx_hidden_Timeout = v
+}
+
+func (x *HeartbeatPolicy) HasTimeout() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Timeout != nil
+}
+
+func (x *HeartbeatPolicy) ClearTimeout() {
+	x.xxx_hidden_Timeout = nil
+}
+
+type HeartbeatPolicy_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	Timeout *durationpb.Duration
+}
+
+func (b0 HeartbeatPolicy_builder) Build() *HeartbeatPolicy {
+	m0 := &HeartbeatPolicy{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_Timeout = b.Timeout
+	return m0
+}
+
+type ProxyPolicy struct {
+	state                      protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_MaxAttempts     uint32                 `protobuf:"varint,1,opt,name=max_attempts,json=maxAttempts"`
+	xxx_hidden_RetryMinBackoff *durationpb.Duration   `protobuf:"bytes,2,opt,name=retry_min_backoff,json=retryMinBackoff"`
+	xxx_hidden_RetryMaxBackoff *durationpb.Duration   `protobuf:"bytes,3,opt,name=retry_max_backoff,json=retryMaxBackoff"`
+	XXX_raceDetectHookData     protoimpl.RaceDetectHookData
+	XXX_presence               [1]uint32
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *ProxyPolicy) Reset() {
+	*x = ProxyPolicy{}
+	mi := &file_types_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProxyPolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProxyPolicy) ProtoMessage() {}
+
+func (x *ProxyPolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *ProxyPolicy) GetMaxAttempts() uint32 {
+	if x != nil {
+		return x.xxx_hidden_MaxAttempts
+	}
+	return 0
+}
+
+func (x *ProxyPolicy) GetRetryMinBackoff() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_RetryMinBackoff
+	}
+	return nil
+}
+
+func (x *ProxyPolicy) GetRetryMaxBackoff() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_RetryMaxBackoff
+	}
+	return nil
+}
+
+func (x *ProxyPolicy) SetMaxAttempts(v uint32) {
+	x.xxx_hidden_MaxAttempts = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 3)
+}
+
+func (x *ProxyPolicy) SetRetryMinBackoff(v *durationpb.Duration) {
+	x.xxx_hidden_RetryMinBackoff = v
+}
+
+func (x *ProxyPolicy) SetRetryMaxBackoff(v *durationpb.Duration) {
+	x.xxx_hidden_RetryMaxBackoff = v
+}
+
+func (x *ProxyPolicy) HasMaxAttempts() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
+}
+
+func (x *ProxyPolicy) HasRetryMinBackoff() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_RetryMinBackoff != nil
+}
+
+func (x *ProxyPolicy) HasRetryMaxBackoff() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_RetryMaxBackoff != nil
+}
+
+func (x *ProxyPolicy) ClearMaxAttempts() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
+	x.xxx_hidden_MaxAttempts = 0
+}
+
+func (x *ProxyPolicy) ClearRetryMinBackoff() {
+	x.xxx_hidden_RetryMinBackoff = nil
+}
+
+func (x *ProxyPolicy) ClearRetryMaxBackoff() {
+	x.xxx_hidden_RetryMaxBackoff = nil
+}
+
+type ProxyPolicy_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	MaxAttempts     *uint32
+	RetryMinBackoff *durationpb.Duration
+	RetryMaxBackoff *durationpb.Duration
+}
+
+func (b0 ProxyPolicy_builder) Build() *ProxyPolicy {
+	m0 := &ProxyPolicy{}
+	b, x := &b0, m0
+	_, _ = b, x
+	if b.MaxAttempts != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 3)
+		x.xxx_hidden_MaxAttempts = *b.MaxAttempts
+	}
+	x.xxx_hidden_RetryMinBackoff = b.RetryMinBackoff
+	x.xxx_hidden_RetryMaxBackoff = b.RetryMaxBackoff
+	return m0
+}
+
+type LifecyclePolicy struct {
+	state                    protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_AssignTimeout *durationpb.Duration   `protobuf:"bytes,1,opt,name=assign_timeout,json=assignTimeout"`
+	xxx_hidden_TokenTtl      *durationpb.Duration   `protobuf:"bytes,2,opt,name=token_ttl,json=tokenTtl"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *LifecyclePolicy) Reset() {
+	*x = LifecyclePolicy{}
+	mi := &file_types_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LifecyclePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LifecyclePolicy) ProtoMessage() {}
+
+func (x *LifecyclePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_types_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+func (x *LifecyclePolicy) GetAssignTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_AssignTimeout
+	}
+	return nil
+}
+
+func (x *LifecyclePolicy) GetTokenTtl() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_TokenTtl
+	}
+	return nil
+}
+
+func (x *LifecyclePolicy) SetAssignTimeout(v *durationpb.Duration) {
+	x.xxx_hidden_AssignTimeout = v
+}
+
+func (x *LifecyclePolicy) SetTokenTtl(v *durationpb.Duration) {
+	x.xxx_hidden_TokenTtl = v
+}
+
+func (x *LifecyclePolicy) HasAssignTimeout() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_AssignTimeout != nil
+}
+
+func (x *LifecyclePolicy) HasTokenTtl() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_TokenTtl != nil
+}
+
+func (x *LifecyclePolicy) ClearAssignTimeout() {
+	x.xxx_hidden_AssignTimeout = nil
+}
+
+func (x *LifecyclePolicy) ClearTokenTtl() {
+	x.xxx_hidden_TokenTtl = nil
+}
+
+type LifecyclePolicy_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+	AssignTimeout *durationpb.Duration
+	TokenTtl      *durationpb.Duration
+}
+
+func (b0 LifecyclePolicy_builder) Build() *LifecyclePolicy {
+	m0 := &LifecyclePolicy{}
+	b, x := &b0, m0
+	_, _ = b, x
+	x.xxx_hidden_AssignTimeout = b.AssignTimeout
+	x.xxx_hidden_TokenTtl = b.TokenTtl
+	return m0
+}
+
 type Function struct {
 	state                  protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Namespace   *string                `protobuf:"bytes,1,opt,name=namespace"`
@@ -381,6 +793,10 @@ type Function struct {
 	xxx_hidden_Metadata    *string                `protobuf:"bytes,4,opt,name=metadata"`
 	xxx_hidden_Scale       *Scale                 `protobuf:"bytes,5,opt,name=scale"`
 	xxx_hidden_Oneshot     bool                   `protobuf:"varint,6,opt,name=oneshot"`
+	xxx_hidden_Hpa         *HpaPolicy             `protobuf:"bytes,7,opt,name=hpa"`
+	xxx_hidden_Heartbeat   *HeartbeatPolicy       `protobuf:"bytes,8,opt,name=heartbeat"`
+	xxx_hidden_Proxy       *ProxyPolicy           `protobuf:"bytes,9,opt,name=proxy"`
+	xxx_hidden_Lifecycle   *LifecyclePolicy       `protobuf:"bytes,10,opt,name=lifecycle"`
 	XXX_raceDetectHookData protoimpl.RaceDetectHookData
 	XXX_presence           [1]uint32
 	unknownFields          protoimpl.UnknownFields
@@ -389,7 +805,7 @@ type Function struct {
 
 func (x *Function) Reset() {
 	*x = Function{}
-	mi := &file_types_proto_msgTypes[1]
+	mi := &file_types_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -401,7 +817,7 @@ func (x *Function) String() string {
 func (*Function) ProtoMessage() {}
 
 func (x *Function) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[1]
+	mi := &file_types_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -466,24 +882,52 @@ func (x *Function) GetOneshot() bool {
 	return false
 }
 
+func (x *Function) GetHpa() *HpaPolicy {
+	if x != nil {
+		return x.xxx_hidden_Hpa
+	}
+	return nil
+}
+
+func (x *Function) GetHeartbeat() *HeartbeatPolicy {
+	if x != nil {
+		return x.xxx_hidden_Heartbeat
+	}
+	return nil
+}
+
+func (x *Function) GetProxy() *ProxyPolicy {
+	if x != nil {
+		return x.xxx_hidden_Proxy
+	}
+	return nil
+}
+
+func (x *Function) GetLifecycle() *LifecyclePolicy {
+	if x != nil {
+		return x.xxx_hidden_Lifecycle
+	}
+	return nil
+}
+
 func (x *Function) SetNamespace(v string) {
 	x.xxx_hidden_Namespace = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 10)
 }
 
 func (x *Function) SetDeployment(v string) {
 	x.xxx_hidden_Deployment = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 10)
 }
 
 func (x *Function) SetTenant(v string) {
 	x.xxx_hidden_Tenant = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 10)
 }
 
 func (x *Function) SetMetadata(v string) {
 	x.xxx_hidden_Metadata = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 10)
 }
 
 func (x *Function) SetScale(v *Scale) {
@@ -492,7 +936,23 @@ func (x *Function) SetScale(v *Scale) {
 
 func (x *Function) SetOneshot(v bool) {
 	x.xxx_hidden_Oneshot = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 10)
+}
+
+func (x *Function) SetHpa(v *HpaPolicy) {
+	x.xxx_hidden_Hpa = v
+}
+
+func (x *Function) SetHeartbeat(v *HeartbeatPolicy) {
+	x.xxx_hidden_Heartbeat = v
+}
+
+func (x *Function) SetProxy(v *ProxyPolicy) {
+	x.xxx_hidden_Proxy = v
+}
+
+func (x *Function) SetLifecycle(v *LifecyclePolicy) {
+	x.xxx_hidden_Lifecycle = v
 }
 
 func (x *Function) HasNamespace() bool {
@@ -537,6 +997,34 @@ func (x *Function) HasOneshot() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
 }
 
+func (x *Function) HasHpa() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Hpa != nil
+}
+
+func (x *Function) HasHeartbeat() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Heartbeat != nil
+}
+
+func (x *Function) HasProxy() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Proxy != nil
+}
+
+func (x *Function) HasLifecycle() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_Lifecycle != nil
+}
+
 func (x *Function) ClearNamespace() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_Namespace = nil
@@ -566,6 +1054,22 @@ func (x *Function) ClearOneshot() {
 	x.xxx_hidden_Oneshot = false
 }
 
+func (x *Function) ClearHpa() {
+	x.xxx_hidden_Hpa = nil
+}
+
+func (x *Function) ClearHeartbeat() {
+	x.xxx_hidden_Heartbeat = nil
+}
+
+func (x *Function) ClearProxy() {
+	x.xxx_hidden_Proxy = nil
+}
+
+func (x *Function) ClearLifecycle() {
+	x.xxx_hidden_Lifecycle = nil
+}
+
 type Function_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
@@ -575,6 +1079,10 @@ type Function_builder struct {
 	Metadata   *string
 	Scale      *Scale
 	Oneshot    *bool
+	Hpa        *HpaPolicy
+	Heartbeat  *HeartbeatPolicy
+	Proxy      *ProxyPolicy
+	Lifecycle  *LifecyclePolicy
 }
 
 func (b0 Function_builder) Build() *Function {
@@ -582,26 +1090,30 @@ func (b0 Function_builder) Build() *Function {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.Namespace != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 10)
 		x.xxx_hidden_Namespace = b.Namespace
 	}
 	if b.Deployment != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 10)
 		x.xxx_hidden_Deployment = b.Deployment
 	}
 	if b.Tenant != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 10)
 		x.xxx_hidden_Tenant = b.Tenant
 	}
 	if b.Metadata != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 10)
 		x.xxx_hidden_Metadata = b.Metadata
 	}
 	x.xxx_hidden_Scale = b.Scale
 	if b.Oneshot != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 10)
 		x.xxx_hidden_Oneshot = *b.Oneshot
 	}
+	x.xxx_hidden_Hpa = b.Hpa
+	x.xxx_hidden_Heartbeat = b.Heartbeat
+	x.xxx_hidden_Proxy = b.Proxy
+	x.xxx_hidden_Lifecycle = b.Lifecycle
 	return m0
 }
 
@@ -623,7 +1135,7 @@ type Instance struct {
 
 func (x *Instance) Reset() {
 	*x = Instance{}
-	mi := &file_types_proto_msgTypes[2]
+	mi := &file_types_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -635,7 +1147,7 @@ func (x *Instance) String() string {
 func (*Instance) ProtoMessage() {}
 
 func (x *Instance) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[2]
+	mi := &file_types_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -897,7 +1409,7 @@ type Heartbeat struct {
 
 func (x *Heartbeat) Reset() {
 	*x = Heartbeat{}
-	mi := &file_types_proto_msgTypes[3]
+	mi := &file_types_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -909,7 +1421,7 @@ func (x *Heartbeat) String() string {
 func (*Heartbeat) ProtoMessage() {}
 
 func (x *Heartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[3]
+	mi := &file_types_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1021,7 +1533,7 @@ type ScaleMetric struct {
 
 func (x *ScaleMetric) Reset() {
 	*x = ScaleMetric{}
-	mi := &file_types_proto_msgTypes[4]
+	mi := &file_types_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1033,7 +1545,7 @@ func (x *ScaleMetric) String() string {
 func (*ScaleMetric) ProtoMessage() {}
 
 func (x *ScaleMetric) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[4]
+	mi := &file_types_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1131,7 +1643,7 @@ type ScaleDecision struct {
 
 func (x *ScaleDecision) Reset() {
 	*x = ScaleDecision{}
-	mi := &file_types_proto_msgTypes[5]
+	mi := &file_types_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1143,7 +1655,7 @@ func (x *ScaleDecision) String() string {
 func (*ScaleDecision) ProtoMessage() {}
 
 func (x *ScaleDecision) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[5]
+	mi := &file_types_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1285,7 +1797,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_types_proto_msgTypes[6]
+	mi := &file_types_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1297,7 +1809,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[6]
+	mi := &file_types_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1475,7 +1987,7 @@ type ConfigValue struct {
 
 func (x *ConfigValue) Reset() {
 	*x = ConfigValue{}
-	mi := &file_types_proto_msgTypes[7]
+	mi := &file_types_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1487,7 +1999,7 @@ func (x *ConfigValue) String() string {
 func (*ConfigValue) ProtoMessage() {}
 
 func (x *ConfigValue) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[7]
+	mi := &file_types_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1618,7 +2130,7 @@ type HeartbeatState struct {
 
 func (x *HeartbeatState) Reset() {
 	*x = HeartbeatState{}
-	mi := &file_types_proto_msgTypes[8]
+	mi := &file_types_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1630,7 +2142,7 @@ func (x *HeartbeatState) String() string {
 func (*HeartbeatState) ProtoMessage() {}
 
 func (x *HeartbeatState) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[8]
+	mi := &file_types_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1724,7 +2236,7 @@ type SupervisorState struct {
 
 func (x *SupervisorState) Reset() {
 	*x = SupervisorState{}
-	mi := &file_types_proto_msgTypes[9]
+	mi := &file_types_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1736,7 +2248,7 @@ func (x *SupervisorState) String() string {
 func (*SupervisorState) ProtoMessage() {}
 
 func (x *SupervisorState) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[9]
+	mi := &file_types_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1893,7 +2405,7 @@ type ClusterState struct {
 
 func (x *ClusterState) Reset() {
 	*x = ClusterState{}
-	mi := &file_types_proto_msgTypes[10]
+	mi := &file_types_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1905,7 +2417,7 @@ func (x *ClusterState) String() string {
 func (*ClusterState) ProtoMessage() {}
 
 func (x *ClusterState) ProtoReflect() protoreflect.Message {
-	mi := &file_types_proto_msgTypes[10]
+	mi := &file_types_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2046,13 +2558,26 @@ var File_types_proto protoreflect.FileDescriptor
 
 const file_types_proto_rawDesc = "" +
 	"\n" +
-	"\vtypes.proto\x12\askipper\x1a!google/protobuf/go_features.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf8\x01\n" +
+	"\vtypes.proto\x12\askipper\x1a\x1egoogle/protobuf/duration.proto\x1a!google/protobuf/go_features.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf8\x01\n" +
 	"\x05Scale\x12#\n" +
 	"\rmin_instances\x18\x01 \x01(\rR\fminInstances\x12#\n" +
 	"\rmax_instances\x18\x02 \x01(\rR\fmaxInstances\x123\n" +
 	"\x16target_cpu_usage_milli\x18\x03 \x01(\rR\x13targetCpuUsageMilli\x125\n" +
 	"\x17target_memory_usage_mib\x18\x04 \x01(\rR\x14targetMemoryUsageMib\x129\n" +
-	"\x19target_in_flight_requests\x18\x05 \x01(\rR\x16targetInFlightRequests\"\xbc\x01\n" +
+	"\x19target_in_flight_requests\x18\x05 \x01(\rR\x16targetInFlightRequests\"\xd0\x01\n" +
+	"\tHpaPolicy\x12\x1c\n" +
+	"\ttolerance\x18\x01 \x01(\x01R\ttolerance\x12R\n" +
+	"\x17downscale_stabilization\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x16downscaleStabilization\x12Q\n" +
+	"\x17initial_readiness_delay\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x15initialReadinessDelay\"F\n" +
+	"\x0fHeartbeatPolicy\x123\n" +
+	"\atimeout\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\xbe\x01\n" +
+	"\vProxyPolicy\x12!\n" +
+	"\fmax_attempts\x18\x01 \x01(\rR\vmaxAttempts\x12E\n" +
+	"\x11retry_min_backoff\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x0fretryMinBackoff\x12E\n" +
+	"\x11retry_max_backoff\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x0fretryMaxBackoff\"\x8b\x01\n" +
+	"\x0fLifecyclePolicy\x12@\n" +
+	"\x0eassign_timeout\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\rassignTimeout\x126\n" +
+	"\ttoken_ttl\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\btokenTtl\"\xfe\x02\n" +
 	"\bFunction\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1e\n" +
 	"\n" +
@@ -2061,7 +2586,12 @@ const file_types_proto_rawDesc = "" +
 	"\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x1a\n" +
 	"\bmetadata\x18\x04 \x01(\tR\bmetadata\x12$\n" +
 	"\x05scale\x18\x05 \x01(\v2\x0e.skipper.ScaleR\x05scale\x12\x18\n" +
-	"\aoneshot\x18\x06 \x01(\bR\aoneshot\"\xc8\x02\n" +
+	"\aoneshot\x18\x06 \x01(\bR\aoneshot\x12$\n" +
+	"\x03hpa\x18\a \x01(\v2\x12.skipper.HpaPolicyR\x03hpa\x126\n" +
+	"\theartbeat\x18\b \x01(\v2\x18.skipper.HeartbeatPolicyR\theartbeat\x12*\n" +
+	"\x05proxy\x18\t \x01(\v2\x14.skipper.ProxyPolicyR\x05proxy\x126\n" +
+	"\tlifecycle\x18\n" +
+	" \x01(\v2\x18.skipper.LifecyclePolicyR\tlifecycle\"\xc8\x02\n" +
 	"\bInstance\x12-\n" +
 	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -2134,50 +2664,66 @@ const file_types_proto_rawDesc = "" +
 	"\x13EVENT_SEVERITY_WARN\x10\x02B8Z.github.com/gadget-inc/skipper/internal/skipper\x92\x03\x05\xd2>\x02\x10\x03b\beditionsp\xe8\a"
 
 var file_types_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_types_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_types_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_types_proto_goTypes = []any{
 	(ScaleReason)(0),              // 0: skipper.ScaleReason
 	(EventType)(0),                // 1: skipper.EventType
 	(EventSeverity)(0),            // 2: skipper.EventSeverity
 	(*Scale)(nil),                 // 3: skipper.Scale
-	(*Function)(nil),              // 4: skipper.Function
-	(*Instance)(nil),              // 5: skipper.Instance
-	(*Heartbeat)(nil),             // 6: skipper.Heartbeat
-	(*ScaleMetric)(nil),           // 7: skipper.ScaleMetric
-	(*ScaleDecision)(nil),         // 8: skipper.ScaleDecision
-	(*Event)(nil),                 // 9: skipper.Event
-	(*ConfigValue)(nil),           // 10: skipper.ConfigValue
-	(*HeartbeatState)(nil),        // 11: skipper.HeartbeatState
-	(*SupervisorState)(nil),       // 12: skipper.SupervisorState
-	(*ClusterState)(nil),          // 13: skipper.ClusterState
-	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
+	(*HpaPolicy)(nil),             // 4: skipper.HpaPolicy
+	(*HeartbeatPolicy)(nil),       // 5: skipper.HeartbeatPolicy
+	(*ProxyPolicy)(nil),           // 6: skipper.ProxyPolicy
+	(*LifecyclePolicy)(nil),       // 7: skipper.LifecyclePolicy
+	(*Function)(nil),              // 8: skipper.Function
+	(*Instance)(nil),              // 9: skipper.Instance
+	(*Heartbeat)(nil),             // 10: skipper.Heartbeat
+	(*ScaleMetric)(nil),           // 11: skipper.ScaleMetric
+	(*ScaleDecision)(nil),         // 12: skipper.ScaleDecision
+	(*Event)(nil),                 // 13: skipper.Event
+	(*ConfigValue)(nil),           // 14: skipper.ConfigValue
+	(*HeartbeatState)(nil),        // 15: skipper.HeartbeatState
+	(*SupervisorState)(nil),       // 16: skipper.SupervisorState
+	(*ClusterState)(nil),          // 17: skipper.ClusterState
+	(*durationpb.Duration)(nil),   // 18: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil), // 19: google.protobuf.Timestamp
 }
 var file_types_proto_depIdxs = []int32{
-	3,  // 0: skipper.Function.scale:type_name -> skipper.Scale
-	4,  // 1: skipper.Instance.function:type_name -> skipper.Function
-	14, // 2: skipper.Instance.assigned_at:type_name -> google.protobuf.Timestamp
-	14, // 3: skipper.Instance.ready_at:type_name -> google.protobuf.Timestamp
-	4,  // 4: skipper.Heartbeat.function:type_name -> skipper.Function
-	14, // 5: skipper.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
-	0,  // 6: skipper.ScaleDecision.reason:type_name -> skipper.ScaleReason
-	7,  // 7: skipper.ScaleDecision.metrics:type_name -> skipper.ScaleMetric
-	14, // 8: skipper.Event.timestamp:type_name -> google.protobuf.Timestamp
-	4,  // 9: skipper.Event.function:type_name -> skipper.Function
-	1,  // 10: skipper.Event.type:type_name -> skipper.EventType
-	2,  // 11: skipper.Event.severity:type_name -> skipper.EventSeverity
-	6,  // 12: skipper.HeartbeatState.heartbeat:type_name -> skipper.Heartbeat
-	4,  // 13: skipper.SupervisorState.function:type_name -> skipper.Function
-	5,  // 14: skipper.SupervisorState.instances:type_name -> skipper.Instance
-	11, // 15: skipper.SupervisorState.router_heartbeats:type_name -> skipper.HeartbeatState
-	14, // 16: skipper.ClusterState.started_at:type_name -> google.protobuf.Timestamp
-	12, // 17: skipper.ClusterState.supervisors:type_name -> skipper.SupervisorState
-	9,  // 18: skipper.ClusterState.events:type_name -> skipper.Event
-	10, // 19: skipper.ClusterState.config:type_name -> skipper.ConfigValue
-	20, // [20:20] is the sub-list for method output_type
-	20, // [20:20] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	18, // 0: skipper.HpaPolicy.downscale_stabilization:type_name -> google.protobuf.Duration
+	18, // 1: skipper.HpaPolicy.initial_readiness_delay:type_name -> google.protobuf.Duration
+	18, // 2: skipper.HeartbeatPolicy.timeout:type_name -> google.protobuf.Duration
+	18, // 3: skipper.ProxyPolicy.retry_min_backoff:type_name -> google.protobuf.Duration
+	18, // 4: skipper.ProxyPolicy.retry_max_backoff:type_name -> google.protobuf.Duration
+	18, // 5: skipper.LifecyclePolicy.assign_timeout:type_name -> google.protobuf.Duration
+	18, // 6: skipper.LifecyclePolicy.token_ttl:type_name -> google.protobuf.Duration
+	3,  // 7: skipper.Function.scale:type_name -> skipper.Scale
+	4,  // 8: skipper.Function.hpa:type_name -> skipper.HpaPolicy
+	5,  // 9: skipper.Function.heartbeat:type_name -> skipper.HeartbeatPolicy
+	6,  // 10: skipper.Function.proxy:type_name -> skipper.ProxyPolicy
+	7,  // 11: skipper.Function.lifecycle:type_name -> skipper.LifecyclePolicy
+	8,  // 12: skipper.Instance.function:type_name -> skipper.Function
+	19, // 13: skipper.Instance.assigned_at:type_name -> google.protobuf.Timestamp
+	19, // 14: skipper.Instance.ready_at:type_name -> google.protobuf.Timestamp
+	8,  // 15: skipper.Heartbeat.function:type_name -> skipper.Function
+	19, // 16: skipper.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
+	0,  // 17: skipper.ScaleDecision.reason:type_name -> skipper.ScaleReason
+	11, // 18: skipper.ScaleDecision.metrics:type_name -> skipper.ScaleMetric
+	19, // 19: skipper.Event.timestamp:type_name -> google.protobuf.Timestamp
+	8,  // 20: skipper.Event.function:type_name -> skipper.Function
+	1,  // 21: skipper.Event.type:type_name -> skipper.EventType
+	2,  // 22: skipper.Event.severity:type_name -> skipper.EventSeverity
+	10, // 23: skipper.HeartbeatState.heartbeat:type_name -> skipper.Heartbeat
+	8,  // 24: skipper.SupervisorState.function:type_name -> skipper.Function
+	9,  // 25: skipper.SupervisorState.instances:type_name -> skipper.Instance
+	15, // 26: skipper.SupervisorState.router_heartbeats:type_name -> skipper.HeartbeatState
+	19, // 27: skipper.ClusterState.started_at:type_name -> google.protobuf.Timestamp
+	16, // 28: skipper.ClusterState.supervisors:type_name -> skipper.SupervisorState
+	13, // 29: skipper.ClusterState.events:type_name -> skipper.Event
+	14, // 30: skipper.ClusterState.config:type_name -> skipper.ConfigValue
+	31, // [31:31] is the sub-list for method output_type
+	31, // [31:31] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_types_proto_init() }
@@ -2191,7 +2737,7 @@ func file_types_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_types_proto_rawDesc), len(file_types_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   11,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

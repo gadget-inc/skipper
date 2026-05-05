@@ -2,6 +2,7 @@ edition = "2023";
 
 package skipper;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/go_features.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -16,6 +17,27 @@ message Scale {
   uint32 target_in_flight_requests = 5;
 }
 
+message HpaPolicy {
+  double tolerance = 1;
+  google.protobuf.Duration downscale_stabilization = 2;
+  google.protobuf.Duration initial_readiness_delay = 3;
+}
+
+message HeartbeatPolicy {
+  google.protobuf.Duration timeout = 1;
+}
+
+message ProxyPolicy {
+  uint32 max_attempts = 1;
+  google.protobuf.Duration retry_min_backoff = 2;
+  google.protobuf.Duration retry_max_backoff = 3;
+}
+
+message LifecyclePolicy {
+  google.protobuf.Duration assign_timeout = 1;
+  google.protobuf.Duration token_ttl = 2;
+}
+
 message Function {
   string namespace = 1;
   string deployment = 2;
@@ -23,6 +45,10 @@ message Function {
   string metadata = 4;
   Scale scale = 5;
   bool oneshot = 6;
+  HpaPolicy hpa = 7;
+  HeartbeatPolicy heartbeat = 8;
+  ProxyPolicy proxy = 9;
+  LifecyclePolicy lifecycle = 10;
 }
 
 message Instance {
