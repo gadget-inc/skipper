@@ -217,9 +217,12 @@ func (s *Supervisor) combinedHeartbeat(fn *skipper.Function, instances []*skippe
 
 // recordRecommendation adds a scaling recommendation to the stabilization window,
 // prunes expired entries, and returns the maximum recommendation within the window.
-func (s *Supervisor) recordRecommendation(desiredInstances uint32) Recommendation {
+// Takes fn explicitly so the caller's per-converge snapshot drives the pruning
+// window -- a concurrent updateFunction CAS can swap s.fn at any time, and the
+// stabilization window must remain consistent with the rest of the converge tick.
+func (s *Supervisor) recordRecommendation(fn *skipper.Function, desiredInstances uint32) Recommendation {
 	now := time.Now()
-	stabilization := s.fn.Load().HPADownscaleStabilization(s.ctrl.config.HPADownscaleStabilization)
+	stabilization := fn.HPADownscaleStabilization(s.ctrl.config.HPADownscaleStabilization)
 	cutoff := now.Add(-stabilization)
 	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{
 		DesiredInstances: desiredInstances,
@@ -336,7 +339,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		return nil
 	}
 
-	maxRecommendation := s.recordRecommendation(scalingDecision.GetDesiredInstances())
+	maxRecommendation := s.recordRecommendation(fn, scalingDecision.GetDesiredInstances())
 
 	currentInstances := uint32(len(instances))
 	isScalingDown := scalingDecision.GetDesiredInstances() < currentInstances || scalingDecision.GetDesiredInstances() == 0

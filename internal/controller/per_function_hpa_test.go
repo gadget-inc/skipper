@@ -143,8 +143,8 @@ func TestRecordRecommendationPerFunctionStabilization(t *testing.T) {
 	// Now record a low recommendation. Each supervisor returns the max within
 	// its own window. The short-window supervisor has already evicted the old
 	// recommendation; the cluster-default supervisor still sees it.
-	shortMax := shortSup.recordRecommendation(1)
-	clusterMax := clusterSup.recordRecommendation(1)
+	shortMax := shortSup.recordRecommendation(shortFn, 1)
+	clusterMax := clusterSup.recordRecommendation(base, 1)
 
 	assert.Equal(t, shortMax.DesiredInstances, uint32(1),
 		"short stabilization window should forget the 1-minute-old high recommendation")
@@ -234,18 +234,57 @@ func TestRecordRecommendationOmittedHpaPolicy(t *testing.T) {
 	cfg := testConfig()
 	cfg.HPADownscaleStabilization = 5 * time.Minute
 
+	fn := fixture.NewFunction(t)
 	ctrl := New(cfg, nil, nil, nil)
 	sup := &Supervisor{ctrl: ctrl}
-	sup.fn.Store(fixture.NewFunction(t))
+	sup.fn.Store(fn)
 
 	// Recommendation 1 minute ago is well within the 5-minute cluster default,
 	// so it should still be in the window.
 	old := time.Now().Add(-time.Minute)
 	sup.stabilizationWindow = []Recommendation{{DesiredInstances: 7, Timestamp: old}}
 
-	max := sup.recordRecommendation(1)
+	max := sup.recordRecommendation(fn, 1)
 	assert.Equal(t, max.DesiredInstances, uint32(7),
 		"function without hpa policy should use cluster default (5m) and keep the 1m-old recommendation")
+}
+
+// TestRecordRecommendationUsesPassedFunctionNotSupervisorState pins the
+// snapshot invariant: recordRecommendation prunes the stabilization window
+// against the supplied function's policy, not against whatever updateFunction
+// has stored in s.fn at the moment of call. This matters because converge
+// captures fn := s.fn.Load() under s.mu but updateFunction CAS-writes s.fn
+// without the mutex; if recordRecommendation re-loaded s.fn, a concurrent
+// policy swap could prune an inconsistent window mid-tick.
+func TestRecordRecommendationUsesPassedFunctionNotSupervisorState(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.HPADownscaleStabilization = 5 * time.Minute
+
+	base := fixture.NewFunction(t)
+	patientFn := withHpaPolicy(base, skipper.HpaPolicy_builder{
+		DownscaleStabilization: durationpb.New(10 * time.Minute),
+	}.Build())
+	tightFn := withHpaPolicy(base, skipper.HpaPolicy_builder{
+		DownscaleStabilization: durationpb.New(time.Millisecond),
+	}.Build())
+
+	ctrl := New(cfg, nil, nil, nil)
+	sup := &Supervisor{ctrl: ctrl}
+	// Simulate a concurrent updateFunction CAS that swapped s.fn to the tight
+	// policy after converge captured the patient snapshot.
+	sup.fn.Store(tightFn)
+
+	old := time.Now().Add(-2 * time.Minute)
+	sup.stabilizationWindow = []Recommendation{{DesiredInstances: 9, Timestamp: old}}
+
+	// Pass the patient snapshot explicitly. Even though s.fn now holds the
+	// tight policy, the stabilization window must use patientFn's 10-minute
+	// window and keep the 2-minute-old recommendation.
+	max := sup.recordRecommendation(patientFn, 1)
+	assert.Equal(t, max.DesiredInstances, uint32(9),
+		"recordRecommendation must prune against the supplied fn (10m window), not s.fn (1ms window) -- a concurrent updateFunction swap must not change which recommendations the converge tick sees")
 }
 
 // liveScaleDecision drives calculateDesiredInstances with a fresh heartbeat so

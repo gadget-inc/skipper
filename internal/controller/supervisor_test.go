@@ -4044,13 +4044,15 @@ func BenchmarkRecordRecommendation(b *testing.B) {
 		return window
 	}
 
+	fn := &skipper.Function{}
+
 	b.Run("with_300_entries", func(b *testing.B) {
 		b.ReportAllocs()
 		template := makeWindow()
 		s := &Supervisor{ctrl: &Controller{config: cfg}}
 		for b.Loop() {
 			s.stabilizationWindow = append(s.stabilizationWindow[:0], template...)
-			sinkRecommendation = s.recordRecommendation(5)
+			sinkRecommendation = s.recordRecommendation(fn, 5)
 		}
 	})
 
@@ -4059,7 +4061,7 @@ func BenchmarkRecordRecommendation(b *testing.B) {
 		s := &Supervisor{ctrl: &Controller{config: cfg}}
 		for b.Loop() {
 			s.stabilizationWindow = s.stabilizationWindow[:0]
-			sinkRecommendation = s.recordRecommendation(5)
+			sinkRecommendation = s.recordRecommendation(fn, 5)
 		}
 	})
 }
