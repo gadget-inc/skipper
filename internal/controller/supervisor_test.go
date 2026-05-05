@@ -2622,6 +2622,43 @@ func TestReplaceStaleInstances(t *testing.T) {
 			},
 		},
 		{
+			// A tenant changing only a per-function policy knob (heartbeat /
+			// hpa / proxy / lifecycle) must NOT trigger pod replacement: the
+			// resolver layer applies the new value on the next converge tick,
+			// no new pod pool. Without this guarantee, every policy update
+			// would cause a rolling replacement of every assigned pod -- the
+			// opposite of the per-function policy design.
+			name: "policy-only function change does not mark instance stale",
+			setup: func(t *testing.T, state *testState) {
+				// Pod was assigned when the function had no per-function policy.
+				oldFn := proto.Clone(state.fn).(*skipper.Function)
+				assignedPod := fixture.NewAssignedPod(t, oldFn, nil)
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+
+				// Current replica set is still active (Replicas > 0 means not
+				// stale by replica-set scale-down).
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// The live function gains an hpa policy. Metadata and scale
+				// are unchanged.
+				state.fn.SetHpa(skipper.HpaPolicy_builder{
+					Tolerance: new(0.05),
+				}.Build())
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				// Instance must survive: policy-only change is not staleness.
+				assert.Assert(t, len(instances) == 1, "expected 1 instance, got %d", len(instances))
+				// No stale-replacement event must fire -- the replacement
+				// pipeline runs even if the eventual assignPod errors out, so
+				// asserting on the event captures the staleness verdict
+				// itself, not the outcome of the replacement.
+				for _, event := range state.ctrl.events.snapshot() {
+					assert.Assert(t, event.GetType() != skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT,
+						"policy-only change must not mark the instance stale: %s", event.GetMessage())
+				}
+			},
+		},
+		{
 			// Oneshot functions assign a fresh pod per request, so stale replacement
 			// would create a pod that serves nothing. Verify it's skipped entirely.
 			name: "skips replacement for oneshot functions",

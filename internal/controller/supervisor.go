@@ -618,8 +618,15 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Func
 		}
 
 		// Stale if the replica set was scaled to zero (deployment rollout)
-		// or if the function config (metadata/scale) has changed.
-		isStale := replicaSet.Status.Replicas == 0 || !proto.Equal(instance.GetFunction(), fn)
+		// or if the pod-level function spec (metadata, scale) has changed.
+		// Per-function policy fields (hpa, heartbeat, proxy, lifecycle)
+		// resolve at the controller / router on the next converge tick, so
+		// changing them must not trigger pod replacement -- otherwise every
+		// policy update would roll the entire pool.
+		instFn := instance.GetFunction()
+		isStale := replicaSet.Status.Replicas == 0 ||
+			instFn.GetMetadata() != fn.GetMetadata() ||
+			!proto.Equal(instFn.GetScale(), fn.GetScale())
 		if !isStale {
 			continue
 		}
