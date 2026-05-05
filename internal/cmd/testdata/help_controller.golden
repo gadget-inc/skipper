@@ -41,5 +41,6 @@ Flags:
       --telemetry-prometheus-port int           The port for the Prometheus metrics endpoint. (env SKIPPER_TELEMETRY_PROMETHEUS_PORT) (default 9090)
       --telemetry-shutdown-timeout duration     The timeout for shutting down the telemetry. (env SKIPPER_TELEMETRY_SHUTDOWN_TIMEOUT) (default 5s)
       --telemetry-trace                         Whether to enable tracing if telemetry is enabled. (env SKIPPER_TELEMETRY_TRACE) (default true)
+      --token-ttl duration                      The lifetime of PASETO tokens issued to assigned pods. (env SKIPPER_TOKEN_TTL) (default 168h0m0s)
       --web-port int                            The port the web UI listens on. (env SKIPPER_WEB_PORT) (default 8080)
       --web-template-dir string                 When set, reload templates from this directory on each request (dev mode). (env SKIPPER_WEB_TEMPLATE_DIR)
