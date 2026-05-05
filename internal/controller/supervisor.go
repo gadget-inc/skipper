@@ -758,27 +758,31 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, fn *skip
 	currentInstances := len(instances)
 	tolerance := fn.HPATolerance(cfg.HPATolerance)
 	initialReadinessDelay := fn.HPAInitialReadinessDelay(cfg.HPAInitialReadinessDelay)
+
+	var targetUsage uint32
+	var sample func(*skipper.Instance) uint32
+	switch metric {
+	case MetricCPU:
+		targetUsage = fn.GetScale().GetTargetCpuUsageMilli()
+		sample = (*skipper.Instance).GetCpuUsageMilli
+	case MetricMemory:
+		targetUsage = fn.GetScale().GetTargetMemoryUsageMib()
+		sample = (*skipper.Instance).GetMemoryUsageMib
+	default:
+		return currentInstances, 0
+	}
+
 	var instancesWithMetrics []*skipper.Instance
 	var instancesWithoutMetrics []*skipper.Instance
 
 	for _, instance := range instances {
-		var usage uint32
-		switch metric {
-		case MetricCPU:
-			usage = instance.GetCpuUsageMilli()
-		case MetricMemory:
-			usage = instance.GetMemoryUsageMib()
-		default:
-			return currentInstances, 0
-		}
-
 		if metric == MetricCPU && (!instance.HasReadyAt() || time.Since(instance.GetReadyAt().AsTime()) <= initialReadinessDelay) {
 			// ignore CPU metrics for pods that have been ready for less than the initial readiness delay
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 			continue
 		}
 
-		if usage == 0 {
+		if sample(instance) == 0 {
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 		} else {
 			instancesWithMetrics = append(instancesWithMetrics, instance)
@@ -789,21 +793,9 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, fn *skip
 		return currentInstances, 0
 	}
 
-	var targetUsage uint32
-	switch metric {
-	case MetricCPU:
-		targetUsage = fn.GetScale().GetTargetCpuUsageMilli()
-	case MetricMemory:
-		targetUsage = fn.GetScale().GetTargetMemoryUsageMib()
-	}
 	var totalUsage uint32
 	for _, instance := range instancesWithMetrics {
-		switch metric {
-		case MetricCPU:
-			totalUsage += instance.GetCpuUsageMilli()
-		case MetricMemory:
-			totalUsage += instance.GetMemoryUsageMib()
-		}
+		totalUsage += sample(instance)
 	}
 
 	if targetUsage == 0 {
