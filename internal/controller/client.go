@@ -2,7 +2,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -31,59 +33,93 @@ type client struct {
 
 var _ Client = &client{}
 
-// defaultServiceConfig configures gRPC client behavior including load balancing
-// and retry policies. This is used with DNS-based service discovery where
-// multiple A records are returned for a headless Kubernetes service.
-//
-// Retry policies are configured per-RPC:
-//   - GetInstance: Retries on UNAVAILABLE since routing is critical
-//   - Heartbeat: Retries on UNAVAILABLE to prevent premature pod termination
-//   - Scale: Retries on UNAVAILABLE for reliability
-const defaultServiceConfig = `{
-	"loadBalancingConfig": [{"round_robin": {}}],
-	"methodConfig": [
-		{
-			"name": [{"service": "skipper.ControllerService", "method": "GetInstance"}],
-			"retryPolicy": {
-				"maxAttempts": 3,
-				"initialBackoff": "0.01s",
-				"maxBackoff": "0.1s",
-				"backoffMultiplier": 2,
-				"retryableStatusCodes": ["UNAVAILABLE"]
-			}
-		},
-		{
-			"name": [{"service": "skipper.ControllerService", "method": "Heartbeat"}],
-			"retryPolicy": {
-				"maxAttempts": 2,
-				"initialBackoff": "0.01s",
-				"maxBackoff": "0.05s",
-				"backoffMultiplier": 2,
-				"retryableStatusCodes": ["UNAVAILABLE"]
-			}
-		},
-		{
-			"name": [{"service": "skipper.ControllerService", "method": "Scale"}],
-			"retryPolicy": {
-				"maxAttempts": 3,
-				"initialBackoff": "0.05s",
-				"maxBackoff": "0.5s",
-				"backoffMultiplier": 2,
-				"retryableStatusCodes": ["UNAVAILABLE"]
-			}
-		},
-		{
-			"name": [{"service": "skipper.ControllerService", "method": "ReleaseInstance"}],
-			"retryPolicy": {
-				"maxAttempts": 2,
-				"initialBackoff": "0.01s",
-				"maxBackoff": "0.05s",
-				"backoffMultiplier": 2,
-				"retryableStatusCodes": ["UNAVAILABLE"]
-			}
+// grpcServiceName is the fully-qualified protobuf service name the
+// retry policies attach to.
+const grpcServiceName = "skipper.ControllerService"
+
+// RetryPolicy describes the gRPC retry behavior for one RPC method.
+// The slice [DefaultRetryPolicies] is the source of truth that both
+// the gRPC client (via [defaultServiceConfig]) and the docs site read
+// from.
+type RetryPolicy struct {
+	Method               string
+	MaxAttempts          int
+	InitialBackoff       time.Duration
+	MaxBackoff           time.Duration
+	BackoffMultiplier    int
+	RetryableStatusCodes []string
+}
+
+// DefaultRetryPolicies are the per-RPC retry configurations the
+// controller's gRPC client installs. GetInstance and Scale retry on
+// UNAVAILABLE because routing and scaling are critical; Heartbeat
+// retries to prevent premature pod termination; ReleaseInstance
+// retries because the operation is idempotent.
+var DefaultRetryPolicies = []RetryPolicy{
+	{Method: "GetInstance", MaxAttempts: 3, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 100 * time.Millisecond, BackoffMultiplier: 2, RetryableStatusCodes: []string{"UNAVAILABLE"}},
+	{Method: "Heartbeat", MaxAttempts: 2, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 50 * time.Millisecond, BackoffMultiplier: 2, RetryableStatusCodes: []string{"UNAVAILABLE"}},
+	{Method: "Scale", MaxAttempts: 3, InitialBackoff: 50 * time.Millisecond, MaxBackoff: 500 * time.Millisecond, BackoffMultiplier: 2, RetryableStatusCodes: []string{"UNAVAILABLE"}},
+	{Method: "ReleaseInstance", MaxAttempts: 2, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 50 * time.Millisecond, BackoffMultiplier: 2, RetryableStatusCodes: []string{"UNAVAILABLE"}},
+}
+
+// defaultServiceConfig is the gRPC service-config JSON installed on
+// every controller client. It is rendered from [DefaultRetryPolicies]
+// at init time so the runtime config and the documented table cannot
+// diverge.
+var defaultServiceConfig = mustBuildServiceConfig(DefaultRetryPolicies)
+
+func mustBuildServiceConfig(policies []RetryPolicy) string {
+	type retryPolicyJSON struct {
+		MaxAttempts          int      `json:"maxAttempts"`
+		InitialBackoff       string   `json:"initialBackoff"`
+		MaxBackoff           string   `json:"maxBackoff"`
+		BackoffMultiplier    int      `json:"backoffMultiplier"`
+		RetryableStatusCodes []string `json:"retryableStatusCodes"`
+	}
+	type methodNameJSON struct {
+		Service string `json:"service"`
+		Method  string `json:"method"`
+	}
+	type methodConfigJSON struct {
+		Name        []methodNameJSON `json:"name"`
+		RetryPolicy retryPolicyJSON  `json:"retryPolicy"`
+	}
+	type loadBalancingJSON struct {
+		RoundRobin map[string]any `json:"round_robin"`
+	}
+	type serviceConfigJSON struct {
+		LoadBalancingConfig []loadBalancingJSON `json:"loadBalancingConfig"`
+		MethodConfig        []methodConfigJSON  `json:"methodConfig"`
+	}
+
+	cfg := serviceConfigJSON{
+		LoadBalancingConfig: []loadBalancingJSON{{RoundRobin: map[string]any{}}},
+		MethodConfig:        make([]methodConfigJSON, len(policies)),
+	}
+	for i, p := range policies {
+		cfg.MethodConfig[i] = methodConfigJSON{
+			Name: []methodNameJSON{{Service: grpcServiceName, Method: p.Method}},
+			RetryPolicy: retryPolicyJSON{
+				MaxAttempts:          p.MaxAttempts,
+				InitialBackoff:       formatBackoff(p.InitialBackoff),
+				MaxBackoff:           formatBackoff(p.MaxBackoff),
+				BackoffMultiplier:    p.BackoffMultiplier,
+				RetryableStatusCodes: p.RetryableStatusCodes,
+			},
 		}
-	]
-}`
+	}
+	out, err := json.Marshal(cfg)
+	if err != nil {
+		panic(fmt.Errorf("marshal service config: %w", err))
+	}
+	return string(out)
+}
+
+// formatBackoff renders d as the seconds-with-unit string the gRPC
+// service-config schema accepts (e.g. "0.05s", "0.5s").
+func formatBackoff(d time.Duration) string {
+	return fmt.Sprintf("%gs", d.Seconds())
+}
 
 // NewClient creates a new client for the controller.
 // When used with a headless Kubernetes service, the DNS resolver will

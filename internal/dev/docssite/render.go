@@ -261,6 +261,62 @@ var widgetRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*([a-z][a-z0-9-]*)\s*>\}\}\s*$
 // emits the markdown table body.
 var flagTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*flagtable\s+([a-z][a-z0-9-]*)\s*>\}\}\s*$`)
 
+// grpcRetryTableRe matches the gRPC retry-policy shortcode on its own
+// line:
+//
+//	{{< grpcRetryTable >}}
+//
+// The shortcode takes no argument; renderGrpcRetryTable always emits
+// the same table.
+var grpcRetryTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*grpcRetryTable\s*>\}\}\s*$`)
+
+// scaleReasonTableRe matches the ScaleReason enum shortcode on its
+// own line. Zero-argument; renderScaleReasonTable always emits the
+// same table.
+var scaleReasonTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*scaleReasonTable\s*>\}\}\s*$`)
+
+// transportTableRe matches the HTTP transport-settings shortcode on
+// its own line. Zero-argument; renderTransportTable always emits
+// the same table.
+var transportTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*transportTable\s*>\}\}\s*$`)
+
+// messageTableRe matches the protobuf-message shortcode on its own
+// line:
+//
+//	{{< messageTable Function >}}
+//
+// The captured argument is a proto message name -- uppercase-
+// leading CamelCase. It intentionally does NOT reuse
+// [flagTableRe]'s `[a-z][a-z0-9-]*` argument class.
+var messageTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*messageTable\s+([A-Z][A-Za-z0-9]*)\s*>\}\}\s*$`)
+
+// serviceMethodRe matches the gRPC service-method shortcode on its
+// own line:
+//
+//	{{< serviceMethod GetInstance >}}
+//
+// The captured argument is a proto method name -- uppercase-leading
+// CamelCase, sharing the argument class with [messageTableRe].
+//
+// Leading whitespace is restricted to `[ \t]*` (not `\s*`) for the
+// same reason as [metricsTableRe]: the shortcode may sit between
+// raw HTML blocks where the preceding blank line is load-bearing.
+var serviceMethodRe = regexp.MustCompile(`(?m)^[ \t]*\{\{<\s*serviceMethod\s+([A-Z][A-Za-z0-9]*)\s*>\}\}\s*$`)
+
+// metricsTableRe matches the Prometheus metrics-table shortcode on
+// its own line:
+//
+//	{{< metricsTable controller >}}
+//
+// The captured argument is a component name -- lowercase-leading,
+// matching [flagTableRe]'s argument class.
+//
+// Leading whitespace is restricted to `[ \t]*` (not `\s*`) so the
+// regex does not consume the blank line preceding the shortcode --
+// that blank line is what lets goldmark exit a `<div class=...>`
+// HTML block and resume markdown parsing for the rendered table.
+var metricsTableRe = regexp.MustCompile(`(?m)^[ \t]*\{\{<\s*metricsTable\s+([a-z][a-z0-9-]*)\s*>\}\}\s*$`)
+
 // preprocessShortcodes expands custom shortcodes into raw HTML or
 // markdown before goldmark sees the source: admonition fences
 // (`:::variant`), the flag-table shortcode (`{{< flagtable name >}}`),
@@ -286,25 +342,27 @@ func preprocessShortcodes(src string) (string, error) {
 		}
 		return renderAside(variant, title, body)
 	})
-	var flagErr error
-	src = flagTableRe.ReplaceAllStringFunc(src, func(match string) string {
-		if flagErr != nil {
-			return match
-		}
-		groups := flagTableRe.FindStringSubmatch(match)
-		if len(groups) < 2 {
-			return match
-		}
-		out, err := renderFlagTable(groups[1])
-		if err != nil {
-			flagErr = err
-			return match
-		}
-		return out
-	})
-	if flagErr != nil {
-		return "", flagErr
+
+	expansions := []struct {
+		re     *regexp.Regexp
+		render func(match string) (string, error)
+	}{
+		{flagTableRe, oneArgShortcode(flagTableRe, renderFlagTable)},
+		{grpcRetryTableRe, zeroArgShortcode(renderGrpcRetryTable)},
+		{scaleReasonTableRe, zeroArgShortcode(renderScaleReasonTable)},
+		{transportTableRe, zeroArgShortcode(renderTransportTable)},
+		{messageTableRe, oneArgShortcode(messageTableRe, renderMessageTable)},
+		{metricsTableRe, oneArgShortcode(metricsTableRe, renderMetricsTable)},
+		{serviceMethodRe, oneArgShortcode(serviceMethodRe, renderServiceMethod)},
 	}
+	for _, e := range expansions {
+		var err error
+		src, err = expandShortcode(src, e.re, e.render)
+		if err != nil {
+			return "", err
+		}
+	}
+
 	src = widgetRe.ReplaceAllStringFunc(src, func(match string) string {
 		groups := widgetRe.FindStringSubmatch(match)
 		if len(groups) < 2 {
@@ -316,6 +374,49 @@ func preprocessShortcodes(src string) (string, error) {
 		return match
 	})
 	return src, nil
+}
+
+// expandShortcode runs re over src, calling render for each match.
+// The first error from render short-circuits remaining matches and
+// propagates out -- subsequent matches are left untouched in the
+// source. On success the rewritten src is returned.
+func expandShortcode(src string, re *regexp.Regexp, render func(match string) (string, error)) (string, error) {
+	var firstErr error
+	out := re.ReplaceAllStringFunc(src, func(match string) string {
+		if firstErr != nil {
+			return match
+		}
+		result, err := render(match)
+		if err != nil {
+			firstErr = err
+			return match
+		}
+		return result
+	})
+	if firstErr != nil {
+		return "", firstErr
+	}
+	return out, nil
+}
+
+// zeroArgShortcode adapts a no-argument renderer (e.g.
+// renderGrpcRetryTable) to expandShortcode's render signature.
+func zeroArgShortcode(render func() (string, error)) func(match string) (string, error) {
+	return func(string) (string, error) { return render() }
+}
+
+// oneArgShortcode adapts a single-argument renderer (e.g.
+// renderFlagTable) to expandShortcode's render signature, pulling
+// the first capture group from re. A match with too few groups
+// passes through unchanged.
+func oneArgShortcode(re *regexp.Regexp, render func(string) (string, error)) func(match string) (string, error) {
+	return func(match string) (string, error) {
+		groups := re.FindStringSubmatch(match)
+		if len(groups) < 2 {
+			return match, nil
+		}
+		return render(groups[1])
+	}
 }
 
 // widgetPartial returns the HTML for a registered widget name, or the

@@ -3,65 +3,79 @@ package controller
 import (
 	"time"
 
+	"github.com/gadget-inc/skipper/internal/metric"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
+// metrics holds every prometheus metric the controller package
+// registers, captured for the docs `{{< metricsTable controller >}}`
+// shortcode. Help strings are doc-quality (single sentence, optional
+// trailing parenthetical, <= 120 chars) -- the same text both
+// scrapers and the rendered docs see.
+var metrics = metric.NewSet(prometheus.DefaultRegisterer)
+
 var (
-	waitingForUnassignedPods = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	waitingForUnassignedPods = metrics.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "waiting_for_unassigned_pods",
-		Help:      "The number of functions that are waiting for an unassigned pod",
+		Help:      "Functions blocked waiting for pod assignment.",
 	}, []string{"function_deployment"})
 
-	assignmentsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	assignmentsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "assignments_total",
-		Help:      "The number of times the controller has assigned a pod to a function",
+		Help:      "Total pod assignments performed by the controller.",
 	}, []string{"function_deployment"})
 
-	scaleUpsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	scaleUpsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "scale_ups_total",
-		Help:      "The number of times the controller has scaled up a function",
+		Help:      "Total scale-up operations performed by the controller.",
 	}, []string{"function_deployment"})
 
-	scaleDownsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	scaleDownsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "scale_downs_total",
-		Help:      "The number of times the controller has scaled down a function",
+		Help:      "Total scale-down operations performed by the controller.",
 	}, []string{"function_deployment"})
 
-	informerEventsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+	informerEventsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "informer_events_total",
-		Help:      "Total number of informer events processed by the Skipper controller.",
+		Help:      "Kubernetes informer events processed by the controller.",
 	}, []string{"resource", "event"})
 
-	informerEventLag = promauto.NewHistogramVec(prometheus.HistogramOpts{
+	informerEventLag = metrics.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "informer_event_lag_seconds",
-		Help:      "Time between Kubernetes object creation/deletion and informer processing. Only measured for add (creation timestamp) and delete (deletion timestamp) events; update events are not measured due to lack of reliable timestamps.",
+		Help:      "Lag between Kubernetes object change and informer processing (add and delete events only).",
 		Buckets:   []float64{0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512},
 	}, []string{"resource", "event"})
 
-	informerLastEventTime = promauto.NewGauge(prometheus.GaugeOpts{
+	informerLastEventTime = metrics.NewGauge(prometheus.GaugeOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "informer_last_event_time_seconds",
-		Help:      "Unix timestamp of the last informer event processed. Use (time() - metric) to calculate time since last event.",
+		Help:      "Unix timestamp of the last informer event processed.",
 	})
 )
+
+// Metrics returns the metadata of every prometheus metric registered
+// by the controller package. The docs site reads this slice via the
+// `{{< metricsTable controller >}}` shortcode.
+func Metrics() []metric.Metric {
+	return metrics.Slice()
+}
 
 // InformerEventObject constrains the types that can be passed to RecordInformerEvent
 // to exactly the types that our Kubernetes informers actually emit.

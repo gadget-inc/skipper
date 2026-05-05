@@ -11,22 +11,15 @@ The controller exposes a gRPC service (`ControllerService`) on port 50051 (defau
 
 Get a ready instance for a function. If no ready instance exists, the controller assigns an unassigned pod.
 
-```protobuf
-rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse)
-```
+{{< serviceMethod GetInstance >}}
 
 **Request:**
 
-| Field                    | Type            | Description                                     |
-| ------------------------ | --------------- | ----------------------------------------------- |
-| `function`               | Function        | The function to get an instance for (required)  |
-| `exclude_instance_names` | repeated string | Instance names to exclude (for retry scenarios) |
+{{< messageTable GetInstanceRequest >}}
 
 **Response:**
 
-| Field      | Type     | Description                  |
-| ---------- | -------- | ---------------------------- |
-| `instance` | Instance | The assigned, ready instance |
+{{< messageTable GetInstanceResponse >}}
 
 **Behavior:**
 
@@ -38,17 +31,11 @@ rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse)
 
 Send heartbeat signals for active functions. Heartbeats prevent function timeout and inform scaling decisions.
 
-```protobuf
-rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse)
-```
+{{< serviceMethod Heartbeat >}}
 
 **Request:**
 
-| Field           | Type               | Description                                                       |
-| --------------- | ------------------ | ----------------------------------------------------------------- |
-| `router_ip`     | string             | IP of the sending router                                          |
-| `heartbeats`    | repeated Heartbeat | Heartbeat for each active function                                |
-| `forwarded_for` | repeated string    | IPs that have already processed this heartbeat (cycle prevention) |
+{{< messageTable HeartbeatRequest >}}
 
 **Response:** Empty.
 
@@ -61,23 +48,15 @@ rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse)
 
 Scale a function to a desired number of instances.
 
-```protobuf
-rpc Scale(ScaleRequest) returns (ScaleResponse)
-```
+{{< serviceMethod Scale >}}
 
 **Request:**
 
-| Field               | Type        | Description                    |
-| ------------------- | ----------- | ------------------------------ |
-| `function`          | Function    | The function to scale          |
-| `desired_instances` | uint32      | Target instance count          |
-| `reason`            | ScaleReason | Why scaling is being triggered |
+{{< messageTable ScaleRequest >}}
 
 **Response:**
 
-| Field       | Type              | Description                           |
-| ----------- | ----------------- | ------------------------------------- |
-| `instances` | repeated Instance | Current ready instances after scaling |
+{{< messageTable ScaleResponse >}}
 
 **Behavior:**
 
@@ -88,15 +67,11 @@ rpc Scale(ScaleRequest) returns (ScaleResponse)
 
 Release (delete) a pod. Used by routers after oneshot requests complete.
 
-```protobuf
-rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse)
-```
+{{< serviceMethod ReleaseInstance >}}
 
 **Request:**
 
-| Field      | Type     | Description             |
-| ---------- | -------- | ----------------------- |
-| `instance` | Instance | The instance to release |
+{{< messageTable ReleaseInstanceRequest >}}
 
 **Response:** Empty.
 
@@ -104,80 +79,50 @@ rpc ReleaseInstance(ReleaseInstanceRequest) returns (ReleaseInstanceResponse)
 
 - Deletes the pod (idempotent -- returns success even if the pod does not exist)
 
+### GetClusterState
+
+Return a snapshot of the cluster's current state -- supervisors, recent events, and active configuration. Used by the web UI and operator tooling.
+
+{{< serviceMethod GetClusterState >}}
+
+**Request:** Empty.
+
+**Response:**
+
+{{< messageTable GetClusterStateResponse >}}
+
+**Behavior:**
+
+- Aggregates state from every controller in the ring; each controller contributes the supervisors it owns
+
 ## Types
 
 ### Function
 
-```protobuf
-message Function {
-  string namespace = 1;
-  string deployment = 2;
-  string tenant = 3;
-  string metadata = 4;
-  Scale scale = 5;
-  bool oneshot = 6;
-}
-```
+{{< messageTable Function >}}
 
 Identity is determined by namespace + deployment + tenant + oneshot. Metadata and scale are excluded from the hash.
 
 ### Scale
 
-```protobuf
-message Scale {
-  uint32 min_instances = 1;
-  uint32 max_instances = 2;
-  uint32 target_cpu_usage_milli = 3;
-  uint32 target_memory_usage_mib = 4;
-  uint32 target_in_flight_requests = 5;
-}
-```
+{{< messageTable Scale >}}
 
 ### Instance
 
-```protobuf
-message Instance {
-  Function function = 1;
-  string name = 2;
-  string addr = 3;
-  string replica_set = 4;
-  google.protobuf.Timestamp assigned_at = 5;
-  google.protobuf.Timestamp ready_at = 6;
-  uint32 cpu_usage_milli = 7;
-  uint32 memory_usage_mib = 8;
-}
-```
+{{< messageTable Instance >}}
 
 ### Heartbeat
 
-```protobuf
-message Heartbeat {
-  Function function = 1;
-  google.protobuf.Timestamp timestamp = 2;
-  uint32 in_flight_requests = 3;
-}
-```
+{{< messageTable Heartbeat >}}
 
 ### ScaleReason
 
-| Value                             | Number | Description                     |
-| --------------------------------- | ------ | ------------------------------- |
-| `SCALE_REASON_UNSPECIFIED`        | 0      | Default/unknown                 |
-| `SCALE_REASON_CPU`                | 1      | CPU usage triggered scaling     |
-| `SCALE_REASON_HEARTBEAT_TIMEOUT`  | 2      | No heartbeat within timeout     |
-| `SCALE_REASON_IN_FLIGHT_REQUESTS` | 3      | Request count triggered scaling |
-| `SCALE_REASON_MEMORY`             | 4      | Memory usage triggered scaling  |
-| `SCALE_REASON_NO_READY_INSTANCES` | 5      | No ready instances available    |
+{{< scaleReasonTable >}}
 
 ## Client configuration
 
 Default retry policies for gRPC clients:
 
-| Method          | Max Retries | Max Backoff | Retry On    |
-| --------------- | ----------- | ----------- | ----------- |
-| GetInstance     | 3           | 100ms       | UNAVAILABLE |
-| Heartbeat       | 2           | 50ms        | UNAVAILABLE |
-| Scale           | 3           | 500ms       | UNAVAILABLE |
-| ReleaseInstance | 2           | 50ms        | UNAVAILABLE |
+{{< grpcRetryTable >}}
 
 Connection uses the `dns:///` scheme with round-robin load balancing for headless service discovery.
