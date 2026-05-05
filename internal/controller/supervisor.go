@@ -172,9 +172,12 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 		return existing, xsync.CancelOp
 	})
 
-	// garbage collect expired router heartbeats. This GC is keyed by router
-	// IP and crosses every function this supervisor handles, so we bypass
-	// the per-function heartbeat resolver and use the cluster default.
+	// Garbage-collect entries from routers that have stopped heartbeating.
+	// This is router-liveness GC, not function-scale GC: each entry tracks
+	// one router's last heartbeat, and a router going silent is bounded by
+	// the cluster-wide router heartbeat interval -- not by any tenant's
+	// idle timeout. Use the cluster default so the GC cadence tracks the
+	// cluster property the entries actually represent.
 	for routerIP, heartbeat := range s.routerHeartbeats.AllRelaxed() {
 		if time.Since(heartbeat.GetTimestamp().AsTime()) > s.ctrl.config.HeartbeatTimeout {
 			s.routerHeartbeats.Delete(routerIP)

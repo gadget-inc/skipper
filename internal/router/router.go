@@ -199,10 +199,18 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Resolve min and max independently, then clamp -- a tenant who sets only
 	// one half of the pair against a cluster default for the other can produce
 	// an inverted runtime pair that Function.Validate cannot catch.
-	minBackoff, maxBackoff := clampBackoffBounds(
-		fn.RetryMinBackoff(r.config.RoundTripRetryMinTimeout),
-		fn.RetryMaxBackoff(r.config.RoundTripRetryMaxTimeout),
-	)
+	rawMin := fn.RetryMinBackoff(r.config.RoundTripRetryMinTimeout)
+	rawMax := fn.RetryMaxBackoff(r.config.RoundTripRetryMaxTimeout)
+	minBackoff, maxBackoff, wasInverted := clampBackoffBounds(rawMin, rawMax)
+	if wasInverted {
+		// Warn once per RoundTrip, before the retry loop assembles its
+		// per-attempt log context, so a reader can see that a tenant override
+		// was silently demoted to the cluster ceiling.
+		log.Warn(req.Context(), "retry backoff bounds inverted; clamping minimum to cluster maximum",
+			key.RetryMinBackoff.Slog(rawMin),
+			key.RetryMaxBackoff.Slog(rawMax),
+		)
+	}
 
 	var excludedInstanceNames []string
 	getInstanceDuration := time.Duration(0)
@@ -373,10 +381,12 @@ func calculateBackoff(attempt int, minBackoff, maxBackoff time.Duration) time.Du
 // inverted when the function sets only one half and the cluster default for
 // the other half is on the wrong side. Clamping the minimum to the maximum
 // preserves the operator's hard ceiling on a single backoff while keeping the
-// math in calculateBackoff well-defined.
-func clampBackoffBounds(minBackoff, maxBackoff time.Duration) (time.Duration, time.Duration) {
+// math in calculateBackoff well-defined. wasInverted reports whether the
+// clamp fired so the caller can warn the operator that a tenant override
+// was silently demoted to the cluster ceiling.
+func clampBackoffBounds(minBackoff, maxBackoff time.Duration) (time.Duration, time.Duration, bool) {
 	if minBackoff > maxBackoff {
-		minBackoff = maxBackoff
+		return maxBackoff, maxBackoff, true
 	}
-	return minBackoff, maxBackoff
+	return minBackoff, maxBackoff, false
 }

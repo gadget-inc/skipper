@@ -157,33 +157,54 @@ func TestHeartbeatStateUpdateFunctionOnPolicyChange(t *testing.T) {
 // shorter (1s). Function.Validate cannot catch this because the function-side
 // value is consistent in isolation. The router must clamp at the call site so
 // the resolved pair is never inverted; otherwise calculateBackoff's min(...)
-// silently caps at the cluster max and the tenant's minimum is lost.
+// silently caps at the cluster max and the tenant's minimum is lost. The
+// clamp also reports whether it fired so the caller can warn the operator
+// that a tenant override was demoted to the cluster ceiling.
 func TestRoundTripPerFunctionInvertedBackoffBoundsClamps(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig()
-	cfg.RoundTripRetryMinTimeout = 100 * time.Millisecond
-	cfg.RoundTripRetryMaxTimeout = time.Second // cluster cap
+	t.Run("inverted", func(t *testing.T) {
+		t.Parallel()
 
-	// Tenant sets only min, larger than the cluster max.
-	fn := withProxyPolicy(fixture.NewFunction(t), skipper.ProxyPolicy_builder{
-		RetryMinBackoff: durationpb.New(5 * time.Second),
-	}.Build())
+		cfg := testConfig()
+		cfg.RoundTripRetryMinTimeout = 100 * time.Millisecond
+		cfg.RoundTripRetryMaxTimeout = time.Second // cluster cap
 
-	// Simulate the resolution that happens at the top of RoundTrip.
-	minBackoff := fn.RetryMinBackoff(cfg.RoundTripRetryMinTimeout)
-	maxBackoff := fn.RetryMaxBackoff(cfg.RoundTripRetryMaxTimeout)
-	resolvedMin, resolvedMax := clampBackoffBounds(minBackoff, maxBackoff)
+		// Tenant sets only min, larger than the cluster max.
+		fn := withProxyPolicy(fixture.NewFunction(t), skipper.ProxyPolicy_builder{
+			RetryMinBackoff: durationpb.New(5 * time.Second),
+		}.Build())
 
-	assert.Assert(t, resolvedMin <= resolvedMax,
-		"clamped bounds must satisfy min <= max; got min=%s max=%s", resolvedMin, resolvedMax)
-	assert.Equal(t, resolvedMax, cfg.RoundTripRetryMaxTimeout,
-		"cluster max ceiling stays in force when the tenant did not override it")
+		// Simulate the resolution that happens at the top of RoundTrip.
+		minBackoff := fn.RetryMinBackoff(cfg.RoundTripRetryMinTimeout)
+		maxBackoff := fn.RetryMaxBackoff(cfg.RoundTripRetryMaxTimeout)
+		resolvedMin, resolvedMax, wasInverted := clampBackoffBounds(minBackoff, maxBackoff)
 
-	// Backoff must be within the clamped pair on every attempt.
-	for attempt := 1; attempt < 6; attempt++ {
-		got := calculateBackoff(attempt, resolvedMin, resolvedMax)
-		assert.Assert(t, got <= resolvedMax,
-			"attempt %d backoff %s exceeded resolved max %s", attempt, got, resolvedMax)
-	}
+		assert.Assert(t, wasInverted,
+			"inverted resolved pair (tenant min=%s, cluster max=%s) must report wasInverted=true",
+			minBackoff, maxBackoff)
+		assert.Assert(t, resolvedMin <= resolvedMax,
+			"clamped bounds must satisfy min <= max; got min=%s max=%s", resolvedMin, resolvedMax)
+		assert.Equal(t, resolvedMax, cfg.RoundTripRetryMaxTimeout,
+			"cluster max ceiling stays in force when the tenant did not override it")
+
+		// Backoff must be within the clamped pair on every attempt.
+		for attempt := 1; attempt < 6; attempt++ {
+			got := calculateBackoff(attempt, resolvedMin, resolvedMax)
+			assert.Assert(t, got <= resolvedMax,
+				"attempt %d backoff %s exceeded resolved max %s", attempt, got, resolvedMax)
+		}
+	})
+
+	t.Run("ordered", func(t *testing.T) {
+		t.Parallel()
+
+		// Already-ordered pair: clamp does not fire and wasInverted is false.
+		resolvedMin, resolvedMax, wasInverted := clampBackoffBounds(100*time.Millisecond, time.Second)
+
+		assert.Assert(t, !wasInverted,
+			"already-ordered pair must report wasInverted=false")
+		assert.Equal(t, resolvedMin, 100*time.Millisecond)
+		assert.Equal(t, resolvedMax, time.Second)
+	})
 }
