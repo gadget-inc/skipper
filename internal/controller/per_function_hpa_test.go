@@ -70,6 +70,48 @@ func TestCalculateDesiredInstancesPerFunctionTolerance(t *testing.T) {
 		"tight tolerance (1%%) should scale above 1, got %d (vs loose %d)", tightDesired, looseDesired)
 }
 
+// TestCalculateDesiredInstancesForMetricAdjustedTolerancePerFunction
+// guards the adjusted-tolerance branch in calculateDesiredInstancesForMetric:
+// when one or more instances are missing their CPU metric, the function falls
+// into the adjusted-ratio path. The tolerance check inside that path must
+// resolve through the per-function value, not the cluster flag.
+//
+// Setup: 4 instances, 2 with low CPU samples (25m each, target 100m), 2
+// missing. The basic discrepancy (0.75) exceeds even the loose cluster
+// tolerance, so both flows enter the adjusted-ratio branch. The adjusted
+// ratio (250/400) = 0.625; adjusted discrepancy = 0.375. With tight tolerance
+// 0.01 the helper falls through to the post-adjust scale-down (ceil(4*0.625)
+// = 3); with cluster tolerance 0.40 the adjusted-tolerance check early-returns
+// the current count (4).
+func TestCalculateDesiredInstancesForMetricAdjustedTolerancePerFunction(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.HPATolerance = 0.40 // cluster default: loose enough to absorb the adjusted discrepancy
+
+	base := fixture.NewFunction(t)
+	base.GetScale().SetTargetCpuUsageMilli(100)
+	tightFn := withHpaPolicy(base, skipper.HpaPolicy_builder{Tolerance: new(0.01)}.Build())
+	tightFn.GetScale().SetTargetCpuUsageMilli(100)
+
+	build := func(fn *skipper.Function) []*skipper.Instance {
+		return []*skipper.Instance{
+			readyInstance(fn, 25),
+			readyInstance(fn, 25),
+			skipper.Instance_builder{Function: fn, ReadyAt: timestamppb.New(time.Now().Add(-time.Hour))}.Build(),
+			skipper.Instance_builder{Function: fn, ReadyAt: timestamppb.New(time.Now().Add(-time.Hour))}.Build(),
+		}
+	}
+
+	tightDesired, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, tightFn, MetricCPU, build(tightFn))
+	clusterDesired, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, base, MetricCPU, build(base))
+
+	assert.Equal(t, clusterDesired, 4,
+		"cluster default 0.40 should swallow the adjusted discrepancy 0.375 and stay at currentInstances=4")
+	assert.Equal(t, tightDesired, 3,
+		"tight tolerance 0.01 should fall through the adjusted-tolerance check and scale down to ceil(4*0.625)=3")
+}
+
 // TestRecordRecommendationPerFunctionStabilization verifies that two
 // supervisors with different hpa.downscale_stabilization values prune their
 // stabilization windows on independent schedules. The supervisor with the

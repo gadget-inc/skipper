@@ -819,7 +819,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, fn *skip
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
-			math.Abs(1.0-adjustedUsageRatio) <= cfg.HPATolerance+1e-10 {
+			math.Abs(1.0-adjustedUsageRatio) <= tolerance+1e-10 {
 			// the adjusted usage ratio is the opposite of the original
 			// usage ratio, or the adjusted usage ratio is within
 			// tolerance of the target utilization. either way, we
