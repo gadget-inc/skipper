@@ -2212,7 +2212,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 			assert.NilError(t, err)
 
 			supervisor := state.ctrl.supervisor(state.fn)
-			instances = supervisor.cleanupStuckInstances(ctx, instances)
+			instances = supervisor.cleanupStuckInstances(ctx, state.fn, instances)
 
 			tc.check(t, state, instances)
 		})
@@ -4159,7 +4159,7 @@ func TestSupervisorEvents(t *testing.T) {
 				instances, err := state.ctrl.getInstances(ctx, state.fn)
 				assert.NilError(t, err)
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.cleanupStuckInstances(ctx, instances)
+				supervisor.cleanupStuckInstances(ctx, state.fn, instances)
 			},
 			check: func(t *testing.T, state *testState) {
 				events := state.ctrl.events.snapshot()

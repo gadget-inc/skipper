@@ -390,7 +390,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	}
 
 	// 3. Cleanup stuck instances (cheap, run before scaling execution)
-	instances = s.cleanupStuckInstances(ctx, instances)
+	instances = s.cleanupStuckInstances(ctx, fn, instances)
 
 	// 4. Execute scaling
 	ready, unready, err := s.scaleWithoutLock(ctx, fn, instances, scalingDecision)
@@ -552,9 +552,14 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Function,
 // with the cluster flag as the fallback. This is a cheap operation (just
 // deletes) and should be called before scaling execution to remove broken
 // pods from consideration.
-func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*skipper.Instance) []*skipper.Instance {
+//
+// Takes fn explicitly so the caller's converge-tick snapshot drives the
+// cleanup threshold. instance.GetFunction() is the function serialized into
+// the pod annotation at assignment time and may be stale relative to the
+// tenant's current lifecycle.assign_timeout override.
+func (s *Supervisor) cleanupStuckInstances(ctx context.Context, fn *skipper.Function, instances []*skipper.Instance) []*skipper.Instance {
+	assignTimeout := fn.AssignTimeout(s.ctrl.config.FunctionAssignTimeout)
 	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
-		assignTimeout := instance.GetFunction().AssignTimeout(s.ctrl.config.FunctionAssignTimeout)
 		if !instance.HasReadyAt() && time.Since(instance.GetAssignedAt().AsTime()) > assignTimeout*2 {
 			ctx := log.With(ctx, skipper.InstanceKey.Slog(instance))
 			log.Warn(ctx, "terminating instance stuck in assigned state")

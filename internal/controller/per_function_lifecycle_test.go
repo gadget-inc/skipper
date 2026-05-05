@@ -168,45 +168,71 @@ func TestAssignPodPerFunctionAssignTimeoutOverrideSurvivesSlowHandler(t *testing
 	}
 }
 
-// TestCleanupStuckInstancesPerFunctionAssignTimeout verifies that a stuck
-// instance is cleaned up against the function's effective assign timeout.
-// Two functions share a controller config (--function-assign-timeout = 30s)
-// but one overrides lifecycle.assign_timeout = 1ms. The instance for the
-// override is cleaned up after a few milliseconds; the cluster-default one is
-// not.
-func TestCleanupStuckInstancesPerFunctionAssignTimeout(t *testing.T) {
+// TestCleanupStuckInstancesUsesFreshFunctionSnapshot pins the snapshot
+// invariant: cleanupStuckInstances must read lifecycle.assign_timeout from
+// the converge-tick fn snapshot, not from instance.GetFunction(). The
+// per-instance function pointer is the policy serialized into the pod
+// annotation at assignment time -- a tenant who shortens
+// lifecycle.assign_timeout after assignment expects existing stuck instances
+// to be cleaned up faster, not stranded behind the old (longer) timeout.
+func TestCleanupStuckInstancesUsesFreshFunctionSnapshot(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig()
-	cfg.FunctionAssignTimeout = 30 * time.Second
+	cfg.FunctionAssignTimeout = 30 * time.Second // cluster default
 
-	clusterFn := fixture.NewFunction(t)
-	overrideFn := withLifecyclePolicy(fixture.NewFunction(t), skipper.LifecyclePolicy_builder{
+	// A pod was assigned earlier when the function carried no override --
+	// instance.GetFunction() therefore captures the long cluster default.
+	staleFn := fixture.NewFunction(t)
+	staleAssignedAt := timestamppb.New(time.Now().Add(-100 * time.Millisecond))
+	pod := fixture.NewAssignedPod(t, staleFn, nil)
+	instance := skipper.Instance_builder{
+		Function:   staleFn,
+		Name:       new(pod.Name),
+		AssignedAt: staleAssignedAt,
+	}.Build()
+
+	// The tenant has since shortened assign_timeout to 1ms via the next
+	// request. The converge tick captures the fresh snapshot.
+	freshFn := withLifecyclePolicy(staleFn, skipper.LifecyclePolicy_builder{
 		AssignTimeout: durationpb.New(time.Millisecond),
 	}.Build())
 
-	clusterPod := fixture.NewAssignedPod(t, clusterFn, nil)
-	overridePod := fixture.NewAssignedPod(t, overrideFn, nil)
-
-	staleAssignedAt := timestamppb.New(time.Now().Add(-100 * time.Millisecond))
-	clusterInstance := skipper.Instance_builder{
-		Function:   clusterFn,
-		Name:       new(clusterPod.Name),
-		AssignedAt: staleAssignedAt,
-	}.Build()
-	overrideInstance := skipper.Instance_builder{
-		Function:   overrideFn,
-		Name:       new(overridePod.Name),
-		AssignedAt: staleAssignedAt,
-	}.Build()
-
-	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod(), clusterPod, overridePod)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod(), pod)
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
 	sup := &Supervisor{ctrl: ctrl}
 
-	remaining := sup.cleanupStuckInstances(t.Context(), []*skipper.Instance{clusterInstance, overrideInstance})
+	remaining := sup.cleanupStuckInstances(t.Context(), freshFn, []*skipper.Instance{instance})
 
-	assert.Equal(t, len(remaining), 1, "override instance should be cleaned up; cluster instance retained")
-	assert.Equal(t, remaining[0].GetName(), clusterPod.Name,
-		"only the cluster-default instance should remain")
+	assert.Equal(t, len(remaining), 0,
+		"fresh fn snapshot (1ms assign_timeout) must drive cleanup; the stale annotation policy must not strand the instance behind a 30s cluster default")
+}
+
+// TestCleanupStuckInstancesOmittedLifecyclePolicy verifies the cluster default
+// path: a function omitting lifecycle.assign_timeout uses
+// --function-assign-timeout * 2 as the cleanup threshold.
+func TestCleanupStuckInstancesOmittedLifecyclePolicy(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+	cfg.FunctionAssignTimeout = time.Millisecond
+
+	fn := fixture.NewFunction(t)
+	assert.Assert(t, fn.GetLifecycle() == nil, "fixture function must omit lifecycle policy")
+
+	pod := fixture.NewAssignedPod(t, fn, nil)
+	instance := skipper.Instance_builder{
+		Function:   fn,
+		Name:       new(pod.Name),
+		AssignedAt: timestamppb.New(time.Now().Add(-100 * time.Millisecond)),
+	}.Build()
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod(), pod)
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	sup := &Supervisor{ctrl: ctrl}
+
+	remaining := sup.cleanupStuckInstances(t.Context(), fn, []*skipper.Instance{instance})
+
+	assert.Equal(t, len(remaining), 0,
+		"cluster default 1ms * 2 = 2ms threshold should clean up a 100ms-stuck instance")
 }
