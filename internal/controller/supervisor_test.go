@@ -1867,7 +1867,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
+			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat.GetFunction(), tc.heartbeat, tc.instances)
 
 			assert.Equal(t, tc.expectedDesiredInstances, decision.GetDesiredInstances())
 			assert.Equal(t, tc.expectedUnclampedDesired, decision.GetUnclampedDesiredInstances())
@@ -3255,7 +3255,7 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 
 	// Verify the scaling decision would request 1 instance
 	heartbeat := supervisor.combinedHeartbeat(fn, instances)
-	scalingDecision := calculateDesiredInstances(ctx, cfg, heartbeat, instances)
+	scalingDecision := calculateDesiredInstances(ctx, cfg, fn, heartbeat, instances)
 	assert.Assert(t, scalingDecision.GetDesiredInstances() == 1,
 		"expected scaling decision of 1 instance, got %d", scalingDecision.GetDesiredInstances())
 
@@ -3814,7 +3814,7 @@ func TestCalculateDesiredInstancesOneshot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
+			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat.GetFunction(), tc.heartbeat, tc.instances)
 
 			assert.Equal(t, tc.expectedDesiredInstances, decision.GetDesiredInstances())
 			assert.Equal(t, tc.expectedUnclampedDesired, decision.GetUnclampedDesiredInstances())

@@ -172,7 +172,9 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 		return existing, xsync.CancelOp
 	})
 
-	// garbage collect expired router heartbeats
+	// garbage collect expired router heartbeats. This GC is keyed by router
+	// IP and crosses every function this supervisor handles, so we bypass
+	// the per-function heartbeat resolver and use the cluster default.
 	for routerIP, heartbeat := range s.routerHeartbeats.AllRelaxed() {
 		if time.Since(heartbeat.GetTimestamp().AsTime()) > s.ctrl.config.HeartbeatTimeout {
 			s.routerHeartbeats.Delete(routerIP)
@@ -283,7 +285,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	heartbeat := s.combinedHeartbeat(fn, instances)
 	ctx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn), skipper.HeartbeatKey.Attr(heartbeat))
 
-	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
+	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, fn, heartbeat, instances)
 
 	// For oneshot functions, the converge loop is a safety net only.
 	// All assignment happens synchronously in GetInstance via assignPod.
@@ -299,6 +301,8 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		// oneshot requests (older than HeartbeatTimeout), this would incorrectly
 		// trigger heartbeat_timeout before the router's heartbeats have arrived.
 		// Skip deletion until we've been running long enough to receive heartbeats.
+		// This grace window is a controller-wide startup concern, not per-function,
+		// so it stays on the cluster flag rather than the resolver.
 		if time.Since(s.ctrl.StartedAt()) < s.ctrl.config.HeartbeatTimeout {
 			return nil
 		}
@@ -334,7 +338,8 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		// 2. Receive heartbeats from routers (HeartbeatTimeout) - without this, functions with
 		//    instances assigned longer than HeartbeatTimeout ago would immediately trigger
 		//    heartbeat_timeout scale-to-zero when a new controller starts with empty heartbeat state
-		protectionPeriod := max(s.ctrl.config.HPADownscaleStabilization, s.ctrl.config.HeartbeatTimeout)
+		// HPADownscaleStabilization stays on the cluster flag here; per-function migration lands in Phase 3.
+		protectionPeriod := max(s.ctrl.config.HPADownscaleStabilization, fn.HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout))
 		if time.Since(s.ctrl.StartedAt()) < protectionPeriod {
 			log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", s.ctrl.StartedAt()))
 			return nil
@@ -812,8 +817,8 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 }
 
 // calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) *skipper.ScaleDecision {
-	if !heartbeat.HasTimestamp() || time.Since(heartbeat.GetTimestamp().AsTime()) >= cfg.HeartbeatTimeout {
+func calculateDesiredInstances(ctx context.Context, cfg *Config, fn *skipper.Function, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) *skipper.ScaleDecision {
+	if !heartbeat.HasTimestamp() || time.Since(heartbeat.GetTimestamp().AsTime()) >= fn.HeartbeatTimeout(cfg.HeartbeatTimeout) {
 		decision := &skipper.ScaleDecision{}
 		decision.SetDesiredInstances(0)
 		decision.SetUnclampedDesiredInstances(0)
