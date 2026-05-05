@@ -1,15 +1,19 @@
 package controller
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/fixture"
+	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/assert"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 // silencedHeartbeat returns a heartbeat for fn whose timestamp is in the past
@@ -118,4 +122,63 @@ func TestSupervisorUpdateFunctionPicksUpHeartbeatTimeout(t *testing.T) {
 	afterUpdate := calculateDesiredInstances(t.Context(), cfg, supervisor.fn.Load(), idleHeartbeat, nil)
 	assert.Assert(t, afterUpdate.GetReason() != skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT,
 		"requestB with 5m timeout should not scale to zero after 30s idle, got %s", afterUpdate.GetReason())
+}
+
+// TestProtectionPeriodIgnoresPerFunctionHeartbeatTimeout guards a
+// fleet-startup invariant. The protection period at supervisor.go's converge
+// scale-down branch exists in part to give routers time to send heartbeats
+// to a freshly-started controller. Router heartbeat propagation is governed
+// by the cluster -- the router's heartbeat interval is not per-function --
+// so the heartbeat half of the protection-period max must read the cluster
+// flag, not the per-function resolver. A tenant setting heartbeat.timeout =
+// 1s alongside a tight stabilization window must not be able to shrink the
+// protection period below the cluster's heartbeat-propagation budget,
+// because doing so would let a controller that has been up for a few
+// seconds spuriously scale-to-zero before any router has reported in.
+func TestProtectionPeriodIgnoresPerFunctionHeartbeatTimeout(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+
+	cfg := testConfig()
+	cfg.HPADownscaleStabilization = 90 * time.Second
+	cfg.HeartbeatTimeout = 90 * time.Second // cluster default for router-heartbeat propagation
+
+	// Tenant overrides both halves to a tight 1s window and the controller
+	// has only been running for 5 seconds.
+	base := fixture.NewFunction(t)
+	base.GetScale().SetTargetCpuUsageMilli(0)
+	base.GetScale().SetTargetMemoryUsageMib(0)
+	base.GetScale().SetTargetInFlightRequests(0)
+	fn := proto.Clone(base).(*skipper.Function)
+	fn.SetHeartbeat(skipper.HeartbeatPolicy_builder{Timeout: durationpb.New(time.Second)}.Build())
+	fn.SetHpa(skipper.HpaPolicy_builder{DownscaleStabilization: durationpb.New(time.Second)}.Build())
+
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+	pod := fixture.NewAssignedPod(t, fn, nil)
+	staleAt := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
+	pod.Annotations[key.AssignedAt.Label] = staleAt
+	pod.Annotations[key.ReadyAt.Label] = staleAt
+	fakeKubernetes.Tracker().Add(pod)
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	ctrl.setStartedAt(time.Now().Add(-5 * time.Second))
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	supervisor := ctrl.supervisor(fn)
+	// No router heartbeats yet -- this is the post-restart state.
+
+	err = supervisor.converge(ctx)
+	assert.NilError(t, err)
+
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	})
+	assert.NilError(t, err)
+	assert.Equal(t, len(pods.Items), 1,
+		"protection period must hold against the cluster default heartbeat timeout (90s); the tenant's 1s override must not shrink the router-propagation budget")
 }
