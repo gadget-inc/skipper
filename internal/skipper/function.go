@@ -94,6 +94,12 @@ func (f *Function) Validate() error {
 		return fmt.Errorf("scale.min_instances (%d) must be <= scale.max_instances (%d)", scale.GetMinInstances(), scale.GetMaxInstances())
 	}
 	if hpa := f.GetHpa(); hpa != nil {
+		// Tolerance gates the HPA dead-band via `usageDiscrepancy <= tolerance`,
+		// where usageDiscrepancy is non-negative (math.Abs). A negative tolerance
+		// would silently disable the dead-band and trigger continuous scaling.
+		if t := hpa.GetTolerance(); t < 0 {
+			return fmt.Errorf("hpa.tolerance (%g) must be >= 0", t)
+		}
 		if d := hpa.GetDownscaleStabilization().AsDuration(); d < 0 {
 			return fmt.Errorf("hpa.downscale_stabilization (%s) must be >= 0", d)
 		}

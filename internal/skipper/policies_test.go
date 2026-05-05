@@ -146,6 +146,13 @@ func TestValidatePolicies(t *testing.T) {
 			}),
 		},
 		{
+			name: "negative hpa.tolerance",
+			fn: build(func(b *Function_builder) {
+				b.Hpa = HpaPolicy_builder{Tolerance: new(-0.5)}.Build()
+			}),
+			wantErr: "hpa.tolerance",
+		},
+		{
 			name: "negative hpa.downscale_stabilization",
 			fn: build(func(b *Function_builder) {
 				b.Hpa = HpaPolicy_builder{DownscaleStabilization: durationpb.New(-time.Second)}.Build()
