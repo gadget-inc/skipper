@@ -787,15 +787,18 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, fn *skip
 	}
 
 	var targetUsage uint32
+	switch metric {
+	case MetricCPU:
+		targetUsage = fn.GetScale().GetTargetCpuUsageMilli()
+	case MetricMemory:
+		targetUsage = fn.GetScale().GetTargetMemoryUsageMib()
+	}
 	var totalUsage uint32
 	for _, instance := range instancesWithMetrics {
-		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
 		case MetricCPU:
-			targetUsage = instance.GetFunction().GetScale().GetTargetCpuUsageMilli()
 			totalUsage += instance.GetCpuUsageMilli()
 		case MetricMemory:
-			targetUsage = instance.GetFunction().GetScale().GetTargetMemoryUsageMib()
 			totalUsage += instance.GetMemoryUsageMib()
 		}
 	}

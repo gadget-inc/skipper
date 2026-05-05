@@ -287,6 +287,78 @@ func TestRecordRecommendationUsesPassedFunctionNotSupervisorState(t *testing.T) 
 		"recordRecommendation must prune against the supplied fn (10m window), not s.fn (1ms window) -- a concurrent updateFunction swap must not change which recommendations the converge tick sees")
 }
 
+// TestCalculateDesiredInstancesForMetricUsesLiveFunctionTargetCPU pins the
+// snapshot invariant: calculateDesiredInstancesForMetric reads
+// target_cpu_usage_milli from the converge-tick fn argument, not from the
+// pod-annotation snapshot in instance.GetFunction(). A tenant who tightens or
+// loosens the CPU target mid-flight must drive scaling math on the next tick
+// without waiting for every instance to be replaced.
+func TestCalculateDesiredInstancesForMetricUsesLiveFunctionTargetCPU(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+
+	// Old function: target=100m. Instances are pinned with this snapshot to
+	// simulate pods assigned before the tenant updated the target.
+	oldFn := fixture.NewFunction(t)
+	oldFn.GetScale().SetTargetCpuUsageMilli(100)
+
+	// New function: target=25m. This is the converge-tick argument the
+	// controller passes after the tenant updated the target.
+	newFn := proto.Clone(oldFn).(*skipper.Function)
+	newFn.GetScale().SetTargetCpuUsageMilli(25)
+
+	// Two instances at 50m usage each, captured against oldFn's snapshot.
+	instances := []*skipper.Instance{
+		readyInstance(oldFn, 50),
+		readyInstance(oldFn, 50),
+	}
+
+	desired, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, newFn, MetricCPU, instances)
+
+	// newFn target=25, average usage=50 -> ratio=2.0 -> ceil(2*2.0)=4.
+	// If the function reads the stale annotation (oldFn target=100), it would
+	// compute ratio=0.5 -> ceil(2*0.5)=1 (scale down to 1).
+	assert.Equal(t, desired, 4,
+		"live newFn target (25m) must drive scaling, not the stale oldFn annotation (100m)")
+}
+
+// TestCalculateDesiredInstancesForMetricUsesLiveFunctionTargetMemory mirrors
+// the CPU test for the memory metric: a mid-flight target_memory_usage_mib
+// update must drive scaling on the next tick without waiting for every
+// instance to be replaced.
+func TestCalculateDesiredInstancesForMetricUsesLiveFunctionTargetMemory(t *testing.T) {
+	t.Parallel()
+
+	cfg := testConfig()
+
+	oldFn := fixture.NewFunction(t)
+	oldFn.GetScale().SetTargetMemoryUsageMib(200)
+
+	newFn := proto.Clone(oldFn).(*skipper.Function)
+	newFn.GetScale().SetTargetMemoryUsageMib(50)
+
+	// Two instances at 100 MiB usage each, captured against oldFn's snapshot.
+	mkInst := func(fn *skipper.Function, mib uint32) *skipper.Instance {
+		return skipper.Instance_builder{
+			Function:       fn,
+			ReadyAt:        timestamppb.New(time.Now().Add(-time.Hour)),
+			MemoryUsageMib: new(mib),
+		}.Build()
+	}
+	instances := []*skipper.Instance{
+		mkInst(oldFn, 100),
+		mkInst(oldFn, 100),
+	}
+
+	desired, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, newFn, MetricMemory, instances)
+
+	// newFn target=50, average usage=100 -> ratio=2.0 -> ceil(2*2.0)=4.
+	// Stale annotation (oldFn target=200) would give ratio=0.5 -> 1.
+	assert.Equal(t, desired, 4,
+		"live newFn memory target (50 MiB) must drive scaling, not the stale oldFn annotation (200 MiB)")
+}
+
 // liveScaleDecision drives calculateDesiredInstances with a fresh heartbeat so
 // no heartbeat-timeout reason fires; useful for asserting protectionPeriod and
 // other downstream logic.
