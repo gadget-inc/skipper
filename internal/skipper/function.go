@@ -137,10 +137,12 @@ func (f *Function) Validate() error {
 }
 
 // HPATolerance returns the per-function HPA tolerance, falling back to
-// clusterDefault when the function does not set one.
+// clusterDefault when the function does not set one. Presence is checked via
+// HasTolerance so a tenant who explicitly sets zero (strict mode) is honored
+// rather than silently overridden by the cluster default.
 func (f *Function) HPATolerance(clusterDefault float64) float64 {
-	if v := f.GetHpa().GetTolerance(); v != 0 {
-		return v
+	if hpa := f.GetHpa(); hpa.HasTolerance() {
+		return hpa.GetTolerance()
 	}
 	return clusterDefault
 }
@@ -148,8 +150,8 @@ func (f *Function) HPATolerance(clusterDefault float64) float64 {
 // HPADownscaleStabilization returns the per-function downscale-stabilization
 // window, falling back to clusterDefault when the function does not set one.
 func (f *Function) HPADownscaleStabilization(clusterDefault time.Duration) time.Duration {
-	if v := f.GetHpa().GetDownscaleStabilization().AsDuration(); v != 0 {
-		return v
+	if hpa := f.GetHpa(); hpa.HasDownscaleStabilization() {
+		return hpa.GetDownscaleStabilization().AsDuration()
 	}
 	return clusterDefault
 }
@@ -157,8 +159,8 @@ func (f *Function) HPADownscaleStabilization(clusterDefault time.Duration) time.
 // HPAInitialReadinessDelay returns the per-function initial-readiness delay,
 // falling back to clusterDefault when the function does not set one.
 func (f *Function) HPAInitialReadinessDelay(clusterDefault time.Duration) time.Duration {
-	if v := f.GetHpa().GetInitialReadinessDelay().AsDuration(); v != 0 {
-		return v
+	if hpa := f.GetHpa(); hpa.HasInitialReadinessDelay() {
+		return hpa.GetInitialReadinessDelay().AsDuration()
 	}
 	return clusterDefault
 }
@@ -166,8 +168,8 @@ func (f *Function) HPAInitialReadinessDelay(clusterDefault time.Duration) time.D
 // HeartbeatTimeout returns the per-function heartbeat timeout, falling back to
 // clusterDefault when the function does not set one.
 func (f *Function) HeartbeatTimeout(clusterDefault time.Duration) time.Duration {
-	if v := f.GetHeartbeat().GetTimeout().AsDuration(); v != 0 {
-		return v
+	if hb := f.GetHeartbeat(); hb.HasTimeout() {
+		return hb.GetTimeout().AsDuration()
 	}
 	return clusterDefault
 }
@@ -175,8 +177,8 @@ func (f *Function) HeartbeatTimeout(clusterDefault time.Duration) time.Duration 
 // MaxRoundTripAttempts returns the per-function maximum number of retry
 // attempts, falling back to clusterDefault when the function does not set one.
 func (f *Function) MaxRoundTripAttempts(clusterDefault uint32) uint32 {
-	if v := f.GetProxy().GetMaxAttempts(); v != 0 {
-		return v
+	if proxy := f.GetProxy(); proxy.HasMaxAttempts() {
+		return proxy.GetMaxAttempts()
 	}
 	return clusterDefault
 }
@@ -184,8 +186,8 @@ func (f *Function) MaxRoundTripAttempts(clusterDefault uint32) uint32 {
 // RetryMinBackoff returns the per-function minimum retry backoff, falling
 // back to clusterDefault when the function does not set one.
 func (f *Function) RetryMinBackoff(clusterDefault time.Duration) time.Duration {
-	if v := f.GetProxy().GetRetryMinBackoff().AsDuration(); v != 0 {
-		return v
+	if proxy := f.GetProxy(); proxy.HasRetryMinBackoff() {
+		return proxy.GetRetryMinBackoff().AsDuration()
 	}
 	return clusterDefault
 }
@@ -193,8 +195,8 @@ func (f *Function) RetryMinBackoff(clusterDefault time.Duration) time.Duration {
 // RetryMaxBackoff returns the per-function maximum retry backoff, falling
 // back to clusterDefault when the function does not set one.
 func (f *Function) RetryMaxBackoff(clusterDefault time.Duration) time.Duration {
-	if v := f.GetProxy().GetRetryMaxBackoff().AsDuration(); v != 0 {
-		return v
+	if proxy := f.GetProxy(); proxy.HasRetryMaxBackoff() {
+		return proxy.GetRetryMaxBackoff().AsDuration()
 	}
 	return clusterDefault
 }
@@ -202,8 +204,8 @@ func (f *Function) RetryMaxBackoff(clusterDefault time.Duration) time.Duration {
 // AssignTimeout returns the per-function instance-assignment timeout, falling
 // back to clusterDefault when the function does not set one.
 func (f *Function) AssignTimeout(clusterDefault time.Duration) time.Duration {
-	if v := f.GetLifecycle().GetAssignTimeout().AsDuration(); v != 0 {
-		return v
+	if lc := f.GetLifecycle(); lc.HasAssignTimeout() {
+		return lc.GetAssignTimeout().AsDuration()
 	}
 	return clusterDefault
 }
@@ -211,8 +213,8 @@ func (f *Function) AssignTimeout(clusterDefault time.Duration) time.Duration {
 // TokenTTL returns the per-function PASETO token lifetime, falling back to
 // clusterDefault when the function does not set one.
 func (f *Function) TokenTTL(clusterDefault time.Duration) time.Duration {
-	if v := f.GetLifecycle().GetTokenTtl().AsDuration(); v != 0 {
-		return v
+	if lc := f.GetLifecycle(); lc.HasTokenTtl() {
+		return lc.GetTokenTtl().AsDuration()
 	}
 	return clusterDefault
 }

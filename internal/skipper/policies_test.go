@@ -92,6 +92,72 @@ func TestResolverReturnsFunctionValue(t *testing.T) {
 	assert.Equal(t, fn.TokenTTL(clusterDuration), fnDuration)
 }
 
+func TestResolverHonorsExplicitZero(t *testing.T) {
+	t.Parallel()
+
+	clusterFloat := 0.10
+	clusterDuration := 30 * time.Second
+
+	cases := []struct {
+		name string
+		fn   *Function
+		want func(*testing.T, *Function)
+	}{
+		{
+			name: "tolerance explicit zero",
+			fn: Function_builder{
+				Hpa: HpaPolicy_builder{Tolerance: new(0.0)}.Build(),
+			}.Build(),
+			want: func(t *testing.T, fn *Function) {
+				assert.Equal(t, fn.HPATolerance(clusterFloat), 0.0)
+			},
+		},
+		{
+			name: "downscale_stabilization explicit zero",
+			fn: Function_builder{
+				Hpa: HpaPolicy_builder{DownscaleStabilization: durationpb.New(0)}.Build(),
+			}.Build(),
+			want: func(t *testing.T, fn *Function) {
+				assert.Equal(t, fn.HPADownscaleStabilization(clusterDuration), time.Duration(0))
+			},
+		},
+		{
+			name: "initial_readiness_delay explicit zero",
+			fn: Function_builder{
+				Hpa: HpaPolicy_builder{InitialReadinessDelay: durationpb.New(0)}.Build(),
+			}.Build(),
+			want: func(t *testing.T, fn *Function) {
+				assert.Equal(t, fn.HPAInitialReadinessDelay(clusterDuration), time.Duration(0))
+			},
+		},
+		{
+			name: "retry_min_backoff explicit zero",
+			fn: Function_builder{
+				Proxy: ProxyPolicy_builder{RetryMinBackoff: durationpb.New(0)}.Build(),
+			}.Build(),
+			want: func(t *testing.T, fn *Function) {
+				assert.Equal(t, fn.RetryMinBackoff(clusterDuration), time.Duration(0))
+			},
+		},
+		{
+			name: "retry_max_backoff explicit zero",
+			fn: Function_builder{
+				Proxy: ProxyPolicy_builder{RetryMaxBackoff: durationpb.New(0)}.Build(),
+			}.Build(),
+			want: func(t *testing.T, fn *Function) {
+				assert.Equal(t, fn.RetryMaxBackoff(clusterDuration), time.Duration(0))
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			tc.want(t, tc.fn)
+		})
+	}
+}
+
 func TestValidatePolicies(t *testing.T) {
 	t.Parallel()
 
