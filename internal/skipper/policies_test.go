@@ -277,6 +277,34 @@ func TestValidatePolicies(t *testing.T) {
 			}),
 			wantErr: "lifecycle.token_ttl",
 		},
+		{
+			name: "explicit zero heartbeat.timeout rejected",
+			fn: build(func(b *Function_builder) {
+				b.Heartbeat = HeartbeatPolicy_builder{Timeout: durationpb.New(0)}.Build()
+			}),
+			wantErr: "heartbeat.timeout",
+		},
+		{
+			name: "explicit zero lifecycle.assign_timeout rejected",
+			fn: build(func(b *Function_builder) {
+				b.Lifecycle = LifecyclePolicy_builder{AssignTimeout: durationpb.New(0)}.Build()
+			}),
+			wantErr: "lifecycle.assign_timeout",
+		},
+		{
+			name: "explicit zero lifecycle.token_ttl rejected",
+			fn: build(func(b *Function_builder) {
+				b.Lifecycle = LifecyclePolicy_builder{TokenTtl: durationpb.New(0)}.Build()
+			}),
+			wantErr: "lifecycle.token_ttl",
+		},
+		{
+			name: "explicit zero proxy.max_attempts rejected",
+			fn: build(func(b *Function_builder) {
+				b.Proxy = ProxyPolicy_builder{MaxAttempts: new(uint32(0))}.Build()
+			}),
+			wantErr: "proxy.max_attempts",
+		},
 	}
 
 	for _, tc := range cases {

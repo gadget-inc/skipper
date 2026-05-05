@@ -107,9 +107,11 @@ func (f *Function) Validate() error {
 			return fmt.Errorf("hpa.initial_readiness_delay (%s) must be >= 0", d)
 		}
 	}
-	if hb := f.GetHeartbeat(); hb != nil {
-		if d := hb.GetTimeout().AsDuration(); d < 0 {
-			return fmt.Errorf("heartbeat.timeout (%s) must be >= 0", d)
+	if hb := f.GetHeartbeat(); hb != nil && hb.HasTimeout() {
+		// Zero would scale the function to zero on the first converge tick;
+		// honour the cluster default by leaving the field unset.
+		if d := hb.GetTimeout().AsDuration(); d <= 0 {
+			return fmt.Errorf("heartbeat.timeout (%s) must be > 0 when set", d)
 		}
 	}
 	if proxy := f.GetProxy(); proxy != nil {
@@ -124,13 +126,24 @@ func (f *Function) Validate() error {
 		if minBackoff > 0 && maxBackoff > 0 && minBackoff > maxBackoff {
 			return fmt.Errorf("proxy.retry_min_backoff (%s) must be <= proxy.retry_max_backoff (%s)", minBackoff, maxBackoff)
 		}
+		// Zero attempts fails every request before the first proxy try.
+		if proxy.HasMaxAttempts() && proxy.GetMaxAttempts() == 0 {
+			return fmt.Errorf("proxy.max_attempts (0) must be > 0 when set")
+		}
 	}
 	if lc := f.GetLifecycle(); lc != nil {
-		if d := lc.GetAssignTimeout().AsDuration(); d < 0 {
-			return fmt.Errorf("lifecycle.assign_timeout (%s) must be >= 0", d)
+		if lc.HasAssignTimeout() {
+			// Zero immediately cancels the assign context; every assignment
+			// fails. Honour the cluster default by leaving the field unset.
+			if d := lc.GetAssignTimeout().AsDuration(); d <= 0 {
+				return fmt.Errorf("lifecycle.assign_timeout (%s) must be > 0 when set", d)
+			}
 		}
-		if d := lc.GetTokenTtl().AsDuration(); d < 0 {
-			return fmt.Errorf("lifecycle.token_ttl (%s) must be >= 0", d)
+		if lc.HasTokenTtl() {
+			// Zero issues an already-expired token; every backend rejects.
+			if d := lc.GetTokenTtl().AsDuration(); d <= 0 {
+				return fmt.Errorf("lifecycle.token_ttl (%s) must be > 0 when set", d)
+			}
 		}
 	}
 	return nil
