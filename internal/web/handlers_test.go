@@ -15,7 +15,7 @@ import (
 )
 
 func testState() *skipper.ClusterState {
-	fn := skipper.Function_builder{
+	fn := skipper.Assignment_builder{
 		Namespace:  new("default"),
 		Deployment: new("web-app"),
 		Tenant:     new("tenant-1"),
@@ -29,7 +29,7 @@ func testState() *skipper.ClusterState {
 	}.Build()
 
 	inst := skipper.Instance_builder{
-		Function:       fn,
+		Assignment:     fn,
 		Name:           new("web-app-abc123"),
 		Addr:           new("10.0.1.1:8080"),
 		ReplicaSet:     new("web-app-rs-1"),
@@ -40,7 +40,7 @@ func testState() *skipper.ClusterState {
 	}.Build()
 
 	sup := &skipper.SupervisorState{}
-	sup.SetFunction(fn)
+	sup.SetAssignment(fn)
 	sup.SetInstances([]*skipper.Instance{inst})
 	sup.SetResponsibleControllerIp("10.0.0.1")
 	sup.SetActiveReplicaSet("web-app-rs-1")
@@ -182,21 +182,21 @@ func TestContentType(t *testing.T) {
 func TestEventsFiltering(t *testing.T) {
 	t.Parallel()
 
-	fn := skipper.Function_builder{
+	fn := skipper.Assignment_builder{
 		Namespace:  new("default"),
 		Deployment: new("web-app"),
 		Tenant:     new("tenant-1"),
 	}.Build()
 
 	event1 := &skipper.Event{}
-	event1.SetFunction(fn)
+	event1.SetAssignment(fn)
 	event1.SetType(skipper.EventType_EVENT_TYPE_SCALE_UP)
 	event1.SetSeverity(skipper.EventSeverity_EVENT_SEVERITY_INFO)
 	event1.SetMessage("scaled up")
 	event1.SetTimestamp(timestamppb.Now())
 
 	event2 := &skipper.Event{}
-	event2.SetFunction(fn)
+	event2.SetAssignment(fn)
 	event2.SetType(skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT)
 	event2.SetSeverity(skipper.EventSeverity_EVENT_SEVERITY_WARN)
 	event2.SetMessage("timeout")
@@ -261,20 +261,20 @@ func TestCountInstances(t *testing.T) {
 		{
 			name: "non-ready instance",
 			state: func() *skipper.ClusterState {
-				fn := skipper.Function_builder{
+				fn := skipper.Assignment_builder{
 					Namespace:  new("default"),
 					Deployment: new("app"),
 					Tenant:     new("t1"),
 				}.Build()
 				inst := skipper.Instance_builder{
-					Function:   fn,
+					Assignment: fn,
 					Name:       new("app-xyz"),
 					Addr:       new("10.0.0.2:8080"),
 					AssignedAt: timestamppb.Now(),
 					// No ReadyAt — pending instance
 				}.Build()
 				sup := &skipper.SupervisorState{}
-				sup.SetFunction(fn)
+				sup.SetAssignment(fn)
 				sup.SetInstances([]*skipper.Instance{inst})
 				state := &skipper.ClusterState{}
 				state.SetSupervisors([]*skipper.SupervisorState{sup})
@@ -449,26 +449,26 @@ func TestBuildControllerData(t *testing.T) {
 func TestBuildControllerDataImbalanced(t *testing.T) {
 	t.Parallel()
 
-	fn1 := skipper.Function_builder{
+	fn1 := skipper.Assignment_builder{
 		Namespace: new("default"), Deployment: new("app1"), Tenant: new("t1"),
 	}.Build()
-	fn2 := skipper.Function_builder{
+	fn2 := skipper.Assignment_builder{
 		Namespace: new("default"), Deployment: new("app2"), Tenant: new("t1"),
 	}.Build()
-	fn3 := skipper.Function_builder{
+	fn3 := skipper.Assignment_builder{
 		Namespace: new("default"), Deployment: new("app3"), Tenant: new("t1"),
 	}.Build()
 
 	sup1 := &skipper.SupervisorState{}
-	sup1.SetFunction(fn1)
+	sup1.SetAssignment(fn1)
 	sup1.SetResponsibleControllerIp("10.0.0.1")
 
 	sup2 := &skipper.SupervisorState{}
-	sup2.SetFunction(fn2)
+	sup2.SetAssignment(fn2)
 	sup2.SetResponsibleControllerIp("10.0.0.1")
 
 	sup3 := &skipper.SupervisorState{}
-	sup3.SetFunction(fn3)
+	sup3.SetAssignment(fn3)
 	sup3.SetResponsibleControllerIp("10.0.0.1")
 
 	state := &skipper.ClusterState{}
@@ -494,7 +494,7 @@ func TestBuildRouterRows(t *testing.T) {
 
 	t.Run("with heartbeats", func(t *testing.T) {
 		t.Parallel()
-		fn := skipper.Function_builder{
+		fn := skipper.Assignment_builder{
 			Namespace: new("default"), Deployment: new("app"), Tenant: new("t1"),
 		}.Build()
 		hb := &skipper.HeartbeatState{}
@@ -502,7 +502,7 @@ func TestBuildRouterRows(t *testing.T) {
 		hb.SetHeartbeat(skipper.Heartbeat_builder{InFlightRequests: proto.Uint32(5)}.Build())
 
 		sup := &skipper.SupervisorState{}
-		sup.SetFunction(fn)
+		sup.SetAssignment(fn)
 		sup.SetRouterHeartbeats([]*skipper.HeartbeatState{hb})
 
 		state := &skipper.ClusterState{}
@@ -529,7 +529,7 @@ func TestBuildRouterEntries(t *testing.T) {
 
 	t.Run("matching IP", func(t *testing.T) {
 		t.Parallel()
-		fn := skipper.Function_builder{
+		fn := skipper.Assignment_builder{
 			Namespace: new("default"), Deployment: new("app"), Tenant: new("t1"),
 		}.Build()
 		hb := &skipper.HeartbeatState{}
@@ -537,7 +537,7 @@ func TestBuildRouterEntries(t *testing.T) {
 		hb.SetHeartbeat(skipper.Heartbeat_builder{InFlightRequests: proto.Uint32(3)}.Build())
 
 		sup := &skipper.SupervisorState{}
-		sup.SetFunction(fn)
+		sup.SetAssignment(fn)
 		sup.SetRouterHeartbeats([]*skipper.HeartbeatState{hb})
 
 		state := &skipper.ClusterState{}
@@ -631,43 +631,43 @@ func TestBuildTenantRows(t *testing.T) {
 	t.Run("multiple tenants sorted", func(t *testing.T) {
 		t.Parallel()
 
-		fn1 := skipper.Function_builder{
+		fn1 := skipper.Assignment_builder{
 			Namespace:  new("default"),
 			Deployment: new("web-app"),
 			Tenant:     new("tenant-1"),
 		}.Build()
 		inst1 := skipper.Instance_builder{
-			Function:   fn1,
+			Assignment: fn1,
 			Name:       new("web-app-abc123"),
 			Addr:       new("10.0.1.1:8080"),
 			AssignedAt: timestamppb.Now(),
 			ReadyAt:    timestamppb.Now(),
 		}.Build()
 		sup1 := &skipper.SupervisorState{}
-		sup1.SetFunction(fn1)
+		sup1.SetAssignment(fn1)
 		sup1.SetInstances([]*skipper.Instance{inst1})
 
-		fn2 := skipper.Function_builder{
+		fn2 := skipper.Assignment_builder{
 			Namespace:  new("default"),
 			Deployment: new("api-server"),
 			Tenant:     new("tenant-2"),
 		}.Build()
 		inst2 := skipper.Instance_builder{
-			Function:   fn2,
+			Assignment: fn2,
 			Name:       new("api-server-def456"),
 			Addr:       new("10.0.1.2:8080"),
 			AssignedAt: timestamppb.Now(),
 			ReadyAt:    timestamppb.Now(),
 		}.Build()
 		inst3 := skipper.Instance_builder{
-			Function:   fn2,
+			Assignment: fn2,
 			Name:       new("api-server-ghi789"),
 			Addr:       new("10.0.1.3:8080"),
 			AssignedAt: timestamppb.Now(),
 			// No ReadyAt — pending instance
 		}.Build()
 		sup2 := &skipper.SupervisorState{}
-		sup2.SetFunction(fn2)
+		sup2.SetAssignment(fn2)
 		sup2.SetInstances([]*skipper.Instance{inst2, inst3})
 
 		state := &skipper.ClusterState{}
@@ -716,21 +716,21 @@ func TestBuildDeploymentRows(t *testing.T) {
 	t.Run("multiple deployments shared tenant", func(t *testing.T) {
 		t.Parallel()
 
-		fn1 := skipper.Function_builder{
+		fn1 := skipper.Assignment_builder{
 			Namespace:  new("default"),
 			Deployment: new("api"),
 			Tenant:     new("t1"),
 		}.Build()
 		sup1 := &skipper.SupervisorState{}
-		sup1.SetFunction(fn1)
+		sup1.SetAssignment(fn1)
 
-		fn2 := skipper.Function_builder{
+		fn2 := skipper.Assignment_builder{
 			Namespace:  new("default"),
 			Deployment: new("web"),
 			Tenant:     new("t1"),
 		}.Build()
 		sup2 := &skipper.SupervisorState{}
-		sup2.SetFunction(fn2)
+		sup2.SetAssignment(fn2)
 
 		state := &skipper.ClusterState{}
 		state.SetSupervisors([]*skipper.SupervisorState{sup1, sup2})
@@ -776,36 +776,36 @@ func TestBuildTenantData(t *testing.T) {
 		{
 			name: "multiple deployments",
 			state: func() *skipper.ClusterState {
-				fn1 := skipper.Function_builder{
+				fn1 := skipper.Assignment_builder{
 					Namespace:  new("default"),
 					Deployment: new("web-app"),
 					Tenant:     new("tenant-1"),
 				}.Build()
 				inst1 := skipper.Instance_builder{
-					Function:   fn1,
+					Assignment: fn1,
 					Name:       new("web-app-abc"),
 					Addr:       new("10.0.1.1:8080"),
 					AssignedAt: timestamppb.Now(),
 					ReadyAt:    timestamppb.Now(),
 				}.Build()
 				sup1 := &skipper.SupervisorState{}
-				sup1.SetFunction(fn1)
+				sup1.SetAssignment(fn1)
 				sup1.SetInstances([]*skipper.Instance{inst1})
 
-				fn2 := skipper.Function_builder{
+				fn2 := skipper.Assignment_builder{
 					Namespace:  new("default"),
 					Deployment: new("api-server"),
 					Tenant:     new("tenant-1"),
 				}.Build()
 				inst2 := skipper.Instance_builder{
-					Function:   fn2,
+					Assignment: fn2,
 					Name:       new("api-server-def"),
 					Addr:       new("10.0.1.2:8080"),
 					AssignedAt: timestamppb.Now(),
 					// No ReadyAt — pending
 				}.Build()
 				sup2 := &skipper.SupervisorState{}
-				sup2.SetFunction(fn2)
+				sup2.SetAssignment(fn2)
 				sup2.SetInstances([]*skipper.Instance{inst2})
 
 				state := &skipper.ClusterState{}
@@ -872,7 +872,7 @@ func TestTenantDetail(t *testing.T) {
 }
 
 func makeSup(ns, deploy, tenant string, instanceCount int) *skipper.SupervisorState {
-	fn := skipper.Function_builder{
+	fn := skipper.Assignment_builder{
 		Namespace:  new(ns),
 		Deployment: new(deploy),
 		Tenant:     new(tenant),
@@ -880,14 +880,14 @@ func makeSup(ns, deploy, tenant string, instanceCount int) *skipper.SupervisorSt
 	instances := make([]*skipper.Instance, instanceCount)
 	for i := range instances {
 		instances[i] = skipper.Instance_builder{
-			Function: fn,
-			Name:     new(fmt.Sprintf("%s-%d", deploy, i)),
-			Addr:     new(fmt.Sprintf("10.0.0.%d:8080", i)),
-			ReadyAt:  timestamppb.Now(),
+			Assignment: fn,
+			Name:       new(fmt.Sprintf("%s-%d", deploy, i)),
+			Addr:       new(fmt.Sprintf("10.0.0.%d:8080", i)),
+			ReadyAt:    timestamppb.Now(),
 		}.Build()
 	}
 	sup := &skipper.SupervisorState{}
-	sup.SetFunction(fn)
+	sup.SetAssignment(fn)
 	sup.SetInstances(instances)
 	return sup
 }
@@ -1111,41 +1111,41 @@ func TestSortSupervisors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			result := sortSupervisors(sups, tc.col, tc.dir)
-			assert.Equal(t, result[0].GetFunction().GetDeployment(), tc.wantFirst)
-			assert.Equal(t, result[len(result)-1].GetFunction().GetDeployment(), tc.wantLast)
+			assert.Equal(t, result[0].GetAssignment().GetDeployment(), tc.wantFirst)
+			assert.Equal(t, result[len(result)-1].GetAssignment().GetDeployment(), tc.wantLast)
 		})
 	}
 }
 
 func eventsServer() *Server {
 	return New(func(ctx context.Context) *skipper.ClusterState {
-		fn1 := skipper.Function_builder{
+		fn1 := skipper.Assignment_builder{
 			Namespace:  new("default"),
 			Deployment: new("web-app"),
 			Tenant:     new("tenant-1"),
 		}.Build()
-		fn2 := skipper.Function_builder{
+		fn2 := skipper.Assignment_builder{
 			Namespace:  new("staging"),
 			Deployment: new("api-server"),
 			Tenant:     new("tenant-2"),
 		}.Build()
 
 		event1 := &skipper.Event{}
-		event1.SetFunction(fn1)
+		event1.SetAssignment(fn1)
 		event1.SetType(skipper.EventType_EVENT_TYPE_SCALE_UP)
 		event1.SetSeverity(skipper.EventSeverity_EVENT_SEVERITY_INFO)
 		event1.SetMessage("scaled up web-app")
 		event1.SetTimestamp(timestamppb.Now())
 
 		event2 := &skipper.Event{}
-		event2.SetFunction(fn1)
+		event2.SetAssignment(fn1)
 		event2.SetType(skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT)
 		event2.SetSeverity(skipper.EventSeverity_EVENT_SEVERITY_WARN)
 		event2.SetMessage("timeout web-app")
 		event2.SetTimestamp(timestamppb.Now())
 
 		event3 := &skipper.Event{}
-		event3.SetFunction(fn2)
+		event3.SetAssignment(fn2)
 		event3.SetType(skipper.EventType_EVENT_TYPE_SCALE_UP)
 		event3.SetSeverity(skipper.EventSeverity_EVENT_SEVERITY_INFO)
 		event3.SetMessage("scaled up api-server")

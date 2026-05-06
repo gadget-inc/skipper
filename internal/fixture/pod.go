@@ -26,9 +26,9 @@ import (
 
 // replicaSetNames tracks the current replicaset name per function (keyed by function hash).
 // This allows each function to have its own replicaset lineage without global counters.
-var replicaSetNames = xsync.NewMap[skipper.FunctionHash, string]()
+var replicaSetNames = xsync.NewMap[skipper.AssignmentHash, string]()
 
-func NewAvailablePod(t *testing.T, fn *skipper.Function, handler http.Handler) *v1.Pod {
+func NewAvailablePod(t *testing.T, fn *skipper.Assignment, handler http.Handler) *v1.Pod {
 	t.Helper()
 
 	if handler == nil {
@@ -87,12 +87,12 @@ func NewAvailablePod(t *testing.T, fn *skipper.Function, handler http.Handler) *
 	}
 }
 
-func defaultAvailablePodHandler(t *testing.T, fn *skipper.Function) http.HandlerFunc {
+func defaultAvailablePodHandler(t *testing.T, fn *skipper.Assignment) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		assert.Assert(t, req.Method == http.MethodPost)
 		assert.Assert(t, req.URL.Path == "/__skipper/assign")
 
-		assignedFn, err := skipper.FunctionFromHeader(req)
+		assignedFn, err := skipper.AssignmentFromHeader(req)
 		assert.NilError(t, err)
 		assert.Assert(t, proto.Equal(assignedFn, fn))
 
@@ -105,7 +105,7 @@ func defaultAvailablePodHandler(t *testing.T, fn *skipper.Function) http.Handler
 	}
 }
 
-func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v1.Pod {
+func NewAssignedPod(t *testing.T, fn *skipper.Assignment, handler http.Handler) *v1.Pod {
 	t.Helper()
 
 	testServer := httptest.NewServer(handler)
@@ -117,7 +117,7 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 	port, err := strconv.Atoi(portStr)
 	assert.NilError(t, err)
 
-	fnJSON, err := json.Marshal(fn)
+	body, err := json.Marshal(fn)
 	assert.NilError(t, err)
 
 	return &v1.Pod{
@@ -129,10 +129,11 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 				key.Tenant.Label:     fn.GetTenant(),
 			},
 			Annotations: map[string]string{
-				skipper.FunctionKey.Label: string(fnJSON),
-				key.ReplicaSet.Label:      CurrentReplicaSetName(fn),
-				key.AssignedAt.Label:      time.Now().UTC().Format(time.RFC3339),
-				key.ReadyAt.Label:         time.Now().UTC().Format(time.RFC3339),
+				skipper.LegacyFunctionKey.Label: string(body),
+				skipper.AssignmentKey.Label:     string(body),
+				key.ReplicaSet.Label:            CurrentReplicaSetName(fn),
+				key.AssignedAt.Label:            time.Now().UTC().Format(time.RFC3339),
+				key.ReadyAt.Label:               time.Now().UTC().Format(time.RFC3339),
 			},
 		},
 		Status: v1.PodStatus{
@@ -163,14 +164,14 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 
 // CurrentReplicaSetName returns the current replicaset name for the given skipper.
 // If no replicaset has been created yet for this function, it generates one.
-func CurrentReplicaSetName(fn *skipper.Function) string {
+func CurrentReplicaSetName(fn *skipper.Assignment) string {
 	name, _ := replicaSetNames.LoadOrCompute(fn.Hash(), func() (string, bool) {
 		return fn.GetDeployment() + "-rs-" + uuid.NewString()[:8], false
 	})
 	return name
 }
 
-func CurrentReplicaSet(t *testing.T, fn *skipper.Function) *appsv1.ReplicaSet {
+func CurrentReplicaSet(t *testing.T, fn *skipper.Assignment) *appsv1.ReplicaSet {
 	t.Helper()
 	return &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -188,7 +189,7 @@ func CurrentReplicaSet(t *testing.T, fn *skipper.Function) *appsv1.ReplicaSet {
 }
 
 // NewReplicaSet creates a new replicaset for the function, replacing any existing one.
-func NewReplicaSet(t *testing.T, fn *skipper.Function) *appsv1.ReplicaSet {
+func NewReplicaSet(t *testing.T, fn *skipper.Assignment) *appsv1.ReplicaSet {
 	t.Helper()
 	// Generate a new replicaset name for this function
 	replicaSetNames.Store(fn.Hash(), fn.GetDeployment()+"-rs-"+uuid.NewString()[:8])

@@ -26,7 +26,7 @@ var (
 		TargetInFlightRequests: proto.Uint32(100),
 	}.Build()
 
-	goldenFunction = Function_builder{
+	goldenAssignment = Assignment_builder{
 		Namespace:  new("skipper-production"),
 		Deployment: new("my-app"),
 		Tenant:     new("tenant-123"),
@@ -35,13 +35,13 @@ var (
 	}.Build()
 
 	goldenHeartbeat = Heartbeat_builder{
-		Function:         goldenFunction,
+		Assignment:       goldenAssignment,
 		Timestamp:        timestamppb.New(goldenTime),
 		InFlightRequests: proto.Uint32(42),
 	}.Build()
 
 	goldenInstance = Instance_builder{
-		Function:       goldenFunction,
+		Assignment:     goldenAssignment,
 		Name:           new("my-app-abc123"),
 		Addr:           new("10.0.0.1:8080"),
 		ReplicaSet:     new("my-app-5f4b8c"),
@@ -68,7 +68,7 @@ var (
 )
 
 type goldenResult struct {
-	Function      *Function
+	Assignment    *Assignment
 	Heartbeat     *Heartbeat
 	Instance      *Instance
 	Scale         *Scale
@@ -78,7 +78,7 @@ type goldenResult struct {
 
 func TestJSONMarshal(t *testing.T) {
 	result := goldenResult{
-		Function:      goldenFunction,
+		Assignment:    goldenAssignment,
 		Heartbeat:     goldenHeartbeat,
 		Instance:      goldenInstance,
 		Scale:         goldenScale,
@@ -97,7 +97,7 @@ func TestJSONUnmarshal(t *testing.T) {
 	err := json.Unmarshal(golden.Get(t, "json.golden"), &result)
 	assert.NilError(t, err)
 
-	assert.Assert(t, proto.Equal(result.Function, goldenFunction), "function mismatch")
+	assert.Assert(t, proto.Equal(result.Assignment, goldenAssignment), "assignment mismatch")
 	assert.Assert(t, proto.Equal(result.Scale, goldenScale), "scale mismatch")
 	assert.Assert(t, proto.Equal(result.Heartbeat, goldenHeartbeat), "heartbeat mismatch")
 	assert.Assert(t, proto.Equal(result.Instance, goldenInstance), "instance mismatch")

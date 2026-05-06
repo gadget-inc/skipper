@@ -1,6 +1,6 @@
 {{define "content"}} {{if not .Found}}
 <div class="empty-state">Instance not found: {{.Name}}</div>
-{{else}} {{$inst := .Instance}} {{$fn := .Supervisor.GetFunction}}
+{{else}} {{$inst := .Instance}} {{$fn := .Supervisor.GetAssignment}}
 <div data-on-interval__duration.5000ms="@get('/sse/instance/{{pathEscape .Name}}')">
   <div class="page-header">
     <div class="breadcrumb">
@@ -11,7 +11,7 @@
   </div>
   <div id="instance-detail">{{template "instance-detail" .}}</div>
 </div>
-{{end}} {{end}} {{define "instance-detail"}} {{$inst := .Instance}} {{$fn := .Supervisor.GetFunction}} {{template "lifecycle-timeline"
+{{end}} {{end}} {{define "instance-detail"}} {{$inst := .Instance}} {{$fn := .Supervisor.GetAssignment}} {{template "lifecycle-timeline"
 $inst}}
 
 <div class="detail-layout">

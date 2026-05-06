@@ -46,7 +46,7 @@
           </tr>
         </thead>
         <tbody>
-          {{range .Supervisors}} {{$fn := .GetFunction}} {{$scale := $fn.GetScale}}
+          {{range .Supervisors}} {{$fn := .GetAssignment}} {{$scale := $fn.GetScale}}
           <tr>
             <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
             <td>{{$fn.GetNamespace}}</td>

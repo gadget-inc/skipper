@@ -11,7 +11,7 @@ func testConfig() *Config {
 	cfg.Namespace = fixture.ControllerNamespace
 	cfg.PodIP = fixture.ControllerIP
 	cfg.PasetoPrivateKey = PasetoPrivateKey{V2AsymmetricSecretKey: fixture.ControllerPasetoSecretKey}
-	cfg.FunctionNamespaces = []string{fixture.FunctionNamespace}
+	cfg.FunctionNamespaces = []string{fixture.AssignmentNamespace}
 	return cfg
 }
 

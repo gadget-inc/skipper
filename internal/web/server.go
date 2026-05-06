@@ -51,7 +51,7 @@ func newFuncMap() template.FuncMap {
 		"timeAgo":            timeAgo,
 		"formatTimestamp":    formatTimestamp,
 		"durationBetween":    durationBetween,
-		"functionKey":        functionKey,
+		"functionKey":        assignmentKey,
 		"functionPath":       functionPath,
 		"scaleReasonLabel":   scaleReasonLabel,
 		"eventTypeLabel":     eventTypeLabel,
@@ -110,8 +110,8 @@ func New(state StateProvider, opts ...Option) *Server {
 
 	// Full-page handlers
 	s.mux.HandleFunc("GET /", s.handleDashboard)
-	s.mux.HandleFunc("GET /functions", s.handleFunctions)
-	s.mux.HandleFunc("GET /functions/{key}", s.handleFunction)
+	s.mux.HandleFunc("GET /functions", s.handleAssignments)
+	s.mux.HandleFunc("GET /functions/{key}", s.handleAssignment)
 	s.mux.HandleFunc("GET /controllers", s.handleControllers)
 	s.mux.HandleFunc("GET /controllers/{ip}", s.handleController)
 	s.mux.HandleFunc("GET /routers", s.handleRouters)
@@ -127,7 +127,7 @@ func New(state StateProvider, opts ...Option) *Server {
 	// SSE fragment handlers (Datastar)
 	s.mux.HandleFunc("GET /sse/dashboard", s.sseDashboard)
 	s.mux.HandleFunc("GET /sse/functions", s.sseFunctions)
-	s.mux.HandleFunc("GET /sse/function/{key}", s.sseFunction)
+	s.mux.HandleFunc("GET /sse/function/{key}", s.sseAssignment)
 	s.mux.HandleFunc("GET /sse/controllers", s.sseControllers)
 	s.mux.HandleFunc("GET /sse/controller/{ip}", s.sseController)
 	s.mux.HandleFunc("GET /sse/routers", s.sseRouters)

@@ -18,16 +18,16 @@ var (
 )
 
 // BenchmarkConvergeTelemetry measures the per-converge cost of building span
-// attributes on the Supervisor.converge hot path: a cached-identity *Function
+// attributes on the Supervisor.converge hot path: a cached-identity *Assignment
 // and a per-tick *Heartbeat, both routed through telemetry.With.
 //
 // FunctionAttr and HeartbeatAttr isolate the Attr() cost by priming the
-// pointer (Function cache hit, Heartbeat pre-built); Combined rebuilds the
+// pointer (Assignment cache hit, Heartbeat pre-built); Combined rebuilds the
 // Heartbeat each iteration to reflect the full converge tick.
 //
 // Measured on Apple M4 Pro with -benchmem -count=6 medians. Baseline runs
-// the former centralized key.Function.Attr / key.Heartbeat.Attr path; "after"
-// runs the typed FunctionKey.Attr (weak-memoized) / HeartbeatKey.Attr
+// the former centralized key.Assignment.Attr / key.Heartbeat.Attr path; "after"
+// runs the typed LegacyFunctionKey.Attr (weak-memoized) / HeartbeatKey.Attr
 // (direct-to-OTel via OtelAttrs) path.
 //
 //	Baseline:
@@ -43,16 +43,16 @@ var (
 // Allocation reductions (the whole point -- GC was the bottleneck):
 // FunctionAttr 26->0 (100%), HeartbeatAttr 7->3 (57%), Combined 41->11 (73%).
 func BenchmarkConvergeTelemetry(b *testing.B) {
-	fn := fixture.NewFunction(b)
+	fn := fixture.NewAssignment(b)
 	ctx := context.Background()
 
 	b.Run("FunctionAttr", func(b *testing.B) {
 		// Prime the cache so we measure the steady-state converge path where
-		// the Function pointer has already been seen.
-		_ = skipper.FunctionKey.Attr(fn)
+		// the Assignment pointer has already been seen.
+		_ = skipper.LegacyFunctionKey.Attr(fn)
 		b.ReportAllocs()
 		for b.Loop() {
-			sinkAttr = skipper.FunctionKey.Attr(fn)
+			sinkAttr = skipper.LegacyFunctionKey.Attr(fn)
 		}
 	})
 
@@ -69,18 +69,18 @@ func BenchmarkConvergeTelemetry(b *testing.B) {
 	})
 
 	b.Run("Combined", func(b *testing.B) {
-		_ = skipper.FunctionKey.Attr(fn)
+		_ = skipper.LegacyFunctionKey.Attr(fn)
 		b.ReportAllocs()
 		for b.Loop() {
 			hb := newBenchHeartbeat(fn)
-			sinkCtx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn), skipper.HeartbeatKey.Attr(hb))
+			sinkCtx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.HeartbeatKey.Attr(hb))
 		}
 	})
 }
 
-func newBenchHeartbeat(fn *skipper.Function) *skipper.Heartbeat {
+func newBenchHeartbeat(fn *skipper.Assignment) *skipper.Heartbeat {
 	hb := &skipper.Heartbeat{}
-	hb.SetFunction(fn)
+	hb.SetAssignment(fn)
 	hb.SetTimestamp(timestamppb.New(time.Unix(1700000000, 0)))
 	hb.SetInFlightRequests(42)
 	return hb

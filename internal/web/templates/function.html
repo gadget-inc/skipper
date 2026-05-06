@@ -1,6 +1,6 @@
 {{define "content"}} {{if not .Supervisor}}
 <div class="empty-state">Function not found: {{.Key}}</div>
-{{else}} {{$fn := .Supervisor.GetFunction}} {{$scale := $fn.GetScale}} {{$sup := .Supervisor}}
+{{else}} {{$fn := .Supervisor.GetAssignment}} {{$scale := $fn.GetScale}} {{$sup := .Supervisor}}
 <div data-on-interval__duration.5000ms="@get('/sse/function/{{pathEscape .Key}}')">
   <div class="page-header">
     <div class="breadcrumb"><a href="/functions">Functions</a><span class="separator">/</span>{{$fn.GetDeployment}}</div>

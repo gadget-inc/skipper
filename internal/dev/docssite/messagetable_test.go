@@ -16,7 +16,7 @@ import (
 func TestRenderMessageTable_HeaderShape(t *testing.T) {
 	t.Parallel()
 
-	out, err := renderMessageTable("Function")
+	out, err := renderMessageTable("Assignment")
 	assert.NilError(t, err)
 
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
@@ -32,19 +32,19 @@ func TestRenderMessageTable_HeaderShape(t *testing.T) {
 func TestRenderMessageTable_FunctionFields(t *testing.T) {
 	t.Parallel()
 
-	out, err := renderMessageTable("Function")
+	out, err := renderMessageTable("Assignment")
 	assert.NilError(t, err)
 
 	for _, name := range []string{"namespace", "deployment", "tenant", "metadata", "scale", "oneshot"} {
 		assert.Assert(t, strings.Contains(out, "`"+name+"`"),
-			"Function table missing field %q\n%s", name, out)
+			"Assignment table missing field %q\n%s", name, out)
 	}
 }
 
 func TestRenderMessageTable_RowsOrderedByFieldNumber(t *testing.T) {
 	t.Parallel()
 
-	out, err := renderMessageTable("Function")
+	out, err := renderMessageTable("Assignment")
 	assert.NilError(t, err)
 
 	prev := -1
@@ -58,9 +58,9 @@ func TestRenderMessageTable_RowsOrderedByFieldNumber(t *testing.T) {
 func TestRenderMessageTable_MessageTypedFieldsRenderFullName(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Function.scale renders as Scale (skipper. stripped)", func(t *testing.T) {
+	t.Run("Assignment.scale renders as Scale (skipper. stripped)", func(t *testing.T) {
 		t.Parallel()
-		out, err := renderMessageTable("Function")
+		out, err := renderMessageTable("Assignment")
 		assert.NilError(t, err)
 		row := messageRowFor(t, out, "scale")
 		assert.Assert(t, strings.Contains(row, " Scale "),
@@ -143,10 +143,10 @@ func TestRenderMessageTable_RequestResponseRegistry(t *testing.T) {
 		name   string
 		fields []string
 	}{
-		{"GetInstanceRequest", []string{"function", "exclude_instance_names"}},
+		{"GetInstanceRequest", []string{"assignment", "exclude_instance_names"}},
 		{"GetInstanceResponse", []string{"instance"}},
 		{"HeartbeatRequest", []string{"router_ip", "heartbeats", "forwarded_for"}},
-		{"ScaleRequest", []string{"function", "desired_instances", "reason"}},
+		{"ScaleRequest", []string{"assignment", "desired_instances", "reason"}},
 		{"ScaleResponse", []string{"instances"}},
 		{"ReleaseInstanceRequest", []string{"instance"}},
 		{"GetClusterStateResponse", []string{"cluster_state"}},
@@ -170,10 +170,10 @@ func TestRenderMessageTable_MissingDescriptionFails(t *testing.T) {
 	t.Parallel()
 
 	gappy := map[string]string{} // empty descriptions
-	_, err := renderMessageRows("Function", gappy, messageTableRegistry)
+	_, err := renderMessageRows("Assignment", gappy, messageTableRegistry)
 	assert.Assert(t, err != nil)
 	assert.Assert(t, errors.Is(err, errMessageDescriptionDrift))
-	assert.ErrorContains(t, err, "Function.namespace")
+	assert.ErrorContains(t, err, "Assignment.namespace")
 }
 
 // (c) description key for nonexistent field.
@@ -181,18 +181,18 @@ func TestRenderMessageTable_ExtraDescriptionFails(t *testing.T) {
 	t.Parallel()
 
 	descriptions := map[string]string{
-		"Function.namespace":  "x",
-		"Function.deployment": "x",
-		"Function.tenant":     "x",
-		"Function.metadata":   "x",
-		"Function.scale":      "x",
-		"Function.oneshot":    "x",
-		"Function.bogus":      "extraneous",
+		"Assignment.namespace":  "x",
+		"Assignment.deployment": "x",
+		"Assignment.tenant":     "x",
+		"Assignment.metadata":   "x",
+		"Assignment.scale":      "x",
+		"Assignment.oneshot":    "x",
+		"Assignment.bogus":      "extraneous",
 	}
-	_, err := renderMessageRows("Function", descriptions, messageTableRegistry)
+	_, err := renderMessageRows("Assignment", descriptions, messageTableRegistry)
 	assert.Assert(t, err != nil)
 	assert.Assert(t, errors.Is(err, errMessageDescriptionDrift))
-	assert.ErrorContains(t, err, "Function.bogus")
+	assert.ErrorContains(t, err, "Assignment.bogus")
 }
 
 // (d) description-map key for unregistered message.
@@ -200,19 +200,19 @@ func TestRenderMessageTable_UnregisteredKeyFails(t *testing.T) {
 	t.Parallel()
 
 	descriptions := map[string]string{
-		"Function.namespace":  "x",
-		"Function.deployment": "x",
-		"Function.tenant":     "x",
-		"Function.metadata":   "x",
-		"Function.scale":      "x",
-		"Function.oneshot":    "x",
-		"Event.type":          "wrong message",
+		"Assignment.namespace":  "x",
+		"Assignment.deployment": "x",
+		"Assignment.tenant":     "x",
+		"Assignment.metadata":   "x",
+		"Assignment.scale":      "x",
+		"Assignment.oneshot":    "x",
+		"Event.type":            "wrong message",
 	}
-	_, err := renderMessageRows("Function", descriptions, messageTableRegistry)
+	_, err := renderMessageRows("Assignment", descriptions, messageTableRegistry)
 	assert.Assert(t, err != nil)
 	assert.Assert(t, errors.Is(err, errMessageDescriptionDrift))
 	assert.ErrorContains(t, err, "Event")
-	for _, msg := range []string{"Function", "Scale", "Instance", "Heartbeat"} {
+	for _, msg := range []string{"Assignment", "Scale", "Instance", "Heartbeat"} {
 		assert.Assert(t, strings.Contains(err.Error(), msg),
 			"error should list registered messages: %v", err)
 	}
@@ -269,9 +269,9 @@ func TestBuild_MessageTableShortcodeRendersAllFields(t *testing.T) {
 title: API
 ---
 
-## Function
+## Assignment
 
-{{< messageTable Function >}}
+{{< messageTable Assignment >}}
 
 ## Scale
 

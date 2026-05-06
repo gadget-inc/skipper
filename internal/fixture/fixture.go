@@ -9,9 +9,9 @@ import (
 	"github.com/go-json-experiment/json"
 )
 
-func NewFixtureFunction(t *testing.T) *skipper.Function {
+func NewFixtureAssignment(t *testing.T) *skipper.Assignment {
 	t.Helper()
-	fn := NewFunction(t)
+	fn := NewAssignment(t)
 	fn.SetDeployment("fixture")
 	return fn
 }

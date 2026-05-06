@@ -33,7 +33,7 @@ var errMessageDescriptionDrift = errors.New("docssite: messageTable description 
 // intentionally excluded -- they render as `**Response:** Empty.`
 // prose in the docs, not via this shortcode.
 var messageTableRegistry = []string{
-	"Function",
+	"Assignment",
 	"Scale",
 	"Instance",
 	"Heartbeat",
@@ -52,12 +52,12 @@ var messageTableRegistry = []string{
 // descriptions; the renderer's drift check enforces lockstep with
 // the live descriptors at build time.
 var messageTableDescriptions = map[string]string{
-	"Function.namespace":  "Kubernetes namespace the function is scheduled in.",
-	"Function.deployment": "Source deployment label that supplies the pod pool.",
-	"Function.tenant":     "Tenant identifier; combined with namespace, deployment, and oneshot to compute the function hash.",
-	"Function.metadata":   "Opaque string passed verbatim to the assigned pod; not part of the function hash.",
-	"Function.scale":      "Per-function scaling targets (min, max, CPU, memory, in-flight requests).",
-	"Function.oneshot":    "True if each request gets a fresh pod; assigned pods are released after the request completes.",
+	"Assignment.namespace":  "Kubernetes namespace the assignment is scheduled in.",
+	"Assignment.deployment": "Source deployment label that supplies the pod pool.",
+	"Assignment.tenant":     "Tenant identifier; combined with namespace, deployment, and oneshot to compute the assignment hash.",
+	"Assignment.metadata":   "Opaque string passed verbatim to the assigned pod; not part of the assignment hash.",
+	"Assignment.scale":      "Per-assignment scaling targets (min, max, CPU, memory, in-flight requests).",
+	"Assignment.oneshot":    "True if each request gets a fresh pod; assigned pods are released after the request completes.",
 
 	"Scale.min_instances":             "Minimum ready-instance floor (0 enables scale-to-zero).",
 	"Scale.max_instances":             "Hard ceiling on ready instances.",
@@ -65,29 +65,29 @@ var messageTableDescriptions = map[string]string{
 	"Scale.target_memory_usage_mib":   "Per-instance memory target in mebibytes.",
 	"Scale.target_in_flight_requests": "Per-instance in-flight-request target.",
 
-	"Instance.function":         "Function this instance is assigned to.",
+	"Instance.assignment":       "Assignment this instance is bound to.",
 	"Instance.name":             "Pod name in the cluster.",
 	"Instance.addr":             "Backend address (`host:port`) the router proxies to.",
 	"Instance.replica_set":      "Owning ReplicaSet name; used to detect stale instances after a rollout.",
-	"Instance.assigned_at":      "When the controller atomically claimed the pod for this function.",
+	"Instance.assigned_at":      "When the controller atomically claimed the pod for this assignment.",
 	"Instance.ready_at":         "When the pod confirmed assignment via `/__skipper/assign` and started serving traffic.",
 	"Instance.cpu_usage_milli":  "Most recent CPU usage sample in millicores.",
 	"Instance.memory_usage_mib": "Most recent memory usage sample in mebibytes.",
 
-	"Heartbeat.function":           "Function the heartbeat is for.",
+	"Heartbeat.assignment":         "Assignment the heartbeat is for.",
 	"Heartbeat.timestamp":          "Sender's clock reading at the time the batch was assembled.",
 	"Heartbeat.in_flight_requests": "In-flight request count at the time the batch was assembled.",
 
-	"GetInstanceRequest.function":               "Function to get an instance for.",
+	"GetInstanceRequest.assignment":             "Assignment to get an instance for.",
 	"GetInstanceRequest.exclude_instance_names": "Instance names to exclude; used by routers retrying after a failed dial.",
 
 	"GetInstanceResponse.instance": "Assigned, ready instance.",
 
 	"HeartbeatRequest.router_ip":     "IP of the router sending the heartbeat batch.",
-	"HeartbeatRequest.heartbeats":    "One heartbeat per function with active in-flight requests.",
+	"HeartbeatRequest.heartbeats":    "One heartbeat per assignment with active in-flight requests.",
 	"HeartbeatRequest.forwarded_for": "Controller IPs that have already processed this batch; used to break forwarding cycles.",
 
-	"ScaleRequest.function":          "Function being scaled.",
+	"ScaleRequest.assignment":        "Assignment being scaled.",
 	"ScaleRequest.desired_instances": "Target ready-instance count after scaling.",
 	"ScaleRequest.reason":            "Reason the scale was triggered.",
 
@@ -207,8 +207,8 @@ func checkMessageDescriptionDrift(descriptions map[string]string, registry []str
 func lookupMessageDescriptor(name string) (protoreflect.MessageDescriptor, error) {
 	var msg proto.Message
 	switch name {
-	case "Function":
-		msg = (&skipper.Function{})
+	case "Assignment":
+		msg = (&skipper.Assignment{})
 	case "Scale":
 		msg = (&skipper.Scale{})
 	case "Instance":

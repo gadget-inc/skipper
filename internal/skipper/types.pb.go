@@ -373,7 +373,7 @@ func (b0 Scale_builder) Build() *Scale {
 	return m0
 }
 
-type Function struct {
+type Assignment struct {
 	state                  protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Namespace   *string                `protobuf:"bytes,1,opt,name=namespace"`
 	xxx_hidden_Deployment  *string                `protobuf:"bytes,2,opt,name=deployment"`
@@ -387,20 +387,20 @@ type Function struct {
 	sizeCache              protoimpl.SizeCache
 }
 
-func (x *Function) Reset() {
-	*x = Function{}
+func (x *Assignment) Reset() {
+	*x = Assignment{}
 	mi := &file_types_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *Function) String() string {
+func (x *Assignment) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Function) ProtoMessage() {}
+func (*Assignment) ProtoMessage() {}
 
-func (x *Function) ProtoReflect() protoreflect.Message {
+func (x *Assignment) ProtoReflect() protoreflect.Message {
 	mi := &file_types_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -412,7 +412,7 @@ func (x *Function) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *Function) GetNamespace() string {
+func (x *Assignment) GetNamespace() string {
 	if x != nil {
 		if x.xxx_hidden_Namespace != nil {
 			return *x.xxx_hidden_Namespace
@@ -422,7 +422,7 @@ func (x *Function) GetNamespace() string {
 	return ""
 }
 
-func (x *Function) GetDeployment() string {
+func (x *Assignment) GetDeployment() string {
 	if x != nil {
 		if x.xxx_hidden_Deployment != nil {
 			return *x.xxx_hidden_Deployment
@@ -432,7 +432,7 @@ func (x *Function) GetDeployment() string {
 	return ""
 }
 
-func (x *Function) GetTenant() string {
+func (x *Assignment) GetTenant() string {
 	if x != nil {
 		if x.xxx_hidden_Tenant != nil {
 			return *x.xxx_hidden_Tenant
@@ -442,7 +442,7 @@ func (x *Function) GetTenant() string {
 	return ""
 }
 
-func (x *Function) GetMetadata() string {
+func (x *Assignment) GetMetadata() string {
 	if x != nil {
 		if x.xxx_hidden_Metadata != nil {
 			return *x.xxx_hidden_Metadata
@@ -452,121 +452,121 @@ func (x *Function) GetMetadata() string {
 	return ""
 }
 
-func (x *Function) GetScale() *Scale {
+func (x *Assignment) GetScale() *Scale {
 	if x != nil {
 		return x.xxx_hidden_Scale
 	}
 	return nil
 }
 
-func (x *Function) GetOneshot() bool {
+func (x *Assignment) GetOneshot() bool {
 	if x != nil {
 		return x.xxx_hidden_Oneshot
 	}
 	return false
 }
 
-func (x *Function) SetNamespace(v string) {
+func (x *Assignment) SetNamespace(v string) {
 	x.xxx_hidden_Namespace = &v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 6)
 }
 
-func (x *Function) SetDeployment(v string) {
+func (x *Assignment) SetDeployment(v string) {
 	x.xxx_hidden_Deployment = &v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 6)
 }
 
-func (x *Function) SetTenant(v string) {
+func (x *Assignment) SetTenant(v string) {
 	x.xxx_hidden_Tenant = &v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 6)
 }
 
-func (x *Function) SetMetadata(v string) {
+func (x *Assignment) SetMetadata(v string) {
 	x.xxx_hidden_Metadata = &v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 6)
 }
 
-func (x *Function) SetScale(v *Scale) {
+func (x *Assignment) SetScale(v *Scale) {
 	x.xxx_hidden_Scale = v
 }
 
-func (x *Function) SetOneshot(v bool) {
+func (x *Assignment) SetOneshot(v bool) {
 	x.xxx_hidden_Oneshot = v
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 6)
 }
 
-func (x *Function) HasNamespace() bool {
+func (x *Assignment) HasNamespace() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 0)
 }
 
-func (x *Function) HasDeployment() bool {
+func (x *Assignment) HasDeployment() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 1)
 }
 
-func (x *Function) HasTenant() bool {
+func (x *Assignment) HasTenant() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
 }
 
-func (x *Function) HasMetadata() bool {
+func (x *Assignment) HasMetadata() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 3)
 }
 
-func (x *Function) HasScale() bool {
+func (x *Assignment) HasScale() bool {
 	if x == nil {
 		return false
 	}
 	return x.xxx_hidden_Scale != nil
 }
 
-func (x *Function) HasOneshot() bool {
+func (x *Assignment) HasOneshot() bool {
 	if x == nil {
 		return false
 	}
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
 }
 
-func (x *Function) ClearNamespace() {
+func (x *Assignment) ClearNamespace() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_Namespace = nil
 }
 
-func (x *Function) ClearDeployment() {
+func (x *Assignment) ClearDeployment() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 1)
 	x.xxx_hidden_Deployment = nil
 }
 
-func (x *Function) ClearTenant() {
+func (x *Assignment) ClearTenant() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 2)
 	x.xxx_hidden_Tenant = nil
 }
 
-func (x *Function) ClearMetadata() {
+func (x *Assignment) ClearMetadata() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 3)
 	x.xxx_hidden_Metadata = nil
 }
 
-func (x *Function) ClearScale() {
+func (x *Assignment) ClearScale() {
 	x.xxx_hidden_Scale = nil
 }
 
-func (x *Function) ClearOneshot() {
+func (x *Assignment) ClearOneshot() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 5)
 	x.xxx_hidden_Oneshot = false
 }
 
-type Function_builder struct {
+type Assignment_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
 	Namespace  *string
@@ -577,8 +577,8 @@ type Function_builder struct {
 	Oneshot    *bool
 }
 
-func (b0 Function_builder) Build() *Function {
-	m0 := &Function{}
+func (b0 Assignment_builder) Build() *Assignment {
+	m0 := &Assignment{}
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.Namespace != nil {
@@ -607,7 +607,7 @@ func (b0 Function_builder) Build() *Function {
 
 type Instance struct {
 	state                     protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Function       *Function              `protobuf:"bytes,1,opt,name=function"`
+	xxx_hidden_Assignment     *Assignment            `protobuf:"bytes,1,opt,name=assignment"`
 	xxx_hidden_Name           *string                `protobuf:"bytes,2,opt,name=name"`
 	xxx_hidden_Addr           *string                `protobuf:"bytes,3,opt,name=addr"`
 	xxx_hidden_ReplicaSet     *string                `protobuf:"bytes,4,opt,name=replica_set,json=replicaSet"`
@@ -646,9 +646,9 @@ func (x *Instance) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *Instance) GetFunction() *Function {
+func (x *Instance) GetAssignment() *Assignment {
 	if x != nil {
-		return x.xxx_hidden_Function
+		return x.xxx_hidden_Assignment
 	}
 	return nil
 }
@@ -711,8 +711,8 @@ func (x *Instance) GetMemoryUsageMib() uint32 {
 	return 0
 }
 
-func (x *Instance) SetFunction(v *Function) {
-	x.xxx_hidden_Function = v
+func (x *Instance) SetAssignment(v *Assignment) {
+	x.xxx_hidden_Assignment = v
 }
 
 func (x *Instance) SetName(v string) {
@@ -748,11 +748,11 @@ func (x *Instance) SetMemoryUsageMib(v uint32) {
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 8)
 }
 
-func (x *Instance) HasFunction() bool {
+func (x *Instance) HasAssignment() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_Function != nil
+	return x.xxx_hidden_Assignment != nil
 }
 
 func (x *Instance) HasName() bool {
@@ -804,8 +804,8 @@ func (x *Instance) HasMemoryUsageMib() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 7)
 }
 
-func (x *Instance) ClearFunction() {
-	x.xxx_hidden_Function = nil
+func (x *Instance) ClearAssignment() {
+	x.xxx_hidden_Assignment = nil
 }
 
 func (x *Instance) ClearName() {
@@ -844,7 +844,7 @@ func (x *Instance) ClearMemoryUsageMib() {
 type Instance_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Function       *Function
+	Assignment     *Assignment
 	Name           *string
 	Addr           *string
 	ReplicaSet     *string
@@ -858,7 +858,7 @@ func (b0 Instance_builder) Build() *Instance {
 	m0 := &Instance{}
 	b, x := &b0, m0
 	_, _ = b, x
-	x.xxx_hidden_Function = b.Function
+	x.xxx_hidden_Assignment = b.Assignment
 	if b.Name != nil {
 		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 8)
 		x.xxx_hidden_Name = b.Name
@@ -886,7 +886,7 @@ func (b0 Instance_builder) Build() *Instance {
 
 type Heartbeat struct {
 	state                       protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Function         *Function              `protobuf:"bytes,1,opt,name=function"`
+	xxx_hidden_Assignment       *Assignment            `protobuf:"bytes,1,opt,name=assignment"`
 	xxx_hidden_Timestamp        *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp"`
 	xxx_hidden_InFlightRequests uint32                 `protobuf:"varint,3,opt,name=in_flight_requests,json=inFlightRequests"`
 	XXX_raceDetectHookData      protoimpl.RaceDetectHookData
@@ -920,9 +920,9 @@ func (x *Heartbeat) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *Heartbeat) GetFunction() *Function {
+func (x *Heartbeat) GetAssignment() *Assignment {
 	if x != nil {
-		return x.xxx_hidden_Function
+		return x.xxx_hidden_Assignment
 	}
 	return nil
 }
@@ -941,8 +941,8 @@ func (x *Heartbeat) GetInFlightRequests() uint32 {
 	return 0
 }
 
-func (x *Heartbeat) SetFunction(v *Function) {
-	x.xxx_hidden_Function = v
+func (x *Heartbeat) SetAssignment(v *Assignment) {
+	x.xxx_hidden_Assignment = v
 }
 
 func (x *Heartbeat) SetTimestamp(v *timestamppb.Timestamp) {
@@ -954,11 +954,11 @@ func (x *Heartbeat) SetInFlightRequests(v uint32) {
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
 }
 
-func (x *Heartbeat) HasFunction() bool {
+func (x *Heartbeat) HasAssignment() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_Function != nil
+	return x.xxx_hidden_Assignment != nil
 }
 
 func (x *Heartbeat) HasTimestamp() bool {
@@ -975,8 +975,8 @@ func (x *Heartbeat) HasInFlightRequests() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
 }
 
-func (x *Heartbeat) ClearFunction() {
-	x.xxx_hidden_Function = nil
+func (x *Heartbeat) ClearAssignment() {
+	x.xxx_hidden_Assignment = nil
 }
 
 func (x *Heartbeat) ClearTimestamp() {
@@ -991,7 +991,7 @@ func (x *Heartbeat) ClearInFlightRequests() {
 type Heartbeat_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Function         *Function
+	Assignment       *Assignment
 	Timestamp        *timestamppb.Timestamp
 	InFlightRequests *uint32
 }
@@ -1000,7 +1000,7 @@ func (b0 Heartbeat_builder) Build() *Heartbeat {
 	m0 := &Heartbeat{}
 	b, x := &b0, m0
 	_, _ = b, x
-	x.xxx_hidden_Function = b.Function
+	x.xxx_hidden_Assignment = b.Assignment
 	x.xxx_hidden_Timestamp = b.Timestamp
 	if b.InFlightRequests != nil {
 		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 3)
@@ -1273,7 +1273,7 @@ func (b0 ScaleDecision_builder) Build() *ScaleDecision {
 type Event struct {
 	state                  protoimpl.MessageState `protogen:"opaque.v1"`
 	xxx_hidden_Timestamp   *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=timestamp"`
-	xxx_hidden_Function    *Function              `protobuf:"bytes,2,opt,name=function"`
+	xxx_hidden_Assignment  *Assignment            `protobuf:"bytes,2,opt,name=assignment"`
 	xxx_hidden_Type        EventType              `protobuf:"varint,3,opt,name=type,enum=skipper.EventType"`
 	xxx_hidden_Message     *string                `protobuf:"bytes,4,opt,name=message"`
 	xxx_hidden_Severity    EventSeverity          `protobuf:"varint,5,opt,name=severity,enum=skipper.EventSeverity"`
@@ -1315,9 +1315,9 @@ func (x *Event) GetTimestamp() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *Event) GetFunction() *Function {
+func (x *Event) GetAssignment() *Assignment {
 	if x != nil {
-		return x.xxx_hidden_Function
+		return x.xxx_hidden_Assignment
 	}
 	return nil
 }
@@ -1354,8 +1354,8 @@ func (x *Event) SetTimestamp(v *timestamppb.Timestamp) {
 	x.xxx_hidden_Timestamp = v
 }
 
-func (x *Event) SetFunction(v *Function) {
-	x.xxx_hidden_Function = v
+func (x *Event) SetAssignment(v *Assignment) {
+	x.xxx_hidden_Assignment = v
 }
 
 func (x *Event) SetType(v EventType) {
@@ -1380,11 +1380,11 @@ func (x *Event) HasTimestamp() bool {
 	return x.xxx_hidden_Timestamp != nil
 }
 
-func (x *Event) HasFunction() bool {
+func (x *Event) HasAssignment() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_Function != nil
+	return x.xxx_hidden_Assignment != nil
 }
 
 func (x *Event) HasType() bool {
@@ -1412,8 +1412,8 @@ func (x *Event) ClearTimestamp() {
 	x.xxx_hidden_Timestamp = nil
 }
 
-func (x *Event) ClearFunction() {
-	x.xxx_hidden_Function = nil
+func (x *Event) ClearAssignment() {
+	x.xxx_hidden_Assignment = nil
 }
 
 func (x *Event) ClearType() {
@@ -1434,11 +1434,11 @@ func (x *Event) ClearSeverity() {
 type Event_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Timestamp *timestamppb.Timestamp
-	Function  *Function
-	Type      *EventType
-	Message   *string
-	Severity  *EventSeverity
+	Timestamp  *timestamppb.Timestamp
+	Assignment *Assignment
+	Type       *EventType
+	Message    *string
+	Severity   *EventSeverity
 }
 
 func (b0 Event_builder) Build() *Event {
@@ -1446,7 +1446,7 @@ func (b0 Event_builder) Build() *Event {
 	b, x := &b0, m0
 	_, _ = b, x
 	x.xxx_hidden_Timestamp = b.Timestamp
-	x.xxx_hidden_Function = b.Function
+	x.xxx_hidden_Assignment = b.Assignment
 	if b.Type != nil {
 		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 5)
 		x.xxx_hidden_Type = *b.Type
@@ -1711,7 +1711,7 @@ func (b0 HeartbeatState_builder) Build() *HeartbeatState {
 
 type SupervisorState struct {
 	state                              protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Function                *Function              `protobuf:"bytes,1,opt,name=function"`
+	xxx_hidden_Assignment              *Assignment            `protobuf:"bytes,1,opt,name=assignment"`
 	xxx_hidden_Instances               *[]*Instance           `protobuf:"bytes,2,rep,name=instances"`
 	xxx_hidden_RouterHeartbeats        *[]*HeartbeatState     `protobuf:"bytes,3,rep,name=router_heartbeats,json=routerHeartbeats"`
 	xxx_hidden_ResponsibleControllerIp *string                `protobuf:"bytes,5,opt,name=responsible_controller_ip,json=responsibleControllerIp"`
@@ -1747,9 +1747,9 @@ func (x *SupervisorState) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *SupervisorState) GetFunction() *Function {
+func (x *SupervisorState) GetAssignment() *Assignment {
 	if x != nil {
-		return x.xxx_hidden_Function
+		return x.xxx_hidden_Assignment
 	}
 	return nil
 }
@@ -1792,8 +1792,8 @@ func (x *SupervisorState) GetActiveReplicaSet() string {
 	return ""
 }
 
-func (x *SupervisorState) SetFunction(v *Function) {
-	x.xxx_hidden_Function = v
+func (x *SupervisorState) SetAssignment(v *Assignment) {
+	x.xxx_hidden_Assignment = v
 }
 
 func (x *SupervisorState) SetInstances(v []*Instance) {
@@ -1814,11 +1814,11 @@ func (x *SupervisorState) SetActiveReplicaSet(v string) {
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 4, 5)
 }
 
-func (x *SupervisorState) HasFunction() bool {
+func (x *SupervisorState) HasAssignment() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_Function != nil
+	return x.xxx_hidden_Assignment != nil
 }
 
 func (x *SupervisorState) HasResponsibleControllerIp() bool {
@@ -1835,8 +1835,8 @@ func (x *SupervisorState) HasActiveReplicaSet() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 4)
 }
 
-func (x *SupervisorState) ClearFunction() {
-	x.xxx_hidden_Function = nil
+func (x *SupervisorState) ClearAssignment() {
+	x.xxx_hidden_Assignment = nil
 }
 
 func (x *SupervisorState) ClearResponsibleControllerIp() {
@@ -1852,7 +1852,7 @@ func (x *SupervisorState) ClearActiveReplicaSet() {
 type SupervisorState_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Function                *Function
+	Assignment              *Assignment
 	Instances               []*Instance
 	RouterHeartbeats        []*HeartbeatState
 	ResponsibleControllerIp *string
@@ -1863,7 +1863,7 @@ func (b0 SupervisorState_builder) Build() *SupervisorState {
 	m0 := &SupervisorState{}
 	b, x := &b0, m0
 	_, _ = b, x
-	x.xxx_hidden_Function = b.Function
+	x.xxx_hidden_Assignment = b.Assignment
 	x.xxx_hidden_Instances = &b.Instances
 	x.xxx_hidden_RouterHeartbeats = &b.RouterHeartbeats
 	if b.ResponsibleControllerIp != nil {
@@ -2052,8 +2052,9 @@ const file_types_proto_rawDesc = "" +
 	"\rmax_instances\x18\x02 \x01(\rR\fmaxInstances\x123\n" +
 	"\x16target_cpu_usage_milli\x18\x03 \x01(\rR\x13targetCpuUsageMilli\x125\n" +
 	"\x17target_memory_usage_mib\x18\x04 \x01(\rR\x14targetMemoryUsageMib\x129\n" +
-	"\x19target_in_flight_requests\x18\x05 \x01(\rR\x16targetInFlightRequests\"\xbc\x01\n" +
-	"\bFunction\x12\x1c\n" +
+	"\x19target_in_flight_requests\x18\x05 \x01(\rR\x16targetInFlightRequests\"\xbe\x01\n" +
+	"\n" +
+	"Assignment\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1e\n" +
 	"\n" +
 	"deployment\x18\x02 \x01(\tR\n" +
@@ -2061,9 +2062,11 @@ const file_types_proto_rawDesc = "" +
 	"\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x1a\n" +
 	"\bmetadata\x18\x04 \x01(\tR\bmetadata\x12$\n" +
 	"\x05scale\x18\x05 \x01(\v2\x0e.skipper.ScaleR\x05scale\x12\x18\n" +
-	"\aoneshot\x18\x06 \x01(\bR\aoneshot\"\xc8\x02\n" +
-	"\bInstance\x12-\n" +
-	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x12\x12\n" +
+	"\aoneshot\x18\x06 \x01(\bR\aoneshot\"\xce\x02\n" +
+	"\bInstance\x123\n" +
+	"\n" +
+	"assignment\x18\x01 \x01(\v2\x13.skipper.AssignmentR\n" +
+	"assignment\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
 	"\x04addr\x18\x03 \x01(\tR\x04addr\x12\x1f\n" +
 	"\vreplica_set\x18\x04 \x01(\tR\n" +
@@ -2072,9 +2075,11 @@ const file_types_proto_rawDesc = "" +
 	"assignedAt\x125\n" +
 	"\bready_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\areadyAt\x12&\n" +
 	"\x0fcpu_usage_milli\x18\a \x01(\rR\rcpuUsageMilli\x12(\n" +
-	"\x10memory_usage_mib\x18\b \x01(\rR\x0ememoryUsageMib\"\xa2\x01\n" +
-	"\tHeartbeat\x12-\n" +
-	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x128\n" +
+	"\x10memory_usage_mib\x18\b \x01(\rR\x0ememoryUsageMib\"\xa8\x01\n" +
+	"\tHeartbeat\x123\n" +
+	"\n" +
+	"assignment\x18\x01 \x01(\v2\x13.skipper.AssignmentR\n" +
+	"assignment\x128\n" +
 	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12,\n" +
 	"\x12in_flight_requests\x18\x03 \x01(\rR\x10inFlightRequests\"7\n" +
 	"\vScaleMetric\x12\x12\n" +
@@ -2084,10 +2089,12 @@ const file_types_proto_rawDesc = "" +
 	"\x11desired_instances\x18\x01 \x01(\rR\x10desiredInstances\x12>\n" +
 	"\x1bunclamped_desired_instances\x18\x02 \x01(\rR\x19unclampedDesiredInstances\x12,\n" +
 	"\x06reason\x18\x03 \x01(\x0e2\x14.skipper.ScaleReasonR\x06reason\x12.\n" +
-	"\ametrics\x18\x04 \x03(\v2\x14.skipper.ScaleMetricR\ametricsJ\x04\b\x05\x10\x06R\ttimestamp\"\xe6\x01\n" +
+	"\ametrics\x18\x04 \x03(\v2\x14.skipper.ScaleMetricR\ametricsJ\x04\b\x05\x10\x06R\ttimestamp\"\xec\x01\n" +
 	"\x05Event\x128\n" +
-	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12-\n" +
-	"\bfunction\x18\x02 \x01(\v2\x11.skipper.FunctionR\bfunction\x12&\n" +
+	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x123\n" +
+	"\n" +
+	"assignment\x18\x02 \x01(\v2\x13.skipper.AssignmentR\n" +
+	"assignment\x12&\n" +
 	"\x04type\x18\x03 \x01(\x0e2\x12.skipper.EventTypeR\x04type\x12\x18\n" +
 	"\amessage\x18\x04 \x01(\tR\amessage\x122\n" +
 	"\bseverity\x18\x05 \x01(\x0e2\x16.skipper.EventSeverityR\bseverity\"Y\n" +
@@ -2097,9 +2104,11 @@ const file_types_proto_rawDesc = "" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\"_\n" +
 	"\x0eHeartbeatState\x12\x1b\n" +
 	"\trouter_ip\x18\x01 \x01(\tR\brouterIp\x120\n" +
-	"\theartbeat\x18\x02 \x01(\v2\x12.skipper.HeartbeatR\theartbeat\"\xd1\x02\n" +
-	"\x0fSupervisorState\x12-\n" +
-	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x12/\n" +
+	"\theartbeat\x18\x02 \x01(\v2\x12.skipper.HeartbeatR\theartbeat\"\xd7\x02\n" +
+	"\x0fSupervisorState\x123\n" +
+	"\n" +
+	"assignment\x18\x01 \x01(\v2\x13.skipper.AssignmentR\n" +
+	"assignment\x12/\n" +
 	"\tinstances\x18\x02 \x03(\v2\x11.skipper.InstanceR\tinstances\x12D\n" +
 	"\x11router_heartbeats\x18\x03 \x03(\v2\x17.skipper.HeartbeatStateR\x10routerHeartbeats\x12:\n" +
 	"\x19responsible_controller_ip\x18\x05 \x01(\tR\x17responsibleControllerIp\x12,\n" +
@@ -2140,7 +2149,7 @@ var file_types_proto_goTypes = []any{
 	(EventType)(0),                // 1: skipper.EventType
 	(EventSeverity)(0),            // 2: skipper.EventSeverity
 	(*Scale)(nil),                 // 3: skipper.Scale
-	(*Function)(nil),              // 4: skipper.Function
+	(*Assignment)(nil),            // 4: skipper.Assignment
 	(*Instance)(nil),              // 5: skipper.Instance
 	(*Heartbeat)(nil),             // 6: skipper.Heartbeat
 	(*ScaleMetric)(nil),           // 7: skipper.ScaleMetric
@@ -2153,20 +2162,20 @@ var file_types_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
 }
 var file_types_proto_depIdxs = []int32{
-	3,  // 0: skipper.Function.scale:type_name -> skipper.Scale
-	4,  // 1: skipper.Instance.function:type_name -> skipper.Function
+	3,  // 0: skipper.Assignment.scale:type_name -> skipper.Scale
+	4,  // 1: skipper.Instance.assignment:type_name -> skipper.Assignment
 	14, // 2: skipper.Instance.assigned_at:type_name -> google.protobuf.Timestamp
 	14, // 3: skipper.Instance.ready_at:type_name -> google.protobuf.Timestamp
-	4,  // 4: skipper.Heartbeat.function:type_name -> skipper.Function
+	4,  // 4: skipper.Heartbeat.assignment:type_name -> skipper.Assignment
 	14, // 5: skipper.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
 	0,  // 6: skipper.ScaleDecision.reason:type_name -> skipper.ScaleReason
 	7,  // 7: skipper.ScaleDecision.metrics:type_name -> skipper.ScaleMetric
 	14, // 8: skipper.Event.timestamp:type_name -> google.protobuf.Timestamp
-	4,  // 9: skipper.Event.function:type_name -> skipper.Function
+	4,  // 9: skipper.Event.assignment:type_name -> skipper.Assignment
 	1,  // 10: skipper.Event.type:type_name -> skipper.EventType
 	2,  // 11: skipper.Event.severity:type_name -> skipper.EventSeverity
 	6,  // 12: skipper.HeartbeatState.heartbeat:type_name -> skipper.Heartbeat
-	4,  // 13: skipper.SupervisorState.function:type_name -> skipper.Function
+	4,  // 13: skipper.SupervisorState.assignment:type_name -> skipper.Assignment
 	5,  // 14: skipper.SupervisorState.instances:type_name -> skipper.Instance
 	11, // 15: skipper.SupervisorState.router_heartbeats:type_name -> skipper.HeartbeatState
 	14, // 16: skipper.ClusterState.started_at:type_name -> google.protobuf.Timestamp

@@ -50,40 +50,40 @@ func TestBadRequest(t *testing.T) {
 		{
 			name:          "missing function header",
 			setupHeader:   func(req *http.Request) {},
-			expectedError: "missing " + skipper.FunctionKey.Header,
+			expectedError: "missing " + skipper.LegacyFunctionKey.Header,
 		},
 		{
 			name: "malformed json",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(skipper.FunctionKey.Header, "not valid json")
+				req.Header.Set(skipper.LegacyFunctionKey.Header, "not valid json")
 			},
-			expectedError: "failed to unmarshal " + skipper.FunctionKey.Header + " header",
+			expectedError: "failed to unmarshal " + skipper.LegacyFunctionKey.Header + " header",
 		},
 		{
 			name: "missing namespace",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(skipper.FunctionKey.Header, `{"deployment":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+				req.Header.Set(skipper.LegacyFunctionKey.Header, `{"deployment":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
 			},
 			expectedError: "missing namespace",
 		},
 		{
 			name: "missing deployment",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(skipper.FunctionKey.Header, `{"namespace":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+				req.Header.Set(skipper.LegacyFunctionKey.Header, `{"namespace":"test","tenant":"test","scale":{"minInstances":0,"maxInstances":5}}`)
 			},
 			expectedError: "missing deployment",
 		},
 		{
 			name: "missing tenant",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(skipper.FunctionKey.Header, `{"namespace":"test","deployment":"test","scale":{"minInstances":0,"maxInstances":5}}`)
+				req.Header.Set(skipper.LegacyFunctionKey.Header, `{"namespace":"test","deployment":"test","scale":{"minInstances":0,"maxInstances":5}}`)
 			},
 			expectedError: "missing tenant",
 		},
 		{
 			name: "missing scale",
 			setupHeader: func(req *http.Request) {
-				req.Header.Set(skipper.FunctionKey.Header, `{"namespace":"test","deployment":"test","tenant":"test"}`)
+				req.Header.Set(skipper.LegacyFunctionKey.Header, `{"namespace":"test","deployment":"test","tenant":"test"}`)
 			},
 			expectedError: "missing scale",
 		},
@@ -108,12 +108,12 @@ func TestBadRequest(t *testing.T) {
 func TestGetInstanceDuration(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 
 	sentError := false
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mockControllerClient.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		if !sentError {
 			time.Sleep(10 * time.Millisecond)
 			sentError = true
@@ -131,7 +131,7 @@ func TestGetInstanceDuration(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
 
 	router := New(testConfig(), mockControllerClient)
 	router.ServeHTTP(rw, req)
@@ -164,17 +164,17 @@ func TestMethods(t *testing.T) {
 		// unit tests
 		t.Run(tc.method, func(t *testing.T) {
 			t.Parallel()
-			fn := fixture.NewFunction(t)
+			fn := fixture.NewAssignment(t)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					assert.Assert(t, tc.method == req.Method)
 				}), nil
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewFunctionRequest(t, fn, tc.method, "/", nil)
+			req := fixture.NewAssignmentRequest(t, fn, tc.method, "/", nil)
 
 			router := New(testConfig(), mcc)
 			router.ServeHTTP(rw, req)
@@ -188,8 +188,8 @@ func TestMethods(t *testing.T) {
 				t.Skip("skipping integration test in short mode")
 			}
 
-			fn := fixture.NewFixtureFunction(t)
-			req := fixture.NewFunctionRequest(t, fn, tc.method, fixture.RouterIntegrationURL(), nil)
+			fn := fixture.NewFixtureAssignment(t)
+			req := fixture.NewAssignmentRequest(t, fn, tc.method, fixture.RouterIntegrationURL(), nil)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
 			assert.NilError(t, err)
@@ -207,7 +207,7 @@ func TestHeaders(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn      *skipper.Function
+		fn      *skipper.Assignment
 		req     *http.Request
 		headers http.Header
 	}
@@ -303,12 +303,12 @@ func TestHeaders(t *testing.T) {
 			t.Parallel()
 
 			state := &testState{
-				fn: fixture.NewFunction(t),
+				fn: fixture.NewAssignment(t),
 			}
-			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, "/", nil)
+			state.req = fixture.NewAssignmentRequest(t, state.fn, http.MethodGet, "/", nil)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
 					state.headers = req.Header
@@ -334,9 +334,9 @@ func TestHeaders(t *testing.T) {
 			}
 
 			state := &testState{
-				fn: fixture.NewFixtureFunction(t),
+				fn: fixture.NewFixtureAssignment(t),
 			}
-			state.req = fixture.NewFunctionRequest(t, state.fn, http.MethodGet, fixture.RouterIntegrationURL(), nil)
+			state.req = fixture.NewAssignmentRequest(t, state.fn, http.MethodGet, fixture.RouterIntegrationURL(), nil)
 			state.req.Header.Set("User-Agent", "") // disable the default User-Agent header
 
 			tc.setup(t, state)
@@ -362,7 +362,7 @@ func TestBody(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn           *skipper.Function
+		fn           *skipper.Assignment
 		contentType  string
 		body         io.Reader
 		receivedBody string
@@ -411,13 +411,13 @@ func TestBody(t *testing.T) {
 			t.Parallel()
 
 			state := &testState{
-				fn: fixture.NewFunction(t),
+				fn: fixture.NewAssignment(t),
 			}
 
 			tc.setup(t, state)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
 					assert.NilError(t, err)
@@ -426,7 +426,7 @@ func TestBody(t *testing.T) {
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewFunctionRequest(t, state.fn, http.MethodPost, "/", state.body)
+			req := fixture.NewAssignmentRequest(t, state.fn, http.MethodPost, "/", state.body)
 			req.Header.Set("Content-Type", state.contentType)
 
 			router := New(testConfig(), mcc)
@@ -444,12 +444,12 @@ func TestBody(t *testing.T) {
 			}
 
 			state := &testState{
-				fn: fixture.NewFixtureFunction(t),
+				fn: fixture.NewFixtureAssignment(t),
 			}
 
 			tc.setup(t, state)
 
-			req := fixture.NewFunctionRequest(t, state.fn, http.MethodPost, fixture.RouterIntegrationURL(), state.body)
+			req := fixture.NewAssignmentRequest(t, state.fn, http.MethodPost, fixture.RouterIntegrationURL(), state.body)
 			req.Header.Set("Content-Type", state.contentType)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
@@ -474,13 +474,13 @@ func TestHeartbeats(t *testing.T) {
 	defer cancel()
 
 	testStartTime := time.Now()
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	once := new(sync.Once)
 	done := make(chan struct{})
 	defer close(done)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("Hello, " + fn.GetTenant()))
@@ -498,7 +498,7 @@ func TestHeartbeats(t *testing.T) {
 		assert.Assert(t, len(forwardedFor) == 0)
 
 		heartbeat := heartbeats[0]
-		assert.Assert(t, proto.Equal(heartbeat.GetFunction(), fn))
+		assert.Assert(t, proto.Equal(heartbeat.GetAssignment(), fn))
 		assert.Assert(t, heartbeat.GetTimestamp().AsTime().After(testStartTime))
 		if heartbeat.GetInFlightRequests() > 0 {
 			once.Do(func() {
@@ -509,7 +509,7 @@ func TestHeartbeats(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil).WithContext(ctx)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil).WithContext(ctx)
 
 	router := New(testConfig(), mcc)
 	router.Start(ctx)
@@ -529,7 +529,7 @@ func TestRetries(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn            *skipper.Function
+		fn            *skipper.Assignment
 		rw            *httptest.ResponseRecorder
 		maxAttempts   int
 		instanceErrs  []error
@@ -604,7 +604,7 @@ func TestRetries(t *testing.T) {
 			t.Parallel()
 
 			state := &testState{
-				fn: fixture.NewFunction(t),
+				fn: fixture.NewAssignment(t),
 				rw: httptest.NewRecorder(),
 			}
 
@@ -616,7 +616,7 @@ func TestRetries(t *testing.T) {
 
 			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				if len(state.instanceErrs) > 0 && instanceErrsIndex < len(state.instanceErrs) {
 					instanceErrsIndex++
 					return nil, state.instanceErrs[instanceErrsIndex-1]
@@ -636,7 +636,7 @@ func TestRetries(t *testing.T) {
 			})
 
 			body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
-			req := fixture.NewFunctionRequest(t, state.fn, expectedMethod, expectedPath, body)
+			req := fixture.NewAssignmentRequest(t, state.fn, expectedMethod, expectedPath, body)
 
 			cfg := testConfig()
 			cfg.MaxRoundTripAttempts = state.maxAttempts
@@ -693,7 +693,7 @@ func TestInstanceExclusion(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn                            *skipper.Function
+		fn                            *skipper.Assignment
 		rw                            *httptest.ResponseRecorder
 		router                        *Router
 		mcc                           *fixture.MockControllerClient
@@ -709,9 +709,9 @@ func TestInstanceExclusion(t *testing.T) {
 			name: "dial error excludes instance",
 			setup: func(t *testing.T, state *testState) {
 				failingInstance := skipper.Instance_builder{
-					Function: state.fn,
-					Name:     new("failing-instance"),
-					Addr:     new("127.0.0.1:59999"), // non-existent address
+					Assignment: state.fn,
+					Name:       new("failing-instance"),
+					Addr:       new("127.0.0.1:59999"), // non-existent address
 				}.Build()
 				successInstance := fixture.NewInstance(t, state.fn, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(http.StatusOK)
@@ -719,7 +719,7 @@ func TestInstanceExclusion(t *testing.T) {
 				})
 
 				callCount := 0
-				state.mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				state.mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 					state.excludedInstanceNamesReceived = append(state.excludedInstanceNamesReceived, excludeInstanceNames)
 					callCount++
 					if callCount == 1 {
@@ -745,7 +745,7 @@ func TestInstanceExclusion(t *testing.T) {
 				})
 
 				callCount := 0
-				state.mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				state.mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 					state.excludedInstanceNamesReceived = append(state.excludedInstanceNamesReceived, excludeInstanceNames)
 					callCount++
 					return instance, nil
@@ -776,7 +776,7 @@ func TestInstanceExclusion(t *testing.T) {
 			mcc := fixture.NewMockControllerClient(t)
 
 			state := &testState{
-				fn:     fixture.NewFunction(t),
+				fn:     fixture.NewAssignment(t),
 				rw:     httptest.NewRecorder(),
 				router: New(cfg, mcc),
 				mcc:    mcc,
@@ -784,7 +784,7 @@ func TestInstanceExclusion(t *testing.T) {
 
 			tc.setup(t, state)
 
-			req := fixture.NewFunctionRequest(t, state.fn, http.MethodGet, "/", nil)
+			req := fixture.NewAssignmentRequest(t, state.fn, http.MethodGet, "/", nil)
 			state.router.ServeHTTP(state.rw, req)
 
 			tc.check(t, state)
@@ -813,7 +813,7 @@ func TestContextCancellation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			fn := fixture.NewFunction(t)
+			fn := fixture.NewAssignment(t)
 
 			var ctx context.Context
 			var cancel context.CancelFunc
@@ -828,7 +828,7 @@ func TestContextCancellation(t *testing.T) {
 
 			mcc := fixture.NewMockControllerClient(t)
 			callCount := 0
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				callCount++
 				if callCount == 1 {
 					// First call fails, triggering a retry with backoff
@@ -852,7 +852,7 @@ func TestContextCancellation(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			fn.SetHeader(req)
 			// RoundTrip expects the function to be in context (normally set by ServeHTTP)
-			req = req.WithContext(withFunction(ctx, fn))
+			req = req.WithContext(withAssignment(ctx, fn))
 
 			_, err := router.RoundTrip(req)
 
@@ -929,13 +929,13 @@ func TestCalculateBackoff(t *testing.T) {
 func TestRequestDrainingOnShutdown(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 	requestCompleted := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
@@ -990,17 +990,17 @@ func TestRequestDrainingOnShutdown(t *testing.T) {
 	}
 }
 
-func TestConcurrentRequestsSameFunction(t *testing.T) {
+func TestConcurrentRequestsSameAssignment(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	const numRequests = 50
 	var maxInFlight int64
 	var currentInFlight int64
 	var mu sync.Mutex
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			mu.Lock()
 			currentInFlight++
@@ -1072,10 +1072,10 @@ func TestConcurrentRequestsSameFunction(t *testing.T) {
 func TestHeartbeatStaleCleanup(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 		}), nil
@@ -1122,13 +1122,13 @@ func TestHeartbeatStaleCleanup(t *testing.T) {
 func TestHeartbeatControllerError(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	heartbeatCalls := make(chan struct{}, 10)
 	requestHolding := make(chan struct{})
 	releaseRequest := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			select {
 			case requestHolding <- struct{}{}:
@@ -1252,10 +1252,10 @@ func TestResponseStatusCodes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			fn := fixture.NewFunction(t)
+			fn := fixture.NewAssignment(t)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(tc.statusCode)
 					if tc.body != "" {
@@ -1265,7 +1265,7 @@ func TestResponseStatusCodes(t *testing.T) {
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+			req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
 
 			router := New(testConfig(), mcc)
 			router.ServeHTTP(rw, req)
@@ -1279,10 +1279,10 @@ func TestResponseStatusCodes(t *testing.T) {
 func TestResponseHeaders(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.Header().Set("X-Custom-Response", "custom-value")
 			rw.Header().Set("Content-Type", "application/json")
@@ -1294,7 +1294,7 @@ func TestResponseHeaders(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
 
 	router := New(testConfig(), mcc)
 	router.ServeHTTP(rw, req)
@@ -1308,11 +1308,11 @@ func TestResponseHeaders(t *testing.T) {
 func TestQueryStringPreservation(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	var receivedQuery string
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			receivedQuery = req.URL.RawQuery
 			rw.WriteHeader(http.StatusOK)
@@ -1320,7 +1320,7 @@ func TestQueryStringPreservation(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/?foo=bar&baz=qux&special=%20encoded", nil)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/?foo=bar&baz=qux&special=%20encoded", nil)
 
 	router := New(testConfig(), mcc)
 	router.ServeHTTP(rw, req)
@@ -1332,15 +1332,15 @@ func TestQueryStringPreservation(t *testing.T) {
 func TestHeartbeatBatching(t *testing.T) {
 	t.Parallel()
 
-	fn1 := fixture.NewFunction(t)
-	fn2 := fixture.NewFunction(t)
-	fn3 := fixture.NewFunction(t)
+	fn1 := fixture.NewAssignment(t)
+	fn2 := fixture.NewAssignment(t)
+	fn3 := fixture.NewAssignment(t)
 
 	requestsHolding := make(chan struct{}, 3)
 	releaseRequests := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			requestsHolding <- struct{}{}
 			<-releaseRequests
@@ -1373,7 +1373,7 @@ func TestHeartbeatBatching(t *testing.T) {
 
 	// Start 3 requests for different functions concurrently
 	var wg sync.WaitGroup
-	for _, fn := range []*skipper.Function{fn1, fn2, fn3} {
+	for _, fn := range []*skipper.Assignment{fn1, fn2, fn3} {
 		wg.Go(func() {
 			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
 			fn.SetHeader(req)
@@ -1404,13 +1404,13 @@ func TestHeartbeatBatching(t *testing.T) {
 func TestLargeRequestBody(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	// 1MB body
 	largeBody := strings.Repeat("x", 1024*1024)
 	var receivedBody string
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -1423,7 +1423,7 @@ func TestLargeRequestBody(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodPost, "/", strings.NewReader(largeBody))
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodPost, "/", strings.NewReader(largeBody))
 	req.Header.Set("Content-Type", "application/octet-stream")
 
 	router := New(testConfig(), mcc)
@@ -1436,12 +1436,12 @@ func TestLargeRequestBody(t *testing.T) {
 func TestLargeResponseBody(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	// 1MB response
 	largeResponse := strings.Repeat("y", 1024*1024)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.Header().Set("Content-Type", "application/octet-stream")
 			rw.WriteHeader(http.StatusOK)
@@ -1450,7 +1450,7 @@ func TestLargeResponseBody(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
 
 	router := New(testConfig(), mcc)
 	router.ServeHTTP(rw, req)
@@ -1468,7 +1468,7 @@ func TestMultipleConcurrentRequestsDrainOnShutdown(t *testing.T) {
 	requestResults := make(chan error, numRequests)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			requestsStarted <- struct{}{}
 			<-requestsCanFinish
@@ -1493,7 +1493,7 @@ func TestMultipleConcurrentRequestsDrainOnShutdown(t *testing.T) {
 	// Start multiple concurrent requests
 	var wg sync.WaitGroup
 	for range numRequests {
-		fn := fixture.NewFunction(t)
+		fn := fixture.NewAssignment(t)
 		wg.Go(func() {
 			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
 			fn.SetHeader(req)
@@ -1541,12 +1541,12 @@ func TestMultipleConcurrentRequestsDrainOnShutdown(t *testing.T) {
 func TestShutdownTimeoutExceeded(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
@@ -1622,7 +1622,7 @@ func TestShutdownTimeoutExceeded(t *testing.T) {
 func TestNewRequestsRejectedDuringShutdown(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 
 	mcc := fixture.NewMockControllerClient(t)
 	// Instance won't be called since server is closed before request
@@ -1665,7 +1665,7 @@ func TestNewRequestsRejectedDuringShutdown(t *testing.T) {
 func TestHeartbeatTimestampUpdatedDuringLongRequest(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 
@@ -1674,7 +1674,7 @@ func TestHeartbeatTimestampUpdatedDuringLongRequest(t *testing.T) {
 	var heartbeatMu sync.Mutex
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
@@ -1742,7 +1742,7 @@ func TestHeartbeatTimestampUpdatedDuringLongRequest(t *testing.T) {
 func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	const numRequests = 5
 	requestsStarted := make(chan struct{}, numRequests)
 	requestCanFinish := make(chan struct{})
@@ -1752,7 +1752,7 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 	var inFlightMu sync.Mutex
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			requestsStarted <- struct{}{}
 			<-requestCanFinish
@@ -1763,7 +1763,7 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 		inFlightMu.Lock()
 		defer inFlightMu.Unlock()
 		for _, hb := range heartbeats {
-			if hb.GetFunction().Hash() == fn.Hash() {
+			if hb.GetAssignment().Hash() == fn.Hash() {
 				inFlightCounts = append(inFlightCounts, hb.GetInFlightRequests())
 			}
 		}
@@ -1826,13 +1826,13 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 func TestStreamingResponseDuringShutdown(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	streamStarted := make(chan struct{})
 	streamCanContinue := make(chan struct{})
 	expectedChunks := 5
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			// Enable chunked transfer encoding
 			rw.Header().Set("Transfer-Encoding", "chunked")
@@ -1917,7 +1917,7 @@ func TestStreamingResponseDuringShutdown(t *testing.T) {
 func TestRequestBodyReusedAcrossRetries(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	expectedBody := "this body should be readable on retry"
 
 	// Track how many times the body was successfully read
@@ -1925,7 +1925,7 @@ func TestRequestBodyReusedAcrossRetries(t *testing.T) {
 	var bodyReadMu sync.Mutex
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			body, err := io.ReadAll(req.Body)
 			if err == nil && string(body) == expectedBody {
@@ -1957,7 +1957,7 @@ func TestRequestBodyReusedAcrossRetries(t *testing.T) {
 	})
 
 	body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
-	req := fixture.NewFunctionRequest(t, fn, http.MethodPost, "/", body)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodPost, "/", body)
 	rw := httptest.NewRecorder()
 
 	router.ServeHTTP(rw, req)
@@ -1975,7 +1975,7 @@ func TestRequestBodyReusedAcrossRetries(t *testing.T) {
 func TestControllerUnavailableMidRequest(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 
@@ -1986,7 +1986,7 @@ func TestControllerUnavailableMidRequest(t *testing.T) {
 	failHeartbeats := false
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
@@ -2080,7 +2080,7 @@ func TestControllerUnavailableMidRequest(t *testing.T) {
 func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	instanceFetchStarted := make(chan struct{})
 	instanceFetchCanFinish := make(chan struct{})
 	requestCompleted := make(chan struct {
@@ -2090,7 +2090,7 @@ func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 	}, 1)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		// Signal that we're waiting for an instance
 		select {
 		case instanceFetchStarted <- struct{}{}:
@@ -2195,11 +2195,11 @@ func TestBackoffDoesNotOverflowAtHighAttempts(t *testing.T) {
 func TestZeroInFlightAfterAllRequestsComplete(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	const numRequests = 100
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			// Small delay to ensure concurrent execution
 			time.Sleep(5 * time.Millisecond)
@@ -2258,11 +2258,11 @@ func TestZeroInFlightAfterAllRequestsComplete(t *testing.T) {
 func TestInstanceCallContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	instanceCallStarted := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		close(instanceCallStarted)
 		// Block until context is cancelled
 		<-ctx.Done()
@@ -2365,11 +2365,11 @@ func TestHeartbeatNotSentAfterContextCancellation(t *testing.T) {
 func TestRequestBodyReadErrorDuringRetry(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	var attemptCount int
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		attemptCount++
 		if attemptCount == 1 {
 			// First attempt - return an instance that will fail with dial error
@@ -2424,11 +2424,11 @@ func TestRequestBodyReadErrorDuringRetry(t *testing.T) {
 func TestAllInstancesExhaustedReturnsError(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	var attemptCount int
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		attemptCount++
 		// Always return an instance at a non-routable address
 		instance := &skipper.Instance{}
@@ -2471,12 +2471,12 @@ func TestAllInstancesExhaustedReturnsError(t *testing.T) {
 func TestRapidRequestsDuringShutdownWindow(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	var requestsStarted int64
 	var requestsCompleted int64
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			atomic.AddInt64(&requestsStarted, 1)
 			time.Sleep(50 * time.Millisecond) // Simulate processing
@@ -2552,7 +2552,7 @@ func TestRapidRequestsDuringShutdownWindow(t *testing.T) {
 func TestOneshotReleasesInstance(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	fn.SetOneshot(true)
 
 	instance := fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
@@ -2560,20 +2560,20 @@ func TestOneshotReleasesInstance(t *testing.T) {
 	})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return instance, nil
 	})
 
 	released := make(chan struct{})
 	mcc.HandleReleaseInstance(func(ctx context.Context, inst *skipper.Instance) error {
 		assert.Equal(t, inst.GetName(), instance.GetName())
-		assert.Equal(t, inst.GetFunction().GetNamespace(), fn.GetNamespace())
+		assert.Equal(t, inst.GetAssignment().GetNamespace(), fn.GetNamespace())
 		close(released)
 		return nil
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
 
 	router := New(testConfig(), mcc)
 	router.ServeHTTP(rw, req)
@@ -2590,7 +2590,7 @@ func TestOneshotReleasesInstance(t *testing.T) {
 func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	fn.SetOneshot(true)
 
 	successInstance := fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
@@ -2598,18 +2598,18 @@ func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
 	})
 
 	failingInstance1 := &skipper.Instance{}
-	failingInstance1.SetFunction(fn)
+	failingInstance1.SetAssignment(fn)
 	failingInstance1.SetName("failing-1")
 	failingInstance1.SetAddr("127.0.0.1:1")
 
 	failingInstance2 := &skipper.Instance{}
-	failingInstance2.SetFunction(fn)
+	failingInstance2.SetAssignment(fn)
 	failingInstance2.SetName("failing-2")
 	failingInstance2.SetAddr("127.0.0.1:2")
 
 	callCount := 0
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		callCount++
 		switch callCount {
 		case 1:
@@ -2649,7 +2649,7 @@ func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewFunctionRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
 	router.ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
@@ -2677,11 +2677,11 @@ func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
 func TestBodyClosedAfterServeHTTP(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	expectedBody := "request-body-content"
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 		}), nil
@@ -2703,7 +2703,7 @@ func TestBodyClosedAfterServeHTTP(t *testing.T) {
 	})
 
 	body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
-	req := fixture.NewFunctionRequest(t, fn, http.MethodPost, "/", body)
+	req := fixture.NewAssignmentRequest(t, fn, http.MethodPost, "/", body)
 	rw := httptest.NewRecorder()
 
 	router.ServeHTTP(rw, req)

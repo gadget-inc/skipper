@@ -34,7 +34,7 @@ func New() *web.Server {
 }
 
 func supervisor(ns, deploy, tenant string, instanceCount int) *skipper.SupervisorState {
-	fn := skipper.Function_builder{
+	fn := skipper.Assignment_builder{
 		Namespace:  new(ns),
 		Deployment: new(deploy),
 		Tenant:     new(tenant),
@@ -42,14 +42,14 @@ func supervisor(ns, deploy, tenant string, instanceCount int) *skipper.Superviso
 	instances := make([]*skipper.Instance, instanceCount)
 	for i := range instances {
 		instances[i] = skipper.Instance_builder{
-			Function: fn,
-			Name:     new(fmt.Sprintf("%s-%d", deploy, i)),
-			Addr:     new(fmt.Sprintf("10.0.0.%d:8080", i)),
-			ReadyAt:  timestamppb.Now(),
+			Assignment: fn,
+			Name:       new(fmt.Sprintf("%s-%d", deploy, i)),
+			Addr:       new(fmt.Sprintf("10.0.0.%d:8080", i)),
+			ReadyAt:    timestamppb.Now(),
 		}.Build()
 	}
 	sup := &skipper.SupervisorState{}
-	sup.SetFunction(fn)
+	sup.SetAssignment(fn)
 	sup.SetInstances(instances)
 	return sup
 }

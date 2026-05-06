@@ -83,7 +83,7 @@ func assignRequest(t *testing.T, baseURL, token, fnJSON string) *http.Request {
 	req, err := http.NewRequest(http.MethodPost, baseURL+"/__skipper/assign", nil)
 	assert.NilError(t, err)
 	req.Header.Set(key.Token.Header, token)
-	req.Header.Set(skipper.FunctionKey.Header, fnJSON)
+	req.Header.Set(skipper.LegacyFunctionKey.Header, fnJSON)
 	return req
 }
 

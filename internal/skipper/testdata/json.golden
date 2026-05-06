@@ -1,5 +1,5 @@
 {
-	"Function": {
+	"Assignment": {
 		"namespace": "skipper-production",
 		"deployment": "my-app",
 		"tenant": "tenant-123",
@@ -13,7 +13,7 @@
 		}
 	},
 	"Heartbeat": {
-		"function": {
+		"assignment": {
 			"namespace": "skipper-production",
 			"deployment": "my-app",
 			"tenant": "tenant-123",
@@ -30,7 +30,7 @@
 		"in_flight_requests": 42
 	},
 	"Instance": {
-		"function": {
+		"assignment": {
 			"namespace": "skipper-production",
 			"deployment": "my-app",
 			"tenant": "tenant-123",

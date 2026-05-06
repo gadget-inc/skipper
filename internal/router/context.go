@@ -9,15 +9,15 @@ import (
 
 type fnCtxKey struct{}
 
-func functionFromContext(ctx context.Context) (*skipper.Function, error) {
-	fn, ok := ctx.Value(fnCtxKey{}).(*skipper.Function)
+func assignmentFromContext(ctx context.Context) (*skipper.Assignment, error) {
+	fn, ok := ctx.Value(fnCtxKey{}).(*skipper.Assignment)
 	if !ok {
 		return nil, errors.New("function not found in context")
 	}
 	return fn, nil
 }
 
-func withFunction(ctx context.Context, fn *skipper.Function) context.Context {
+func withAssignment(ctx context.Context, fn *skipper.Assignment) context.Context {
 	return context.WithValue(ctx, fnCtxKey{}, fn)
 }
 

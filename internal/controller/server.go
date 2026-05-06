@@ -34,12 +34,12 @@ func NewServer(ctrl *Controller) *Server {
 }
 
 func (s *Server) GetInstance(ctx context.Context, req *skipper.GetInstanceRequest) (*skipper.GetInstanceResponse, error) {
-	fn := req.GetFunction()
+	fn := req.GetAssignment()
 	if err := fn.Validate(); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid function: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid assignment: %v", err)
 	}
 
-	ctx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn))
+	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn))
 
 	excludeNames := req.GetExcludeInstanceNames()
 
@@ -62,8 +62,8 @@ func (s *Server) Heartbeat(ctx context.Context, req *skipper.HeartbeatRequest) (
 
 	heartbeats := req.GetHeartbeats()
 	for _, heartbeat := range heartbeats {
-		heartbeatsCounter.WithLabelValues(heartbeat.GetFunction().GetDeployment()).Inc()
-		s.ctrl.supervisor(heartbeat.GetFunction()).heartbeat(routerIP, heartbeat)
+		heartbeatsCounter.WithLabelValues(heartbeat.GetAssignment().GetDeployment()).Inc()
+		s.ctrl.supervisor(heartbeat.GetAssignment()).heartbeat(routerIP, heartbeat)
 	}
 
 	log.Trace(ctx, "received heartbeats", key.Count.Slog(len(heartbeats)))
@@ -88,7 +88,7 @@ func (s *Server) Heartbeat(ctx context.Context, req *skipper.HeartbeatRequest) (
 func (s *Server) ReleaseInstance(ctx context.Context, req *skipper.ReleaseInstanceRequest) (*skipper.ReleaseInstanceResponse, error) {
 	inst := req.GetInstance()
 	name := inst.GetName()
-	namespace := inst.GetFunction().GetNamespace()
+	namespace := inst.GetAssignment().GetNamespace()
 	if name == "" || namespace == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing instance name or namespace")
 	}
@@ -116,12 +116,12 @@ func (s *Server) GetClusterState(ctx context.Context, _ *skipper.GetClusterState
 }
 
 func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper.ScaleResponse, error) {
-	fn := req.GetFunction()
+	fn := req.GetAssignment()
 	if err := fn.Validate(); err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid function: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid assignment: %v", err)
 	}
 
-	ctx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn))
+	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn))
 
 	desiredInstances := req.GetDesiredInstances()
 	reason := req.GetReason()

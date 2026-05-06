@@ -13,7 +13,7 @@ import (
 
 // Compile-time gate: each domain key binds to its concrete *T.
 var (
-	_ *key.Key[*Function]      = FunctionKey
+	_ *key.Key[*Assignment]    = LegacyFunctionKey
 	_ *key.Key[*Heartbeat]     = HeartbeatKey
 	_ *key.Key[*Instance]      = InstanceKey
 	_ *key.Key[*Scale]         = ScaleKey
@@ -25,16 +25,16 @@ var (
 func TestFunctionKeyEquivalence(t *testing.T) {
 	t.Parallel()
 
-	uncached := key.New("function", (*Function).LogValue)
+	uncached := key.New("function", (*Assignment).LogValue)
 
 	testCases := []struct {
 		name string
-		fn   *Function
+		fn   *Assignment
 	}{
-		{name: "fully populated", fn: testFunction},
+		{name: "fully populated", fn: testAssignment},
 		{
 			name: "minimal required fields",
-			fn: Function_builder{
+			fn: Assignment_builder{
 				Namespace:  new("ns"),
 				Deployment: new("deploy"),
 				Tenant:     new("tenant"),
@@ -43,7 +43,7 @@ func TestFunctionKeyEquivalence(t *testing.T) {
 		},
 		{
 			name: "oneshot true",
-			fn: Function_builder{
+			fn: Assignment_builder{
 				Namespace:  new("ns"),
 				Deployment: new("deploy"),
 				Tenant:     new("tenant"),
@@ -53,7 +53,7 @@ func TestFunctionKeyEquivalence(t *testing.T) {
 		},
 		{
 			name: "empty metadata",
-			fn: Function_builder{
+			fn: Assignment_builder{
 				Namespace:  new("ns"),
 				Deployment: new("deploy"),
 				Tenant:     new("tenant"),
@@ -67,7 +67,7 @@ func TestFunctionKeyEquivalence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := FunctionKey.Attr(tc.fn)
+			got := LegacyFunctionKey.Attr(tc.fn)
 			want := uncached.Attr(tc.fn)
 
 			assert.Assert(t, got.Slog.Equal(want.Slog), "Slog mismatch:\n got: %v\nwant: %v", got.Slog, want.Slog)
@@ -79,7 +79,7 @@ func TestFunctionKeyEquivalence(t *testing.T) {
 func TestFunctionKeyConcurrent(t *testing.T) {
 	t.Parallel()
 
-	fn := Function_builder{
+	fn := Assignment_builder{
 		Namespace:  new("concurrent-ns"),
 		Deployment: new("concurrent-deploy"),
 		Tenant:     new("concurrent-tenant"),
@@ -87,7 +87,7 @@ func TestFunctionKeyConcurrent(t *testing.T) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	want := FunctionKey.Attr(fn)
+	want := LegacyFunctionKey.Attr(fn)
 
 	const goroutines = 32
 	const iterations = 100
@@ -98,7 +98,7 @@ func TestFunctionKeyConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iterations {
-				if got := FunctionKey.Attr(fn); !got.Slog.Equal(want.Slog) {
+				if got := LegacyFunctionKey.Attr(fn); !got.Slog.Equal(want.Slog) {
 					t.Errorf("Slog mismatch under concurrent access")
 					return
 				}
@@ -109,7 +109,7 @@ func TestFunctionKeyConcurrent(t *testing.T) {
 }
 
 func BenchmarkFunctionKeyAttr(b *testing.B) {
-	fn := Function_builder{
+	fn := Assignment_builder{
 		Namespace:  new("bench-ns"),
 		Deployment: new("bench-deploy"),
 		Tenant:     new("bench-tenant"),
@@ -117,11 +117,11 @@ func BenchmarkFunctionKeyAttr(b *testing.B) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	_ = FunctionKey.Attr(fn) // prime the cache so we measure the hit path
+	_ = LegacyFunctionKey.Attr(fn) // prime the cache so we measure the hit path
 
 	b.ReportAllocs()
 	for b.Loop() {
-		sinkAttrResult = FunctionKey.Attr(fn)
+		sinkAttrResult = LegacyFunctionKey.Attr(fn)
 	}
 }
 

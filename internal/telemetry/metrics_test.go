@@ -28,7 +28,7 @@ func TestPrometheusMetricsEndpoints_Controller(t *testing.T) {
 	controller.RecordInformerEvent("test_resource", "add", &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "foo",
-			Namespace:         fixture.FunctionNamespace,
+			Namespace:         fixture.AssignmentNamespace,
 			CreationTimestamp: metav1.NewTime(time.Now().Add(-30 * time.Second)),
 		},
 	})
