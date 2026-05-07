@@ -105,6 +105,69 @@ func TestBadRequest(t *testing.T) {
 	}
 }
 
+func TestHeaderDualParse(t *testing.T) {
+	t.Parallel()
+
+	body := func(tenant string) string {
+		return fmt.Sprintf(`{"namespace":%q,"deployment":%q,"tenant":%q,"scale":{"min_instances":0,"max_instances":5}}`,
+			fixture.AssignmentNamespace, fixture.AssignmentDeployment, tenant)
+	}
+
+	testCases := []struct {
+		name       string
+		setup      func(*http.Request)
+		wantTenant string
+	}{
+		{
+			name: "legacy header only",
+			setup: func(req *http.Request) {
+				req.Header.Set(skipper.LegacyFunctionKey.Header, body("legacy-tenant"))
+			},
+			wantTenant: "legacy-tenant",
+		},
+		{
+			name: "canonical header only",
+			setup: func(req *http.Request) {
+				req.Header.Set(skipper.AssignmentKey.Header, body("canonical-tenant"))
+			},
+			wantTenant: "canonical-tenant",
+		},
+		{
+			name: "both headers, canonical wins",
+			setup: func(req *http.Request) {
+				req.Header.Set(skipper.LegacyFunctionKey.Header, body("legacy-tenant"))
+				req.Header.Set(skipper.AssignmentKey.Header, body("canonical-tenant"))
+			},
+			wantTenant: "canonical-tenant",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var observedTenant string
+			mcc := fixture.NewMockControllerClient(t)
+			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				observedTenant = fn.GetTenant()
+				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+					rw.WriteHeader(http.StatusOK)
+				}), nil
+			})
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+			tc.setup(req)
+
+			rw := httptest.NewRecorder()
+			router := New(testConfig(), mcc)
+			router.ServeHTTP(rw, req)
+
+			assert.Equal(t, rw.Code, http.StatusOK, "body=%q", rw.Body.String())
+			assert.Equal(t, observedTenant, tc.wantTenant)
+		})
+	}
+}
+
 func TestGetInstanceDuration(t *testing.T) {
 	t.Parallel()
 
@@ -231,6 +294,8 @@ func TestHeaders(t *testing.T) {
 				assert.DeepEqual(t, state.headers.Values("X-Forwarded-Host"), []string{expectedHost})
 				assert.DeepEqual(t, state.headers.Values("X-Forwarded-Proto"), []string{expectedProto})
 				assert.DeepEqual(t, state.headers.Values("Forwarded"), []string{fmt.Sprintf("for=%s;host=%s;proto=%s", state.headers.Get("X-Forwarded-For"), expectedHost, expectedProto)})
+				assert.Equal(t, state.headers.Get(skipper.LegacyFunctionKey.Header), "", "legacy header must be stripped before forwarding")
+				assert.Equal(t, state.headers.Get(skipper.AssignmentKey.Header), "", "canonical header must be stripped before forwarding")
 				assert.Assert(t, len(state.headers) == 5)
 			},
 		},

@@ -38,6 +38,7 @@ func TestKeys(t *testing.T) {
 		key.Error.Attr(fakeError),
 		key.ExcludeInstanceNames.Attr(fakeStringSlice),
 		skipper.LegacyFunctionKey.Attr(fakeAssignment),
+		skipper.AssignmentKey.Attr(fakeAssignment),
 		key.GetInstanceDurationMs.Attr(fakeDuration),
 		skipper.HeartbeatKey.Attr(fakeHeartbeat),
 		key.InFlightRequests.Attr(fakeUint32),

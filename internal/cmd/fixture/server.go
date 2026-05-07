@@ -173,7 +173,7 @@ func (s *Server) handleAssign(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing "+key.Token.Header, http.StatusBadRequest)
 		return
 	}
-	if r.Header.Get(skipper.LegacyFunctionKey.Header) == "" {
+	if r.Header.Get(skipper.AssignmentKey.Header) == "" && r.Header.Get(skipper.LegacyFunctionKey.Header) == "" {
 		http.Error(w, "missing "+skipper.LegacyFunctionKey.Header, http.StatusBadRequest)
 		return
 	}

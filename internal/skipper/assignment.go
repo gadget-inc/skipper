@@ -103,6 +103,10 @@ func (a *Assignment) Validate() error {
 	return nil
 }
 
+// SetHeader serializes the assignment as JSON and writes it under both the
+// legacy ("X-Skipper-Function") and canonical ("X-Skipper-Assignment") header
+// names. Receivers that read either name accept the body. The cleanup plan
+// drops the legacy write after the deprecation window.
 func (a *Assignment) SetHeader(r *http.Request) {
 	body, err := json.Marshal(a)
 	if err != nil {
@@ -110,18 +114,27 @@ func (a *Assignment) SetHeader(r *http.Request) {
 		panic(fmt.Errorf("failed to marshal assignment: %w", err))
 	}
 	r.Header[LegacyFunctionKey.Header] = []string{string(body)}
+	r.Header[AssignmentKey.Header] = []string{string(body)}
 }
 
 // AssignmentFromHeader parses the assignment identity from the request header.
+// It accepts either "X-Skipper-Assignment" (canonical) or "X-Skipper-Function"
+// (legacy); when both are present the canonical header wins.
+//
 // The returned *Assignment is shared across all callers that present the same
 // header value — it is cached to avoid redundant JSON unmarshalling. Callers
 // MUST treat the returned pointer as immutable; mutating any field would
 // silently corrupt the cache entry and affect every concurrent request that
 // shares that pointer.
 func AssignmentFromHeader(req *http.Request) (*Assignment, error) {
-	header, ok := req.Header[LegacyFunctionKey.Header]
+	source := AssignmentKey.Header
+	header, ok := req.Header[source]
 	if !ok || len(header) == 0 {
-		return nil, errors.New("missing " + LegacyFunctionKey.Header)
+		source = LegacyFunctionKey.Header
+		header, ok = req.Header[source]
+		if !ok || len(header) == 0 {
+			return nil, errors.New("missing " + LegacyFunctionKey.Header)
+		}
 	}
 
 	headerVal := header[0]
@@ -131,7 +144,7 @@ func AssignmentFromHeader(req *http.Request) (*Assignment, error) {
 
 	a := &Assignment{}
 	if err := json.Unmarshal([]byte(headerVal), a); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal %s header: %w", LegacyFunctionKey.Header, err)
+		return nil, fmt.Errorf("failed to unmarshal %s header: %w", source, err)
 	}
 
 	if err := a.Validate(); err != nil {

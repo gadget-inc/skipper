@@ -218,6 +218,69 @@ func TestFunctionFromHeader(t *testing.T) {
 	}
 }
 
+func TestAssignmentFromHeaderDualParse(t *testing.T) {
+	legacyBody := `{"namespace":"legacy-ns","deployment":"legacy-deploy","tenant":"legacy-tenant","scale":{"min_instances":1,"max_instances":5}}`
+	newBody := `{"namespace":"new-ns","deployment":"new-deploy","tenant":"new-tenant","scale":{"min_instances":1,"max_instances":5}}`
+
+	tests := []struct {
+		name       string
+		legacy     string
+		canonical  string
+		wantTenant string
+	}{
+		{
+			name:       "legacy header only",
+			legacy:     legacyBody,
+			wantTenant: "legacy-tenant",
+		},
+		{
+			name:       "canonical header only",
+			canonical:  newBody,
+			wantTenant: "new-tenant",
+		},
+		{
+			name:       "both headers, canonical wins",
+			legacy:     legacyBody,
+			canonical:  newBody,
+			wantTenant: "new-tenant",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			if tc.legacy != "" {
+				req.Header.Set(LegacyFunctionKey.Header, tc.legacy)
+			}
+			if tc.canonical != "" {
+				req.Header.Set(AssignmentKey.Header, tc.canonical)
+			}
+
+			fn, err := AssignmentFromHeader(req)
+			assert.NilError(t, err)
+			assert.Equal(t, fn.GetTenant(), tc.wantTenant)
+		})
+	}
+}
+
+func TestSetHeaderDualWrites(t *testing.T) {
+	fn := Assignment_builder{
+		Namespace:  new("ns"),
+		Deployment: new("deploy"),
+		Tenant:     new("tenant"),
+		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(5)}.Build(),
+	}.Build()
+
+	req := httptest.NewRequest("GET", "/", nil)
+	fn.SetHeader(req)
+
+	legacy := req.Header.Get(LegacyFunctionKey.Header)
+	canonical := req.Header.Get(AssignmentKey.Header)
+	assert.Assert(t, legacy != "", "legacy header should be present")
+	assert.Assert(t, canonical != "", "canonical header should be present")
+	assert.Equal(t, legacy, canonical, "both headers should carry identical bodies")
+}
+
 func TestFunctionHeaderCacheBounded(t *testing.T) {
 	// Fill cache beyond capacity and confirm it stays bounded.
 	cap := 8
