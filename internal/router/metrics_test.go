@@ -8,6 +8,26 @@ import (
 	"gotest.tools/v3/assert"
 )
 
+// TestRouterDeploymentLabelsDualEmit asserts every Vec metric
+// carrying a deployment label registers both the legacy
+// `function_deployment` and canonical `assignment_deployment` names,
+// keeping per-series cardinality unchanged while letting dashboards
+// query either vocabulary.
+func TestRouterDeploymentLabelsDualEmit(t *testing.T) {
+	t.Parallel()
+
+	for _, m := range Metrics() {
+		hasFunction := slices.Contains(m.Labels, "function_deployment")
+		hasAssignment := slices.Contains(m.Labels, "assignment_deployment")
+		if !hasFunction && !hasAssignment {
+			continue
+		}
+		assert.Assert(t, hasFunction && hasAssignment,
+			"%s: deployment-labelled metric must carry both `function_deployment` and `assignment_deployment` (got %v)",
+			m.Name, m.Labels)
+	}
+}
+
 // TestMetricsSliceCoversAllRouterRegistrations asserts the captured
 // metric slice exposes every metric the router registers. Adding a
 // metric without going through the [metric.Set] wrapper would leave

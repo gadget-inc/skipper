@@ -281,7 +281,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 
 	// 1. Calculate scaling decision
 	heartbeat := s.combinedHeartbeat(fn, instances)
-	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.HeartbeatKey.Attr(heartbeat))
+	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn), skipper.HeartbeatKey.Attr(heartbeat))
 
 	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
 
@@ -462,7 +462,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 		}
 
 		log.Info(ctx, "scaling function up")
-		scaleUpsTotal.WithLabelValues(fn.GetDeployment()).Add(float64(desired - ready))
+		scaleUpsTotal.WithLabelValues(fn.GetDeployment(), fn.GetDeployment()).Add(float64(desired - ready))
 
 		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO,
 			fmt.Sprintf("scaling up from %d to %d instances", ready, desired))
@@ -500,7 +500,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 		}
 		unreadyInstances = nil
 
-		scaleDownsTotal.WithLabelValues(fn.GetDeployment()).Add(float64(uint32(unreadyCount) + ready - desired))
+		scaleDownsTotal.WithLabelValues(fn.GetDeployment(), fn.GetDeployment()).Add(float64(uint32(unreadyCount) + ready - desired))
 
 		// sort ready instances by assigned at in descending order (newest first)
 		slices.SortFunc(readyInstances, func(a, b *skipper.Instance) int {

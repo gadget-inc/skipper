@@ -34,7 +34,7 @@ func (ctrl *Controller) ClusterState(ctx context.Context) *skipper.ClusterState 
 
 		instances, err := ctrl.listInstances(ctx, fn)
 		if err != nil {
-			log.Warn(ctx, "failed to get instances for cluster state", key.Error.Slog(err), skipper.LegacyFunctionKey.Slog(fn))
+			log.Warn(ctx, "failed to get instances for cluster state", key.Error.Slog(err), skipper.LegacyFunctionKey.Slog(fn), skipper.AssignmentKey.Slog(fn))
 		} else {
 			supState.SetInstances(instances)
 		}
@@ -71,7 +71,7 @@ func (ctrl *Controller) ClusterState(ctx context.Context) *skipper.ClusterState 
 func (ctrl *Controller) getActiveReplicaSet(ctx context.Context, fn *skipper.Assignment) string {
 	namespaceLister, ok := ctrl.namespaceListers[fn.GetNamespace()]
 	if !ok {
-		log.Warn(ctx, "namespace not found in listers for active RS detection", skipper.LegacyFunctionKey.Slog(fn))
+		log.Warn(ctx, "namespace not found in listers for active RS detection", skipper.LegacyFunctionKey.Slog(fn), skipper.AssignmentKey.Slog(fn))
 		return ""
 	}
 
@@ -79,7 +79,7 @@ func (ctrl *Controller) getActiveReplicaSet(ctx context.Context, fn *skipper.Ass
 	// by owner reference. O(replica_sets) per namespace but typically small and infrequent.
 	replicaSets, err := namespaceLister.replicaSetLister.ReplicaSets(fn.GetNamespace()).List(labels.Everything())
 	if err != nil {
-		log.Warn(ctx, "failed to list replica sets for active RS detection", key.Error.Slog(err), skipper.LegacyFunctionKey.Slog(fn))
+		log.Warn(ctx, "failed to list replica sets for active RS detection", key.Error.Slog(err), skipper.LegacyFunctionKey.Slog(fn), skipper.AssignmentKey.Slog(fn))
 		return ""
 	}
 

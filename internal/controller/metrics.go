@@ -24,28 +24,28 @@ var (
 		Subsystem: "controller",
 		Name:      "waiting_for_unassigned_pods",
 		Help:      "Functions blocked waiting for pod assignment.",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "assignment_deployment"})
 
 	assignmentsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "assignments_total",
 		Help:      "Total pod assignments performed by the controller.",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "assignment_deployment"})
 
 	scaleUpsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "scale_ups_total",
 		Help:      "Total scale-up operations performed by the controller.",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "assignment_deployment"})
 
 	scaleDownsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "scale_downs_total",
 		Help:      "Total scale-down operations performed by the controller.",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "assignment_deployment"})
 
 	informerEventsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",

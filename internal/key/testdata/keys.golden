@@ -2,6 +2,16 @@
 	"otel": {
 		"address": "test",
 		"assigned_at": "2024-01-15T10:30:00Z",
+		"assignment.deployment": "test",
+		"assignment.metadata": "test",
+		"assignment.namespace": "test",
+		"assignment.oneshot": false,
+		"assignment.scale.max_instances": 42,
+		"assignment.scale.min_instances": 42,
+		"assignment.scale.target_cpu_usage_milli": 42,
+		"assignment.scale.target_in_flight_requests": 42,
+		"assignment.scale.target_memory_usage_mib": 42,
+		"assignment.tenant": "test",
 		"attempt": 42,
 		"count": 42,
 		"cpu_usage_milli": 42,
@@ -101,6 +111,20 @@
 	"slog": {
 		"address": "test",
 		"assigned_at": "2024-01-15T10:30:00Z",
+		"assignment": {
+			"deployment": "test",
+			"metadata": "test",
+			"namespace": "test",
+			"oneshot": false,
+			"scale": {
+				"max_instances": 42,
+				"min_instances": 42,
+				"target_cpu_usage_milli": 42,
+				"target_in_flight_requests": 42,
+				"target_memory_usage_mib": 42
+			},
+			"tenant": "test"
+		},
 		"attempt": 42,
 		"count": 42,
 		"cpu_usage_milli": 42,

@@ -41,7 +41,8 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Assignment) (
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
-	assignmentsTotal.WithLabelValues(fn.GetDeployment()).Inc()
+	deployment := fn.GetDeployment()
+	assignmentsTotal.WithLabelValues(deployment, deployment).Inc()
 
 GET_UNASSIGNED_POD:
 	var unassignedPod *v1.Pod
@@ -166,8 +167,9 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Assign
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	waitingForUnassignedPods.WithLabelValues(fn.GetDeployment()).Inc()
-	defer waitingForUnassignedPods.WithLabelValues(fn.GetDeployment()).Dec()
+	deployment := fn.GetDeployment()
+	waitingForUnassignedPods.WithLabelValues(deployment, deployment).Inc()
+	defer waitingForUnassignedPods.WithLabelValues(deployment, deployment).Dec()
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
 		unassignedPods, err := ctrl.getUnassignedPods(fn)

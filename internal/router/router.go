@@ -39,21 +39,21 @@ var (
 		Subsystem: "router",
 		Name:      "requests_total",
 		Help:      "Total requests processed by the router.",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "assignment_deployment"})
 
 	requestsInFlight = metrics.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "requests_in_flight",
 		Help:      "Requests currently being handled by the router.",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "assignment_deployment"})
 
 	heartbeatsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "heartbeats_total",
 		Help:      "Heartbeats sent to the controller.",
-	}, []string{"function_deployment"})
+	}, []string{"function_deployment", "assignment_deployment"})
 )
 
 // Metrics returns the metadata of every prometheus metric registered
@@ -98,7 +98,8 @@ func (r *Router) Start(ctx context.Context) {
 			} else {
 				hb := state.toProto() // materialise proto only when sending
 				heartbeats = append(heartbeats, hb)
-				heartbeatsTotal.WithLabelValues(hb.GetAssignment().GetDeployment()).Inc()
+				deployment := hb.GetAssignment().GetDeployment()
+				heartbeatsTotal.WithLabelValues(deployment, deployment).Inc()
 			}
 		}
 
@@ -122,8 +123,9 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), skipper.LegacyFunctionKey.Attr(fn))
-	requestsTotal.WithLabelValues(fn.GetDeployment()).Inc()
+	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn))
+	deployment := fn.GetDeployment()
+	requestsTotal.WithLabelValues(deployment, deployment).Inc()
 
 	// get or create the heartbeat state for this function
 	state, loaded := r.heartbeats.LoadOrCompute(fn.Hash(), func() (*heartbeatState, bool) {
@@ -140,13 +142,13 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	})
 
 	// increment the in-flight requests for this function
-	requestsInFlight.WithLabelValues(fn.GetDeployment()).Inc()
+	requestsInFlight.WithLabelValues(deployment, deployment).Inc()
 	state.inFlight.Add(1)
 	state.touch()
 
 	// decrement the in-flight requests for this function when the request is complete
 	defer func() {
-		requestsInFlight.WithLabelValues(fn.GetDeployment()).Dec()
+		requestsInFlight.WithLabelValues(deployment, deployment).Dec()
 		state.inFlight.Add(-1)
 		state.touch()
 	}()
@@ -276,6 +278,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 
 func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
 	delete(pr.Out.Header, skipper.LegacyFunctionKey.Header)
+	delete(pr.Out.Header, skipper.AssignmentKey.Header)
 
 	pr.Out.Host = pr.In.Host
 

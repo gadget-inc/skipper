@@ -129,7 +129,7 @@ func TestRenderMetricsTable_NonHistogramNoBucketSuffix(t *testing.T) {
 	row, err := renderMetricRow(metric.Metric{
 		Name:   "assignments_total",
 		Type:   metric.TypeCounter,
-		Labels: []string{"function_deployment"},
+		Labels: []string{"function_deployment", "assignment_deployment"},
 		Help:   "Total pod assignments performed by the controller.",
 	})
 	assert.NilError(t, err)

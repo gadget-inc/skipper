@@ -20,7 +20,7 @@ var heartbeatsCounter = metrics.NewCounterVec(prometheus.CounterOpts{
 	Subsystem: "controller",
 	Name:      "heartbeats_total",
 	Help:      "Heartbeats received from routers.",
-}, []string{"function_deployment"})
+}, []string{"function_deployment", "assignment_deployment"})
 
 // Server implements the ControllerServiceServer interface.
 type Server struct {
@@ -39,7 +39,7 @@ func (s *Server) GetInstance(ctx context.Context, req *skipper.GetInstanceReques
 		return nil, status.Errorf(codes.InvalidArgument, "invalid assignment: %v", err)
 	}
 
-	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn))
+	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn))
 
 	excludeNames := req.GetExcludeInstanceNames()
 
@@ -62,7 +62,8 @@ func (s *Server) Heartbeat(ctx context.Context, req *skipper.HeartbeatRequest) (
 
 	heartbeats := req.GetHeartbeats()
 	for _, heartbeat := range heartbeats {
-		heartbeatsCounter.WithLabelValues(heartbeat.GetAssignment().GetDeployment()).Inc()
+		deployment := heartbeat.GetAssignment().GetDeployment()
+		heartbeatsCounter.WithLabelValues(deployment, deployment).Inc()
 		s.ctrl.supervisor(heartbeat.GetAssignment()).heartbeat(routerIP, heartbeat)
 	}
 
@@ -121,7 +122,7 @@ func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper
 		return nil, status.Errorf(codes.InvalidArgument, "invalid assignment: %v", err)
 	}
 
-	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn))
+	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn))
 
 	desiredInstances := req.GetDesiredInstances()
 	reason := req.GetReason()
