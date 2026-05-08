@@ -248,11 +248,16 @@ func envVarFromFlag(flagName string) string {
 // not configured to write to stderr.
 var deprecationLog sync.Map
 
-func logDeprecation(useKind, used, replacement string) {
-	if _, loaded := deprecationLog.LoadOrStore(used, struct{}{}); loaded {
+// logDeprecation warns on first use of a deprecated identifier. `subject` is
+// a human-readable phrase that names what was used (e.g. "flag --function-foo",
+// "env SKIPPER_FUNCTION_FOO") and is also the dedup key, so each unique
+// identifier warns at most once. `replacement` is the canonical form to
+// suggest in the warning.
+func logDeprecation(subject, replacement string) {
+	if _, loaded := deprecationLog.LoadOrStore(subject, struct{}{}); loaded {
 		return
 	}
-	msg := useKind + " " + used + " is deprecated; use " + replacement + " instead"
+	msg := subject + " is deprecated; use " + replacement + " instead"
 	log.Warn(context.Background(), msg, key.Reason.Slog("deprecated"))
 }
 
@@ -267,7 +272,7 @@ type aliasFlagValue struct {
 var _ pflag.Value = (*aliasFlagValue)(nil)
 
 func (a *aliasFlagValue) Set(s string) error {
-	logDeprecation("flag --"+a.alias, "--"+a.alias, "--"+a.canonical)
+	logDeprecation("flag --"+a.alias, "--"+a.canonical)
 	return a.inner.Set(s)
 }
 
@@ -303,7 +308,7 @@ func addPreRun(cmd *cobra.Command, persistent bool, flagName, envVarName string,
 				if !ok {
 					continue
 				}
-				logDeprecation("env "+aliasEnv, aliasEnv, envVarName)
+				logDeprecation("env "+aliasEnv, envVarName)
 				if err := fv.Set(envValue); err != nil {
 					return fmt.Errorf("error parsing environment variable %s: %w", aliasEnv, err)
 				}
