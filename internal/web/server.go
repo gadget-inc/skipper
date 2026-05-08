@@ -51,8 +51,8 @@ func newFuncMap() template.FuncMap {
 		"timeAgo":            timeAgo,
 		"formatTimestamp":    formatTimestamp,
 		"durationBetween":    durationBetween,
-		"functionKey":        assignmentKey,
-		"functionPath":       functionPath,
+		"assignmentKey":      assignmentKey,
+		"assignmentPath":     assignmentPath,
 		"scaleReasonLabel":   scaleReasonLabel,
 		"eventTypeLabel":     eventTypeLabel,
 		"eventSeverityBadge": eventSeverityBadge,
@@ -89,8 +89,8 @@ func New(state StateProvider, opts ...Option) *Server {
 		mux:   http.NewServeMux(),
 		pages: map[string]*template.Template{
 			"dashboard":   parsePage("dashboard"),
-			"functions":   parsePage("functions"),
-			"function":    parsePage("function"),
+			"assignments": parsePage("assignments"),
+			"assignment":  parsePage("assignment"),
 			"controllers": parsePage("controllers"),
 			"controller":  parsePage("controller"),
 			"routers":     parsePage("routers"),
@@ -110,8 +110,8 @@ func New(state StateProvider, opts ...Option) *Server {
 
 	// Full-page handlers
 	s.mux.HandleFunc("GET /", s.handleDashboard)
-	s.mux.HandleFunc("GET /functions", s.handleAssignments)
-	s.mux.HandleFunc("GET /functions/{key}", s.handleAssignment)
+	s.mux.HandleFunc("GET /assignments", s.handleAssignments)
+	s.mux.HandleFunc("GET /assignments/{key}", s.handleAssignment)
 	s.mux.HandleFunc("GET /controllers", s.handleControllers)
 	s.mux.HandleFunc("GET /controllers/{ip}", s.handleController)
 	s.mux.HandleFunc("GET /routers", s.handleRouters)
@@ -124,10 +124,16 @@ func New(state StateProvider, opts ...Option) *Server {
 	s.mux.HandleFunc("GET /events", s.handleEvents)
 	s.mux.HandleFunc("GET /config", s.handleConfig)
 
+	// Legacy /functions/* routes redirect to /assignments/* with 301.
+	// Tenants and operators migrate links at their own pace; the cleanup
+	// plan removes these redirects after a deprecation window.
+	s.mux.HandleFunc("GET /functions", redirectTo("/assignments"))
+	s.mux.HandleFunc("GET /functions/{key}", redirectAssignmentKey)
+
 	// SSE fragment handlers (Datastar)
 	s.mux.HandleFunc("GET /sse/dashboard", s.sseDashboard)
-	s.mux.HandleFunc("GET /sse/functions", s.sseFunctions)
-	s.mux.HandleFunc("GET /sse/function/{key}", s.sseAssignment)
+	s.mux.HandleFunc("GET /sse/assignments", s.sseAssignments)
+	s.mux.HandleFunc("GET /sse/assignment/{key}", s.sseAssignment)
 	s.mux.HandleFunc("GET /sse/controllers", s.sseControllers)
 	s.mux.HandleFunc("GET /sse/controller/{ip}", s.sseController)
 	s.mux.HandleFunc("GET /sse/routers", s.sseRouters)
@@ -138,6 +144,8 @@ func New(state StateProvider, opts ...Option) *Server {
 	s.mux.HandleFunc("GET /sse/deployments", s.sseDeployments)
 	s.mux.HandleFunc("GET /sse/deployment/{name}", s.sseDeployment)
 	s.mux.HandleFunc("GET /sse/events", s.sseEvents)
+	s.mux.HandleFunc("GET /sse/functions", redirectTo("/sse/assignments"))
+	s.mux.HandleFunc("GET /sse/function/{key}", redirectSSEAssignmentKey)
 
 	// Static assets
 	s.mux.Handle("GET /static/", s.staticHandler())
@@ -176,4 +184,32 @@ func (s *Server) staticHandler() http.Handler {
 // Handler returns the HTTP handler.
 func (s *Server) Handler() http.Handler {
 	return s.mux
+}
+
+// redirectTo returns a handler that issues a 301 to the given path,
+// preserving the request's RawQuery so query-string state survives.
+func redirectTo(target string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dst := target
+		if r.URL.RawQuery != "" {
+			dst += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, dst, http.StatusMovedPermanently)
+	}
+}
+
+func redirectAssignmentKey(w http.ResponseWriter, r *http.Request) {
+	dst := "/assignments/" + url.PathEscape(r.PathValue("key"))
+	if r.URL.RawQuery != "" {
+		dst += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, dst, http.StatusMovedPermanently)
+}
+
+func redirectSSEAssignmentKey(w http.ResponseWriter, r *http.Request) {
+	dst := "/sse/assignment/" + url.PathEscape(r.PathValue("key"))
+	if r.URL.RawQuery != "" {
+		dst += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, dst, http.StatusMovedPermanently)
 }

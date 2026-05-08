@@ -29,9 +29,9 @@
       </th>
       <th
         class="sortable"
-        data-on:click="$tenantSort = 'functions'; $tenantSortDir = $tenantSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $tenantSearch, sort: $tenantSort, dir: $tenantSortDir}); $get('/sse/tenants')"
+        data-on:click="$tenantSort = 'assignments'; $tenantSortDir = $tenantSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $tenantSearch, sort: $tenantSort, dir: $tenantSortDir}); $get('/sse/tenants')"
       >
-        Functions
+        Assignments
       </th>
       <th
         class="sortable"
@@ -51,7 +51,7 @@
     {{range .}}
     <tr>
       <td class="mono"><a href="/tenants/{{pathEscape .Tenant}}">{{.Tenant}}</a></td>
-      <td class="tabular">{{.Functions}}</td>
+      <td class="tabular">{{.Assignments}}</td>
       <td class="tabular">{{.ReadyInstances}}/{{.TotalInstances}}</td>
       <td>{{range $i, $d := .Deployments}}{{if $i}}, {{end}}{{$d}}{{end}}</td>
     </tr>

@@ -16,7 +16,7 @@
       <div class="stat-value-sm">{{.IP}}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Functions</div>
+      <div class="stat-label">Assignments</div>
       <div class="stat-value">{{len .Entries}}</div>
     </div>
     <div class="stat-card stat-card-attention">
@@ -26,7 +26,7 @@
   </div>
 
   <div>
-    <h2>Functions</h2>
+    <h2>Assignments</h2>
     <div class="table-wrap">
       <table>
         <thead>
@@ -41,7 +41,7 @@
         <tbody>
           {{range .Entries}} {{$fn := .Supervisor.GetAssignment}}
           <tr>
-            <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
+            <td><a href="{{assignmentPath $fn}}">{{$fn.GetDeployment}}</a></td>
             <td>{{$fn.GetNamespace}}</td>
             <td class="mono">{{$fn.GetTenant}}</td>
             <td class="tabular">{{if .Heartbeat.GetHeartbeat}}{{.Heartbeat.GetHeartbeat.GetInFlightRequests}}{{else}}0{{end}}</td>

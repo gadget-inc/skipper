@@ -29,10 +29,10 @@ func computeHealthIssues(state *skipper.ClusterState) []healthIssue {
 		}
 	}
 	if stuckCount > 0 {
-		issues = append(issues, healthIssue{Color: "red", Label: "Stuck instances", Count: stuckCount, Link: "/functions"})
+		issues = append(issues, healthIssue{Color: "red", Label: "Stuck instances", Count: stuckCount, Link: "/assignments"})
 	}
 
-	// Functions waiting for pods: has instances but none ready
+	// Assignments waiting for pods: has instances but none ready
 	var waitingCount int
 	for _, sup := range state.GetSupervisors() {
 		instances := sup.GetInstances()
@@ -50,7 +50,7 @@ func computeHealthIssues(state *skipper.ClusterState) []healthIssue {
 		}
 	}
 	if waitingCount > 0 {
-		issues = append(issues, healthIssue{Color: "yellow", Label: "Functions waiting for pods", Count: waitingCount, Link: "/functions"})
+		issues = append(issues, healthIssue{Color: "yellow", Label: "Assignments waiting for pods", Count: waitingCount, Link: "/assignments"})
 	}
 
 	// Stale heartbeats: > 60s old
@@ -81,7 +81,7 @@ func computeHealthIssues(state *skipper.ClusterState) []healthIssue {
 		}
 	}
 	if staleInstanceCount > 0 {
-		issues = append(issues, healthIssue{Color: "yellow", Label: "Stale instances", Count: staleInstanceCount, Link: "/functions"})
+		issues = append(issues, healthIssue{Color: "yellow", Label: "Stale instances", Count: staleInstanceCount, Link: "/assignments"})
 	}
 
 	return issues

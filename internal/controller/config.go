@@ -27,11 +27,11 @@ type Config struct {
 	HPAInitialReadinessDelay       time.Duration    `flag:"hpa-initial-readiness-delay" description:"The initial readiness delay for the HPA algorithm." default:"30s"`
 	HPADownscaleStabilization      time.Duration    `flag:"hpa-downscale-stabilization" description:"The stabilization window for downscaling in the HPA algorithm." default:"90s"`
 	HashRingWaitTime               time.Duration    `flag:"hash-ring-wait-time" description:"How long to wait for the controller to populate its hash ring." default:"10s"`
-	FunctionNamespaces             []string         `flag:"function-namespaces" description:"The namespaces where functions can be invoked." required:"true"`
-	FunctionAssignPath             string           `flag:"function-assign-path" description:"The path used to assign a function to a pod." default:"/__skipper/assign"`
-	FunctionAssignTimeout          time.Duration    `flag:"function-assign-timeout" description:"The timeout for assigning a function to a pod." default:"30s"`
+	AssignmentNamespaces           []string         `flag:"assignment-namespaces,function-namespaces" description:"The namespaces where assignments can be invoked." required:"true"`
+	AssignPath                     string           `flag:"assign-path,function-assign-path" description:"The path used to assign a pod." default:"/__skipper/assign"`
+	AssignTimeout                  time.Duration    `flag:"assign-timeout,function-assign-timeout" description:"The timeout for assigning a pod." default:"30s"`
 	MaxConcurrentStaleReplacements int              `flag:"max-concurrent-stale-replacements" description:"Maximum number of stale instances that can be replaced concurrently." default:"10"`
-	SkipForbiddenNamespaces        bool             `flag:"skip-forbidden-namespaces" description:"Whether to skip function namespaces that the service account does not have access to." default:"false"`
+	SkipForbiddenNamespaces        bool             `flag:"skip-forbidden-namespaces" description:"Whether to skip assignment namespaces that the service account does not have access to." default:"false"`
 	WebPort                        int              `flag:"web-port" description:"The port the web UI listens on." default:"8080"`
 	WebTemplateDir                 string           `flag:"web-template-dir" description:"When set, reload templates from this directory on each request (dev mode)."`
 	SingleControllerMode           bool             `flag:"single-controller-mode" description:"Add only this controller to the hash ring, ignoring controller pod discovery. For local development." default:"false"`

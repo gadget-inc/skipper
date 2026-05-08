@@ -110,7 +110,7 @@ spec:
               value: "info"
             - name: SKIPPER_LOG_FORMAT
               value: "text"
-            - name: SKIPPER_FUNCTION_NAMESPACES
+            - name: SKIPPER_ASSIGNMENT_NAMESPACES
               value: "default"
             - name: SKIPPER_SKIP_FORBIDDEN_NAMESPACES
               value: "false"

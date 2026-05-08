@@ -91,16 +91,16 @@ func waitForReady(url string, timeout time.Duration) error {
 	return fmt.Errorf("readiness probe %q did not respond OK within %s", url, timeout)
 }
 
-func TestFunctionsPagePrefillsSearchFromURL(t *testing.T) {
+func TestAssignmentsPagePrefillsSearchFromURL(t *testing.T) {
 	ensureServer(t)
 	ctx, cancel := browserContext(t)
 	defer cancel()
 
 	var inputValue, tableHTML string
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(baseURL+"/functions?search=web"),
-		chromedp.WaitVisible(`input[placeholder="Search functions…"]`, chromedp.ByQuery),
-		chromedp.Value(`input[placeholder="Search functions…"]`, &inputValue, chromedp.ByQuery),
+		chromedp.Navigate(baseURL+"/assignments?search=web"),
+		chromedp.WaitVisible(`input[placeholder="Search assignments…"]`, chromedp.ByQuery),
+		chromedp.Value(`input[placeholder="Search assignments…"]`, &inputValue, chromedp.ByQuery),
 		chromedp.OuterHTML(`table tbody`, &tableHTML, chromedp.ByQuery),
 	)
 	assert.NilError(t, err)
@@ -119,8 +119,8 @@ func TestSyncParamsKeyupUpdatesURL(t *testing.T) {
 
 	var url string
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(baseURL+"/functions"),
-		chromedp.WaitVisible(`input[placeholder="Search functions…"]`, chromedp.ByQuery),
+		chromedp.Navigate(baseURL+"/assignments"),
+		chromedp.WaitVisible(`input[placeholder="Search assignments…"]`, chromedp.ByQuery),
 		chromedp.Evaluate(`window.syncParams({ search: 'api', sort: 'deployment', dir: 'asc' })`, nil),
 		chromedp.Location(&url),
 	)
@@ -135,8 +135,8 @@ func TestSyncParamsSortClickUpdatesURL(t *testing.T) {
 
 	var url string
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(baseURL+"/functions"),
-		chromedp.WaitVisible(`input[placeholder="Search functions…"]`, chromedp.ByQuery),
+		chromedp.Navigate(baseURL+"/assignments"),
+		chromedp.WaitVisible(`input[placeholder="Search assignments…"]`, chromedp.ByQuery),
 		chromedp.Evaluate(`window.syncParams({ search: '', sort: 'namespace', dir: 'asc' })`, nil),
 		chromedp.Location(&url),
 	)
@@ -153,12 +153,12 @@ func TestURLStatePreservedAcrossRefresh(t *testing.T) {
 
 	var beforeValue, afterValue, urlAfter string
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(baseURL+"/functions?search=worker&sort=tenant&dir=desc"),
-		chromedp.WaitVisible(`input[placeholder="Search functions…"]`, chromedp.ByQuery),
-		chromedp.Value(`input[placeholder="Search functions…"]`, &beforeValue, chromedp.ByQuery),
+		chromedp.Navigate(baseURL+"/assignments?search=worker&sort=tenant&dir=desc"),
+		chromedp.WaitVisible(`input[placeholder="Search assignments…"]`, chromedp.ByQuery),
+		chromedp.Value(`input[placeholder="Search assignments…"]`, &beforeValue, chromedp.ByQuery),
 		chromedp.Reload(),
-		chromedp.WaitVisible(`input[placeholder="Search functions…"]`, chromedp.ByQuery),
-		chromedp.Value(`input[placeholder="Search functions…"]`, &afterValue, chromedp.ByQuery),
+		chromedp.WaitVisible(`input[placeholder="Search assignments…"]`, chromedp.ByQuery),
+		chromedp.Value(`input[placeholder="Search assignments…"]`, &afterValue, chromedp.ByQuery),
 		chromedp.Location(&urlAfter),
 	)
 	assert.NilError(t, err)
@@ -182,16 +182,16 @@ func TestTenantsPageSearchFromURL(t *testing.T) {
 	assert.Equal(t, inputValue, "tenant-1")
 }
 
-func TestEventsPageFunctionFilterFromURL(t *testing.T) {
+func TestEventsPageAssignmentFilterFromURL(t *testing.T) {
 	ensureServer(t)
 	ctx, cancel := browserContext(t)
 	defer cancel()
 
 	var inputValue string
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(baseURL+"/events?function=web"),
-		chromedp.WaitVisible(`input[placeholder="Filter by function…"]`, chromedp.ByQuery),
-		chromedp.Value(`input[placeholder="Filter by function…"]`, &inputValue, chromedp.ByQuery),
+		chromedp.Navigate(baseURL+"/events?assignment=web"),
+		chromedp.WaitVisible(`input[placeholder="Filter by assignment…"]`, chromedp.ByQuery),
+		chromedp.Value(`input[placeholder="Filter by assignment…"]`, &inputValue, chromedp.ByQuery),
 	)
 	assert.NilError(t, err)
 	assert.Equal(t, inputValue, "web")

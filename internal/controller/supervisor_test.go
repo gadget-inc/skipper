@@ -2157,7 +2157,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 
 				// create a pod that was assigned long ago but never became ready
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
-				stuckTime := time.Now().Add(-state.ctrl.config.FunctionAssignTimeout * 3) // well past the 2x threshold
+				stuckTime := time.Now().Add(-state.ctrl.config.AssignTimeout * 3) // well past the 2x threshold
 				pod.Annotations[key.AssignedAt.Label] = stuckTime.Format(time.RFC3339)
 				delete(pod.Annotations, key.ReadyAt.Label) // never became ready
 				state.fakeKubernetes.Tracker().Add(pod)
@@ -4150,7 +4150,7 @@ func TestSupervisorEvents(t *testing.T) {
 
 				// create a pod stuck past the threshold
 				pod := fixture.NewAssignedPod(t, state.fn, nil)
-				stuckTime := time.Now().Add(-state.ctrl.config.FunctionAssignTimeout * 3)
+				stuckTime := time.Now().Add(-state.ctrl.config.AssignTimeout * 3)
 				pod.Annotations[key.AssignedAt.Label] = stuckTime.Format(time.RFC3339)
 				delete(pod.Annotations, key.ReadyAt.Label)
 				state.fakeKubernetes.Tracker().Add(pod)

@@ -16,7 +16,7 @@
       <div class="stat-value-sm">{{.IP}}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Functions</div>
+      <div class="stat-label">Assignments</div>
       <div class="stat-value">{{len .Supervisors}}</div>
     </div>
     <div class="stat-card stat-card-success">
@@ -30,9 +30,9 @@
   </div>
 
   <div>
-    <h2>Functions</h2>
+    <h2>Assignments</h2>
     {{if not .Supervisors}}
-    <div class="empty-state">No functions assigned</div>
+    <div class="empty-state">No assignments</div>
     {{else}}
     <div class="table-wrap">
       <table>
@@ -48,7 +48,7 @@
         <tbody>
           {{range .Supervisors}} {{$fn := .GetAssignment}}
           <tr>
-            <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
+            <td><a href="{{assignmentPath $fn}}">{{$fn.GetDeployment}}</a></td>
             <td>{{$fn.GetNamespace}}</td>
             <td class="mono">{{$fn.GetTenant}}</td>
             <td class="tabular">{{len .GetInstances}}</td>

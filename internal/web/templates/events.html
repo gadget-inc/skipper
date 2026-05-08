@@ -1,7 +1,7 @@
 {{define "content"}}
 <div
   data-on-interval__duration.5000ms="@get('/sse/events')"
-  data-signals="{{signals `eventFunction` .AssignmentFilter `eventSeverity` (or .SeverityFilter `all`)}}"
+  data-signals="{{signals `eventAssignment` .AssignmentFilter `eventSeverity` (or .SeverityFilter `all`)}}"
 >
   <div class="page-header">
     <h1>Events</h1>
@@ -11,15 +11,15 @@
     <input
       type="text"
       class="filter-input"
-      placeholder="Filter by function…"
-      data-bind="eventFunction"
-      data-on:keyup__debounce.300ms="syncParams({function: $eventFunction, severity: $eventSeverity === 'all' ? '' : $eventSeverity}); @get('/sse/events')"
+      placeholder="Filter by assignment…"
+      data-bind="eventAssignment"
+      data-on:keyup__debounce.300ms="syncParams({assignment: $eventAssignment, severity: $eventSeverity === 'all' ? '' : $eventSeverity}); @get('/sse/events')"
     />
     <div class="filter-select-wrap">
       <select
         class="filter-select"
         data-bind="eventSeverity"
-        data-on:change="syncParams({function: $eventFunction, severity: $eventSeverity === 'all' ? '' : $eventSeverity}); @get('/sse/events')"
+        data-on:change="syncParams({assignment: $eventAssignment, severity: $eventSeverity === 'all' ? '' : $eventSeverity}); @get('/sse/events')"
       >
         <option value="all" {{if or (not .SeverityFilter) (eq .SeverityFilter `all`)}} selected{{end}}>All severities</option>
         <option value="1" {{if eq .SeverityFilter `1`}} selected{{end}}>Info</option>
@@ -40,7 +40,7 @@
   <thead>
     <tr>
       <th>Timestamp</th>
-      <th>Function</th>
+      <th>Assignment</th>
       <th>Type</th>
       <th>Detail</th>
       <th>Severity</th>
@@ -50,7 +50,7 @@
     {{range .}}
     <tr>
       <td class="mono muted">{{formatTimestamp .GetTimestamp}}</td>
-      <td>{{if .GetAssignment}}<a href="{{functionPath .GetAssignment}}">{{functionKey .GetAssignment}}</a>{{else}}—{{end}}</td>
+      <td>{{if .GetAssignment}}<a href="{{assignmentPath .GetAssignment}}">{{assignmentKey .GetAssignment}}</a>{{else}}—{{end}}</td>
       <td>{{eventTypeLabel .GetType}}</td>
       <td class="muted">{{.GetMessage}}</td>
       <td>{{eventSeverityBadge .GetSeverity}}</td>

@@ -92,8 +92,8 @@ func assignmentKey(fn *skipper.Assignment) string {
 	return fn.GetNamespace() + ":" + fn.GetDeployment() + ":" + fn.GetTenant()
 }
 
-func functionPath(fn *skipper.Assignment) string {
-	return "/functions/" + url.PathEscape(assignmentKey(fn))
+func assignmentPath(fn *skipper.Assignment) string {
+	return "/assignments/" + url.PathEscape(assignmentKey(fn))
 }
 
 func scaleReasonLabel(reason skipper.ScaleReason) string {
@@ -196,8 +196,8 @@ func pct(a, b int) int {
 func activeNav(title string) string {
 	lower := strings.ToLower(title)
 	switch {
-	case strings.HasPrefix(lower, "function"):
-		return "/functions"
+	case strings.HasPrefix(lower, "assignment"), strings.HasPrefix(lower, "function"):
+		return "/assignments"
 	case strings.HasPrefix(lower, "controller"):
 		return "/controllers"
 	case strings.HasPrefix(lower, "tenant"):
@@ -205,7 +205,7 @@ func activeNav(title string) string {
 	case strings.HasPrefix(lower, "router"):
 		return "/routers"
 	case strings.HasPrefix(lower, "instance"):
-		return "/functions"
+		return "/assignments"
 	case strings.HasPrefix(lower, "event"):
 		return "/events"
 	case strings.HasPrefix(lower, "deployment"):

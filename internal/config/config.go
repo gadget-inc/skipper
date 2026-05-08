@@ -7,7 +7,9 @@
 //
 // Configuration structs use the following tags to control flag behavior:
 //
-//   - flag: Flag name (required to register the field as a flag)
+//   - flag: Flag name (required to register the field as a flag). May be a
+//     comma-separated list; the first name is canonical and the rest are
+//     deprecated aliases that emit a one-shot log on use.
 //   - description: Help text shown in --help output
 //   - default: Default value, parsed from string representation
 //   - required: If "true", command fails when flag is not provided
@@ -17,12 +19,14 @@
 // # Environment Variables
 //
 // Each flag automatically falls back to an environment variable when not
-// provided on the command line. The variable name is derived from the flag
+// provided on the command line. The variable name is derived from each flag
 // name with a SKIPPER_ prefix:
 //
 //	--my-flag  →  SKIPPER_MY_FLAG
 //
-// Flags take precedence over environment variables.
+// Aliased flags also register an env-var fallback for each alias, with a
+// one-shot deprecation log on use. Flags take precedence over environment
+// variables.
 //
 // # Supported Types
 //
@@ -60,6 +64,7 @@
 package config
 
 import (
+	"context"
 	"encoding"
 	"fmt"
 	"net/url"
@@ -67,8 +72,11 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/gadget-inc/skipper/internal/key"
+	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -150,10 +158,13 @@ func bind(cmd *cobra.Command, cfg any, persistent bool) {
 		field := t.Field(i)
 		fieldValue := v.Field(i)
 
-		flagName := field.Tag.Get("flag")
-		if flagName == "" {
+		flagTag := field.Tag.Get("flag")
+		if flagTag == "" {
 			continue // skip fields without flag tag
 		}
+
+		names := splitFlagNames(flagTag)
+		canonical, aliases := names[0], names[1:]
 
 		description := field.Tag.Get("description")
 		required := field.Tag.Get("required") == "true"
@@ -163,9 +174,19 @@ func bind(cmd *cobra.Command, cfg any, persistent bool) {
 			separator = ","
 		}
 
-		// Build env var name from flag name
-		envVarName := "SKIPPER_" + strings.ToUpper(strings.ReplaceAll(flagName, "-", "_"))
-		description += " (env " + envVarName + ")"
+		// Build env var name from canonical flag name; aliases also bind
+		// to env vars derived from their own names, with a deprecation
+		// log on use.
+		envVarName := envVarFromFlag(canonical)
+		envSuffix := " (env " + envVarName + ")"
+		if len(aliases) > 0 {
+			aliasEnvs := make([]string, len(aliases))
+			for i, a := range aliases {
+				aliasEnvs[i] = envVarFromFlag(a)
+			}
+			envSuffix = " (env " + envVarName + ", deprecated env " + strings.Join(aliasEnvs, ", ") + ")"
+		}
+		description += envSuffix
 
 		// Create the value wrapper
 		fv := &flagValue{
@@ -174,7 +195,7 @@ func bind(cmd *cobra.Command, cfg any, persistent bool) {
 			separator: separator,
 		}
 
-		// Register the flag
+		// Register the canonical flag and any deprecated aliases.
 		var flags *pflag.FlagSet
 		if persistent {
 			flags = cmd.PersistentFlags()
@@ -182,17 +203,81 @@ func bind(cmd *cobra.Command, cfg any, persistent bool) {
 			flags = cmd.Flags()
 		}
 
-		flag := flags.VarPF(fv, flagName, "", description)
+		flag := flags.VarPF(fv, canonical, "", description)
 		if fv.IsBoolFlag() {
 			flag.NoOptDefVal = "true"
 		}
 
+		for _, alias := range aliases {
+			aliasFlag := flags.VarPF(&aliasFlagValue{inner: fv, canonical: canonical, alias: alias}, alias, "",
+				"DEPRECATED: use --"+canonical+" instead.")
+			if fv.IsBoolFlag() {
+				aliasFlag.NoOptDefVal = "true"
+			}
+			aliasFlag.Hidden = true
+		}
+
 		// Add PreRunE hook for env var fallback and required validation
-		addPreRun(cmd, persistent, flagName, envVarName, required, fv)
+		addPreRun(cmd, persistent, canonical, envVarName, aliases, required, fv)
 	}
 }
 
-func addPreRun(cmd *cobra.Command, persistent bool, flagName, envVarName string, required bool, fv *flagValue) {
+// splitFlagNames parses a flag tag into [canonical, aliases...]. Whitespace
+// around each comma-separated name is trimmed.
+func splitFlagNames(tag string) []string {
+	parts := strings.Split(tag, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// envVarFromFlag returns the SKIPPER_-prefixed env-var name corresponding to
+// a flag name (e.g. --my-flag → SKIPPER_MY_FLAG).
+func envVarFromFlag(flagName string) string {
+	return "SKIPPER_" + strings.ToUpper(strings.ReplaceAll(flagName, "-", "_"))
+}
+
+// deprecationLog emits a one-shot warning on stderr (and through slog if a
+// logger is configured) the first time a deprecated flag or env var is used.
+// Returning to a logger keeps the message visible even when the controller is
+// not configured to write to stderr.
+var deprecationLog sync.Map
+
+func logDeprecation(useKind, used, replacement string) {
+	if _, loaded := deprecationLog.LoadOrStore(used, struct{}{}); loaded {
+		return
+	}
+	msg := useKind + " " + used + " is deprecated; use " + replacement + " instead"
+	log.Warn(context.Background(), msg, key.Reason.Slog("deprecated"))
+}
+
+// aliasFlagValue is a pflag.Value adapter that forwards Set calls to a
+// canonical flagValue and emits a one-shot deprecation log on first use.
+type aliasFlagValue struct {
+	inner     *flagValue
+	canonical string
+	alias     string
+}
+
+var _ pflag.Value = (*aliasFlagValue)(nil)
+
+func (a *aliasFlagValue) Set(s string) error {
+	logDeprecation("flag --"+a.alias, "--"+a.alias, "--"+a.canonical)
+	return a.inner.Set(s)
+}
+
+func (a *aliasFlagValue) String() string { return a.inner.String() }
+func (a *aliasFlagValue) Type() string   { return a.inner.Type() }
+func (a *aliasFlagValue) IsBoolFlag() bool {
+	return a.inner.IsBoolFlag()
+}
+
+func addPreRun(cmd *cobra.Command, persistent bool, flagName, envVarName string, aliases []string, required bool, fv *flagValue) {
 	var nextPreRunE func(cmd *cobra.Command, args []string) error
 	if persistent {
 		nextPreRunE = cmd.PersistentPreRunE
@@ -202,11 +287,27 @@ func addPreRun(cmd *cobra.Command, persistent bool, flagName, envVarName string,
 
 	preRunE := func(cmd *cobra.Command, args []string) error {
 		if !fv.wasProvided {
-			// Check environment variable
+			// Check the canonical environment variable first.
 			if envValue, ok := os.LookupEnv(envVarName); ok {
 				if err := fv.Set(envValue); err != nil {
 					return fmt.Errorf("error parsing environment variable %s: %w", envVarName, err)
 				}
+			}
+		}
+		if !fv.wasProvided {
+			// Fall back to alias env vars in order. Each alias env var
+			// emits a one-shot deprecation log on first use.
+			for _, alias := range aliases {
+				aliasEnv := envVarFromFlag(alias)
+				envValue, ok := os.LookupEnv(aliasEnv)
+				if !ok {
+					continue
+				}
+				logDeprecation("env "+aliasEnv, aliasEnv, envVarName)
+				if err := fv.Set(envValue); err != nil {
+					return fmt.Errorf("error parsing environment variable %s: %w", aliasEnv, err)
+				}
+				break
 			}
 		}
 

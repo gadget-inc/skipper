@@ -116,7 +116,7 @@ func controllerSpawn(root string) process.SpawnFunc {
 			"SKIPPER_NAMESPACE=skipper-development",
 			"SKIPPER_POD_IP=127.0.0.1",
 			"SKIPPER_PASETO_PRIVATE_KEY="+string(pasetoKey),
-			"SKIPPER_FUNCTION_NAMESPACES=skipper-development-fixtures,skipper-test-fixtures",
+			"SKIPPER_ASSIGNMENT_NAMESPACES=skipper-development-fixtures,skipper-test-fixtures",
 			"SKIPPER_WEB_TEMPLATE_DIR="+filepath.Join(root, "internal", "web"),
 			"SKIPPER_SINGLE_CONTROLLER_MODE=true",
 			"SKIPPER_HOST=127.0.0.1",

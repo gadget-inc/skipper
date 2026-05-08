@@ -524,12 +524,12 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 }
 
 // cleanupStuckInstances terminates instances that are stuck in the
-// assigned state (not ready) for longer than FunctionAssignTimeout*2.
+// assigned state (not ready) for longer than AssignTimeout*2.
 // This is a cheap operation (just deletes) and should be called before
 // scaling execution to remove broken pods from consideration.
 func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*skipper.Instance) []*skipper.Instance {
 	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
-		if !instance.HasReadyAt() && time.Since(instance.GetAssignedAt().AsTime()) > s.ctrl.config.FunctionAssignTimeout*2 {
+		if !instance.HasReadyAt() && time.Since(instance.GetAssignedAt().AsTime()) > s.ctrl.config.AssignTimeout*2 {
 			ctx := log.With(ctx, skipper.InstanceKey.Slog(instance))
 			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err := s.ctrl.deletePod(ctx, instance.GetAssignment().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})

@@ -47,27 +47,27 @@ func (s *Server) sseDashboard(w http.ResponseWriter, r *http.Request) {
 	s.patchFragment(sse, "dashboard", "recent-activity", data)
 }
 
-func (s *Server) sseFunctions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) sseAssignments(w http.ResponseWriter, r *http.Request) {
 	state := s.state(r.Context())
 
 	var sig struct {
-		FnSearch  string `json:"fnSearch"`
-		FnSort    string `json:"fnSort"`
-		FnSortDir string `json:"fnSortDir"`
+		AssignmentSearch  string `json:"assignmentSearch"`
+		AssignmentSort    string `json:"assignmentSort"`
+		AssignmentSortDir string `json:"assignmentSortDir"`
 	}
 	_ = datastar.ReadSignals(r, &sig)
-	if sig.FnSort == "" {
-		sig.FnSort = "deployment"
+	if sig.AssignmentSort == "" {
+		sig.AssignmentSort = "deployment"
 	}
-	if sig.FnSortDir == "" {
-		sig.FnSortDir = "asc"
+	if sig.AssignmentSortDir == "" {
+		sig.AssignmentSortDir = "asc"
 	}
 
-	sups := filterSupervisors(state.GetSupervisors(), sig.FnSearch)
-	sups = sortSupervisors(sups, sig.FnSort, sig.FnSortDir)
+	sups := filterSupervisors(state.GetSupervisors(), sig.AssignmentSearch)
+	sups = sortSupervisors(sups, sig.AssignmentSort, sig.AssignmentSortDir)
 
 	sse := datastar.NewSSE(w, r)
-	s.patchFragment(sse, "functions", "functions-table", &assignmentsData{
+	s.patchFragment(sse, "assignments", "assignments-table", &assignmentsData{
 		State:       state,
 		Supervisors: sups,
 	})
@@ -90,7 +90,7 @@ func (s *Server) sseAssignment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sse := datastar.NewSSE(w, r)
-	s.patchFragment(sse, "function", "instances-table", data)
+	s.patchFragment(sse, "assignment", "instances-table", data)
 }
 
 func (s *Server) sseControllers(w http.ResponseWriter, r *http.Request) {
@@ -265,18 +265,18 @@ func (s *Server) sseDeployment(w http.ResponseWriter, r *http.Request) {
 func (s *Server) sseEvents(w http.ResponseWriter, r *http.Request) {
 	state := s.state(r.Context())
 
-	var fnFilter, sevFilter string
+	var assignmentFilter, sevFilter string
 	type signals struct {
-		EventFunction string `json:"eventFunction"`
-		EventSeverity string `json:"eventSeverity"`
+		EventAssignment string `json:"eventAssignment"`
+		EventSeverity   string `json:"eventSeverity"`
 	}
 	var sig signals
 	if err := datastar.ReadSignals(r, &sig); err == nil {
-		fnFilter = sig.EventFunction
+		assignmentFilter = sig.EventAssignment
 		sevFilter = sig.EventSeverity
 	}
 
-	filtered := filterEvents(state.GetEvents(), fnFilter, sevFilter)
+	filtered := filterEvents(state.GetEvents(), assignmentFilter, sevFilter)
 
 	sse := datastar.NewSSE(w, r)
 	s.patchFragment(sse, "events", "events-table", filtered)

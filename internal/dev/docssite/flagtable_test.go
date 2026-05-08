@@ -31,8 +31,8 @@ func TestRenderFlagTable_ControllerHasExpectedFlags(t *testing.T) {
 		"kubeconfig-qps", "kubeconfig-burst", "paseto-private-key",
 		"heartbeat-timeout", "scale-interval", "hpa-tolerance",
 		"hpa-initial-readiness-delay", "hpa-downscale-stabilization",
-		"hash-ring-wait-time", "function-namespaces",
-		"function-assign-path", "function-assign-timeout",
+		"hash-ring-wait-time", "assignment-namespaces",
+		"assign-path", "assign-timeout",
 		"max-concurrent-stale-replacements", "skip-forbidden-namespaces",
 		"web-port", "web-template-dir", "single-controller-mode",
 	}
@@ -139,7 +139,7 @@ func TestRenderFlagTable_TypeRewrites(t *testing.T) {
 	assert.Equal(t, cells("port")[1], "int")
 	assert.Equal(t, cells("host")[1], "string")
 	assert.Equal(t, cells("shutdown-timeout")[1], "duration")
-	assert.Equal(t, cells("function-namespaces")[1], "string list")
+	assert.Equal(t, cells("assignment-namespaces")[1], "string list")
 	assert.Equal(t, cells("paseto-private-key")[1], "string")
 	assert.Equal(t, cells("kubeconfig-qps")[1], "float32")
 	assert.Equal(t, cells("hpa-tolerance")[1], "float64")
@@ -343,8 +343,12 @@ title: Configuration Reference
 				if flag == "" {
 					continue
 				}
-				assert.Assert(t, strings.Contains(out, "--"+flag),
-					"section %q missing --%s in rendered HTML", b.Section, flag)
+				// Only the canonical (first) name is rendered in the
+				// flag table; deprecated aliases are tested separately.
+				canonical, _, _ := strings.Cut(flag, ",")
+				canonical = strings.TrimSpace(canonical)
+				assert.Assert(t, strings.Contains(out, "--"+canonical),
+					"section %q missing --%s in rendered HTML", b.Section, canonical)
 			}
 		}
 	}

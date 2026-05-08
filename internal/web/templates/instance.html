@@ -4,7 +4,7 @@
 <div data-on-interval__duration.5000ms="@get('/sse/instance/{{pathEscape .Name}}')">
   <div class="page-header">
     <div class="breadcrumb">
-      <a href="/functions">Functions</a><span class="separator">/</span><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a
+      <a href="/assignments">Assignments</a><span class="separator">/</span><a href="{{assignmentPath $fn}}">{{$fn.GetDeployment}}</a
       ><span class="separator">/</span>{{.Name}}
     </div>
     <h1>{{.Name}} {{instanceStateBadge $inst .Supervisor.GetActiveReplicaSet}}</h1>
@@ -52,8 +52,8 @@ $inst}}
             <td>{{if isReady $inst}}{{timeAgo $inst.GetReadyAt}}{{else}}—{{end}}</td>
           </tr>
           <tr>
-            <td class="muted">Function</td>
-            <td><a href="{{functionPath $fn}}">{{functionKey $fn}}</a></td>
+            <td class="muted">Assignment</td>
+            <td><a href="{{assignmentPath $fn}}">{{assignmentKey $fn}}</a></td>
           </tr>
           <tr>
             <td class="muted">Responsible Controller</td>

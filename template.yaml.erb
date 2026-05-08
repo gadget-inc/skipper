@@ -254,8 +254,8 @@ spec:
               value: "<%= controller_log_level %>"
             - name: SKIPPER_LOG_FORMAT
               value: "<%= controller_log_format %>"
-            - name: SKIPPER_FUNCTION_NAMESPACES
-              value: "<%= function_namespaces.join(',') %>"
+            - name: SKIPPER_ASSIGNMENT_NAMESPACES
+              value: "<%= (defined?(assignment_namespaces) ? assignment_namespaces : function_namespaces).join(',') %>"
             - name: SKIPPER_SKIP_FORBIDDEN_NAMESPACES
               value: "<%= skip_forbidden_namespaces %>"
             - name: SKIPPER_SHUTDOWN_TIMEOUT

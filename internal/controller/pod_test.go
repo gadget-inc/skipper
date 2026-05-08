@@ -135,7 +135,7 @@ func TestAssignPod(t *testing.T) {
 			err:  context.DeadlineExceeded,
 			setup: func(t *testing.T, state *testState) {
 				state.cfg = testConfig()
-				state.cfg.FunctionAssignTimeout = time.Millisecond
+				state.cfg.AssignTimeout = time.Millisecond
 
 				// create a pod with a slow assign handler
 				slowHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

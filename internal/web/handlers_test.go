@@ -71,9 +71,9 @@ func TestHandlers(t *testing.T) {
 		contains string
 	}{
 		{name: "dashboard", path: "/", status: 200, contains: "Dashboard"},
-		{name: "functions", path: "/functions", status: 200, contains: "Functions"},
-		{name: "function detail", path: "/functions/default%3Aweb-app%3Atenant-1", status: 200, contains: "web-app"},
-		{name: "function not found", path: "/functions/nonexistent", status: 200, contains: "Function not found"},
+		{name: "assignments", path: "/assignments", status: 200, contains: "Assignments"},
+		{name: "assignment detail", path: "/assignments/default%3Aweb-app%3Atenant-1", status: 200, contains: "web-app"},
+		{name: "assignment not found", path: "/assignments/nonexistent", status: 200, contains: "Assignment not found"},
 		{name: "controllers", path: "/controllers", status: 200, contains: "Controllers"},
 		{name: "controller detail", path: "/controllers/10.0.0.1", status: 200, contains: "10.0.0.1"},
 		{name: "controller not found", path: "/controllers/10.0.0.99", status: 200, contains: "Controller not found"},
@@ -116,7 +116,7 @@ func TestDashboardContent(t *testing.T) {
 	body := w.Body.String()
 	assert.Assert(t, strings.Contains(body, "skipper"))
 	assert.Assert(t, strings.Contains(body, "Tenants"))
-	assert.Assert(t, strings.Contains(body, "Functions"))
+	assert.Assert(t, strings.Contains(body, "Assignments"))
 	assert.Assert(t, strings.Contains(body, "Deployments"))
 	assert.Assert(t, strings.Contains(body, "Instances"))
 	assert.Assert(t, strings.Contains(body, "Uptime"))
@@ -124,11 +124,11 @@ func TestDashboardContent(t *testing.T) {
 	assert.Assert(t, strings.Contains(body, "data-on-interval"))
 }
 
-func TestFunctionDetail(t *testing.T) {
+func TestAssignmentDetail(t *testing.T) {
 	t.Parallel()
 	srv := testServer()
 
-	req := httptest.NewRequest(http.MethodGet, "/functions/default%3Aweb-app%3Atenant-1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/assignments/default%3Aweb-app%3Atenant-1", nil)
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, req)
 
@@ -137,6 +137,35 @@ func TestFunctionDetail(t *testing.T) {
 	assert.Assert(t, strings.Contains(body, "tenant-1"))
 	assert.Assert(t, strings.Contains(body, "Scale Targets"))
 	assert.Assert(t, strings.Contains(body, "web-app-abc123"))
+}
+
+// TestLegacyRoutesRedirect documents that pre-Phase-3 URLs still work:
+// the router serves a 301 to the equivalent /assignments/* path.
+// Datastar clients follow this on the initial handshake.
+func TestLegacyRoutesRedirect(t *testing.T) {
+	t.Parallel()
+	srv := testServer()
+
+	cases := []struct {
+		name   string
+		path   string
+		target string
+	}{
+		{name: "functions index", path: "/functions", target: "/assignments"},
+		{name: "function detail", path: "/functions/default%3Aweb-app%3Atenant-1", target: "/assignments/default:web-app:tenant-1"},
+		{name: "functions with query", path: "/functions?search=web&sort=instances", target: "/assignments?search=web&sort=instances"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			w := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(w, req)
+			assert.Equal(t, w.Code, http.StatusMovedPermanently)
+			assert.Equal(t, w.Header().Get("Location"), tc.target)
+		})
+	}
 }
 
 func TestInstanceDetail(t *testing.T) {
@@ -438,7 +467,7 @@ func TestBuildControllerData(t *testing.T) {
 	assert.Equal(t, len(rows), 1)
 	assert.Equal(t, rows[0].IP, "10.0.0.1")
 	assert.Assert(t, rows[0].IsSelf)
-	assert.Equal(t, rows[0].Functions, 1)
+	assert.Equal(t, rows[0].Assignments, 1)
 	assert.Equal(t, rows[0].ReadyInstances, 1)
 	assert.Equal(t, rows[0].TotalInstances, 1)
 
@@ -511,7 +540,7 @@ func TestBuildRouterRows(t *testing.T) {
 		rows := buildRouterRows(state)
 		assert.Equal(t, len(rows), 1)
 		assert.Equal(t, rows[0].IP, "10.0.1.1")
-		assert.Equal(t, rows[0].Functions, 1)
+		assert.Equal(t, rows[0].Assignments, 1)
 		assert.Equal(t, rows[0].InFlight, uint32(5))
 	})
 }
@@ -582,13 +611,13 @@ func TestEmptyState(t *testing.T) {
 		contains string
 	}{
 		{name: "dashboard", path: "/", status: 200, contains: ""},
-		{name: "functions", path: "/functions", status: 200, contains: "No functions"},
+		{name: "assignments", path: "/assignments", status: 200, contains: "No assignments"},
 		{name: "events", path: "/events", status: 200, contains: "No events"},
 		{name: "controllers", path: "/controllers", status: 200, contains: "No controllers"},
 		{name: "routers", path: "/routers", status: 200, contains: "No routers"},
 		{name: "deployments", path: "/deployments", status: 200, contains: ""},
 		{name: "tenants", path: "/tenants", status: 200, contains: "No tenants"},
-		{name: "function not found", path: "/functions/nonexistent", status: 200, contains: "Function not found"},
+		{name: "assignment not found", path: "/assignments/nonexistent", status: 200, contains: "Assignment not found"},
 	}
 
 	for _, tc := range tests {
@@ -622,7 +651,7 @@ func TestBuildTenantRows(t *testing.T) {
 		rows := buildTenantRows(state)
 		assert.Equal(t, len(rows), 1)
 		assert.Equal(t, rows[0].Tenant, "tenant-1")
-		assert.Equal(t, rows[0].Functions, 1)
+		assert.Equal(t, rows[0].Assignments, 1)
 		assert.Equal(t, rows[0].ReadyInstances, 1)
 		assert.Equal(t, rows[0].TotalInstances, 1)
 		assert.DeepEqual(t, rows[0].Deployments, []string{"web-app"})
@@ -678,13 +707,13 @@ func TestBuildTenantRows(t *testing.T) {
 
 		// Should be sorted by tenant name
 		assert.Equal(t, rows[0].Tenant, "tenant-1")
-		assert.Equal(t, rows[0].Functions, 1)
+		assert.Equal(t, rows[0].Assignments, 1)
 		assert.Equal(t, rows[0].ReadyInstances, 1)
 		assert.Equal(t, rows[0].TotalInstances, 1)
 		assert.DeepEqual(t, rows[0].Deployments, []string{"web-app"})
 
 		assert.Equal(t, rows[1].Tenant, "tenant-2")
-		assert.Equal(t, rows[1].Functions, 1)
+		assert.Equal(t, rows[1].Assignments, 1)
 		assert.Equal(t, rows[1].ReadyInstances, 1)
 		assert.Equal(t, rows[1].TotalInstances, 2)
 		assert.DeepEqual(t, rows[1].Deployments, []string{"api-server"})
@@ -907,13 +936,13 @@ func multiSupServer() *Server {
 	})
 }
 
-func TestFunctionsQueryParams(t *testing.T) {
+func TestAssignmentsQueryParams(t *testing.T) {
 	t.Parallel()
 	srv := multiSupServer()
 
 	t.Run("search filters supervisors", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(http.MethodGet, "/functions?search=web", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assignments?search=web", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 
@@ -925,7 +954,7 @@ func TestFunctionsQueryParams(t *testing.T) {
 
 	t.Run("sort by instances desc", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(http.MethodGet, "/functions?sort=instances&dir=desc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assignments?sort=instances&dir=desc", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 
@@ -942,18 +971,18 @@ func TestFunctionsQueryParams(t *testing.T) {
 
 	t.Run("search nonexistent shows empty", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(http.MethodGet, "/functions?search=nonexistent", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assignments?search=nonexistent", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 
 		body := w.Body.String()
 		assert.Equal(t, w.Code, 200)
-		assert.Assert(t, strings.Contains(body, "No functions"), "body should show empty state")
+		assert.Assert(t, strings.Contains(body, "No assignments"), "body should show empty state")
 	})
 
 	t.Run("no params uses defaults", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(http.MethodGet, "/functions", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assignments", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 
@@ -973,7 +1002,7 @@ func TestFunctionsQueryParams(t *testing.T) {
 
 	t.Run("signal initialization", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(http.MethodGet, "/functions?search=web&sort=tenant&dir=desc", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assignments?search=web&sort=tenant&dir=desc", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 
@@ -982,19 +1011,19 @@ func TestFunctionsQueryParams(t *testing.T) {
 		// data-signals is rendered as JSON inside an HTML attribute, so the
 		// double-quotes around keys/values arrive as `&#34;` -- the browser
 		// decodes them before Datastar parses the expression.
-		assert.Assert(t, strings.Contains(body, `&#34;fnSearch&#34;:&#34;web&#34;`), "data-signals should contain fnSearch")
-		assert.Assert(t, strings.Contains(body, `&#34;fnSort&#34;:&#34;tenant&#34;`), "data-signals should contain fnSort")
-		assert.Assert(t, strings.Contains(body, `&#34;fnSortDir&#34;:&#34;desc&#34;`), "data-signals should contain fnSortDir")
+		assert.Assert(t, strings.Contains(body, `&#34;assignmentSearch&#34;:&#34;web&#34;`), "data-signals should contain assignmentSearch")
+		assert.Assert(t, strings.Contains(body, `&#34;assignmentSort&#34;:&#34;tenant&#34;`), "data-signals should contain assignmentSort")
+		assert.Assert(t, strings.Contains(body, `&#34;assignmentSortDir&#34;:&#34;desc&#34;`), "data-signals should contain assignmentSortDir")
 	})
 
 	t.Run("signal initialization escapes quote and ampersand in user input", func(t *testing.T) {
 		t.Parallel()
 		// A bare apostrophe in `search` would close the inline string
-		// `'{{.FnSearch}}'` mid-attribute and make Datastar fail to
+		// `'{{.AssignmentSearch}}'` mid-attribute and make Datastar fail to
 		// parse the entire data-signals expression. JSON-encoding the
 		// signal escapes the apostrophe so the rendered attribute is
 		// parseable after the browser HTML-decodes it.
-		req := httptest.NewRequest(http.MethodGet, "/functions?search=it%27s+%26+more", nil)
+		req := httptest.NewRequest(http.MethodGet, "/assignments?search=it%27s+%26+more", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 		body := w.Body.String()
@@ -1002,7 +1031,7 @@ func TestFunctionsQueryParams(t *testing.T) {
 		// `'` is rendered as the HTML entity `&#39;`; `&` is JSON-escaped
 		// to the 6-character sequence `&` (encoding/json defaults
 		// to HTML-safe output) which the JS parser decodes back to `&`.
-		assert.Assert(t, strings.Contains(body, "&#34;fnSearch&#34;:&#34;it&#39;s \\u0026 more&#34;"),
+		assert.Assert(t, strings.Contains(body, "&#34;assignmentSearch&#34;:&#34;it&#39;s \\u0026 more&#34;"),
 			"data-signals must safely encode apostrophe and ampersand, got: %s", body)
 	})
 }
@@ -1177,9 +1206,9 @@ func TestEventsQueryParams(t *testing.T) {
 		assert.Assert(t, !strings.Contains(body, "timeout web-app"), "body should not contain warn event")
 	})
 
-	t.Run("function filters events", func(t *testing.T) {
+	t.Run("assignment filters events", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(http.MethodGet, "/events?function=web", nil)
+		req := httptest.NewRequest(http.MethodGet, "/events?assignment=web", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 
@@ -1190,9 +1219,34 @@ func TestEventsQueryParams(t *testing.T) {
 		assert.Assert(t, !strings.Contains(body, "scaled up api-server"), "body should not contain api-server events")
 	})
 
+	t.Run("legacy function query param still filters", func(t *testing.T) {
+		t.Parallel()
+		req := httptest.NewRequest(http.MethodGet, "/events?function=web", nil)
+		w := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(w, req)
+
+		body := w.Body.String()
+		assert.Equal(t, w.Code, 200)
+		assert.Assert(t, strings.Contains(body, "scaled up web-app"), "legacy ?function= should still filter")
+		assert.Assert(t, !strings.Contains(body, "scaled up api-server"), "non-matching events should be excluded")
+	})
+
+	t.Run("assignment beats function when both present", func(t *testing.T) {
+		t.Parallel()
+		// When both query params are set, ?assignment= wins.
+		req := httptest.NewRequest(http.MethodGet, "/events?function=api&assignment=web", nil)
+		w := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(w, req)
+
+		body := w.Body.String()
+		assert.Equal(t, w.Code, 200)
+		assert.Assert(t, strings.Contains(body, "scaled up web-app"), "body should match the assignment filter")
+		assert.Assert(t, !strings.Contains(body, "scaled up api-server"), "body should not match the legacy function filter")
+	})
+
 	t.Run("combined filters", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(http.MethodGet, "/events?severity=2&function=web", nil)
+		req := httptest.NewRequest(http.MethodGet, "/events?severity=2&assignment=web", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 
@@ -1218,14 +1272,14 @@ func TestEventsQueryParams(t *testing.T) {
 
 	t.Run("signal initialization with severity", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest(http.MethodGet, "/events?severity=2&function=web", nil)
+		req := httptest.NewRequest(http.MethodGet, "/events?severity=2&assignment=web", nil)
 		w := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(w, req)
 
 		body := w.Body.String()
 		assert.Equal(t, w.Code, 200)
 		assert.Assert(t, strings.Contains(body, `&#34;eventSeverity&#34;:&#34;2&#34;`), "data-signals should contain eventSeverity")
-		assert.Assert(t, strings.Contains(body, `&#34;eventFunction&#34;:&#34;web&#34;`), "data-signals should contain eventFunction")
+		assert.Assert(t, strings.Contains(body, `&#34;eventAssignment&#34;:&#34;web&#34;`), "data-signals should contain eventAssignment")
 	})
 
 	t.Run("signal initialization defaults", func(t *testing.T) {
@@ -1237,7 +1291,7 @@ func TestEventsQueryParams(t *testing.T) {
 		body := w.Body.String()
 		assert.Equal(t, w.Code, 200)
 		assert.Assert(t, strings.Contains(body, `&#34;eventSeverity&#34;:&#34;all&#34;`), "data-signals should default eventSeverity to 'all'")
-		assert.Assert(t, strings.Contains(body, `&#34;eventFunction&#34;:&#34;&#34;`), "data-signals should default eventFunction to empty")
+		assert.Assert(t, strings.Contains(body, `&#34;eventAssignment&#34;:&#34;&#34;`), "data-signals should default eventAssignment to empty")
 	})
 }
 
@@ -1274,9 +1328,9 @@ func TestSortTenantRows(t *testing.T) {
 	t.Parallel()
 
 	rows := []tenantRow{
-		{Tenant: "charlie", Functions: 3, ReadyInstances: 5},
-		{Tenant: "alpha", Functions: 1, ReadyInstances: 2},
-		{Tenant: "bravo", Functions: 2, ReadyInstances: 10},
+		{Tenant: "charlie", Assignments: 3, ReadyInstances: 5},
+		{Tenant: "alpha", Assignments: 1, ReadyInstances: 2},
+		{Tenant: "bravo", Assignments: 2, ReadyInstances: 10},
 	}
 
 	tests := []struct {

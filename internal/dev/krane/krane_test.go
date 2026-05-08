@@ -18,9 +18,9 @@ import (
 // rendering. They mirror cmd/dev/kube_lint.go's kubeLintBaseBindings;
 // if you add a new required base binding to the template, update both.
 var kraneCorpusBaseBindings = map[string]any{
-	"namespace":           "lint",
-	"function_namespaces": []string{"default"},
-	"image_tag":           "v1.0.0",
+	"namespace":             "lint",
+	"assignment_namespaces": []string{"default"},
+	"image_tag":             "v1.0.0",
 }
 
 // kraneCorpusCases mirrors cmd/dev/kube_lint.go's kubeLintConfigs.

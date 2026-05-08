@@ -86,7 +86,9 @@ func renderFlagRows(structs []any) (string, error) {
 			if flag == "" {
 				continue
 			}
-			row, err := renderFlagRow(f, flag)
+			canonical, _, _ := strings.Cut(flag, ",")
+			canonical = strings.TrimSpace(canonical)
+			row, err := renderFlagRow(f, canonical)
 			if err != nil {
 				return "", err
 			}

@@ -1,16 +1,16 @@
 {{define "content"}} {{if not .Supervisor}}
-<div class="empty-state">Function not found: {{.Key}}</div>
+<div class="empty-state">Assignment not found: {{.Key}}</div>
 {{else}} {{$fn := .Supervisor.GetAssignment}} {{$scale := $fn.GetScale}} {{$sup := .Supervisor}}
-<div data-on-interval__duration.5000ms="@get('/sse/function/{{pathEscape .Key}}')">
+<div data-on-interval__duration.5000ms="@get('/sse/assignment/{{pathEscape .Key}}')">
   <div class="page-header">
-    <div class="breadcrumb"><a href="/functions">Functions</a><span class="separator">/</span>{{$fn.GetDeployment}}</div>
+    <div class="breadcrumb"><a href="/assignments">Assignments</a><span class="separator">/</span>{{$fn.GetDeployment}}</div>
     <h1>
       {{$fn.GetDeployment}}
       <span class="h1-suffix">{{$fn.GetTenant}}</span>
     </h1>
   </div>
 
-  <div id="function-detail">
+  <div id="assignment-detail">
     <div class="detail-layout">
       <div class="detail-sidebar">
         <div class="stat-card stat-card-muted">

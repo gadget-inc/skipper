@@ -88,7 +88,7 @@ func TestFunctionKey(t *testing.T) {
 	assert.Equal(t, assignmentKey(nil), "")
 }
 
-func TestFunctionPath(t *testing.T) {
+func TestAssignmentPath(t *testing.T) {
 	t.Parallel()
 
 	fn := skipper.Assignment_builder{
@@ -97,7 +97,7 @@ func TestFunctionPath(t *testing.T) {
 		Tenant:     new("tenant-1"),
 	}.Build()
 
-	assert.Equal(t, functionPath(fn), "/functions/default:web-app:tenant-1")
+	assert.Equal(t, assignmentPath(fn), "/assignments/default:web-app:tenant-1")
 }
 
 func TestScaleReasonLabel(t *testing.T) {
