@@ -57,7 +57,7 @@
     <div class="stat-value">{{.TotalTenants}}</div>
   </div>
   <div class="stat-card">
-    <div class="stat-label">Functions</div>
+    <div class="stat-label">Assignments</div>
     <div class="stat-value">{{len .State.GetSupervisors}}</div>
   </div>
   <div class="stat-card">
@@ -145,7 +145,7 @@
   <tbody>
     {{range .State.GetSupervisors}} {{$fn := .GetAssignment}} {{$ready := 0}}{{$total := len .GetInstances}}
     <tr>
-      <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
+      <td><a href="{{assignmentPath $fn}}">{{$fn.GetDeployment}}</a></td>
       <td>{{$fn.GetNamespace}}</td>
       <td class="mono">{{$fn.GetTenant}}</td>
       <td class="tabular">{{$total}}</td>
@@ -169,7 +169,7 @@
   <thead>
     <tr>
       <th>Timestamp</th>
-      <th>Function</th>
+      <th>Assignment</th>
       <th>Type</th>
       <th>Detail</th>
       <th>Severity</th>
@@ -179,7 +179,7 @@
     {{range .RecentEvents}}
     <tr>
       <td class="mono muted">{{formatTimestamp .GetTimestamp}}</td>
-      <td>{{if .GetAssignment}}<a href="{{functionPath .GetAssignment}}">{{functionKey .GetAssignment}}</a>{{else}}—{{end}}</td>
+      <td>{{if .GetAssignment}}<a href="{{assignmentPath .GetAssignment}}">{{assignmentKey .GetAssignment}}</a>{{else}}—{{end}}</td>
       <td>{{eventTypeLabel .GetType}}</td>
       <td class="muted">{{.GetMessage}}</td>
       <td>{{eventSeverityBadge .GetSeverity}}</td>

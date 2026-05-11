@@ -65,16 +65,16 @@ func TestComputeHealthIssues(t *testing.T) {
 		assert.Equal(t, issues[0].Color, "red")
 	})
 
-	t.Run("functions waiting for pods", func(t *testing.T) {
+	t.Run("assignments waiting for pods", func(t *testing.T) {
 		t.Parallel()
 		inst := makeInstance("pod-1", 10*time.Second, -1, "rs-1")
 		inst.ClearReadyAt()
 		sup := makeSupervisor([]*skipper.Instance{inst}, nil, "")
 		issues := computeHealthIssues(makeState(sup))
-		// Should have "Functions waiting for pods" but not "Stuck" (< 60s)
+		// Should have "Assignments waiting for pods" but not "Stuck" (< 60s)
 		found := false
 		for _, issue := range issues {
-			if issue.Label == "Functions waiting for pods" {
+			if issue.Label == "Assignments waiting for pods" {
 				found = true
 				assert.Equal(t, issue.Color, "yellow")
 			}

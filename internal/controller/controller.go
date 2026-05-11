@@ -68,7 +68,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 		controllerClients:   xsync.NewMap[string, Client](),
 		kubernetes:          kubernetes,
 		kubernetesMetrics:   kubernetesMetrics,
-		namespaceListers:    make(map[string]namespaceLister, len(cfg.FunctionNamespaces)),
+		namespaceListers:    make(map[string]namespaceLister, len(cfg.AssignmentNamespaces)),
 		podMetrics:          xsync.NewMap[string, metricsv1beta1.PodMetrics](),
 		assignmentCache:     xsync.NewMap[string, *skipper.Assignment](),
 		portCache:           xsync.NewMap[types.UID, string](),
@@ -98,7 +98,7 @@ func (ctrl *Controller) Start(ctx context.Context) error {
 		return nil
 	})
 
-	for _, namespace := range ctrl.config.FunctionNamespaces {
+	for _, namespace := range ctrl.config.AssignmentNamespaces {
 		go timer.Loop(ctx, ctrl.config.ScaleInterval, func(ctx context.Context) error {
 			defer func() {
 				if r := recover(); r != nil {
@@ -195,7 +195,7 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		}
 	}
 
-	for _, namespace := range ctrl.config.FunctionNamespaces {
+	for _, namespace := range ctrl.config.AssignmentNamespaces {
 		_, err := ctrl.kubernetes.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
 		if err != nil {
 			if apierrors.IsForbidden(err) && ctrl.config.SkipForbiddenNamespaces {

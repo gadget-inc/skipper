@@ -1,0 +1,71 @@
+{{define "content"}}
+<div
+  data-on-interval__duration.5000ms="@get('/sse/assignments')"
+  data-signals="{{signals `assignmentSearch` .AssignmentSearch `assignmentSort` .AssignmentSort `assignmentSortDir` .AssignmentSortDir}}"
+>
+  <div class="page-header">
+    <h1>Assignments</h1>
+  </div>
+  <input
+    type="text"
+    class="search-input"
+    placeholder="Search assignments…"
+    data-bind="assignmentSearch"
+    data-on:keyup__debounce.300ms="syncParams({search: $assignmentSearch, sort: $assignmentSort, dir: $assignmentSortDir}); @get('/sse/assignments')"
+  />
+  <div id="assignments-table" class="table-wrap">{{template "assignments-table" .}}</div>
+</div>
+{{end}} {{define "assignments-table"}} {{if not .Supervisors}}
+<div class="empty-state">No assignments</div>
+{{else}}
+<table>
+  <thead>
+    <tr>
+      <th
+        class="sortable"
+        data-on:click="$assignmentSort = 'deployment'; $assignmentSortDir = $assignmentSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $assignmentSearch, sort: $assignmentSort, dir: $assignmentSortDir}); $get('/sse/assignments')"
+      >
+        Deployment
+      </th>
+      <th
+        class="sortable"
+        data-on:click="$assignmentSort = 'namespace'; $assignmentSortDir = $assignmentSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $assignmentSearch, sort: $assignmentSort, dir: $assignmentSortDir}); $get('/sse/assignments')"
+      >
+        Namespace
+      </th>
+      <th
+        class="sortable"
+        data-on:click="$assignmentSort = 'tenant'; $assignmentSortDir = $assignmentSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $assignmentSearch, sort: $assignmentSort, dir: $assignmentSortDir}); $get('/sse/assignments')"
+      >
+        Tenant
+      </th>
+      <th
+        class="sortable"
+        data-on:click="$assignmentSort = 'instances'; $assignmentSortDir = $assignmentSortDir === 'asc' ? 'desc' : 'asc'; syncParams({search: $assignmentSearch, sort: $assignmentSort, dir: $assignmentSortDir}); $get('/sse/assignments')"
+      >
+        Instances
+      </th>
+      <th>Scale</th>
+      <th>Routers</th>
+      <th>In-Flight</th>
+      <th>Responsible</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Supervisors}} {{$fn := .GetAssignment}} {{$scale := $fn.GetScale}} {{$totalInflight := 0}}
+    <tr>
+      <td><a href="{{assignmentPath $fn}}">{{$fn.GetDeployment}}</a></td>
+      <td>{{$fn.GetNamespace}}</td>
+      <td class="mono">{{$fn.GetTenant}}</td>
+      <td class="tabular">{{len .GetInstances}}</td>
+      <td class="tabular">{{if $scale}}{{$scale.GetMinInstances}}–{{$scale.GetMaxInstances}}{{else}}—{{end}}</td>
+      <td class="tabular">{{len .GetRouterHeartbeats}}</td>
+      <td class="tabular">—</td>
+      <td class="mono">
+        <a href="/controllers/{{pathEscape .GetResponsibleControllerIp}}">{{.GetResponsibleControllerIp}}</a>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}} {{end}}

@@ -22,12 +22,12 @@ type dashboardData struct {
 }
 
 type assignmentsData struct {
-	Title       string
-	State       *skipper.ClusterState
-	Supervisors []*skipper.SupervisorState
-	FnSearch    string
-	FnSort      string
-	FnSortDir   string
+	Title             string
+	State             *skipper.ClusterState
+	Supervisors       []*skipper.SupervisorState
+	AssignmentSearch  string
+	AssignmentSort    string
+	AssignmentSortDir string
 }
 
 type assignmentData struct {
@@ -42,7 +42,7 @@ type assignmentData struct {
 type controllerRow struct {
 	IP             string
 	IsSelf         bool
-	Functions      int
+	Assignments    int
 	ReadyInstances int
 	TotalInstances int
 }
@@ -73,9 +73,9 @@ type controllerData struct {
 }
 
 type routerRow struct {
-	IP        string
-	Functions int
-	InFlight  uint32
+	IP          string
+	Assignments int
+	InFlight    uint32
 }
 
 type routersData struct {
@@ -114,7 +114,7 @@ type eventsData struct {
 
 type tenantRow struct {
 	Tenant         string
-	Functions      int
+	Assignments    int
 	ReadyInstances int
 	TotalInstances int
 	Deployments    []string
@@ -258,13 +258,13 @@ func (s *Server) handleAssignments(w http.ResponseWriter, r *http.Request) {
 	sups := filterSupervisors(state.GetSupervisors(), search)
 	sups = sortSupervisors(sups, sort, dir)
 
-	s.render(w, "functions", &assignmentsData{
-		Title:       "Functions",
-		State:       state,
-		Supervisors: sups,
-		FnSearch:    search,
-		FnSort:      sort,
-		FnSortDir:   dir,
+	s.render(w, "assignments", &assignmentsData{
+		Title:             "Assignments",
+		State:             state,
+		Supervisors:       sups,
+		AssignmentSearch:  search,
+		AssignmentSort:    sort,
+		AssignmentSortDir: dir,
 	})
 }
 
@@ -274,7 +274,7 @@ func (s *Server) handleAssignment(w http.ResponseWriter, r *http.Request) {
 	sup := findSupervisor(state, key)
 
 	data := &assignmentData{
-		Title:      "Function",
+		Title:      "Assignment",
 		Key:        key,
 		State:      state,
 		Supervisor: sup,
@@ -285,7 +285,7 @@ func (s *Server) handleAssignment(w http.ResponseWriter, r *http.Request) {
 		data.StaleInstances = staleInstances(sup)
 	}
 
-	s.render(w, "function", data)
+	s.render(w, "assignment", data)
 }
 
 func (s *Server) handleControllers(w http.ResponseWriter, r *http.Request) {
@@ -379,15 +379,22 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	state := s.state(r.Context())
-	fnFilter := r.URL.Query().Get("function")
-	sevFilter := r.URL.Query().Get("severity")
+	q := r.URL.Query()
+	// New `?assignment=` wins over the legacy `?function=` when both
+	// are present; either alone is honored. The cleanup plan drops the
+	// legacy alias after the deprecation window.
+	assignmentFilter := q.Get("assignment")
+	if assignmentFilter == "" {
+		assignmentFilter = q.Get("function")
+	}
+	sevFilter := q.Get("severity")
 
 	s.render(w, "events", &eventsData{
 		Title:            "Events",
 		State:            state,
-		AssignmentFilter: fnFilter,
+		AssignmentFilter: assignmentFilter,
 		SeverityFilter:   sevFilter,
-		FilteredEvents:   filterEvents(state.GetEvents(), fnFilter, sevFilter),
+		FilteredEvents:   filterEvents(state.GetEvents(), assignmentFilter, sevFilter),
 	})
 }
 
@@ -543,7 +550,7 @@ func buildControllerData(state *skipper.ClusterState) ([]controllerRow, []ringDi
 		rows = append(rows, controllerRow{
 			IP:             ip,
 			IsSelf:         ip == state.GetPodIp(),
-			Functions:      counts[ip],
+			Assignments:    counts[ip],
 			ReadyInstances: ready,
 			TotalInstances: total,
 		})
@@ -591,8 +598,8 @@ func buildControllerData(state *skipper.ClusterState) ([]controllerRow, []ringDi
 
 func buildRouterRows(state *skipper.ClusterState) []routerRow {
 	type routerStats struct {
-		functions int
-		inFlight  uint32
+		assignments int
+		inFlight    uint32
 	}
 	m := make(map[string]*routerStats)
 
@@ -604,7 +611,7 @@ func buildRouterRows(state *skipper.ClusterState) []routerRow {
 				stats = &routerStats{}
 				m[ip] = stats
 			}
-			stats.functions++
+			stats.assignments++
 			if hb.GetHeartbeat() != nil {
 				stats.inFlight += hb.GetHeartbeat().GetInFlightRequests()
 			}
@@ -614,9 +621,9 @@ func buildRouterRows(state *skipper.ClusterState) []routerRow {
 	rows := make([]routerRow, 0, len(m))
 	for ip, stats := range m {
 		rows = append(rows, routerRow{
-			IP:        ip,
-			Functions: stats.functions,
-			InFlight:  stats.inFlight,
+			IP:          ip,
+			Assignments: stats.assignments,
+			InFlight:    stats.inFlight,
 		})
 	}
 	return rows
@@ -698,7 +705,7 @@ func buildTenantData(state *skipper.ClusterState, tenant string) *tenantData {
 
 func buildTenantRows(state *skipper.ClusterState) []tenantRow {
 	type tenantStats struct {
-		functions      int
+		assignments    int
 		readyInstances int
 		totalInstances int
 		deployments    map[string]struct{}
@@ -712,7 +719,7 @@ func buildTenantRows(state *skipper.ClusterState) []tenantRow {
 			stats = &tenantStats{deployments: make(map[string]struct{})}
 			m[tenant] = stats
 		}
-		stats.functions++
+		stats.assignments++
 		stats.totalInstances += len(sup.GetInstances())
 		stats.readyInstances += countReady(sup.GetInstances())
 		stats.deployments[sup.GetAssignment().GetDeployment()] = struct{}{}
@@ -727,7 +734,7 @@ func buildTenantRows(state *skipper.ClusterState) []tenantRow {
 		slices.Sort(deploys)
 		rows = append(rows, tenantRow{
 			Tenant:         tenant,
-			Functions:      stats.functions,
+			Assignments:    stats.assignments,
 			ReadyInstances: stats.readyInstances,
 			TotalInstances: stats.totalInstances,
 			Deployments:    deploys,
@@ -888,8 +895,8 @@ func sortTenantRows(rows []tenantRow, col, dir string) []tenantRow {
 	slices.SortFunc(sorted, func(a, b tenantRow) int {
 		var cmp int
 		switch col {
-		case "functions":
-			cmp = a.Functions - b.Functions
+		case "assignments", "functions":
+			cmp = a.Assignments - b.Assignments
 		case "instances":
 			cmp = a.ReadyInstances - b.ReadyInstances
 		case "deployments":

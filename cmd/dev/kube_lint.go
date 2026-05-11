@@ -26,9 +26,9 @@ type bindingConfig struct {
 }
 
 var kubeLintBaseBindings = map[string]any{
-	"namespace":           "lint",
-	"function_namespaces": []string{"default"},
-	"image_tag":           "v1.0.0",
+	"namespace":             "lint",
+	"assignment_namespaces": []string{"default"},
+	"image_tag":             "v1.0.0",
 }
 
 var kubeLintConfigs = []bindingConfig{

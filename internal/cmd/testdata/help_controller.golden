@@ -4,9 +4,9 @@ Usage:
   controller [flags]
 
 Flags:
-      --function-assign-path string             The path used to assign a function to a pod. (env SKIPPER_FUNCTION_ASSIGN_PATH) (default "/__skipper/assign")
-      --function-assign-timeout duration        The timeout for assigning a function to a pod. (env SKIPPER_FUNCTION_ASSIGN_TIMEOUT) (default 30s)
-      --function-namespaces strings             The namespaces where functions can be invoked. (env SKIPPER_FUNCTION_NAMESPACES)
+      --assign-path string                      The path used to assign a pod. (env SKIPPER_ASSIGN_PATH, deprecated env SKIPPER_FUNCTION_ASSIGN_PATH) (default "/__skipper/assign")
+      --assign-timeout duration                 The timeout for assigning a pod. (env SKIPPER_ASSIGN_TIMEOUT, deprecated env SKIPPER_FUNCTION_ASSIGN_TIMEOUT) (default 30s)
+      --assignment-namespaces strings           The namespaces where assignments can be invoked. (env SKIPPER_ASSIGNMENT_NAMESPACES, deprecated env SKIPPER_FUNCTION_NAMESPACES)
       --hash-ring-wait-time duration            How long to wait for the controller to populate its hash ring. (env SKIPPER_HASH_RING_WAIT_TIME) (default 10s)
       --heartbeat-timeout duration              How long to wait before scaling a function to 0 if it has not sent a heartbeat. (env SKIPPER_HEARTBEAT_TIMEOUT) (default 1m30s)
   -h, --help                                    help for controller
@@ -33,7 +33,7 @@ Flags:
       --scale-interval duration                 How often to scale functions. (env SKIPPER_SCALE_INTERVAL) (default 15s)
       --shutdown-timeout duration               The timeout for shutting down the controller. (env SKIPPER_SHUTDOWN_TIMEOUT) (default 5s)
       --single-controller-mode                  Add only this controller to the hash ring, ignoring controller pod discovery. For local development. (env SKIPPER_SINGLE_CONTROLLER_MODE)
-      --skip-forbidden-namespaces               Whether to skip function namespaces that the service account does not have access to. (env SKIPPER_SKIP_FORBIDDEN_NAMESPACES)
+      --skip-forbidden-namespaces               Whether to skip assignment namespaces that the service account does not have access to. (env SKIPPER_SKIP_FORBIDDEN_NAMESPACES)
       --telemetry                               Whether to enable OpenTelemetry. (env SKIPPER_TELEMETRY)
       --telemetry-metric                        Whether to enable metrics if telemetry is enabled. (env SKIPPER_TELEMETRY_METRIC) (default true)
       --telemetry-metric-otlp                   Whether to send metrics to the OTLP endpoint. (env SKIPPER_TELEMETRY_METRIC_OTLP)

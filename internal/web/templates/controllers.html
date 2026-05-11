@@ -36,7 +36,7 @@
     <tr>
       <th>IP</th>
       <th>Self</th>
-      <th>Functions</th>
+      <th>Assignments</th>
       <th>Instances</th>
     </tr>
   </thead>
@@ -45,7 +45,7 @@
     <tr>
       <td class="mono"><a href="/controllers/{{pathEscape .IP}}">{{.IP}}</a></td>
       <td>{{if .IsSelf}}<span class="badge badge-green">self</span>{{end}}</td>
-      <td class="tabular">{{.Functions}}</td>
+      <td class="tabular">{{.Assignments}}</td>
       <td class="tabular">{{.ReadyInstances}}/{{.TotalInstances}}</td>
     </tr>
     {{end}}

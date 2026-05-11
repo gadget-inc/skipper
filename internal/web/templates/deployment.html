@@ -32,12 +32,12 @@
   </div>
 
   <div>
-    <h2>Functions</h2>
+    <h2>Assignments</h2>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Function</th>
+            <th>Assignment</th>
             <th>Namespace</th>
             <th>Tenant</th>
             <th>Instances</th>
@@ -48,7 +48,7 @@
         <tbody>
           {{range .Supervisors}} {{$fn := .GetAssignment}} {{$scale := $fn.GetScale}}
           <tr>
-            <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
+            <td><a href="{{assignmentPath $fn}}">{{$fn.GetDeployment}}</a></td>
             <td>{{$fn.GetNamespace}}</td>
             <td>{{$fn.GetTenant}}</td>
             <td class="tabular">{{len .GetInstances}}</td>

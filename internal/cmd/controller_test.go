@@ -128,6 +128,21 @@ func TestControllerCommandConfigValidation(t *testing.T) {
 				"--namespace=test",
 				"--pod-ip=10.0.0.1",
 				"--paseto-private-key=" + testPasetoPrivateKeyPEM,
+				"--assignment-namespaces=default",
+				"--max-concurrent-stale-replacements=0",
+			},
+			wantErr: "max concurrent stale replacements must be at least 1",
+		},
+		{
+			// Verifies the legacy --function-namespaces alias still
+			// resolves to AssignmentNamespaces. Combined with the
+			// validation failure path, this confirms the binder threaded
+			// the value into the same field.
+			name: "legacy --function-namespaces alias still binds",
+			args: []string{
+				"--namespace=test",
+				"--pod-ip=10.0.0.1",
+				"--paseto-private-key=" + testPasetoPrivateKeyPEM,
 				"--function-namespaces=default",
 				"--max-concurrent-stale-replacements=0",
 			},
@@ -194,7 +209,7 @@ func TestControllerKubeConfigLoadFailure(t *testing.T) {
 		"--namespace=test",
 		"--pod-ip=10.0.0.1",
 		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
-		"--function-namespaces=default",
+		"--assignment-namespaces=default",
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -222,7 +237,7 @@ func TestControllerK8sClientCreationFailure(t *testing.T) {
 		"--namespace=test",
 		"--pod-ip=10.0.0.1",
 		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
-		"--function-namespaces=default",
+		"--assignment-namespaces=default",
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -253,7 +268,7 @@ func TestControllerMetricsClientCreationFailure(t *testing.T) {
 		"--namespace=test",
 		"--pod-ip=10.0.0.1",
 		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
-		"--function-namespaces=default",
+		"--assignment-namespaces=default",
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -299,7 +314,7 @@ func TestControllerListenerFailure(t *testing.T) {
 		"--namespace=test",
 		"--pod-ip=10.0.0.1",
 		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
-		"--function-namespaces=default",
+		"--assignment-namespaces=default",
 		"--host=127.0.0.1",
 		"--port=" + itoa(port), // Same port that's already bound
 	})
@@ -365,7 +380,7 @@ func TestControllerHealthCheck(t *testing.T) {
 		"--namespace=test",
 		"--pod-ip=10.0.0.1",
 		"--paseto-private-key=" + testPasetoPrivateKeyPEM,
-		"--function-namespaces=default",
+		"--assignment-namespaces=default",
 		"--host=127.0.0.1",
 		"--port=" + strconv.Itoa(port),
 	})

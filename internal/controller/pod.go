@@ -102,8 +102,8 @@ GET_UNASSIGNED_POD:
 		}
 	}()
 
-	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + ctrl.config.FunctionAssignPath
-	assignCtx, cancel := context.WithTimeout(ctx, ctrl.config.FunctionAssignTimeout)
+	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + ctrl.config.AssignPath
+	assignCtx, cancel := context.WithTimeout(ctx, ctrl.config.AssignTimeout)
 	defer cancel()
 
 	now := time.Now()
@@ -150,7 +150,7 @@ GET_UNASSIGNED_POD:
 	assignedPod.Annotations[key.ReadyAt.Label] = readyAtStr
 
 	go func() {
-		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ctrl.config.FunctionAssignTimeout)
+		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ctrl.config.AssignTimeout)
 		defer cancel()
 
 		patches := []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + readyAtStr + `" }]`)
@@ -370,7 +370,7 @@ func (ctrl *Controller) deletePod(ctx context.Context, namespace, name string, o
 }
 
 func (ctrl *Controller) refreshMetrics(ctx context.Context) {
-	for _, namespace := range ctrl.config.FunctionNamespaces {
+	for _, namespace := range ctrl.config.AssignmentNamespaces {
 		var continueToken string
 		for {
 			metrics, err := ctrl.kubernetesMetrics.

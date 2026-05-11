@@ -16,7 +16,7 @@
       <div class="stat-value-sm">{{.Tenant}}</div>
     </div>
     <div class="stat-card">
-      <div class="stat-label">Functions</div>
+      <div class="stat-label">Assignments</div>
       <div class="stat-value">{{len .Supervisors}}</div>
     </div>
     <div class="stat-card stat-card-success">
@@ -58,7 +58,7 @@
     </div>
     {{end}}
 
-    <h2>Functions</h2>
+    <h2>Assignments</h2>
     <div class="table-wrap">
       <table>
         <thead>
@@ -73,7 +73,7 @@
         <tbody>
           {{range .Supervisors}} {{$fn := .GetAssignment}} {{$scale := $fn.GetScale}}
           <tr>
-            <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
+            <td><a href="{{assignmentPath $fn}}">{{$fn.GetDeployment}}</a></td>
             <td>{{$fn.GetNamespace}}</td>
             <td class="tabular">{{len .GetInstances}}</td>
             <td class="tabular">{{if $scale}}{{$scale.GetMinInstances}}–{{$scale.GetMaxInstances}}{{else}}—{{end}}</td>

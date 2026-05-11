@@ -1015,6 +1015,105 @@ func TestFlagDescriptionContainsEnvVar(t *testing.T) {
 	assert.Assert(t, strings.Contains(flag.Usage, "The name value"))
 }
 
+// TestFlagAliases covers the comma-separated `flag` tag form: the first
+// name is canonical, subsequent names register hidden aliases that bind
+// to the same field and emit a deprecation log on use.
+func TestFlagAliases(t *testing.T) {
+	t.Run("canonical flag name parses", func(t *testing.T) {
+		type cfg struct {
+			Names []string `flag:"new-name,old-name"`
+		}
+		c := &cfg{}
+		cmd := &cobra.Command{Use: "test", Run: func(cmd *cobra.Command, args []string) {}}
+		Bind(cmd, c)
+		cmd.SetArgs([]string{"--new-name=a,b"})
+
+		err := cmd.Execute()
+		assert.NilError(t, err)
+		assert.DeepEqual(t, c.Names, []string{"a", "b"})
+	})
+
+	t.Run("alias flag name parses", func(t *testing.T) {
+		type cfg struct {
+			Names []string `flag:"new-name,old-name"`
+		}
+		c := &cfg{}
+		cmd := &cobra.Command{Use: "test", Run: func(cmd *cobra.Command, args []string) {}}
+		Bind(cmd, c)
+		cmd.SetArgs([]string{"--old-name=a,b"})
+
+		err := cmd.Execute()
+		assert.NilError(t, err)
+		assert.DeepEqual(t, c.Names, []string{"a", "b"})
+	})
+
+	t.Run("alias flag is hidden in help", func(t *testing.T) {
+		type cfg struct {
+			Names []string `flag:"new-name,old-name"`
+		}
+		c := &cfg{}
+		cmd := &cobra.Command{Use: "test"}
+		Bind(cmd, c)
+
+		canonical := cmd.Flags().Lookup("new-name")
+		assert.Assert(t, canonical != nil)
+		assert.Assert(t, !canonical.Hidden, "canonical flag should not be hidden")
+
+		alias := cmd.Flags().Lookup("old-name")
+		assert.Assert(t, alias != nil)
+		assert.Assert(t, alias.Hidden, "alias flag should be hidden")
+	})
+
+	t.Run("env var alias falls back when canonical unset", func(t *testing.T) {
+		// Reset deprecation log so this test sees the warning. The key
+		// matches the `subject` passed to logDeprecation in the env-var
+		// fallback path (see addPreRun).
+		deprecationLog.Delete("env SKIPPER_OLD_NAME")
+		type cfg struct {
+			Name string `flag:"new-name,old-name"`
+		}
+		c := &cfg{}
+		cmd := &cobra.Command{Use: "test", Run: func(cmd *cobra.Command, args []string) {}}
+		Bind(cmd, c)
+		t.Setenv("SKIPPER_OLD_NAME", "from-old-env")
+		cmd.SetArgs([]string{})
+
+		err := cmd.Execute()
+		assert.NilError(t, err)
+		assert.Equal(t, c.Name, "from-old-env")
+	})
+
+	t.Run("canonical env var beats alias env var", func(t *testing.T) {
+		type cfg struct {
+			Name string `flag:"new-name2,old-name2"`
+		}
+		c := &cfg{}
+		cmd := &cobra.Command{Use: "test", Run: func(cmd *cobra.Command, args []string) {}}
+		Bind(cmd, c)
+		t.Setenv("SKIPPER_NEW_NAME2", "from-new-env")
+		t.Setenv("SKIPPER_OLD_NAME2", "from-old-env")
+		cmd.SetArgs([]string{})
+
+		err := cmd.Execute()
+		assert.NilError(t, err)
+		assert.Equal(t, c.Name, "from-new-env")
+	})
+
+	t.Run("description mentions canonical and deprecated env vars", func(t *testing.T) {
+		type cfg struct {
+			Name string `flag:"new-name3,old-name3" description:"the name"`
+		}
+		c := &cfg{}
+		cmd := &cobra.Command{Use: "test"}
+		Bind(cmd, c)
+
+		flag := cmd.Flags().Lookup("new-name3")
+		assert.Assert(t, flag != nil)
+		assert.Assert(t, strings.Contains(flag.Usage, "SKIPPER_NEW_NAME3"))
+		assert.Assert(t, strings.Contains(flag.Usage, "deprecated env SKIPPER_OLD_NAME3"))
+	})
+}
+
 // TestEmptyValues tests handling of empty values.
 func TestEmptyValues(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
