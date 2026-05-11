@@ -24,12 +24,12 @@ import (
 )
 
 // Defaults for the local skipper router. SKIPPER_ROUTER_URL overrides
-// the URL; the fixture function descriptor is what controller assigns
+// the URL; the fixture assignment descriptor is what the controller binds
 // to incoming requests through the router.
 var (
 	defaultRouterURL = envDefault("SKIPPER_ROUTER_URL", "http://127.0.0.1:8081")
 
-	fixtureFunctionDefault = map[string]any{
+	fixtureAssignmentDefault = map[string]any{
 		"namespace":  "skipper-development-fixtures",
 		"deployment": "fixture",
 		"tenant":     "tenant-1",
@@ -78,7 +78,7 @@ func newFixtureRequestCmd() *cobra.Command {
 			fs.StringVarP(&method, "method", "m", "POST", "HTTP method")
 			fs.StringVarP(&path, "path", "p", "/hello", "Request path")
 			fs.StringVarP(&body, "body", "b", `{"hello":"world"}`, "Request body JSON")
-			fs.StringVarP(&tenant, "tenant", "t", fixtureFunctionDefault["tenant"].(string), "Tenant ID")
+			fs.StringVarP(&tenant, "tenant", "t", fixtureAssignmentDefault["tenant"].(string), "Tenant ID")
 			fs.IntVarP(&count, "count", "n", 1, "Number of requests to send")
 			fs.BoolVarP(&verbose, "verbose", "v", false, "Show response headers")
 		},
@@ -119,7 +119,7 @@ func sendOne(ctx context.Context, client *http.Client, method, path, body, fn st
 	if err != nil {
 		return err
 	}
-	req.Header.Set("x-skipper-function", fn)
+	req.Header.Set("x-skipper-assignment", fn)
 	req.Header.Set("content-type", "application/json")
 
 	start := time.Now()
@@ -176,7 +176,7 @@ func newFixtureWebSocketCmd() *cobra.Command {
 			fs.StringVar(&message, "message", "ping", "Message to send")
 			fs.DurationVarP(&interval, "interval", "i", time.Second, "Interval between messages")
 			fs.IntVarP(&count, "count", "n", 0, "Number of messages to send (0 = unlimited)")
-			fs.StringVarP(&tenant, "tenant", "t", fixtureFunctionDefault["tenant"].(string), "Tenant ID")
+			fs.StringVarP(&tenant, "tenant", "t", fixtureAssignmentDefault["tenant"].(string), "Tenant ID")
 		},
 		RunE: func(c *cobra.Command, args []string) error {
 			if interval <= 0 {
@@ -195,7 +195,7 @@ func newFixtureWebSocketCmd() *cobra.Command {
 			defer cancel()
 
 			conn, _, err := websocket.Dial(ctx, defaultRouterURL, &websocket.DialOptions{
-				HTTPHeader: http.Header{"x-skipper-function": []string{string(fnHeader)}},
+				HTTPHeader: http.Header{"x-skipper-assignment": []string{string(fnHeader)}},
 			})
 			if err != nil {
 				return err
@@ -327,7 +327,7 @@ func runLoad(ctx context.Context, opts loadOptions) error {
 			if err != nil {
 				return err
 			}
-			req.Header.Set("x-skipper-function", string(fnHeader))
+			req.Header.Set("x-skipper-assignment", string(fnHeader))
 			req.Header.Set("content-type", "application/json")
 			resp, err := client.Do(req)
 			if err == nil {
@@ -477,7 +477,7 @@ func sendLoadRequest(ctx context.Context, client *http.Client, tenants []string,
 	if err != nil {
 		return
 	}
-	req.Header.Set("x-skipper-function", string(fnHeader))
+	req.Header.Set("x-skipper-assignment", string(fnHeader))
 	req.Header.Set("content-type", "application/json")
 
 	start := time.Now()
@@ -565,8 +565,8 @@ func isStdoutTTY() bool {
 // -- helpers -----------------------------------------------------------
 
 func withTenant(tenant string) map[string]any {
-	out := make(map[string]any, len(fixtureFunctionDefault))
-	maps.Copy(out, fixtureFunctionDefault)
+	out := make(map[string]any, len(fixtureAssignmentDefault))
+	maps.Copy(out, fixtureAssignmentDefault)
 	out["tenant"] = tenant
 	return out
 }

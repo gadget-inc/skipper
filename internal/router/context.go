@@ -7,18 +7,18 @@ import (
 	"github.com/gadget-inc/skipper/internal/skipper"
 )
 
-type fnCtxKey struct{}
+type assignmentCtxKey struct{}
 
 func assignmentFromContext(ctx context.Context) (*skipper.Assignment, error) {
-	fn, ok := ctx.Value(fnCtxKey{}).(*skipper.Assignment)
+	fn, ok := ctx.Value(assignmentCtxKey{}).(*skipper.Assignment)
 	if !ok {
-		return nil, errors.New("function not found in context")
+		return nil, errors.New("assignment not found in context")
 	}
 	return fn, nil
 }
 
 func withAssignment(ctx context.Context, fn *skipper.Assignment) context.Context {
-	return context.WithValue(ctx, fnCtxKey{}, fn)
+	return context.WithValue(ctx, assignmentCtxKey{}, fn)
 }
 
 // instanceResult is a mutable container placed in the context so that

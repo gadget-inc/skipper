@@ -71,13 +71,13 @@ func TestHeartbeatStateToProto(t *testing.T) {
 		"timestamp should be recent")
 }
 
-func TestHeartbeatStateUpdateFunctionOnMetadataChange(t *testing.T) {
+func TestHeartbeatStateUpdateAssignmentOnMetadataChange(t *testing.T) {
 	t.Parallel()
 
 	fn := fixture.NewAssignment(t)
 	state := newHeartbeatState(fn)
 
-	// Create a function with the same identity but different metadata.
+	// Create an assignment with the same identity but different metadata.
 	updatedFn := proto.Clone(fn).(*skipper.Assignment)
 	updatedFn.SetMetadata("updated-metadata")
 
@@ -85,13 +85,13 @@ func TestHeartbeatStateUpdateFunctionOnMetadataChange(t *testing.T) {
 	assert.Equal(t, fn.Hash(), updatedFn.Hash())
 	assert.Assert(t, !proto.Equal(fn, updatedFn))
 
-	// Update the function on the heartbeat state.
+	// Update the assignment on the heartbeat state.
 	state.updateAssignment(updatedFn)
 
-	// The heartbeat should now carry the updated function.
+	// The heartbeat should now carry the updated assignment.
 	hb := state.toProto()
 	assert.Assert(t, proto.Equal(hb.GetAssignment(), updatedFn),
-		"heartbeat should send the updated function, not the stale one")
+		"heartbeat should send the updated assignment, not the stale one")
 }
 
 func TestHeartbeatStateConcurrentUpdateAssignment(t *testing.T) {

@@ -916,7 +916,7 @@ func TestContextCancellation(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			fn.SetHeader(req)
-			// RoundTrip expects the function to be in context (normally set by ServeHTTP)
+			// RoundTrip expects the assignment to be in context (normally set by ServeHTTP)
 			req = req.WithContext(withAssignment(ctx, fn))
 
 			_, err := router.RoundTrip(req)

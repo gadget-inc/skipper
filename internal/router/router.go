@@ -92,9 +92,9 @@ func New(cfg *Config, ctrl controller.Client) *Router {
 func (r *Router) Start(ctx context.Context) {
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		var heartbeats []*skipper.Heartbeat
-		for fnHash, state := range r.heartbeats.AllRelaxed() { // duplicate visits are rare and harmless here
+		for assignmentHash, state := range r.heartbeats.AllRelaxed() { // duplicate visits are rare and harmless here
 			if time.Since(state.lastActiveTime()) > r.config.HeartbeatInterval*3 {
-				r.heartbeats.Delete(fnHash) // remove the heartbeat if it hasn't been updated in 3 intervals
+				r.heartbeats.Delete(assignmentHash) // remove the heartbeat if it hasn't been updated in 3 intervals
 			} else {
 				hb := state.toProto() // materialise proto only when sending
 				heartbeats = append(heartbeats, hb)
@@ -118,7 +118,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			return
 		}
-		log.Error(req.Context(), "failed to get function from header", key.Error.Slog(err))
+		log.Error(req.Context(), "failed to get assignment from header", key.Error.Slog(err))
 		http.Error(rw, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -127,7 +127,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	deployment := fn.GetDeployment()
 	requestsTotal.WithLabelValues(deployment, deployment).Inc()
 
-	// get or create the heartbeat state for this function
+	// get or create the heartbeat state for this assignment
 	state, loaded := r.heartbeats.LoadOrCompute(fn.Hash(), func() (*heartbeatState, bool) {
 		return newHeartbeatState(fn), false
 	})
@@ -135,18 +135,18 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		state.updateAssignment(fn)
 	}
 
-	// continuously update the heartbeat timestamp for this function while the request is in flight
+	// continuously update the heartbeat timestamp for this assignment while the request is in flight
 	go timer.Loop(ctx, r.config.HeartbeatInterval, func(ctx context.Context) error {
 		state.touch()
 		return nil
 	})
 
-	// increment the in-flight requests for this function
+	// increment the in-flight requests for this assignment
 	requestsInFlight.WithLabelValues(deployment, deployment).Inc()
 	state.inFlight.Add(1)
 	state.touch()
 
-	// decrement the in-flight requests for this function when the request is complete
+	// decrement the in-flight requests for this assignment when the request is complete
 	defer func() {
 		requestsInFlight.WithLabelValues(deployment, deployment).Dec()
 		state.inFlight.Add(-1)
@@ -155,7 +155,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	reqCtx := withAssignment(ctx, fn)
 
-	// For oneshot functions, track the assigned instance so we can release it after the request.
+	// For oneshot assignments, track the assigned instance so we can release it after the request.
 	var instResult *instanceResult
 	if fn.GetOneshot() {
 		instResult = &instanceResult{}
@@ -171,7 +171,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	r.reverseProxy.ServeHTTP(rw, req.WithContext(reqCtx))
 
-	// After the response is sent for a oneshot function, release the instance.
+	// After the response is sent for a oneshot assignment, release the instance.
 	if instResult != nil && instResult.instance != nil {
 		r.releaseInstance(instResult.instance)
 	}
@@ -225,7 +225,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		instance, err := r.ctrl.Instance(ctx, fn, excludedInstanceNames...)
 		getInstanceDuration += time.Since(getInstanceStart)
 		if err != nil {
-			log.Warn(ctx, "failed to get instance for function", key.Error.Slog(err))
+			log.Warn(ctx, "failed to get instance for assignment", key.Error.Slog(err))
 			continue
 		}
 
@@ -254,7 +254,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 				if !slices.Contains(excludedInstanceNames, instance.GetName()) {
 					excludedInstanceNames = append(excludedInstanceNames, instance.GetName()) // exclude this instance from future attempts
 				}
-				// For oneshot functions, release the failed instance immediately
+				// For oneshot assignments, release the failed instance immediately
 				// to prevent pod leaks when retrying.
 				if ir := instanceResultFromContext(ctx); ir != nil {
 					ir.instance = nil

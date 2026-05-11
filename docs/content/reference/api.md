@@ -9,7 +9,7 @@ The controller exposes a gRPC service (`ControllerService`) on port 50051 (defau
 
 ### GetInstance
 
-Get a ready instance for a function. If no ready instance exists, the controller assigns an unassigned pod.
+Get a ready instance for an assignment. If no ready instance exists, the controller binds an unassigned pod.
 
 {{< serviceMethod GetInstance >}}
 
@@ -23,13 +23,13 @@ Get a ready instance for a function. If no ready instance exists, the controller
 
 **Behavior:**
 
-- For regular functions: returns an existing ready instance or assigns a new pod and scales to 1
-- For oneshot functions: always assigns a fresh pod
+- For regular assignments: returns an existing ready instance or binds a new pod and scales to 1
+- For oneshot assignments: always binds a fresh pod
 - Excludes instances by name (useful when retrying after a failed dial)
 
 ### Heartbeat
 
-Send heartbeat signals for active functions. Heartbeats prevent function timeout and inform scaling decisions.
+Send heartbeat signals for active assignments. Heartbeats prevent assignment timeout and inform scaling decisions.
 
 {{< serviceMethod Heartbeat >}}
 
@@ -41,12 +41,12 @@ Send heartbeat signals for active functions. Heartbeats prevent function timeout
 
 **Behavior:**
 
-- Updates per-router heartbeat state for each function
+- Updates per-router heartbeat state for each assignment
 - Forwards to other controllers in the ring (excluding those in the `forwarded_for` chain)
 
 ### Scale
 
-Scale a function to a desired number of instances.
+Scale an assignment to a desired number of instances.
 
 {{< serviceMethod Scale >}}
 
@@ -101,7 +101,7 @@ Return a snapshot of the cluster's current state -- supervisors, recent events, 
 
 {{< messageTable Assignment >}}
 
-Identity is determined by namespace + deployment + tenant + oneshot. Metadata and scale are excluded from the hash.
+Identity is determined by namespace + deployment + tenant + oneshot. Metadata and policy fields (scale, retry, transport, etc.) are excluded from the hash.
 
 ### Scale
 

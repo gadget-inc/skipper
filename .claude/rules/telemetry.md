@@ -8,7 +8,7 @@ paths:
 Typed keys provide consistent, type-safe attribute names across slog, OTel, HTTP headers, and Kubernetes labels.
 
 - Framework-level and primitive keys live in `internal/key/` (e.g. `key.Namespace`, `key.Count`, `key.Request`).
-- Domain-specific keys live next to the type they describe (e.g. `skipper.FunctionKey`, `skipper.HeartbeatKey`).
+- Domain-specific keys live next to the type they describe (e.g. `skipper.AssignmentKey`, `skipper.HeartbeatKey`). The dual-emit shim `skipper.LegacyFunctionKey` exists for back-compat telemetry only.
 
 Both flavors expose the same `Slog` and `Attr` methods. Pick the matching key for the value's type — passing the wrong type fails at compile time.
 
@@ -18,11 +18,11 @@ Use the key's `.Slog()` method instead of raw slog attributes:
 
 ```go
 // Correct
-log.Info(ctx, "forwarding request", skipper.FunctionKey.Slog(fn), skipper.InstanceKey.Slog(instance))
+log.Info(ctx, "forwarding request", skipper.AssignmentKey.Slog(a), skipper.InstanceKey.Slog(instance))
 log.Error(ctx, "request failed", key.Error.Slog(err))
 
 // Wrong - loses type safety and consistent naming
-slog.Info("forwarding request", "function", fn, "instance", instance)
+slog.Info("forwarding request", "assignment", a, "instance", instance)
 ```
 
 ## Tracing
@@ -30,7 +30,7 @@ slog.Info("forwarding request", "function", fn, "instance", instance)
 Use `.Attr(v).Otel` for span attributes:
 
 ```go
-span.SetAttributes(skipper.FunctionKey.Attr(fn).Otel...)
+span.SetAttributes(skipper.AssignmentKey.Attr(a).Otel...)
 span.SetAttributes(key.Namespace.Attr(ns).Otel...)
 ```
 
@@ -40,7 +40,7 @@ Use `.Attr()` with `telemetry.With()` when you need both:
 
 ```go
 ctx := telemetry.With(ctx,
-    skipper.FunctionKey.Attr(fn),
+    skipper.AssignmentKey.Attr(a),
     skipper.InstanceKey.Attr(instance),
 )
 ```
@@ -69,4 +69,4 @@ var WidgetKey = key.NewWithOtel("widget", (*Widget).LogValue, (*Widget).otelAttr
 ## Available Keys
 
 - Cross-cutting (in `internal/key/`): `Namespace`, `Deployment`, `Tenant`, `Metadata`, `Count`, `Duration`, `Error`, `Attempt`, `Reason`, `Request`, `Response`, `URL`, `Pod`, `K8sReplicaSet`, `CPUUsageMilli`, `MemoryUsageMiB`, ...
-- Domain (in `internal/skipper/`): `FunctionKey`, `HeartbeatKey`, `InstanceKey`, `ScaleKey`, `ScaleDecisionKey`.
+- Domain (in `internal/skipper/`): `AssignmentKey`, `HeartbeatKey`, `InstanceKey`, `ScaleKey`, `ScaleDecisionKey`. (`LegacyFunctionKey` is the dual-emit shim for back-compat telemetry; do not use for new call sites.)

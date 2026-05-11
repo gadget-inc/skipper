@@ -72,11 +72,11 @@ func TestClusterState(t *testing.T) {
 
 	// This test exercises the race condition where sup.fn.Load() is called
 	// multiple times within a single ClusterState iteration while a concurrent
-	// goroutine swaps the function pointer via updateAssignment. Without the fix
+	// goroutine swaps the assignment pointer via updateAssignment. Without the fix
 	// (loading fn once per iteration), different fields in the same supervisor
 	// snapshot could reflect different *Assignment values, producing an
 	// inconsistent snapshot. Run with -race to detect the concurrent access.
-	t.Run("concurrent function update produces consistent snapshot", func(t *testing.T) {
+	t.Run("concurrent assignment update produces consistent snapshot", func(t *testing.T) {
 		t.Parallel()
 
 		fakeKubernetes := fake.NewClientset()
@@ -90,13 +90,13 @@ func TestClusterState(t *testing.T) {
 		fn := fixture.NewAssignment(t)
 		sup := ctrl.supervisor(fn)
 
-		// Build a second version of the same function with a different metadata value
+		// Build a second version of the same assignment with a different metadata value
 		// (same identity/hash, different spec — matches updateAssignment's precondition).
 		fnUpdated := proto.Clone(fn).(*skipper.Assignment)
 		fnUpdated.SetMetadata("updated-metadata")
 
-		// Repeatedly swap the function pointer while ClusterState runs concurrently.
-		// Any snapshot that is returned must reference a single coherent function:
+		// Repeatedly swap the assignment pointer while ClusterState runs concurrently.
+		// Any snapshot that is returned must reference a single coherent assignment:
 		// the GetAssignment() proto must match what was used for GetResponsibleControllerIp().
 		// Before the fix, the multiple sup.fn.Load() calls could race and produce a
 		// snapshot where GetAssignment() reflected fn but GetResponsibleControllerIp()
@@ -120,12 +120,12 @@ func TestClusterState(t *testing.T) {
 				continue
 			}
 			supState := state.GetSupervisors()[0]
-			// The function embedded in the snapshot must be either fn or fnUpdated —
+			// The assignment embedded in the snapshot must be either fn or fnUpdated —
 			// both are valid, but the snapshot must be internally consistent.
 			snapshotFn := supState.GetAssignment()
 			assert.Assert(t,
 				proto.Equal(snapshotFn, fn) || proto.Equal(snapshotFn, fnUpdated),
-				"snapshot function must be one of the two known versions",
+				"snapshot assignment must be one of the two known versions",
 			)
 		}
 

@@ -30,7 +30,7 @@ func TestRenderMessageTable_HeaderShape(t *testing.T) {
 	}
 }
 
-func TestRenderMessageTable_FunctionFields(t *testing.T) {
+func TestRenderMessageTable_AssignmentFields(t *testing.T) {
 	t.Parallel()
 
 	out, err := renderMessageTable("Assignment")

@@ -31,7 +31,7 @@ func TestSupervisor(t *testing.T) {
 		check func(*testing.T, *Controller)
 	}{
 		{
-			name: "creates new supervisor for function",
+			name: "creates new supervisor for assignment",
 			check: func(t *testing.T, ctrl *Controller) {
 				fn := fixture.NewAssignment(t)
 				supervisor := ctrl.supervisor(fn)
@@ -40,7 +40,7 @@ func TestSupervisor(t *testing.T) {
 			},
 		},
 		{
-			name: "returns same supervisor for same function",
+			name: "returns same supervisor for same assignment",
 			check: func(t *testing.T, ctrl *Controller) {
 				fn := fixture.NewAssignment(t)
 				supervisor1 := ctrl.supervisor(fn)
@@ -51,7 +51,7 @@ func TestSupervisor(t *testing.T) {
 			},
 		},
 		{
-			name: "creates different supervisors for different functions",
+			name: "creates different supervisors for different assignments",
 			check: func(t *testing.T, ctrl *Controller) {
 				fn1 := fixture.NewAssignment(t)
 				fn2 := fixture.NewAssignment(t)
@@ -121,7 +121,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
-				// ensure a supervisor was created for the function
+				// ensure a supervisor was created for the assignment
 				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
 				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
 				assert.Assert(t, ok)
@@ -129,19 +129,19 @@ func TestDiscoverSupervisors(t *testing.T) {
 			},
 		},
 		{
-			name: "discovers multiple supervisors for different functions",
+			name: "discovers multiple supervisors for different assignments",
 			setup: func(t *testing.T, state *testState) {
 				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
 
-				// create a second function with different tenant
+				// create a second assignment with different tenant
 				fn2 := fixture.NewAssignment(t)
 				fn2.SetTenant("tenant-2")
 				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn2))
 				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn2, nil))
 			},
 			check: func(t *testing.T, state *testState) {
-				// ensure supervisors were created for both functions
+				// ensure supervisors were created for both assignments
 				assert.Assert(t, state.ctrl.supervisors.Size() == 2)
 			},
 		},
@@ -591,7 +591,7 @@ func TestScale(t *testing.T) {
 
 // TestScaleForwarding verifies that scale requests are forwarded to the responsible
 // controller when the current controller is not responsible for the skipper.
-// This happens in multi-controller deployments where functions are sharded across controllers.
+// This happens in multi-controller deployments where assignments are sharded across controllers.
 func TestScaleForwarding(t *testing.T) {
 	t.Parallel()
 
@@ -1023,7 +1023,7 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 	fn := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
-	// Create assigned pods for the function
+	// Create assigned pods for the assignment
 	for range 3 {
 		fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 	}
@@ -1054,7 +1054,7 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iterationsPerGoroutine {
-				// Update heartbeat timestamp to keep function alive
+				// Update heartbeat timestamp to keep assignment alive
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 					Assignment: fn,
 					Timestamp:  timestamppb.Now(),
@@ -1201,7 +1201,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 }
 
 // TestHeartbeat tests the heartbeat update and garbage collection logic.
-// The heartbeat function updates router heartbeats when newer timestamps are received
+// The heartbeat handler updates router heartbeats when newer timestamps are received
 // and garbage collects expired heartbeats.
 func TestHeartbeat(t *testing.T) {
 	t.Parallel()
@@ -1342,7 +1342,7 @@ func TestHeartbeatGarbageCollection(t *testing.T) {
 }
 
 // TestCombinedHeartbeat tests the aggregation of heartbeats from multiple routers.
-// The combinedHeartbeat function sums in-flight requests from all routers and uses
+// combinedHeartbeat sums in-flight requests from all routers and uses
 // the most recent timestamp from either router heartbeats or instance assignments.
 func TestCombinedHeartbeat(t *testing.T) {
 	t.Parallel()
@@ -1482,7 +1482,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 				assert.Assert(t, !combined.HasTimestamp())
 			}
 
-			// Verify function is set
+			// Verify assignment is set
 			assert.Assert(t, combined.GetAssignment() == fn)
 		})
 	}
@@ -1631,7 +1631,7 @@ func TestGetReadyInstance(t *testing.T) {
 }
 
 // TestCalculateDesiredInstances tests the multi-metric scaling decision logic.
-// The function considers heartbeat timeout, in-flight requests, CPU, and memory metrics,
+// calculateDesiredInstances considers heartbeat timeout, in-flight requests, CPU, and memory metrics,
 // taking the max across all metrics and applying min/max clamping.
 func TestCalculateDesiredInstances(t *testing.T) {
 	t.Parallel()
@@ -2030,7 +2030,7 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 	// Create supervisor without starting its loop (ctrl.ctx is nil)
 	supervisor := ctrl.supervisor(fn)
 
-	// Add a heartbeat so the function doesn't scale to 0
+	// Add a heartbeat so the assignment doesn't scale to 0
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
 		Assignment:       fn,
 		Timestamp:        timestamppb.Now(),
@@ -2056,7 +2056,7 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 	}, poll.WithDelay(100*time.Millisecond), poll.WithTimeout(5*time.Second))
 }
 
-// TestScaleToZeroStopsLoop verifies that when a function scales to 0
+// TestScaleToZeroStopsLoop verifies that when an assignment scales to 0
 // due to heartbeat timeout, the supervisor's loop is stopped and the
 // supervisor is removed from the controller's map.
 func TestScaleToZeroStopsLoop(t *testing.T) {
@@ -2265,9 +2265,9 @@ func TestReplaceStaleInstances(t *testing.T) {
 		},
 		{
 			// Assignment staleness: instance has same identity but different metadata/scale
-			name: "replaces instance with stale function spec",
+			name: "replaces instance with stale assignment spec",
 			setup: func(t *testing.T, state *testState) {
-				// Create an assigned pod with the old function spec (different metadata)
+				// Create an assigned pod with the old assignment spec (different metadata)
 				oldFn := proto.Clone(state.fn).(*skipper.Assignment)
 				oldFn.SetMetadata("old-metadata")
 				assignedPod := fixture.NewAssignedPod(t, oldFn, nil)
@@ -2280,7 +2280,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
-				// The stale-function instance should be replaced
+				// The stale-assignment instance should be replaced
 				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
@@ -2625,9 +2625,9 @@ func TestReplaceStaleInstances(t *testing.T) {
 			},
 		},
 		{
-			// Oneshot functions assign a fresh pod per request, so stale replacement
+			// Oneshot assignments bind a fresh pod per request, so stale replacement
 			// would create a pod that serves nothing. Verify it's skipped entirely.
-			name: "skips replacement for oneshot functions",
+			name: "skips replacement for oneshot assignments",
 			setup: func(t *testing.T, state *testState) {
 				state.fn.SetOneshot(true)
 
@@ -2677,7 +2677,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			instances, err := state.ctrl.getInstances(ctx, state.fn)
 			assert.NilError(t, err)
 
-			// Run optional beforeTerminate function (e.g., to simulate race conditions)
+			// Run optional beforeTerminate hook (e.g., to simulate race conditions)
 			if tc.beforeTerminate != nil {
 				tc.beforeTerminate(t, ctx, state, instances)
 			}
@@ -2732,20 +2732,20 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	const numFunctions = 5
+	const numAssignments = 5
 	const stalePerFunc = 2
 	const limit = 2
 
-	// Create multiple functions, each with stale instances
-	functions := make([]*skipper.Assignment, numFunctions)
-	staleReplicaSetNames := make([]string, numFunctions)
+	// Create multiple assignments, each with stale instances
+	assignments := make([]*skipper.Assignment, numAssignments)
+	staleReplicaSetNames := make([]string, numAssignments)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
-	for i := range numFunctions {
+	for i := range numAssignments {
 		fn := fixture.NewAssignment(t)
 		fn.GetScale().SetMaxInstances(uint32(stalePerFunc + 10)) // ensure we don't hit max instances limit
-		functions[i] = fn
+		assignments[i] = fn
 
 		// Create stale replica set (scaled to 0)
 		staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
@@ -2780,13 +2780,13 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	// Run replaceStaleInstances concurrently for all functions.
+	// Run replaceStaleInstances concurrently for all assignments.
 	// With TryAcquire, supervisors that can't acquire the semaphore will return
 	// immediately, so not all stale instances will be replaced in a single call.
 	var wg sync.WaitGroup
-	wg.Add(numFunctions)
+	wg.Add(numAssignments)
 
-	for i := range numFunctions {
+	for i := range numAssignments {
 		go func(fn *skipper.Assignment) {
 			defer wg.Done()
 
@@ -2798,7 +2798,7 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 
 			supervisor := ctrl.supervisor(fn)
 			supervisor.replaceStaleInstances(ctx, fn, instances, len(instances))
-		}(functions[i])
+		}(assignments[i])
 	}
 
 	wg.Wait()
@@ -2813,12 +2813,12 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 	// but not necessarily all of them.
 	assert.Assert(t, totalReplacements >= 1,
 		"at least one replacement should have happened")
-	assert.Assert(t, totalReplacements <= int64(numFunctions*stalePerFunc),
+	assert.Assert(t, totalReplacements <= int64(numAssignments*stalePerFunc),
 		"should not exceed total stale instances")
 }
 
 // TestReplaceStaleInstancesNamespaceListerNotFound tests that when the namespace
-// lister is not found for a function's namespace, instances are returned unchanged.
+// lister is not found for an assignment's namespace, instances are returned unchanged.
 // This requires a separate test because we need to manually construct instances
 // rather than using getInstances (which also requires the namespace lister).
 func TestReplaceStaleInstancesNamespaceListerNotFound(t *testing.T) {
@@ -2836,7 +2836,7 @@ func TestReplaceStaleInstancesNamespaceListerNotFound(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	// Create a supervisor for a function in a different namespace that doesn't have a lister
+	// Create a supervisor for an assignment in a different namespace that doesn't have a lister
 	fnInUnknownNamespace := fixture.NewAssignment(t)
 	fnInUnknownNamespace.SetNamespace("unknown-namespace")
 	supervisor := ctrl.supervisor(fnInUnknownNamespace)
@@ -3045,7 +3045,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			// Set up error condition (supervisor is now available)
 			tc.setupError(t, ctx, state, state.supervisor)
 
-			// Add a heartbeat so the function won't scale to 0 when it eventually works
+			// Add a heartbeat so the assignment won't scale to 0 when it eventually works
 			// (if not already set by setupError)
 			if state.supervisor.routerHeartbeats.Size() == 0 {
 				state.supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
@@ -3092,7 +3092,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 }
 
 // TestConvergeReplacesStaleInstancesAfterScaling verifies that stale instances
-// are replaced after scaling decisions are made. During scale-up, the function
+// are replaced after scaling decisions are made. During scale-up, the assignment
 // first scales to the desired count, then replaces any remaining stale instances.
 func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	t.Parallel()
@@ -3458,13 +3458,13 @@ func TestUpdateAssignment(t *testing.T) {
 		check func(*testing.T)
 	}{
 		{
-			name: "updates function when identity matches but spec differs",
+			name: "updates assignment when identity matches but spec differs",
 			check: func(t *testing.T) {
 				fn := fixture.NewAssignment(t)
 				s := &Supervisor{}
 				s.fn.Store(fn)
 
-				// Create updated function with same identity but different metadata
+				// Create updated assignment with same identity but different metadata
 				updatedFn := proto.Clone(fn).(*skipper.Assignment)
 				updatedFn.SetMetadata("new-metadata")
 
@@ -3473,17 +3473,17 @@ func TestUpdateAssignment(t *testing.T) {
 
 				s.updateAssignment(updatedFn)
 
-				assert.Assert(t, proto.Equal(s.fn.Load(), updatedFn), "function should be updated")
+				assert.Assert(t, proto.Equal(s.fn.Load(), updatedFn), "assignment should be updated")
 			},
 		},
 		{
-			name: "updates function when identity matches but scale differs",
+			name: "updates assignment when identity matches but scale differs",
 			check: func(t *testing.T) {
 				fn := fixture.NewAssignment(t)
 				s := &Supervisor{}
 				s.fn.Store(fn)
 
-				// Create updated function with same identity but different scale
+				// Create updated assignment with same identity but different scale
 				updatedFn := proto.Clone(fn).(*skipper.Assignment)
 				updatedFn.GetScale().SetMaxInstances(99)
 
@@ -3491,7 +3491,7 @@ func TestUpdateAssignment(t *testing.T) {
 
 				s.updateAssignment(updatedFn)
 
-				assert.Assert(t, proto.Equal(s.fn.Load(), updatedFn), "function should be updated")
+				assert.Assert(t, proto.Equal(s.fn.Load(), updatedFn), "assignment should be updated")
 				assert.Equal(t, s.fn.Load().GetScale().GetMaxInstances(), uint32(99))
 			},
 		},
@@ -3502,7 +3502,7 @@ func TestUpdateAssignment(t *testing.T) {
 				s := &Supervisor{}
 				s.fn.Store(fn)
 
-				// Pass the exact same function
+				// Pass the exact same assignment
 				sameFn := proto.Clone(fn).(*skipper.Assignment)
 
 				s.updateAssignment(sameFn)
@@ -3518,7 +3518,7 @@ func TestUpdateAssignment(t *testing.T) {
 				s := &Supervisor{}
 				s.fn.Store(fn)
 
-				// Create function with different identity
+				// Create assignment with different identity
 				differentFn := fixture.NewAssignment(t)
 				differentFn.SetDeployment("other-deployment")
 
@@ -3540,11 +3540,11 @@ func TestUpdateAssignment(t *testing.T) {
 }
 
 // TestSupervisorFunctionUpdateViaHeartbeat verifies the end-to-end path:
-// a supervisor is created with an initial function spec, then receives an
+// a supervisor is created with an initial assignment spec, then receives an
 // updated spec (same identity, different metadata) through the heartbeat
-// handler. The supervisor's function should update atomically, and existing
+// handler. The supervisor's assignment should update atomically, and existing
 // instances with the old spec should become stale in the next converge.
-func TestSupervisorFunctionUpdateViaHeartbeat(t *testing.T) {
+func TestSupervisorAssignmentUpdateViaHeartbeat(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -3556,11 +3556,11 @@ func TestSupervisorFunctionUpdateViaHeartbeat(t *testing.T) {
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 
-	// Create supervisor with the old function spec
+	// Create supervisor with the old assignment spec
 	supervisor := ctrl.supervisor(fn)
 	assert.Assert(t, proto.Equal(supervisor.fn.Load(), fn))
 
-	// Create updated function with same identity but different metadata
+	// Create updated assignment with same identity but different metadata
 	updatedFn := proto.Clone(fn).(*skipper.Assignment)
 	updatedFn.SetMetadata("new-metadata")
 	assert.Assert(t, fn.Hash() == updatedFn.Hash(), "identity hashes should match")
@@ -3571,12 +3571,12 @@ func TestSupervisorFunctionUpdateViaHeartbeat(t *testing.T) {
 	// Should return the same supervisor (same identity hash)
 	assert.Assert(t, returnedSupervisor == supervisor, "should return same supervisor instance")
 
-	// The supervisor's function should now reflect the updated spec
-	assert.Assert(t, proto.Equal(supervisor.fn.Load(), updatedFn), "supervisor function should be updated")
+	// The supervisor's assignment should now reflect the updated spec
+	assert.Assert(t, proto.Equal(supervisor.fn.Load(), updatedFn), "supervisor assignment should be updated")
 	assert.Equal(t, supervisor.fn.Load().GetMetadata(), "new-metadata")
 
 	// Now verify that existing instances with the old spec are detected as stale.
-	// Create an assigned pod with the old function spec.
+	// Create an assigned pod with the old assignment spec.
 	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
 	assignedPod := fixture.NewAssignedPod(t, fn, nil)
 	fakeKubernetes.Tracker().Add(assignedPod)
@@ -3587,14 +3587,14 @@ func TestSupervisorFunctionUpdateViaHeartbeat(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	// Get instances — they carry the old function spec from the pod annotation
+	// Get instances — they carry the old assignment spec from the pod annotation
 	instances, err := ctrl.getInstances(ctx, updatedFn)
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 1)
 
-	// The instance's function spec should differ from the supervisor's current spec
+	// The instance's assignment spec should differ from the supervisor's current spec
 	assert.Assert(t, !proto.Equal(instances[0].GetAssignment(), updatedFn),
-		"instance should have old function spec")
+		"instance should have old assignment spec")
 
 	// replaceStaleInstances should detect and replace the stale instance
 	supervisor.replaceStaleInstances(ctx, updatedFn, instances, len(instances))
@@ -3604,11 +3604,11 @@ func TestSupervisorFunctionUpdateViaHeartbeat(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Assert(t, len(finalInstances) == 1, "should have 1 instance after replacement")
 	assert.Assert(t, proto.Equal(finalInstances[0].GetAssignment(), updatedFn),
-		"replacement instance should have updated function spec")
+		"replacement instance should have updated assignment spec")
 }
 
 // TestGetReadyInstanceOneshotAssignsPod verifies that getReadyInstance for
-// oneshot functions calls assignPod directly, returning a unique pod per request
+// oneshot assignments call assignPod directly, returning a unique pod per request
 // via assignPod's atomic test-and-set.
 func TestGetReadyInstanceOneshotAssignsPod(t *testing.T) {
 	t.Parallel()
@@ -3645,7 +3645,7 @@ func TestGetReadyInstanceOneshotAssignsPod(t *testing.T) {
 }
 
 // TestConvergeOneshotSafetyNetOnly verifies that the converge loop does not
-// perform active scaling for oneshot functions when heartbeats are active.
+// perform active scaling for oneshot assignments when heartbeats are active.
 func TestConvergeOneshotSafetyNetOnly(t *testing.T) {
 	t.Parallel()
 
@@ -3669,7 +3669,7 @@ func TestConvergeOneshotSafetyNetOnly(t *testing.T) {
 	s := ctrl.supervisor(fn)
 
 	// Send a heartbeat with only 1 in-flight request — for a non-oneshot
-	// function, converge would try to scale down. For oneshot, it should not.
+	// assignment, converge would try to scale down. For oneshot, it should not.
 	s.heartbeat("10.0.0.1", skipper.Heartbeat_builder{
 		Assignment:       fn,
 		Timestamp:        timestamppb.Now(),
@@ -3917,7 +3917,7 @@ func TestReleaseInstanceDeletesPod(t *testing.T) {
 }
 
 // TestOneshotTerminationAfterHeartbeatTimeout verifies the end-to-end path for
-// oneshot functions: after the heartbeat expires, converge deletes orphaned
+// oneshot assignments: after the heartbeat expires, converge deletes orphaned
 // pods and the supervisor is removed from the controller's map.
 func TestOneshotTerminationAfterHeartbeatTimeout(t *testing.T) {
 	t.Parallel()
@@ -4260,7 +4260,7 @@ func TestSupervisorEvents(t *testing.T) {
 			},
 		},
 		{
-			// Regression test: when converge runs against a function that
+			// Regression test: when converge runs against an assignment that
 			// already has zero instances and the scaling decision lands at
 			// zero (e.g. maxInstances clamped to 0), converge must emit no
 			// scale-related event at all. Emitting "scaling to 0" when

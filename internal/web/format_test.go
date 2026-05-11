@@ -75,7 +75,7 @@ func TestDurationBetween(t *testing.T) {
 	}
 }
 
-func TestFunctionKey(t *testing.T) {
+func TestAssignmentKey(t *testing.T) {
 	t.Parallel()
 
 	fn := skipper.Assignment_builder{

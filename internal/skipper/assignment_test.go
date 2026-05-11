@@ -100,7 +100,7 @@ func BenchmarkMapLookup(b *testing.B) {
 	})
 }
 
-func TestFunctionFromHeader(t *testing.T) {
+func TestAssignmentFromHeader(t *testing.T) {
 	validFn := Assignment_builder{
 		Namespace:  new("test-ns"),
 		Deployment: new("test-deploy"),
@@ -281,7 +281,7 @@ func TestSetHeaderDualWrites(t *testing.T) {
 	assert.Equal(t, legacy, canonical, "both headers should carry identical bodies")
 }
 
-func TestFunctionHeaderCacheBounded(t *testing.T) {
+func TestAssignmentHeaderCacheBounded(t *testing.T) {
 	// Fill cache beyond capacity and confirm it stays bounded.
 	cap := 8
 	c := newAssignmentHeaderCache(cap)
@@ -300,7 +300,7 @@ func TestFunctionHeaderCacheBounded(t *testing.T) {
 	assert.Equal(t, c.Len(), cap, "cache must not exceed its capacity")
 }
 
-func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
+func TestAssignmentHeaderCacheLRUEviction(t *testing.T) {
 	// Verify that the oldest (least recently used) entry is evicted when the
 	// cache is full and a new entry is inserted.
 	cap := 3
@@ -338,7 +338,7 @@ func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 	assert.Assert(t, okNew, "key-new should be present")
 }
 
-func TestFunctionFromHeaderCacheIdentity(t *testing.T) {
+func TestAssignmentFromHeaderCacheIdentity(t *testing.T) {
 	// AssignmentFromHeader must return the same pointer for repeated calls with
 	// the same header value.
 	header := `{"namespace":"id-ns","deployment":"id-deploy","tenant":"id-tenant","scale":{"min_instances":1,"max_instances":5}}`
@@ -356,7 +356,7 @@ func TestFunctionFromHeaderCacheIdentity(t *testing.T) {
 	assert.Assert(t, fn1 == fn2, "same header must return the same pointer (cache identity)")
 }
 
-func TestFunctionHeaderCacheConcurrentAccess(t *testing.T) {
+func TestAssignmentHeaderCacheConcurrentAccess(t *testing.T) {
 	// Verify concurrent reads and writes don't panic or corrupt the cache.
 	t.Parallel()
 
@@ -392,7 +392,7 @@ var _ = xxhash.New
 
 var sinkAssignment *Assignment
 
-func BenchmarkFunctionFromHeader(b *testing.B) {
+func BenchmarkAssignmentFromHeader(b *testing.B) {
 	const validHeader = `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`
 
 	b.Run("cache_hit", func(b *testing.B) {

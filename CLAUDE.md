@@ -75,19 +75,19 @@ controller --log-file=tmp/logs/controller.jsonl --log-file-format=text  # File a
 
 ## Architecture
 
-Skipper is a Kubernetes controller that turns deployments into a pool of functions assignable to tenants.
+Skipper is a Kubernetes controller that turns deployments into a pool of assignments servable to tenants. See [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) for the canonical domain glossary.
 
 ### Two-Component Design
 
-**Controller** (`internal/controller/`): Runs in Kubernetes, discovers deployments with `skipper/deployment` label, manages pod lifecycle and scaling. Uses informers for Kubernetes events, assigns pods to functions via PASETO-signed tokens, and implements HPA-inspired scaling based on CPU, memory, and request metrics.
+**Controller** (`internal/controller/`): Runs in Kubernetes, discovers deployments with `skipper/deployment` label, manages pod lifecycle and scaling. Uses informers for Kubernetes events, binds pods to assignments via PASETO-signed tokens, and implements HPA-inspired scaling based on CPU, memory, and request metrics. Pods carry a `skipper/assignment` annotation (with `skipper/function` written as a back-compat alias).
 
-**Router** (`internal/router/`): Receives HTTP requests with `x-skipper-function` header, routes to assigned instances via consistent hashing, proxies all traffic (HTTP/WebSocket), sends heartbeats to prevent function timeout.
+**Router** (`internal/router/`): Receives HTTP requests with `x-skipper-assignment` header (or legacy `x-skipper-function`), routes to assigned instances via consistent hashing, proxies all traffic (HTTP/WebSocket), sends heartbeats to prevent assignment timeout.
 
 ### Core Domain Models (`internal/skipper/`)
 
-- **Function**: Identified by namespace + deployment + tenant + metadata, produces a unique `FunctionHash` (uint64)
-- **Instance**: An assigned pod with IP, port, timestamps, and resource metrics
-- **Heartbeat**: Router→Controller signal indicating active requests
+- **Assignment**: Identified by namespace + deployment + tenant + oneshot, produces a unique `AssignmentHash` (uint64). Carries flat policy fields under `scale_*`, `zone_*`, `assign_*`, `heartbeat_*`, `retry_*`, `transport_*` prefixes.
+- **Instance**: A pod bound to an assignment, with IP, port, timestamps, and resource metrics.
+- **Heartbeat**: Router→Controller signal indicating active requests for an assignment.
 
 ### Key Internal Packages
 
@@ -98,9 +98,9 @@ Skipper is a Kubernetes controller that turns deployments into a pool of functio
 
 ### Request Flow
 
-1. Client → Router with `x-skipper-function` header
-2. Router queries Controller for instance assignment
-3. Controller finds/assigns pod, returns instance address
+1. Client → Router with `x-skipper-assignment` header (or legacy `x-skipper-function`)
+2. Router queries Controller for an instance bound to that assignment
+3. Controller finds or assigns a pod, returns the instance address
 4. Router proxies request to pod, sends heartbeats during activity
 5. Controller terminates pods after heartbeat timeout (default 90s)
 

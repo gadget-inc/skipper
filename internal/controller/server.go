@@ -133,8 +133,8 @@ func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper
 
 	instances, err := s.ctrl.supervisor(fn).scale(ctx, decision)
 	if err != nil {
-		log.Error(ctx, "failed to scale function", key.Error.Slog(err))
-		return nil, status.Errorf(codes.Internal, "failed to scale function: %v", err)
+		log.Error(ctx, "failed to scale assignment", key.Error.Slog(err))
+		return nil, status.Errorf(codes.Internal, "failed to scale assignment: %v", err)
 	}
 
 	resp := &skipper.ScaleResponse{}

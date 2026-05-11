@@ -94,8 +94,8 @@ func TestAssignPod(t *testing.T) {
 		check       func(*testing.T, *testState)
 	}{
 		{
-			// Basic assignment: an available pod exists and should be assigned to the function
-			name: "assigns available pod to function",
+			// Basic assignment: an available pod exists and should be bound to the assignment
+			name: "binds available pod to assignment",
 			setup: func(t *testing.T, state *testState) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
@@ -1026,15 +1026,15 @@ func TestGetInstances(t *testing.T) {
 			},
 		},
 		{
-			name: "filters out pods with different function identity",
+			name: "filters out pods with different assignment identity",
 			setup: func(t *testing.T, state *testState) {
-				// Add pod for the function
+				// Add pod for the assignment
 				pod1 := fixture.NewAssignedPod(t, state.fn, nil)
 				pod1.Name = "pod-1"
 				err := state.fakeKubernetes.Tracker().Add(pod1)
 				assert.NilError(t, err)
 
-				// Add pod for different function identity (different tenant)
+				// Add pod for different assignment identity (different tenant)
 				fn2 := proto.Clone(state.fn).(*skipper.Assignment)
 				fn2.SetTenant("different-tenant")
 				pod2 := fixture.NewAssignedPod(t, fn2, nil)
@@ -1043,14 +1043,14 @@ func TestGetInstances(t *testing.T) {
 				assert.NilError(t, err)
 			},
 			check: func(t *testing.T, state *testState) {
-				assert.Assert(t, len(state.instances) == 1, "should have 1 instance for this function")
+				assert.Assert(t, len(state.instances) == 1, "should have 1 instance for this assignment")
 				assert.Equal(t, "pod-1", state.instances[0].GetName())
 			},
 		},
 		{
 			name: "includes pods with different metadata but same identity",
 			setup: func(t *testing.T, state *testState) {
-				// Add pod for the function
+				// Add pod for the assignment
 				pod1 := fixture.NewAssignedPod(t, state.fn, nil)
 				pod1.Name = "pod-1"
 				err := state.fakeKubernetes.Tracker().Add(pod1)
@@ -1570,7 +1570,7 @@ func TestDeletePod(t *testing.T) {
 		{
 			name: "deletes pod even when namespace lister not found",
 			setup: func(t *testing.T, state *testState) {
-				// Create a pod in the function namespace but delete it before informers sync
+				// Create a pod in the assignment namespace but delete it before informers sync
 				// This simulates the case where namespace lister might not be ready
 				state.pod = fixture.NewAssignedPod(t, state.fn, nil)
 				state.pod.Name = "test-pod"
@@ -1578,7 +1578,7 @@ func TestDeletePod(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				// Pod should be deleted from API
-				// The deletePod function will succeed in deleting from API
+				// deletePod will succeed in deleting from API
 				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0, "pod should be deleted from API")

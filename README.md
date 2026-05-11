@@ -1,6 +1,6 @@
 # Skipper
 
-Skipper is a Kubernetes controller that turns Kubernetes deployments into a pool of functions that can be assigned to tenants.
+Skipper is a Kubernetes controller that turns Kubernetes deployments into a pool of assignments that can be served to tenants. See [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) for the canonical domain glossary.
 
 If you're looking to contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -68,7 +68,7 @@ spec:
 > [!NOTE]
 > The `skipper/port` annotation isn't required, but your deployment must have at least one annotation defined, otherwise Skipper won't be able to atomically add annotations to your pods because the JSON Patch will fail. See [this Stack Overflow answer](https://stackoverflow.com/a/57480206) and [this section of the JSON Patch RFC](https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12) for more details.
 
-This deployment can now be used as a pool of echo servers that are ready to be assigned to tenants. You can assign one of these echo servers to a tenant by sending a request to Skipper's router with the `x-skipper-function` header:
+This deployment can now be used as a pool of echo servers that are ready to be served to tenants. A tenant addresses an assignment by sending a request to Skipper's router with the `x-skipper-assignment` header (the legacy `x-skipper-function` header is still accepted):
 
 ```js
 const routerUrl = "http://skipper-production-router.skipper-production.svc.cluster.local";
@@ -76,7 +76,7 @@ const routerUrl = "http://skipper-production-router.skipper-production.svc.clust
 const response = await fetch(`${routerUrl}/some-path`, {
   method: "POST",
   headers: {
-    "x-skipper-function": JSON.stringify({ namespace: "default", deployment: "echo-server", tenant: "123" }),
+    "x-skipper-assignment": JSON.stringify({ namespace: "default", deployment: "echo-server", tenant: "123" }),
     "content-type": "application/json",
   },
   body: JSON.stringify({ hello: "world" }),
@@ -95,4 +95,4 @@ console.log(body);
 // }
 ```
 
-Skipper will assign one of the echo servers to the tenant and return the response from the assigned echo server. All subsequent requests to the same function will be sent to the same echo server. If the function doesn't receive a request within the `SKIPPER_HEARTBEAT_TIMEOUT` (default: 90s), the pod will be terminated.
+Skipper will bind one of the echo servers to the assignment and return the response from that pod. Subsequent requests for the same assignment land on the same pod. If the assignment receives no request within the `SKIPPER_HEARTBEAT_TIMEOUT` window (default: 90s), the pod is terminated and returned to the pool.

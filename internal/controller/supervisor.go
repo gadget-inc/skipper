@@ -25,11 +25,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Supervisor manages scaling decisions for a single skipper. It tracks
+// Supervisor manages scaling decisions for a single assignment. It tracks
 // heartbeats from routers, maintains a stabilization window for
 // scale-down decisions, and coordinates with the controller to adjust
 // instance counts. Each Supervisor runs its own independent converge
-// loop so that functions don't block each other.
+// loop so that assignments don't block each other.
 type Supervisor struct {
 	ctx                 context.Context
 	cancel              context.CancelFunc
@@ -42,20 +42,20 @@ type Supervisor struct {
 	hadInstances        bool // tracks whether we've ever had instances
 }
 
-// supervisor returns the supervisor for the given function, creating it if necessary.
+// supervisor returns the supervisor for the given assignment, creating it if necessary.
 // If the controller has been started (ctrl.ctx is set), the supervisor's loop will
-// be started automatically. The supervisor's function spec is updated if the
-// provided function has the same identity but a different spec.
+// be started automatically. The supervisor's assignment spec is updated if the
+// provided assignment has the same identity but a different spec.
 func (ctrl *Controller) supervisor(fn *skipper.Assignment) *Supervisor {
 	s := ctrl.ensureSupervisor(fn)
 	s.updateAssignment(fn)
 	return s
 }
 
-// ensureSupervisor returns the supervisor for the given function, creating it if
-// necessary but never updating an existing supervisor's function spec. Use this
-// when the function spec may be stale (e.g., read from pod annotations during
-// discovery) to avoid regressing an already-updated spec.
+// ensureSupervisor returns the supervisor for the given assignment, creating it if
+// necessary but never updating an existing supervisor's assignment spec. Use this
+// when the spec may be stale (e.g., read from pod annotations during discovery)
+// to avoid regressing an already-updated spec.
 func (ctrl *Controller) ensureSupervisor(fn *skipper.Assignment) *Supervisor {
 	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
 		s := &Supervisor{
@@ -69,7 +69,7 @@ func (ctrl *Controller) ensureSupervisor(fn *skipper.Assignment) *Supervisor {
 	return supervisor
 }
 
-// updateAssignment updates the supervisor's function if the identity matches
+// updateAssignment updates the supervisor's assignment if the identity matches
 // but the full spec has changed (e.g., metadata or scale fields). Uses
 // CompareAndSwap to avoid overwriting a concurrent update from another
 // goroutine (e.g., racing GetInstance and Heartbeat handlers). If the CAS
@@ -81,11 +81,11 @@ func (s *Supervisor) updateAssignment(fn *skipper.Assignment) {
 	}
 }
 
-// discoverSupervisors discovers functions in the given namespace by listing
-// assigned pods and ensures supervisors exist for each unique skipper.
+// discoverSupervisors discovers assignments in the given namespace by listing
+// assigned pods and ensures supervisors exist for each unique assignment.
 // Supervisors are created even if this controller is not responsible for the
-// function, as they track scaling decisions that may be needed if responsibility
-// changes. Invalid pods (e.g., with malformed function annotations) are deleted.
+// assignment, as they track scaling decisions that may be needed if responsibility
+// changes. Invalid pods (e.g., with malformed assignment annotations) are deleted.
 func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace string) error {
 	ctx, span := telemetry.TraceRoot(ctx, "controller.discover_supervisors", trace.WithAttributes(key.Namespace.Attr(namespace).Otel...))
 	defer span.End()
@@ -95,12 +95,12 @@ func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace strin
 		return fmt.Errorf("failed to get assigned pods: %w", err)
 	}
 
-	seenFunctions := make(map[skipper.AssignmentHash]bool)
+	seenAssignments := make(map[skipper.AssignmentHash]bool)
 
 	for _, pod := range pods {
 		fn, err := ctrl.assignmentFromPod(pod)
 		if err != nil {
-			log.Warn(ctx, "failed to get function from pod", key.Error.Slog(err), key.Pod.Slog(pod))
+			log.Warn(ctx, "failed to get assignment from pod", key.Error.Slog(err), key.Pod.Slog(pod))
 			err = ctrl.deletePod(ctx, pod.Namespace, pod.Name, metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to terminate pod", key.Error.Slog(err), key.Pod.Slog(pod))
@@ -108,8 +108,8 @@ func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace strin
 			continue
 		}
 
-		if !seenFunctions[fn.Hash()] {
-			seenFunctions[fn.Hash()] = true
+		if !seenAssignments[fn.Hash()] {
+			seenAssignments[fn.Hash()] = true
 			ctrl.ensureSupervisor(fn) // ensure supervisor exists; its loop handles scaling
 		}
 	}
@@ -184,7 +184,7 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 }
 
 // combinedHeartbeat aggregates heartbeats from all routers for this
-// function, summing in-flight requests and using the most recent
+// assignment, summing in-flight requests and using the most recent
 // timestamp from either router heartbeats or instance assignments.
 func (s *Supervisor) combinedHeartbeat(fn *skipper.Assignment, instances []*skipper.Instance) *skipper.Heartbeat {
 	heartbeat := &skipper.Heartbeat{}
@@ -290,8 +290,8 @@ func (s *Supervisor) converge(ctx context.Context) error {
 
 	scalingDecision := calculateDesiredInstances(ctx, fn, s.ctrl.config, heartbeat, instances)
 
-	// For oneshot functions, the converge loop is a safety net only.
-	// All assignment happens synchronously in GetInstance via assignPod.
+	// For oneshot assignments, the converge loop is a safety net only.
+	// All binding happens synchronously in GetInstance via assignPod.
 	// The only role here is to delete orphaned pods when the heartbeat times out
 	// (e.g., router crashed without calling ReleaseInstance).
 	if fn.GetOneshot() {
@@ -336,8 +336,8 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		// Use the maximum of HPADownscaleStabilization and HeartbeatTimeout as the protection period.
 		// This ensures new controllers don't scale down until they've had enough time to:
 		// 1. Record recommendations for the stabilization window (HPADownscaleStabilization)
-		// 2. Receive heartbeats from routers (HeartbeatTimeout) - without this, functions with
-		//    instances assigned longer than HeartbeatTimeout ago would immediately trigger
+		// 2. Receive heartbeats from routers (HeartbeatTimeout) - without this, assignments with
+		//    instances bound longer than HeartbeatTimeout ago would immediately trigger
 		//    heartbeat_timeout scale-to-zero when a new controller starts with empty heartbeat state
 		protectionPeriod := max(
 			fn.ScaleDownscaleStabilization(s.ctrl.config.HPADownscaleStabilization),
@@ -366,8 +366,8 @@ func (s *Supervisor) converge(ctx context.Context) error {
 
 	// Record scale-to-zero event only on the responsible controller and
 	// only when we actually have instances to scale down. Without the
-	// currentInstances guard, a heartbeat-timeout sweep on a function
-	// that never had pods assigned would emit a misleading "scaling to
+	// currentInstances guard, a heartbeat-timeout sweep on an assignment
+	// that never had pods bound would emit a misleading "scaling to
 	// 0" event.
 	if isScalingDown && scalingDecision.GetDesiredInstances() == 0 && currentInstances > 0 {
 		eventType, eventMessage := scaleToZeroEvent(scalingDecision.GetReason())
@@ -446,7 +446,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 	maxInstances := fn.ScaleMaxInstances()
 
 	if maxInstances > 1 && decision.GetUnclampedDesiredInstances() > decision.GetDesiredInstances() {
-		// this function is allowed to scale beyond a single instance
+		// this assignment is allowed to scale beyond a single instance
 		// and it wanted to scale up higher than its max instances, so
 		// let's log that for observability
 		log.Info(ctx, "scaling decision was clamped")
@@ -467,11 +467,11 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 		// we need to scale up
 		if total >= maxInstances+1 {
 			// we have too many instances in total, so we can't scale up
-			log.Info(ctx, "skipping scale up because function has too many instances")
+			log.Info(ctx, "skipping scale up because assignment has too many instances")
 			return readyInstances, unreadyInstances, nil
 		}
 
-		log.Info(ctx, "scaling function up")
+		log.Info(ctx, "scaling assignment up")
 		scaleUpsTotal.WithLabelValues(fn.GetDeployment(), fn.GetDeployment()).Add(float64(desired - ready))
 
 		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO,
@@ -493,7 +493,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 		return readyInstances, unreadyInstances, nil
 	} else {
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
-		log.Info(ctx, "scaling function down")
+		log.Info(ctx, "scaling assignment down")
 
 		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_SCALE_DOWN, skipper.EventSeverity_EVENT_SEVERITY_INFO,
 			fmt.Sprintf("scaling down from %d to %d instances", total, desired))
@@ -565,18 +565,18 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, fn *skipper.Assi
 // needed), then terminates the stale instance. This guarantees
 // availability during deployment rollouts.
 //
-// This function should only be called when NOT scaling down, as
+// This routine should only be called when NOT scaling down, as
 // scale-down naturally deletes oldest instances first (which are
 // typically stale). Calling this during scale-down would create
-// wasteful pod assignments.
+// wasteful pod bindings.
 //
 // To prevent unbounded pod creation when deletePod fails repeatedly,
-// this function will not assign new replacement pods if the total
+// this routine will not bind new replacement pods if the total
 // instance count reaches or exceeds maxInstances+1. In this case, the
 // stale instance is kept and scale() will handle cleanup on subsequent
 // iterations.
 func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assignment, instances []*skipper.Instance, currentTotalInstances int) {
-	// Oneshot functions assign a fresh pod per request — replacing a stale
+	// Oneshot assignments bind a fresh pod per request — replacing a stale
 	// instance would create a pod that serves nothing while the original
 	// continues processing its in-flight request.
 	if fn.GetOneshot() {
@@ -585,7 +585,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 
 	namespaceLister, ok := s.ctrl.namespaceListers[fn.GetNamespace()]
 	if !ok {
-		log.Warn(ctx, "namespace lister not found for function namespace", key.Namespace.Slog(fn.GetNamespace()))
+		log.Warn(ctx, "namespace lister not found for assignment namespace", key.Namespace.Slog(fn.GetNamespace()))
 		return
 	}
 
@@ -597,7 +597,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 		}
 
 		// Stale if the replica set was scaled to zero (deployment rollout)
-		// or if the function config (metadata/scale) has changed.
+		// or if the assignment config (metadata/scale) has changed.
 		isStale := replicaSet.Status.Replicas == 0 || !proto.Equal(instance.GetAssignment(), fn)
 		if !isStale {
 			continue
@@ -656,10 +656,10 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 	}
 }
 
-// getReadyInstance returns a ready instance for the function, scaling
+// getReadyInstance returns a ready instance for the assignment, scaling
 // up if necessary. If excludeNames is provided, those instances are
 // excluded from selection (unless all instances would be excluded).
-// For oneshot functions, each call assigns a fresh pod via assignPod's
+// For oneshot assignments, each call binds a fresh pod via assignPod's
 // atomic test-and-set, guaranteeing a unique pod per request.
 func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string) (*skipper.Instance, error) {
 	fn := s.fn.Load()
@@ -681,7 +681,7 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 		decision.SetUnclampedDesiredInstances(1)
 		decision.SetReason(skipper.ScaleReason_SCALE_REASON_NO_READY_INSTANCES)
 		if instances, err = s.scale(ctx, decision); err != nil {
-			return nil, fmt.Errorf("failed to scale function: %w", err)
+			return nil, fmt.Errorf("failed to scale assignment: %w", err)
 		}
 	}
 
@@ -691,7 +691,7 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 		slices.SortFunc(instances, func(a, b *skipper.Instance) int {
 			return b.GetAssignedAt().AsTime().Compare(a.GetAssignedAt().AsTime())
 		})
-		// keep the newest instances up to the max instances allowed for the function
+		// keep the newest instances up to the max instances allowed for the assignment
 		instances = instances[:maxInstances]
 	}
 
@@ -853,7 +853,7 @@ func calculateDesiredInstances(ctx context.Context, fn *skipper.Assignment, cfg 
 	targetMem := fn.ScaleTargetMemoryMebibytes()
 	targetIFR := fn.ScaleTargetInFlightRequests()
 
-	// Oneshot functions scale 1:1 with in-flight requests.
+	// Oneshot assignments scale 1:1 with in-flight requests.
 	if fn.GetOneshot() {
 		desiredInstances := int(heartbeat.GetInFlightRequests())
 		clamped := min(max(uint32(desiredInstances), minInst), maxInst)
@@ -870,7 +870,7 @@ func calculateDesiredInstances(ctx context.Context, fn *skipper.Assignment, cfg 
 		return decision
 	}
 
-	// Regular functions use the max across all configured metrics,
+	// Regular assignments use the max across all configured metrics,
 	// starting at 1 (only scale to 0 from heartbeat timeout).
 	maxDesiredInstances := 1
 	var scaleReason skipper.ScaleReason

@@ -8,7 +8,7 @@ Flags:
       --assign-timeout duration                 The timeout for assigning a pod. (env SKIPPER_ASSIGN_TIMEOUT, deprecated env SKIPPER_FUNCTION_ASSIGN_TIMEOUT) (default 30s)
       --assignment-namespaces strings           The namespaces where assignments can be invoked. (env SKIPPER_ASSIGNMENT_NAMESPACES, deprecated env SKIPPER_FUNCTION_NAMESPACES)
       --hash-ring-wait-time duration            How long to wait for the controller to populate its hash ring. (env SKIPPER_HASH_RING_WAIT_TIME) (default 10s)
-      --heartbeat-timeout duration              How long to wait before scaling a function to 0 if it has not sent a heartbeat. (env SKIPPER_HEARTBEAT_TIMEOUT) (default 1m30s)
+      --heartbeat-timeout duration              How long to wait before scaling an assignment to 0 if it has not sent a heartbeat. (env SKIPPER_HEARTBEAT_TIMEOUT) (default 1m30s)
   -h, --help                                    help for controller
       --host string                             The hostname the controller listens on. (env SKIPPER_HOST) (default "0.0.0.0")
       --hpa-downscale-stabilization duration    The stabilization window for downscaling in the HPA algorithm. (env SKIPPER_HPA_DOWNSCALE_STABILIZATION) (default 1m30s)
@@ -30,7 +30,7 @@ Flags:
       --pprof-host string                       The host to serve the pprof on. (env SKIPPER_PPROF_HOST) (default "0.0.0.0")
       --pprof-port int                          The port to serve the pprof on. (env SKIPPER_PPROF_PORT) (default 6060)
       --pprof-shutdown-timeout duration         The timeout for shutting down the pprof. (env SKIPPER_PPROF_SHUTDOWN_TIMEOUT) (default 5s)
-      --scale-interval duration                 How often to scale functions. (env SKIPPER_SCALE_INTERVAL) (default 15s)
+      --scale-interval duration                 How often to scale assignments. (env SKIPPER_SCALE_INTERVAL) (default 15s)
       --shutdown-timeout duration               The timeout for shutting down the controller. (env SKIPPER_SHUTDOWN_TIMEOUT) (default 5s)
       --single-controller-mode                  Add only this controller to the hash ring, ignoring controller pod discovery. For local development. (env SKIPPER_SINGLE_CONTROLLER_MODE)
       --skip-forbidden-namespaces               Whether to skip assignment namespaces that the service account does not have access to. (env SKIPPER_SKIP_FORBIDDEN_NAMESPACES)

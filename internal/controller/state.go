@@ -67,7 +67,7 @@ func (ctrl *Controller) ClusterState(ctx context.Context) *skipper.ClusterState 
 }
 
 // getActiveReplicaSet returns the name of the newest replica set with Status.Replicas > 0
-// for the given function's deployment.
+// for the given assignment's deployment.
 func (ctrl *Controller) getActiveReplicaSet(ctx context.Context, fn *skipper.Assignment) string {
 	namespaceLister, ok := ctrl.namespaceListers[fn.GetNamespace()]
 	if !ok {

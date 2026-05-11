@@ -3,13 +3,13 @@ title: Scaling
 description: How Skipper's HPA-inspired autoscaler works.
 ---
 
-Each function is independently scaled every 15 seconds (configurable via `--scale-interval`). The scaling algorithm is HPA-inspired: it calculates desired instances based on resource metrics relative to targets, then takes the highest recommendation.
+Each assignment is independently scaled every 15 seconds (configurable via `--scale-interval`). The scaling algorithm is HPA-inspired: it calculates desired instances based on resource metrics relative to targets, then takes the highest recommendation.
 
-Only one controller replica handles scaling for a given function; others track state for failover.
+Only one controller replica handles scaling for a given assignment; others track state for failover.
 
 ## Scaling metrics
 
-Three metrics can drive scaling: **CPU usage**, **memory usage**, and **in-flight requests**. Each is enabled by setting its target to a non-zero value in the function's scale config. When multiple metrics are enabled, each produces a recommendation and the highest one wins.
+Three metrics can drive scaling: **CPU usage**, **memory usage**, and **in-flight requests**. Each is enabled by setting its target to a non-zero value in the assignment's scale config. When multiple metrics are enabled, each produces a recommendation and the highest one wins.
 
 The formula is the same for all three:
 
@@ -19,7 +19,7 @@ desired = ⌈current_instances × (average_usage / target)⌉
 
 If average usage equals the target, the ratio is 1 and nothing changes. Above the target, the ratio exceeds 1 and instances are added. Below the target, instances are removed.
 
-Functions always maintain at least 1 instance. The only way a function scales to 0 is when no heartbeat has been received within the timeout window — see [Heartbeats and Lifecycle](/skipper/guides/heartbeats-and-lifecycle/) for details. Oneshot functions behave differently — they scale 1:1 with in-flight requests and have no minimum instance floor. See [Oneshot function scaling](#oneshot-function-scaling) for details.
+Assignments always maintain at least 1 instance. The only way an assignment scales to 0 is when no heartbeat has been received within the timeout window — see [Heartbeats and Lifecycle](/skipper/guides/heartbeats-and-lifecycle/) for details. Oneshot assignments behave differently — they scale 1:1 with in-flight requests and have no minimum instance floor. See [Oneshot assignment scaling](#oneshot-assignment-scaling) for details.
 
 ## The scaling algorithm
 
@@ -62,11 +62,11 @@ In all cases, the result is clamped to `[min_instances, max_instances]`.
 
 The stabilization window prevents rapid oscillation during bursty traffic. During downscale, the autoscaler uses the maximum recommendation within the window (`--hpa-downscale-stabilization`, default: 90s).
 
-New controllers delay their first downscale to prevent scaling down functions that were recently active on another replica.
+New controllers delay their first downscale to prevent scaling down assignments that were recently active on another replica.
 
-## Oneshot function scaling
+## Oneshot assignment scaling
 
-Oneshot functions scale 1:1 with in-flight requests -- one pod per request. There is no stabilization window; pods are created and destroyed as requests arrive and complete.
+Oneshot assignments scale 1:1 with in-flight requests -- one pod per request. There is no stabilization window; pods are created and destroyed as requests arrive and complete.
 
 Scale reason: `SCALE_REASON_IN_FLIGHT_REQUESTS`.
 
@@ -74,7 +74,7 @@ After heartbeat timeout (and once the controller has been running long enough to
 
 ## Scale execution
 
-- **Scale up**: assign new pods from the deployment pool, up to max_instances.
+- **Scale up**: bind new pods from the deployment pool, up to max_instances.
 - **Scale down**: delete all unready instances first, then the oldest ready instances.
 - When clamping occurs (unclamped desire exceeds max_instances), the controller logs the event.
 

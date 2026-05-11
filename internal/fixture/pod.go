@@ -24,8 +24,8 @@ import (
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 )
 
-// replicaSetNames tracks the current replicaset name per function (keyed by function hash).
-// This allows each function to have its own replicaset lineage without global counters.
+// replicaSetNames tracks the current replicaset name per assignment (keyed by assignment hash).
+// This allows each assignment to have its own replicaset lineage without global counters.
 var replicaSetNames = xsync.NewMap[skipper.AssignmentHash, string]()
 
 func NewAvailablePod(t *testing.T, fn *skipper.Assignment, handler http.Handler) *v1.Pod {
@@ -162,8 +162,8 @@ func NewAssignedPod(t *testing.T, fn *skipper.Assignment, handler http.Handler) 
 	}
 }
 
-// CurrentReplicaSetName returns the current replicaset name for the given skipper.
-// If no replicaset has been created yet for this function, it generates one.
+// CurrentReplicaSetName returns the current replicaset name for the given assignment.
+// If no replicaset has been created yet for this assignment, it generates one.
 func CurrentReplicaSetName(fn *skipper.Assignment) string {
 	name, _ := replicaSetNames.LoadOrCompute(fn.Hash(), func() (string, bool) {
 		return fn.GetDeployment() + "-rs-" + uuid.NewString()[:8], false
@@ -188,10 +188,9 @@ func CurrentReplicaSet(t *testing.T, fn *skipper.Assignment) *appsv1.ReplicaSet 
 	}
 }
 
-// NewReplicaSet creates a new replicaset for the function, replacing any existing one.
+// NewReplicaSet creates a new replicaset for the assignment, replacing any existing one.
 func NewReplicaSet(t *testing.T, fn *skipper.Assignment) *appsv1.ReplicaSet {
 	t.Helper()
-	// Generate a new replicaset name for this function
 	replicaSetNames.Store(fn.Hash(), fn.GetDeployment()+"-rs-"+uuid.NewString()[:8])
 	return CurrentReplicaSet(t, fn)
 }

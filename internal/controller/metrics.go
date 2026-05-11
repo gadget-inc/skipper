@@ -23,7 +23,7 @@ var (
 		Namespace: "skipper",
 		Subsystem: "controller",
 		Name:      "waiting_for_unassigned_pods",
-		Help:      "Functions blocked waiting for pod assignment.",
+		Help:      "Assignments blocked waiting for pod assignment.",
 	}, []string{"function_deployment", "assignment_deployment"})
 
 	assignmentsTotal = metrics.NewCounterVec(prometheus.CounterOpts{

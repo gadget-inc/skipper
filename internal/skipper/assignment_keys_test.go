@@ -20,12 +20,12 @@ var (
 	_ *key.Key[*ScaleDecision] = ScaleDecisionKey
 )
 
-// TestFunctionKeyEquivalence pins the cached path's output to the uncached
+// TestAssignmentKeyEquivalence pins the cached path's output to the uncached
 // path so caching cannot silently drift the span attribute keys/values.
-func TestFunctionKeyEquivalence(t *testing.T) {
+func TestAssignmentKeyEquivalence(t *testing.T) {
 	t.Parallel()
 
-	uncached := key.New("function", (*Assignment).LogValue)
+	uncached := key.New("assignment", (*Assignment).LogValue)
 
 	testCases := []struct {
 		name string
@@ -67,7 +67,7 @@ func TestFunctionKeyEquivalence(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := LegacyFunctionKey.Attr(tc.fn)
+			got := AssignmentKey.Attr(tc.fn)
 			want := uncached.Attr(tc.fn)
 
 			assert.Assert(t, got.Slog.Equal(want.Slog), "Slog mismatch:\n got: %v\nwant: %v", got.Slog, want.Slog)
@@ -76,7 +76,7 @@ func TestFunctionKeyEquivalence(t *testing.T) {
 	}
 }
 
-func TestFunctionKeyConcurrent(t *testing.T) {
+func TestAssignmentKeyConcurrent(t *testing.T) {
 	t.Parallel()
 
 	fn := Assignment_builder{
@@ -87,7 +87,7 @@ func TestFunctionKeyConcurrent(t *testing.T) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	want := LegacyFunctionKey.Attr(fn)
+	want := AssignmentKey.Attr(fn)
 
 	const goroutines = 32
 	const iterations = 100
@@ -98,7 +98,7 @@ func TestFunctionKeyConcurrent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range iterations {
-				if got := LegacyFunctionKey.Attr(fn); !got.Slog.Equal(want.Slog) {
+				if got := AssignmentKey.Attr(fn); !got.Slog.Equal(want.Slog) {
 					t.Errorf("Slog mismatch under concurrent access")
 					return
 				}
@@ -108,7 +108,7 @@ func TestFunctionKeyConcurrent(t *testing.T) {
 	wg.Wait()
 }
 
-func BenchmarkFunctionKeyAttr(b *testing.B) {
+func BenchmarkAssignmentKeyAttr(b *testing.B) {
 	fn := Assignment_builder{
 		Namespace:  new("bench-ns"),
 		Deployment: new("bench-deploy"),
@@ -117,11 +117,11 @@ func BenchmarkFunctionKeyAttr(b *testing.B) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	_ = LegacyFunctionKey.Attr(fn) // prime the cache so we measure the hit path
+	_ = AssignmentKey.Attr(fn) // prime the cache so we measure the hit path
 
 	b.ReportAllocs()
 	for b.Loop() {
-		sinkAttrResult = LegacyFunctionKey.Attr(fn)
+		sinkAttrResult = AssignmentKey.Attr(fn)
 	}
 }
 

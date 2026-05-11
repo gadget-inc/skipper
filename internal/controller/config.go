@@ -21,8 +21,8 @@ type Config struct {
 	KubeConfigQPS                  float32          `flag:"kubeconfig-qps" description:"The QPS for the kubeconfig client." default:"100"`
 	KubeConfigBurst                int              `flag:"kubeconfig-burst" description:"The burst for the kubeconfig client." default:"200"`
 	PasetoPrivateKey               PasetoPrivateKey `flag:"paseto-private-key" description:"The private key used to sign PASETO tokens for assigned pods." required:"true" sensitive:"true"`
-	HeartbeatTimeout               time.Duration    `flag:"heartbeat-timeout" description:"How long to wait before scaling a function to 0 if it has not sent a heartbeat." default:"90s"`
-	ScaleInterval                  time.Duration    `flag:"scale-interval" description:"How often to scale functions." default:"15s"`
+	HeartbeatTimeout               time.Duration    `flag:"heartbeat-timeout" description:"How long to wait before scaling an assignment to 0 if it has not sent a heartbeat." default:"90s"`
+	ScaleInterval                  time.Duration    `flag:"scale-interval" description:"How often to scale assignments." default:"15s"`
 	HPATolerance                   float64          `flag:"hpa-tolerance" description:"The usage ratio tolerance for the HPA algorithm." default:"0.1"`
 	HPAInitialReadinessDelay       time.Duration    `flag:"hpa-initial-readiness-delay" description:"The initial readiness delay for the HPA algorithm." default:"30s"`
 	HPADownscaleStabilization      time.Duration    `flag:"hpa-downscale-stabilization" description:"The stabilization window for downscaling in the HPA algorithm." default:"90s"`

@@ -235,7 +235,7 @@ func (ctrl *Controller) collectInstances(ctx context.Context, fn *skipper.Assign
 	hashKey := strconv.FormatUint(fn.Hash(), 10)
 	objs, err := namespaceLister.podIndexer.ByIndex(assignmentHashIndex, hashKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pods by function hash: %w", err)
+		return nil, fmt.Errorf("failed to get pods by assignment hash: %w", err)
 	}
 
 	instances := make([]*skipper.Instance, 0, len(objs))

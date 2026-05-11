@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// heartbeatState tracks in-flight requests and last activity for a function
+// heartbeatState tracks in-flight requests and last activity for an assignment
 // using atomic operations, avoiding per-request protobuf allocations. The
 // proto is materialised only when the heartbeat sender needs to transmit.
 type heartbeatState struct {
@@ -24,7 +24,7 @@ func newHeartbeatState(fn *skipper.Assignment) *heartbeatState {
 	return s
 }
 
-// updateAssignment replaces the stored function if the new one differs. This
+// updateAssignment replaces the stored assignment if the new one differs. This
 // prevents heartbeats from sending stale metadata after upstream changes.
 func (s *heartbeatState) updateAssignment(fn *skipper.Assignment) {
 	if s.fn.Load() != fn {

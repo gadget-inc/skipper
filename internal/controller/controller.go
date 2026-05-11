@@ -32,7 +32,7 @@ import (
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-const assignmentHashIndex = "functionHash"
+const assignmentHashIndex = "assignmentHash"
 
 type namespaceLister struct {
 	podIndexer        cache.Indexer
