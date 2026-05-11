@@ -20,12 +20,21 @@ var (
 	_ *key.Key[*ScaleDecision] = ScaleDecisionKey
 )
 
-// TestAssignmentKeyEquivalence pins the cached path's output to the uncached
-// path so caching cannot silently drift the span attribute keys/values.
+// cachedAssignmentKeys are the production-used cached Assignment keys; both
+// participate in dual-emit and both need their cached-path output pinned.
+var cachedAssignmentKeys = []struct {
+	name string
+	key  *key.Key[*Assignment]
+}{
+	{name: "AssignmentKey", key: AssignmentKey},
+	{name: "LegacyFunctionKey", key: LegacyFunctionKey},
+}
+
+// TestAssignmentKeyEquivalence pins each cached *Assignment key's output to
+// an equivalent uncached key so caching cannot silently drift the span
+// attribute keys/values for either key in the dual-emit pair.
 func TestAssignmentKeyEquivalence(t *testing.T) {
 	t.Parallel()
-
-	uncached := key.New("assignment", (*Assignment).LogValue)
 
 	testCases := []struct {
 		name string
@@ -63,16 +72,19 @@ func TestAssignmentKeyEquivalence(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+	for _, kc := range cachedAssignmentKeys {
+		uncached := key.New(kc.key.Name, (*Assignment).LogValue)
+		for _, tc := range testCases {
+			t.Run(kc.name+"/"+tc.name, func(t *testing.T) {
+				t.Parallel()
 
-			got := AssignmentKey.Attr(tc.fn)
-			want := uncached.Attr(tc.fn)
+				got := kc.key.Attr(tc.fn)
+				want := uncached.Attr(tc.fn)
 
-			assert.Assert(t, got.Slog.Equal(want.Slog), "Slog mismatch:\n got: %v\nwant: %v", got.Slog, want.Slog)
-			assert.DeepEqual(t, got.Otel, want.Otel, cmpopts.EquateComparable(attribute.KeyValue{}))
-		})
+				assert.Assert(t, got.Slog.Equal(want.Slog), "Slog mismatch:\n got: %v\nwant: %v", got.Slog, want.Slog)
+				assert.DeepEqual(t, got.Otel, want.Otel, cmpopts.EquateComparable(attribute.KeyValue{}))
+			})
+		}
 	}
 }
 
@@ -87,25 +99,31 @@ func TestAssignmentKeyConcurrent(t *testing.T) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	want := AssignmentKey.Attr(fn)
-
 	const goroutines = 32
 	const iterations = 100
 
-	var wg sync.WaitGroup
-	wg.Add(goroutines)
-	for range goroutines {
-		go func() {
-			defer wg.Done()
-			for range iterations {
-				if got := AssignmentKey.Attr(fn); !got.Slog.Equal(want.Slog) {
-					t.Errorf("Slog mismatch under concurrent access")
-					return
-				}
+	for _, kc := range cachedAssignmentKeys {
+		t.Run(kc.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := kc.key.Attr(fn)
+
+			var wg sync.WaitGroup
+			wg.Add(goroutines)
+			for range goroutines {
+				go func() {
+					defer wg.Done()
+					for range iterations {
+						if got := kc.key.Attr(fn); !got.Slog.Equal(want.Slog) {
+							t.Errorf("Slog mismatch under concurrent access")
+							return
+						}
+					}
+				}()
 			}
-		}()
+			wg.Wait()
+		})
 	}
-	wg.Wait()
 }
 
 func BenchmarkAssignmentKeyAttr(b *testing.B) {
@@ -117,11 +135,15 @@ func BenchmarkAssignmentKeyAttr(b *testing.B) {
 		Scale:      Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
 	}.Build()
 
-	_ = AssignmentKey.Attr(fn) // prime the cache so we measure the hit path
+	for _, kc := range cachedAssignmentKeys {
+		b.Run(kc.name, func(b *testing.B) {
+			_ = kc.key.Attr(fn) // prime the cache so we measure the hit path
 
-	b.ReportAllocs()
-	for b.Loop() {
-		sinkAttrResult = AssignmentKey.Attr(fn)
+			b.ReportAllocs()
+			for b.Loop() {
+				sinkAttrResult = kc.key.Attr(fn)
+			}
+		})
 	}
 }
 
