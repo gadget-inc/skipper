@@ -45,7 +45,7 @@ func TestClientInstance(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Assignment
+		assignment     *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 		client         Client
@@ -60,61 +60,61 @@ func TestClientInstance(t *testing.T) {
 		{
 			name: "returns assigned instance",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.fn))
+				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.assignment))
 				assert.Assert(t, instance.HasReadyAt())
 			},
 		},
 		{
 			name: "assigns available pod",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.fn))
+				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.assignment))
 			},
 		},
 		{
 			name: "filters by excluded instance names",
 			setup: func(t *testing.T, state *testState) {
-				podA := fixture.NewAssignedPod(t, state.fn, nil)
-				podA.Name = state.fn.GetDeployment() + "-a"
-				podB := fixture.NewAssignedPod(t, state.fn, nil)
-				podB.Name = state.fn.GetDeployment() + "-b"
+				podA := fixture.NewAssignedPod(t, state.assignment, nil)
+				podA.Name = state.assignment.GetDeployment() + "-a"
+				podB := fixture.NewAssignedPod(t, state.assignment, nil)
+				podB.Name = state.assignment.GetDeployment() + "-b"
 				state.fakeKubernetes.Tracker().Add(podA)
 				state.fakeKubernetes.Tracker().Add(podB)
-				state.excludeNames = []string{state.fn.GetDeployment() + "-a"}
+				state.excludeNames = []string{state.assignment.GetDeployment() + "-a"}
 			},
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, instance.GetName() == state.fn.GetDeployment()+"-b")
+				assert.Assert(t, instance.GetName() == state.assignment.GetDeployment()+"-b")
 			},
 		},
 		{
 			name: "reverts to all instances when all excluded",
 			setup: func(t *testing.T, state *testState) {
-				podA := fixture.NewAssignedPod(t, state.fn, nil)
-				podA.Name = state.fn.GetDeployment() + "-a"
+				podA := fixture.NewAssignedPod(t, state.assignment, nil)
+				podA.Name = state.assignment.GetDeployment() + "-a"
 				state.fakeKubernetes.Tracker().Add(podA)
-				state.excludeNames = []string{state.fn.GetDeployment() + "-a"}
+				state.excludeNames = []string{state.assignment.GetDeployment() + "-a"}
 			},
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, instance.GetName() == state.fn.GetDeployment()+"-a")
+				assert.Assert(t, instance.GetName() == state.assignment.GetDeployment()+"-a")
 			},
 		},
 		{
 			name: "returns error for invalid assignment",
 			setup: func(t *testing.T, state *testState) {
-				state.fn = &skipper.Assignment{} // empty fields fail validation
+				state.assignment = &skipper.Assignment{} // empty fields fail validation
 			},
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.Assert(t, err != nil)
@@ -126,20 +126,20 @@ func TestClientInstance(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				go func() {
 					time.Sleep(200 * time.Millisecond)
-					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 				}()
 			},
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.fn))
+				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.assignment))
 			},
 		},
 		{
 			name: "no ready instances while scaling up race",
 			setup: func(t *testing.T, state *testState) {
 				// Grab supervisor lock before the client call so GetInstance blocks
-				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor := state.ctrl.supervisor(state.assignment)
 				supervisor.mu.Lock()
 
 				go func() {
@@ -147,8 +147,8 @@ func TestClientInstance(t *testing.T) {
 					time.Sleep(500 * time.Millisecond)
 
 					// Add 2 assigned pods while the lock is held
-					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
-					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 
 					// Give informers a chance to update their caches
 					time.Sleep(10 * time.Millisecond)
@@ -160,12 +160,12 @@ func TestClientInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.fn))
+				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.assignment))
 				assert.Assert(t, instance.HasReadyAt())
 
 				// Verify both pods still exist — the controller should not have
 				// scaled down to 1 just because the original request was for 1 instance
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 2, "expected 2 pods but got %d — controller should not over-scale", len(pods.Items))
 			},
@@ -180,7 +180,7 @@ func TestClientInstance(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewAssignment(t),
+				assignment:     fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
@@ -194,7 +194,7 @@ func TestClientInstance(t *testing.T) {
 			defer cleanup()
 			state.client = client
 
-			instance, err := state.client.Instance(ctx, state.fn, state.excludeNames...)
+			instance, err := state.client.Instance(ctx, state.assignment, state.excludeNames...)
 			tc.check(t, state, instance, err)
 		})
 	}
@@ -289,16 +289,16 @@ func TestClientHeartbeat(t *testing.T) {
 			name: "keeps most recent heartbeat",
 			setup: func(t *testing.T, state *testState) {
 				state.routerIP = fixture.RouterIP
-				fn := fixture.NewAssignment(t)
+				a := fixture.NewAssignment(t)
 
 				// Seed supervisor with a recent heartbeat
 				recentTime := time.Now()
-				supervisor := state.ctrl.supervisor(fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{Assignment: fn, Timestamp: timestamppb.New(recentTime)}.Build())
+				supervisor := state.ctrl.supervisor(a)
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{Assignment: a, Timestamp: timestamppb.New(recentTime)}.Build())
 
 				// Send an old heartbeat
 				state.heartbeats = []*skipper.Heartbeat{
-					skipper.Heartbeat_builder{Assignment: fn, Timestamp: timestamppb.New(recentTime.Add(-time.Hour))}.Build(),
+					skipper.Heartbeat_builder{Assignment: a, Timestamp: timestamppb.New(recentTime.Add(-time.Hour))}.Build(),
 				}
 			},
 			check: func(t *testing.T, state *testState, err error) {
@@ -428,9 +428,9 @@ func TestClientHeartbeatForwarding(t *testing.T) {
 			defer cleanup()
 			state.client = client
 
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 			heartbeats := []*skipper.Heartbeat{
-				skipper.Heartbeat_builder{Assignment: fn, Timestamp: timestamppb.Now()}.Build(),
+				skipper.Heartbeat_builder{Assignment: a, Timestamp: timestamppb.Now()}.Build(),
 			}
 
 			var err error
@@ -586,10 +586,10 @@ func TestClientRetries(t *testing.T) {
 			assert.NilError(t, err)
 			defer client.Close()
 
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 
 			// Test GetInstance
-			_, err = client.Instance(ctx, fn)
+			_, err = client.Instance(ctx, a)
 			if tc.expectGetInstance {
 				assert.NilError(t, err, "GetInstance should succeed after retries")
 			} else {
@@ -598,7 +598,7 @@ func TestClientRetries(t *testing.T) {
 
 			// Test Heartbeat
 			err = client.Heartbeat(ctx, fixture.RouterIP, []*skipper.Heartbeat{
-				skipper.Heartbeat_builder{Assignment: fn, Timestamp: timestamppb.Now()}.Build(),
+				skipper.Heartbeat_builder{Assignment: a, Timestamp: timestamppb.Now()}.Build(),
 			})
 			if tc.expectHeartbeat {
 				assert.NilError(t, err, "Heartbeat should succeed after retries")
@@ -607,7 +607,7 @@ func TestClientRetries(t *testing.T) {
 			}
 
 			// Test Scale
-			_, err = client.Scale(ctx, fn, 1, skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS)
+			_, err = client.Scale(ctx, a, 1, skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS)
 			if tc.expectScale {
 				assert.NilError(t, err, "Scale should succeed after retries")
 			} else {
@@ -621,7 +621,7 @@ func TestClientScale(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn               *skipper.Assignment
+		assignment       *skipper.Assignment
 		fakeKubernetes   *fake.Clientset
 		ctrl             *Controller
 		client           Client
@@ -637,22 +637,22 @@ func TestClientScale(t *testing.T) {
 		{
 			name: "returns scaled instances",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				state.desiredInstances = 1
 				state.reason = skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, len(instances) == 1)
-				assert.Assert(t, proto.Equal(instances[0].GetAssignment(), state.fn))
+				assert.Assert(t, proto.Equal(instances[0].GetAssignment(), state.assignment))
 			},
 		},
 		{
 			name: "scale up",
 			setup: func(t *testing.T, state *testState) {
 				// Start with one assigned, one available
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 				state.desiredInstances = 2
 				state.reason = skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS
 			},
@@ -665,8 +665,8 @@ func TestClientScale(t *testing.T) {
 			name: "scale down",
 			setup: func(t *testing.T, state *testState) {
 				// Start with two assigned pods
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				state.desiredInstances = 1
 				state.reason = skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS
 			},
@@ -678,7 +678,7 @@ func TestClientScale(t *testing.T) {
 		{
 			name: "returns error for invalid assignment",
 			setup: func(t *testing.T, state *testState) {
-				state.fn = &skipper.Assignment{} // empty fields fail validation
+				state.assignment = &skipper.Assignment{} // empty fields fail validation
 				state.desiredInstances = 1
 				state.reason = skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS
 			},
@@ -690,7 +690,7 @@ func TestClientScale(t *testing.T) {
 		{
 			name: "cpu reason",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				state.desiredInstances = 1
 				state.reason = skipper.ScaleReason_SCALE_REASON_CPU
 			},
@@ -702,7 +702,7 @@ func TestClientScale(t *testing.T) {
 		{
 			name: "memory reason",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				state.desiredInstances = 1
 				state.reason = skipper.ScaleReason_SCALE_REASON_MEMORY
 			},
@@ -721,7 +721,7 @@ func TestClientScale(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewAssignment(t),
+				assignment:     fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
@@ -735,7 +735,7 @@ func TestClientScale(t *testing.T) {
 			defer cleanup()
 			state.client = client
 
-			instances, err := state.client.Scale(ctx, state.fn, state.desiredInstances, state.reason)
+			instances, err := state.client.Scale(ctx, state.assignment, state.desiredInstances, state.reason)
 			tc.check(t, state, instances, err)
 		})
 	}

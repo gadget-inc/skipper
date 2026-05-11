@@ -86,8 +86,8 @@ func newFixtureRequestCmd() *cobra.Command {
 			if count <= 0 {
 				return fmt.Errorf("invalid count: %d (must be a positive integer)", count)
 			}
-			fn := withTenant(tenant)
-			fnHeader, err := json.Marshal(fn)
+			a := withTenant(tenant)
+			assignmentHeader, err := json.Marshal(a)
 			if err != nil {
 				return err
 			}
@@ -97,7 +97,7 @@ func newFixtureRequestCmd() *cobra.Command {
 				if count > 1 {
 					fmt.Printf("\033[2m--- request %d/%d ---\033[0m\n", i+1, count)
 				}
-				if err := sendOne(c.Context(), client, method, path, body, string(fnHeader), verbose); err != nil {
+				if err := sendOne(c.Context(), client, method, path, body, string(assignmentHeader), verbose); err != nil {
 					return err
 				}
 				if count > 1 && i < count-1 {
@@ -109,7 +109,7 @@ func newFixtureRequestCmd() *cobra.Command {
 	})
 }
 
-func sendOne(ctx context.Context, client *http.Client, method, path, body, fn string, verbose bool) error {
+func sendOne(ctx context.Context, client *http.Client, method, path, body, assignmentHeader string, verbose bool) error {
 	url := defaultRouterURL + path
 	var bodyReader io.Reader
 	if method != "GET" {
@@ -119,7 +119,7 @@ func sendOne(ctx context.Context, client *http.Client, method, path, body, fn st
 	if err != nil {
 		return err
 	}
-	req.Header.Set("x-skipper-assignment", fn)
+	req.Header.Set("x-skipper-assignment", assignmentHeader)
 	req.Header.Set("content-type", "application/json")
 
 	start := time.Now()
@@ -185,8 +185,8 @@ func newFixtureWebSocketCmd() *cobra.Command {
 			if count < 0 {
 				return fmt.Errorf("invalid count: %d (must be >= 0)", count)
 			}
-			fn := withTenant(tenant)
-			fnHeader, err := json.Marshal(fn)
+			a := withTenant(tenant)
+			assignmentHeader, err := json.Marshal(a)
 			if err != nil {
 				return err
 			}
@@ -195,7 +195,7 @@ func newFixtureWebSocketCmd() *cobra.Command {
 			defer cancel()
 
 			conn, _, err := websocket.Dial(ctx, defaultRouterURL, &websocket.DialOptions{
-				HTTPHeader: http.Header{"x-skipper-assignment": []string{string(fnHeader)}},
+				HTTPHeader: http.Header{"x-skipper-assignment": []string{string(assignmentHeader)}},
 			})
 			if err != nil {
 				return err
@@ -321,13 +321,13 @@ func runLoad(ctx context.Context, opts loadOptions) error {
 	if !opts.skipWarmUp {
 		for i, t := range tenants {
 			fmt.Fprintf(os.Stdout, "\r\033[K\033[2mWarming up %s (%d/%d)...\033[0m", t, i+1, len(tenants))
-			fn := withTenant(t)
-			fnHeader, _ := json.Marshal(fn)
+			a := withTenant(t)
+			assignmentHeader, _ := json.Marshal(a)
 			req, err := http.NewRequestWithContext(ctx, "POST", defaultRouterURL, strings.NewReader(`{"hello":"world"}`))
 			if err != nil {
 				return err
 			}
-			req.Header.Set("x-skipper-assignment", string(fnHeader))
+			req.Header.Set("x-skipper-assignment", string(assignmentHeader))
 			req.Header.Set("content-type", "application/json")
 			resp, err := client.Do(req)
 			if err == nil {
@@ -470,14 +470,14 @@ func (s *loadState) addLatency(ms float64) {
 
 func sendLoadRequest(ctx context.Context, client *http.Client, tenants []string, state *loadState) {
 	tenant := tenants[rand.IntN(len(tenants))]
-	fn := withTenant(tenant)
-	fnHeader, _ := json.Marshal(fn)
+	a := withTenant(tenant)
+	assignmentHeader, _ := json.Marshal(a)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", defaultRouterURL, strings.NewReader(`{"hello":"world"}`))
 	if err != nil {
 		return
 	}
-	req.Header.Set("x-skipper-assignment", string(fnHeader))
+	req.Header.Set("x-skipper-assignment", string(assignmentHeader))
 	req.Header.Set("content-type", "application/json")
 
 	start := time.Now()

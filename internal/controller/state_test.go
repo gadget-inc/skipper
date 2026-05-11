@@ -46,14 +46,14 @@ func TestClusterState(t *testing.T) {
 		err := ctrl.Start(t.Context())
 		assert.NilError(t, err)
 
-		fn := fixture.NewAssignment(t)
+		a := fixture.NewAssignment(t)
 
 		// Create a supervisor by calling supervisor()
-		sup := ctrl.supervisor(fn)
+		sup := ctrl.supervisor(a)
 
 		// Add a heartbeat
 		hb := &skipper.Heartbeat{}
-		hb.SetAssignment(fn)
+		hb.SetAssignment(a)
 		hb.SetTimestamp(timestamppb.Now())
 		hb.SetInFlightRequests(5)
 		sup.heartbeat("10.0.0.1", hb)
@@ -64,16 +64,16 @@ func TestClusterState(t *testing.T) {
 		assert.Assert(t, len(state.GetSupervisors()) == 1)
 
 		supState := state.GetSupervisors()[0]
-		assert.Equal(t, supState.GetAssignment().GetTenant(), fn.GetTenant())
+		assert.Equal(t, supState.GetAssignment().GetTenant(), a.GetTenant())
 		assert.Assert(t, len(supState.GetRouterHeartbeats()) == 1)
 		assert.Equal(t, supState.GetRouterHeartbeats()[0].GetRouterIp(), "10.0.0.1")
 		assert.Equal(t, supState.GetResponsibleControllerIp(), fixture.ControllerIP)
 	})
 
-	// This test exercises the race condition where sup.fn.Load() is called
+	// This test exercises the race condition where sup.assignment.Load() is called
 	// multiple times within a single ClusterState iteration while a concurrent
 	// goroutine swaps the assignment pointer via updateAssignment. Without the fix
-	// (loading fn once per iteration), different fields in the same supervisor
+	// (loading a once per iteration), different fields in the same supervisor
 	// snapshot could reflect different *Assignment values, producing an
 	// inconsistent snapshot. Run with -race to detect the concurrent access.
 	t.Run("concurrent assignment update produces consistent snapshot", func(t *testing.T) {
@@ -87,29 +87,29 @@ func TestClusterState(t *testing.T) {
 		err := ctrl.Start(t.Context())
 		assert.NilError(t, err)
 
-		fn := fixture.NewAssignment(t)
-		sup := ctrl.supervisor(fn)
+		a := fixture.NewAssignment(t)
+		sup := ctrl.supervisor(a)
 
 		// Build a second version of the same assignment with a different metadata value
 		// (same identity/hash, different spec — matches updateAssignment's precondition).
-		fnUpdated := proto.Clone(fn).(*skipper.Assignment)
-		fnUpdated.SetMetadata("updated-metadata")
+		assignmentUpdated := proto.Clone(a).(*skipper.Assignment)
+		assignmentUpdated.SetMetadata("updated-metadata")
 
 		// Repeatedly swap the assignment pointer while ClusterState runs concurrently.
 		// Any snapshot that is returned must reference a single coherent assignment:
 		// the GetAssignment() proto must match what was used for GetResponsibleControllerIp().
-		// Before the fix, the multiple sup.fn.Load() calls could race and produce a
-		// snapshot where GetAssignment() reflected fn but GetResponsibleControllerIp()
-		// was computed from fnUpdated (or vice versa).
+		// Before the fix, the multiple sup.assignment.Load() calls could race and produce a
+		// snapshot where GetAssignment() reflected a but GetResponsibleControllerIp()
+		// was computed from assignmentUpdated (or vice versa).
 		const iterations = 500
 		var wg sync.WaitGroup
 
 		wg.Go(func() {
 			for i := range iterations {
 				if i%2 == 0 {
-					sup.fn.Store(fn)
+					sup.assignment.Store(a)
 				} else {
-					sup.fn.Store(fnUpdated)
+					sup.assignment.Store(assignmentUpdated)
 				}
 			}
 		})
@@ -120,11 +120,11 @@ func TestClusterState(t *testing.T) {
 				continue
 			}
 			supState := state.GetSupervisors()[0]
-			// The assignment embedded in the snapshot must be either fn or fnUpdated —
+			// The assignment embedded in the snapshot must be either a or assignmentUpdated —
 			// both are valid, but the snapshot must be internally consistent.
-			snapshotFn := supState.GetAssignment()
+			snapshotAssignment := supState.GetAssignment()
 			assert.Assert(t,
-				proto.Equal(snapshotFn, fn) || proto.Equal(snapshotFn, fnUpdated),
+				proto.Equal(snapshotAssignment, a) || proto.Equal(snapshotAssignment, assignmentUpdated),
 				"snapshot assignment must be one of the two known versions",
 			)
 		}

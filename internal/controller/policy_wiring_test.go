@@ -14,9 +14,9 @@ import (
 // withHeartbeat returns a fresh heartbeat carrying the given assignment and a
 // timestamp slightly in the past, so the heartbeat-timeout branch of
 // calculateDesiredInstances depends entirely on the timeout knob under test.
-func withHeartbeat(fn *skipper.Assignment, when time.Time, inFlight uint32) *skipper.Heartbeat {
+func withHeartbeat(a *skipper.Assignment, when time.Time, inFlight uint32) *skipper.Heartbeat {
 	hb := &skipper.Heartbeat{}
-	hb.SetAssignment(fn)
+	hb.SetAssignment(a)
 	hb.SetTimestamp(timestamppb.New(when))
 	hb.SetInFlightRequests(inFlight)
 	return hb
@@ -51,18 +51,18 @@ func TestHeartbeatTimeoutOverride(t *testing.T) {
 
 	staleAt := time.Now().Add(-60 * time.Second) // beyond 30s, within 90s
 
-	defaultFn := policyTestAssignment(nil)
-	overriddenFn := policyTestAssignment(func(b *skipper.Assignment_builder) {
+	defaultAssignment := policyTestAssignment(nil)
+	overriddenAssignment := policyTestAssignment(func(b *skipper.Assignment_builder) {
 		b.HeartbeatTimeout = durationpb.New(30 * time.Second)
 	})
 
 	// Cluster default 90s: 60s-old heartbeat is fresh → no scale-to-zero.
-	dDefault := calculateDesiredInstances(t.Context(), defaultFn, cfg, withHeartbeat(defaultFn, staleAt, 0), nil)
+	dDefault := calculateDesiredInstances(t.Context(), defaultAssignment, cfg, withHeartbeat(defaultAssignment, staleAt, 0), nil)
 	assert.Assert(t, dDefault.GetReason() != skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT,
 		"cluster-default timeout should treat 60s-old heartbeat as fresh; got reason=%v", dDefault.GetReason())
 
 	// Tenant override 30s: 60s-old heartbeat triggers scale-to-zero.
-	dOverride := calculateDesiredInstances(t.Context(), overriddenFn, cfg, withHeartbeat(overriddenFn, staleAt, 0), nil)
+	dOverride := calculateDesiredInstances(t.Context(), overriddenAssignment, cfg, withHeartbeat(overriddenAssignment, staleAt, 0), nil)
 	assert.Equal(t, dOverride.GetReason(), skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT)
 	assert.Equal(t, dOverride.GetDesiredInstances(), uint32(0))
 }
@@ -85,14 +85,14 @@ func TestScaleToleranceOverride(t *testing.T) {
 		skipper.Instance_builder{ReadyAt: timestamppb.New(readyAt), CpuUsageMilli: proto.Uint32(250)}.Build(),
 	}
 
-	defaultFn := policyTestAssignment(nil)
+	defaultAssignment := policyTestAssignment(nil)
 	wideTolerance := policyTestAssignment(func(b *skipper.Assignment_builder) {
 		// Tenant override pushes tolerance up to 60% — the 50% discrepancy now
 		// falls inside the no-scale window.
 		b.ScaleTolerance = new(0.6)
 	})
 
-	dDefault, _ := calculateDesiredInstancesForMetric(t.Context(), defaultFn, cfg, MetricCPU, instances)
+	dDefault, _ := calculateDesiredInstancesForMetric(t.Context(), defaultAssignment, cfg, MetricCPU, instances)
 	assert.Assert(t, dDefault < 2, "cluster-default tolerance should scale down; got %d", dDefault)
 
 	dOverride, _ := calculateDesiredInstancesForMetric(t.Context(), wideTolerance, cfg, MetricCPU, instances)
@@ -115,16 +115,16 @@ func TestInitialReadinessDelayOverride(t *testing.T) {
 	}
 
 	// Cluster default treats the pod as too-new → no metrics → no scale-up.
-	defaultFn := policyTestAssignment(nil)
-	dDefault, _ := calculateDesiredInstancesForMetric(t.Context(), defaultFn, cfg, MetricCPU, instances)
+	defaultAssignment := policyTestAssignment(nil)
+	dDefault, _ := calculateDesiredInstancesForMetric(t.Context(), defaultAssignment, cfg, MetricCPU, instances)
 	assert.Equal(t, dDefault, 1, "cluster default of 1h readiness delay excludes the pod")
 
 	// Tenant override of 1m treats the 10m-ready pod as eligible — usage 1000m
 	// versus target 500m drives scale-up.
-	shortDelayFn := policyTestAssignment(func(b *skipper.Assignment_builder) {
+	shortDelayAssignment := policyTestAssignment(func(b *skipper.Assignment_builder) {
 		b.ScaleInitialReadinessDelay = durationpb.New(1 * time.Minute)
 	})
-	dOverride, _ := calculateDesiredInstancesForMetric(t.Context(), shortDelayFn, cfg, MetricCPU, instances)
+	dOverride, _ := calculateDesiredInstancesForMetric(t.Context(), shortDelayAssignment, cfg, MetricCPU, instances)
 	assert.Assert(t, dOverride > 1, "tenant-override readiness delay should observe usage; got %d", dOverride)
 }
 
@@ -136,18 +136,18 @@ func TestDownscaleStabilizationOverride(t *testing.T) {
 	cfg := testConfig()
 	cfg.HPADownscaleStabilization = 5 * time.Minute
 
-	supervisorFor := func(t *testing.T, fn *skipper.Assignment) *Supervisor {
+	supervisorFor := func(t *testing.T, a *skipper.Assignment) *Supervisor {
 		t.Helper()
 		ctrl := &Controller{config: cfg}
 		s := &Supervisor{ctrl: ctrl}
-		s.fn.Store(fn)
+		s.assignment.Store(a)
 		return s
 	}
 
 	// Pre-populate stabilization window with an old recommendation (3 min ago)
 	// and a fresh one (now).
-	mkSupervisor := func(t *testing.T, fn *skipper.Assignment) *Supervisor {
-		s := supervisorFor(t, fn)
+	mkSupervisor := func(t *testing.T, a *skipper.Assignment) *Supervisor {
+		s := supervisorFor(t, a)
 		s.stabilizationWindow = []Recommendation{
 			{DesiredInstances: 5, Timestamp: time.Now().Add(-3 * time.Minute)},
 		}
@@ -155,18 +155,18 @@ func TestDownscaleStabilizationOverride(t *testing.T) {
 	}
 
 	// Cluster default 5m: 3-min-old recommendation falls inside the window.
-	defaultFn := policyTestAssignment(nil)
-	sDefault := mkSupervisor(t, defaultFn)
-	maxDefault := sDefault.recordRecommendation(defaultFn, 1)
+	defaultAssignment := policyTestAssignment(nil)
+	sDefault := mkSupervisor(t, defaultAssignment)
+	maxDefault := sDefault.recordRecommendation(defaultAssignment, 1)
 	assert.Equal(t, maxDefault.DesiredInstances, uint32(5),
 		"cluster-default stabilization should retain 3-min-old recommendation")
 
 	// Tenant override of 1 minute: 3-min-old recommendation is pruned.
-	shortFn := policyTestAssignment(func(b *skipper.Assignment_builder) {
+	shortAssignment := policyTestAssignment(func(b *skipper.Assignment_builder) {
 		b.ScaleDownscaleStabilization = durationpb.New(1 * time.Minute)
 	})
-	sShort := mkSupervisor(t, shortFn)
-	maxShort := sShort.recordRecommendation(shortFn, 1)
+	sShort := mkSupervisor(t, shortAssignment)
+	maxShort := sShort.recordRecommendation(shortAssignment, 1)
 	assert.Equal(t, maxShort.DesiredInstances, uint32(1),
 		"tenant-override stabilization should drop 3-min-old recommendation")
 }
@@ -187,17 +187,17 @@ func TestAssignTimeoutOverride(t *testing.T) {
 	// Tenant override 5 minutes → stuck threshold = 10 minutes → 90s-old
 	// instance is fresh; cleanupStuckInstances should keep it without
 	// calling deletePod.
-	longFn := policyTestAssignment(func(b *skipper.Assignment_builder) {
+	longAssignment := policyTestAssignment(func(b *skipper.Assignment_builder) {
 		b.AssignTimeout = durationpb.New(5 * time.Minute)
 	})
 	instance := skipper.Instance_builder{
 		Name:       new("fresh-pod"),
 		AssignedAt: timestamppb.New(time.Now().Add(-90 * time.Second)),
 	}.Build()
-	instance.SetAssignment(longFn)
+	instance.SetAssignment(longAssignment)
 	s := &Supervisor{ctrl: ctrl}
-	s.fn.Store(longFn)
-	left := s.cleanupStuckInstances(t.Context(), longFn, []*skipper.Instance{instance})
+	s.assignment.Store(longAssignment)
+	left := s.cleanupStuckInstances(t.Context(), longAssignment, []*skipper.Instance{instance})
 	assert.Equal(t, len(left), 1, "tenant override should keep 90s-old instance under 5m timeout")
 }
 
@@ -219,17 +219,17 @@ func TestScaleTargetCPUOverride(t *testing.T) {
 	hb.SetTimestamp(timestamppb.Now())
 
 	// Nested-only: target 500m, usage 500m → ratio 1 → no scaling.
-	nestedFn := policyTestAssignment(nil)
-	hb.SetAssignment(nestedFn)
-	dNested := calculateDesiredInstances(t.Context(), nestedFn, cfg, hb, instances)
+	nestedAssignment := policyTestAssignment(nil)
+	hb.SetAssignment(nestedAssignment)
+	dNested := calculateDesiredInstances(t.Context(), nestedAssignment, cfg, hb, instances)
 	assert.Equal(t, dNested.GetDesiredInstances(), uint32(1))
 
 	// Flat override 100m: usage 500m → ratio 5 → scale up.
-	flatFn := policyTestAssignment(func(b *skipper.Assignment_builder) {
+	flatAssignment := policyTestAssignment(func(b *skipper.Assignment_builder) {
 		b.ScaleTargetCpuMillicores = proto.Uint32(100)
 	})
-	hb.SetAssignment(flatFn)
-	dFlat := calculateDesiredInstances(t.Context(), flatFn, cfg, hb, instances)
+	hb.SetAssignment(flatAssignment)
+	dFlat := calculateDesiredInstances(t.Context(), flatAssignment, cfg, hb, instances)
 	assert.Assert(t, dFlat.GetDesiredInstances() > 1, "flat-preferred target should drive scale-up; got %d", dFlat.GetDesiredInstances())
 }
 
@@ -252,9 +252,9 @@ func TestPlaceholderKnobsNoEffectOnSupervisor(t *testing.T) {
 		skipper.Instance_builder{ReadyAt: timestamppb.New(time.Now().Add(-time.Hour)), CpuUsageMilli: proto.Uint32(500)}.Build(),
 	}
 
-	baseFn := policyTestAssignment(nil)
-	hb.SetAssignment(baseFn)
-	baseDecision := calculateDesiredInstances(t.Context(), baseFn, cfg, hb, instances)
+	baseAssignment := policyTestAssignment(nil)
+	hb.SetAssignment(baseAssignment)
+	baseDecision := calculateDesiredInstances(t.Context(), baseAssignment, cfg, hb, instances)
 
 	withPlaceholders := policyTestAssignment(func(b *skipper.Assignment_builder) {
 		b.ZoneSpread = skipper.ZoneSpread_ZONE_SPREAD_REQUIRED.Enum()

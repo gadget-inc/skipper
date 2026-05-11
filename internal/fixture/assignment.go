@@ -36,25 +36,25 @@ func NewAssignment(t testing.TB) *skipper.Assignment {
 	}.Build()
 }
 
-func NewAssignmentRequest(t *testing.T, fn *skipper.Assignment, method string, path string, body io.Reader) *http.Request {
+func NewAssignmentRequest(t *testing.T, a *skipper.Assignment, method string, path string, body io.Reader) *http.Request {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
 	req := httptest.NewRequestWithContext(ctx, method, path, body)
-	fn.SetHeader(req)
+	a.SetHeader(req)
 	return req
 }
 
-func NewInstance(t *testing.T, fn *skipper.Assignment, handler http.HandlerFunc) *skipper.Instance {
+func NewInstance(t *testing.T, a *skipper.Assignment, handler http.HandlerFunc) *skipper.Instance {
 	t.Helper()
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
 	return skipper.Instance_builder{
-		Assignment: fn,
+		Assignment: a,
 		Name:       new(uuid.NewString()),
 		Addr:       new(testServer.Listener.Addr().String()),
-		ReplicaSet: new(CurrentReplicaSetName(fn)),
+		ReplicaSet: new(CurrentReplicaSetName(a)),
 		AssignedAt: timestamppb.Now(),
 		ReadyAt:    timestamppb.Now(),
 	}.Build()

@@ -33,18 +33,18 @@ func TestSupervisor(t *testing.T) {
 		{
 			name: "creates new supervisor for assignment",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewAssignment(t)
-				supervisor := ctrl.supervisor(fn)
+				a := fixture.NewAssignment(t)
+				supervisor := ctrl.supervisor(a)
 				assert.Assert(t, supervisor != nil)
-				assert.Assert(t, proto.Equal(supervisor.fn.Load(), fn))
+				assert.Assert(t, proto.Equal(supervisor.assignment.Load(), a))
 			},
 		},
 		{
 			name: "returns same supervisor for same assignment",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewAssignment(t)
-				supervisor1 := ctrl.supervisor(fn)
-				supervisor2 := ctrl.supervisor(fn)
+				a := fixture.NewAssignment(t)
+				supervisor1 := ctrl.supervisor(a)
+				supervisor2 := ctrl.supervisor(a)
 
 				// should return the same supervisor instance
 				assert.Assert(t, supervisor1 == supervisor2)
@@ -67,21 +67,21 @@ func TestSupervisor(t *testing.T) {
 		{
 			name: "supervisor has correct controller reference",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewAssignment(t)
-				supervisor := ctrl.supervisor(fn)
+				a := fixture.NewAssignment(t)
+				supervisor := ctrl.supervisor(a)
 				assert.Assert(t, supervisor.ctrl == ctrl)
 			},
 		},
 		{
 			name: "supervisor has initialized routerHeartbeats map",
 			check: func(t *testing.T, ctrl *Controller) {
-				fn := fixture.NewAssignment(t)
-				supervisor := ctrl.supervisor(fn)
+				a := fixture.NewAssignment(t)
+				supervisor := ctrl.supervisor(a)
 				assert.Assert(t, supervisor.routerHeartbeats != nil)
 
 				// verify it's a working map
 				supervisor.routerHeartbeats.Store("test-ip", skipper.Heartbeat_builder{
-					Assignment: fn,
+					Assignment: a,
 					Timestamp:  timestamppb.Now(),
 				}.Build())
 				_, ok := supervisor.routerHeartbeats.Load("test-ip")
@@ -104,7 +104,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Assignment
+		assignment     *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 	}
@@ -117,22 +117,22 @@ func TestDiscoverSupervisors(t *testing.T) {
 		{
 			name: "discovers supervisor for assigned pod",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure a supervisor was created for the assignment
 				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
-				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
+				supervisor, ok := state.ctrl.supervisors.Load(state.assignment.Hash())
 				assert.Assert(t, ok)
-				assert.Assert(t, proto.Equal(supervisor.fn.Load(), state.fn))
+				assert.Assert(t, proto.Equal(supervisor.assignment.Load(), state.assignment))
 			},
 		},
 		{
 			name: "discovers multiple supervisors for different assignments",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 
 				// create a second assignment with different tenant
 				fn2 := fixture.NewAssignment(t)
@@ -148,8 +148,8 @@ func TestDiscoverSupervisors(t *testing.T) {
 		{
 			name: "creates supervisor even when not responsible",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 
 				// set the controller pod IP to 0.0.0.0 so that we're not responsible for the assigned pod
 				state.ctrl.config.PodIP = "0.0.0.0"
@@ -158,45 +158,45 @@ func TestDiscoverSupervisors(t *testing.T) {
 				// ensure supervisor was created even though we're not responsible
 				// supervisors must exist to track scaling decisions
 				assert.Assert(t, state.ctrl.supervisors.Size() == 1)
-				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
+				supervisor, ok := state.ctrl.supervisors.Load(state.assignment.Hash())
 				assert.Assert(t, ok)
-				assert.Assert(t, proto.Equal(supervisor.fn.Load(), state.fn))
+				assert.Assert(t, proto.Equal(supervisor.assignment.Load(), state.assignment))
 			},
 		},
 		{
 			name: "does not regress supervisor to stale pod annotation spec",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 
 				// Pre-create supervisor and update its spec via the heartbeat/RPC path
-				updatedFn := proto.Clone(state.fn).(*skipper.Assignment)
-				updatedFn.SetMetadata("new-metadata")
-				state.ctrl.supervisor(updatedFn)
+				updatedAssignment := proto.Clone(state.assignment).(*skipper.Assignment)
+				updatedAssignment.SetMetadata("new-metadata")
+				state.ctrl.supervisor(updatedAssignment)
 			},
 			check: func(t *testing.T, state *testState) {
-				supervisor, ok := state.ctrl.supervisors.Load(state.fn.Hash())
+				supervisor, ok := state.ctrl.supervisors.Load(state.assignment.Hash())
 				assert.Assert(t, ok)
 				// The supervisor should retain the updated spec, not regress to
 				// the stale spec from the pod annotation.
-				assert.Equal(t, supervisor.fn.Load().GetMetadata(), "new-metadata")
+				assert.Equal(t, supervisor.assignment.Load().GetMetadata(), "new-metadata")
 			},
 		},
 		{
 			name: "pod with invalid assignment annotation gets deleted",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
 
 				// create an assigned pod with invalid assignment annotation JSON
 				// on both legacy and new keys so neither dual-read path succeeds.
-				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod := fixture.NewAssignedPod(t, state.assignment, nil)
 				pod.Annotations[skipper.LegacyFunctionKey.Label] = "not valid json"
 				pod.Annotations[skipper.AssignmentKey.Label] = "not valid json"
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
 				// ensure the pod with invalid assignment annotation was deleted
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0)
 			},
@@ -211,7 +211,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewAssignment(t),
+				assignment:     fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
@@ -221,7 +221,7 @@ func TestDiscoverSupervisors(t *testing.T) {
 			err := state.ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			err = state.ctrl.discoverSupervisors(ctx, state.fn.GetNamespace())
+			err = state.ctrl.discoverSupervisors(ctx, state.assignment.GetNamespace())
 			assert.NilError(t, err)
 			tc.check(t, state)
 		})
@@ -256,7 +256,7 @@ func TestScale(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Assignment
+		assignment     *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		instances      []*skipper.Instance
 	}
@@ -274,7 +274,7 @@ func TestScale(t *testing.T) {
 			name:             "scales up by assigning available pod",
 			desiredInstances: 1,
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 1)
@@ -286,7 +286,7 @@ func TestScale(t *testing.T) {
 			desiredInstances: 1,
 			setup: func(t *testing.T, state *testState) {
 				for range 5 {
-					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 				}
 			},
 			check: func(t *testing.T, state *testState) {
@@ -319,9 +319,9 @@ func TestScale(t *testing.T) {
 			desiredInstances: 1,
 			err:              context.DeadlineExceeded,
 			setup: func(t *testing.T, state *testState) {
-				fn := proto.Clone(state.fn).(*skipper.Assignment)
-				fn.SetTenant("different-tenant")
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				a := proto.Clone(state.assignment).(*skipper.Assignment)
+				a.SetTenant("different-tenant")
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 0)
@@ -332,7 +332,7 @@ func TestScale(t *testing.T) {
 			name:             "returns existing instances when already at desired count",
 			desiredInstances: 1,
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 1)
@@ -346,12 +346,12 @@ func TestScale(t *testing.T) {
 			desiredInstances: 1,
 			setup: func(t *testing.T, state *testState) {
 				// add max - 1 instances with older assignment times
-				for range state.fn.GetScale().GetMaxInstances() - 1 {
-					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				for range state.assignment.GetScale().GetMaxInstances() - 1 {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				}
 
 				// add one instance with the most recent assignment time
-				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod := fixture.NewAssignedPod(t, state.assignment, nil)
 				pod.Name = "most-recent-assigned-at"
 				pod.Annotations[key.AssignedAt.Label] = time.Now().Add(time.Second).UTC().Format(time.RFC3339)
 				state.fakeKubernetes.Tracker().Add(pod)
@@ -369,31 +369,31 @@ func TestScale(t *testing.T) {
 			name:             "scales to max ready instances while preserving unready",
 			desiredInstances: 5, // max instances
 			setup: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.fn.GetScale().GetMaxInstances() == 5)
+				assert.Assert(t, state.assignment.GetScale().GetMaxInstances() == 5)
 
 				// add max - 1 ready instances
-				for range state.fn.GetScale().GetMaxInstances() - 1 {
-					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				for range state.assignment.GetScale().GetMaxInstances() - 1 {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				}
 
 				// add 1 unready instance
-				unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				unreadyPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				state.fakeKubernetes.Tracker().Add(unreadyPod)
 
 				// add 1 available pod for scaling
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState) {
-				fn := state.instances[0].GetAssignment()
-				assert.Assert(t, len(state.instances) == int(fn.GetScale().GetMaxInstances()))
+				a := state.instances[0].GetAssignment()
+				assert.Assert(t, len(state.instances) == int(a.GetScale().GetMaxInstances()))
 
-				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == int(fn.GetScale().GetMaxInstances())+1)
+				assert.Assert(t, len(pods.Items) == int(a.GetScale().GetMaxInstances())+1)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
-				assert.Assert(t, readyCount == int(fn.GetScale().GetMaxInstances()))
+				assert.Assert(t, readyCount == int(a.GetScale().GetMaxInstances()))
 				assert.Assert(t, unreadyCount == 1) // unready instance preserved
 			},
 		},
@@ -402,17 +402,17 @@ func TestScale(t *testing.T) {
 			name:             "blocks scale up when total instances exceed max",
 			desiredInstances: 5, // max instances
 			setup: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.fn.GetScale().GetMaxInstances() == 5)
+				assert.Assert(t, state.assignment.GetScale().GetMaxInstances() == 5)
 
 				// add max + 1 unready instances (exceeds total instance limit)
-				for range int(state.fn.GetScale().GetMaxInstances()) + 1 {
-					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				for range int(state.assignment.GetScale().GetMaxInstances()) + 1 {
+					unreadyPod := fixture.NewAssignedPod(t, state.assignment, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
 
 				// available pod exists but shouldn't be used
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				// no ready instances returned because total count exceeds max
@@ -424,16 +424,16 @@ func TestScale(t *testing.T) {
 			name:             "returns existing ready instances when blocked by total count",
 			desiredInstances: 5, // max instances
 			setup: func(t *testing.T, state *testState) {
-				assert.Assert(t, state.fn.GetScale().GetMaxInstances() == 5)
+				assert.Assert(t, state.assignment.GetScale().GetMaxInstances() == 5)
 
 				// add 2 ready instances
 				for range 2 {
-					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				}
 
 				// add max + 1 unready instances
-				for range int(state.fn.GetScale().GetMaxInstances()) + 1 {
-					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				for range int(state.assignment.GetScale().GetMaxInstances()) + 1 {
+					unreadyPod := fixture.NewAssignedPod(t, state.assignment, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
@@ -442,14 +442,14 @@ func TestScale(t *testing.T) {
 				// only 2 ready instances returned (can't scale up due to total count)
 				assert.Assert(t, len(state.instances) == 2)
 
-				fn := state.instances[0].GetAssignment()
-				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				a := state.instances[0].GetAssignment()
+				pods, err := state.fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == int(fn.GetScale().GetMaxInstances())+3)
+				assert.Assert(t, len(pods.Items) == int(a.GetScale().GetMaxInstances())+3)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
 				assert.Assert(t, readyCount == 2)
-				assert.Assert(t, unreadyCount == int(fn.GetScale().GetMaxInstances())+1) // unready preserved during scale up
+				assert.Assert(t, unreadyCount == int(a.GetScale().GetMaxInstances())+1) // unready preserved during scale up
 			},
 		},
 		{
@@ -458,8 +458,8 @@ func TestScale(t *testing.T) {
 			desiredInstances: 0,
 			setup: func(t *testing.T, state *testState) {
 				// add max + 1 unready instances
-				for range int(state.fn.GetScale().GetMaxInstances()) + 1 {
-					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				for range int(state.assignment.GetScale().GetMaxInstances()) + 1 {
+					unreadyPod := fixture.NewAssignedPod(t, state.assignment, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
@@ -479,11 +479,11 @@ func TestScale(t *testing.T) {
 			desiredInstances: 1,
 			setup: func(t *testing.T, state *testState) {
 				// add 1 ready instance
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 
 				// add max unready instances
-				for range state.fn.GetScale().GetMaxInstances() {
-					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				for range state.assignment.GetScale().GetMaxInstances() {
+					unreadyPod := fixture.NewAssignedPod(t, state.assignment, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
@@ -503,11 +503,11 @@ func TestScale(t *testing.T) {
 			desiredInstances: 2,
 			setup: func(t *testing.T, state *testState) {
 				// add 1 ready instance
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 
 				// add max unready instances (1 ready + max unready = max+1 total)
-				for range state.fn.GetScale().GetMaxInstances() {
-					unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				for range state.assignment.GetScale().GetMaxInstances() {
+					unreadyPod := fixture.NewAssignedPod(t, state.assignment, nil)
 					unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 					state.fakeKubernetes.Tracker().Add(unreadyPod)
 				}
@@ -516,14 +516,14 @@ func TestScale(t *testing.T) {
 				// only 1 ready instance returned (can't scale up, already over max total)
 				assert.Assert(t, len(state.instances) == 1)
 
-				fn := state.instances[0].GetAssignment()
-				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				a := state.instances[0].GetAssignment()
+				pods, err := state.fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
-				assert.Assert(t, len(pods.Items) == int(fn.GetScale().GetMaxInstances())+1)
+				assert.Assert(t, len(pods.Items) == int(a.GetScale().GetMaxInstances())+1)
 
 				readyCount, unreadyCount := countReadyAndUnreadyPods(pods.Items)
 				assert.Assert(t, readyCount == 1)
-				assert.Assert(t, unreadyCount == int(fn.GetScale().GetMaxInstances())) // unready preserved
+				assert.Assert(t, unreadyCount == int(a.GetScale().GetMaxInstances())) // unready preserved
 			},
 		},
 		{
@@ -532,20 +532,20 @@ func TestScale(t *testing.T) {
 			desiredInstances: 2,
 			setup: func(t *testing.T, state *testState) {
 				// add max ready instances
-				for range state.fn.GetScale().GetMaxInstances() {
-					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				for range state.assignment.GetScale().GetMaxInstances() {
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				}
 
 				// add 1 unready instance
-				unreadyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				unreadyPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				unreadyPod.Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
 				state.fakeKubernetes.Tracker().Add(unreadyPod)
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 2)
 
-				fn := state.instances[0].GetAssignment()
-				pods, err := state.fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				a := state.instances[0].GetAssignment()
+				pods, err := state.fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 2)
 
@@ -564,7 +564,7 @@ func TestScale(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewAssignment(t),
+				assignment:     fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -574,7 +574,7 @@ func TestScale(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			state.instances, err = ctrl.supervisor(state.fn).scale(ctx, skipper.ScaleDecision_builder{
+			state.instances, err = ctrl.supervisor(state.assignment).scale(ctx, skipper.ScaleDecision_builder{
 				DesiredInstances: new(tc.desiredInstances),
 				Reason:           skipper.ScaleReason_SCALE_REASON_UNSPECIFIED.Enum(),
 			}.Build())
@@ -603,12 +603,12 @@ func TestScaleForwarding(t *testing.T) {
 	ctrlPod.Status.PodIP = "127.0.0.2"
 	fakeKubernetes := fake.NewClientset(ctrlPod)
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 
 	// Set up mock client to handle forwarded scale request
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleScale(func(ctx context.Context, fn *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
-		return []*skipper.Instance{fixture.NewInstance(t, fn, nil)}, nil
+	mcc.HandleScale(func(ctx context.Context, a *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
+		return []*skipper.Instance{fixture.NewInstance(t, a, nil)}, nil
 	})
 
 	ctrl := New(testConfig(), func(host string) Client { return mcc }, fakeKubernetes, nil)
@@ -617,7 +617,7 @@ func TestScaleForwarding(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Scale should succeed via forwarding to mock client
-	instances, err := ctrl.supervisor(fn).scale(ctx, skipper.ScaleDecision_builder{
+	instances, err := ctrl.supervisor(a).scale(ctx, skipper.ScaleDecision_builder{
 		DesiredInstances: proto.Uint32(1),
 		Reason:           skipper.ScaleReason_SCALE_REASON_UNSPECIFIED.Enum(),
 	}.Build())
@@ -640,10 +640,10 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	ctrlPod.Status.PodIP = "127.0.0.2"
 	fakeKubernetes := fake.NewClientset(ctrlPod)
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	// Disable resource scaling so in-flight requests drive the decision
-	fn.GetScale().SetTargetCpuUsageMilli(0)
-	fn.GetScale().SetTargetMemoryUsageMib(0)
+	a.GetScale().SetTargetCpuUsageMilli(0)
+	a.GetScale().SetTargetMemoryUsageMib(0)
 
 	// Set up mock client (should not be called for Scale)
 	mcc := fixture.NewMockControllerClient(t)
@@ -654,32 +654,32 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	ctrl.setStartedAt(time.Now().Add(-(cfg.HPADownscaleStabilization + time.Second)))
 
 	// Add pods so discoverSupervisors can find them
-	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
-	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, a))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
 	// Capture initial pod count to verify no scaling occurs
-	initialPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	initialPods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 	initialPodCount := len(initialPods.Items)
 
 	// Discover supervisors - should create supervisor even though we're not responsible
-	err = ctrl.discoverSupervisors(ctx, fn.GetNamespace())
+	err = ctrl.discoverSupervisors(ctx, a.GetNamespace())
 	assert.NilError(t, err)
 
 	// Verify supervisor was created
-	supervisor, ok := ctrl.supervisors.Load(fn.Hash())
+	supervisor, ok := ctrl.supervisors.Load(a.Hash())
 	assert.Assert(t, ok, "supervisor should exist even when not responsible")
-	assert.Assert(t, proto.Equal(supervisor.fn.Load(), fn))
+	assert.Assert(t, proto.Equal(supervisor.assignment.Load(), a))
 
 	// Add a heartbeat so we don't scale to 0
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment:       fn,
+		Assignment:       a,
 		Timestamp:        timestamppb.Now(),
 		InFlightRequests: proto.Uint32(10),
 	}.Build())
@@ -702,7 +702,7 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	// Verify that when scaling down, the stabilization window is used
 	// Set up a scenario where we want to scale down
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment:       fn,
+		Assignment:       a,
 		Timestamp:        timestamppb.Now(),
 		InFlightRequests: proto.Uint32(0), // low load should trigger scale down
 	}.Build())
@@ -723,8 +723,8 @@ func TestConvergeTracksRecommendationsWithoutScalingWhenNotResponsible(t *testin
 	assert.Assert(t, maxRec.DesiredInstances >= 1, "max recommendation should be at least 1")
 
 	// Verify no pods were created or deleted - converge should exit early when not responsible
-	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	finalPods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(finalPods.Items) == initialPodCount,
@@ -747,12 +747,12 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	cfg.HeartbeatTimeout = 30 * time.Second
 	cfg.HPADownscaleStabilization = 90 * time.Second
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Create 2 assigned pods
-	pod1 := fixture.NewAssignedPod(t, fn, nil)
-	pod2 := fixture.NewAssignedPod(t, fn, nil)
+	pod1 := fixture.NewAssignedPod(t, a, nil)
+	pod2 := fixture.NewAssignedPod(t, a, nil)
 	fakeKubernetes.Tracker().Add(pod1)
 	fakeKubernetes.Tracker().Add(pod2)
 
@@ -761,7 +761,7 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	supervisor := ctrl.supervisor(fn)
+	supervisor := ctrl.supervisor(a)
 
 	// Pre-populate the stabilization window with a recommendation that's:
 	// - Older than FlagHeartbeatTimeout (30s) - would be pruned if using wrong flag
@@ -773,7 +773,7 @@ func TestStabilizationWindowUsesCorrectFlag(t *testing.T) {
 
 	// Add a recent heartbeat so we don't scale to 0
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment: fn,
+		Assignment: a,
 		Timestamp:  timestamppb.Now(),
 	}.Build())
 
@@ -878,18 +878,18 @@ func TestConvergeProtectionPeriod(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
 
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 			// Disable resource scaling so heartbeat/in-flight drives the decision
-			fn.GetScale().SetTargetCpuUsageMilli(0)
-			fn.GetScale().SetTargetMemoryUsageMib(0)
-			fn.GetScale().SetTargetInFlightRequests(0)
+			a.GetScale().SetTargetCpuUsageMilli(0)
+			a.GetScale().SetTargetMemoryUsageMib(0)
+			a.GetScale().SetTargetInFlightRequests(0)
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
-			fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+			fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, a))
 
 			// Create pods with the specified instance age
 			for range tc.initialPods {
-				pod := fixture.NewAssignedPod(t, fn, nil)
+				pod := fixture.NewAssignedPod(t, a, nil)
 				assignedAt := time.Now().Add(-tc.instanceAge).UTC().Format(time.RFC3339)
 				pod.Annotations[key.AssignedAt.Label] = assignedAt
 				pod.Annotations[key.ReadyAt.Label] = assignedAt
@@ -906,19 +906,19 @@ func TestConvergeProtectionPeriod(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			supervisor := ctrl.supervisor(fn)
+			supervisor := ctrl.supervisor(a)
 
 			if tc.storeHeartbeat {
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-					Assignment:       fn,
+					Assignment:       a,
 					Timestamp:        timestamppb.Now(),
 					InFlightRequests: proto.Uint32(0), // low load should trigger scale down
 				}.Build())
 			}
 
 			// Verify initial pod count
-			initialPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-				LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+			initialPods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+				LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 			})
 			assert.NilError(t, err)
 			assert.Assert(t, len(initialPods.Items) == tc.initialPods,
@@ -929,8 +929,8 @@ func TestConvergeProtectionPeriod(t *testing.T) {
 			assert.NilError(t, err)
 
 			// Verify expected pod count after converge
-			finalPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-				LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+			finalPods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+				LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 			})
 			assert.NilError(t, err)
 			assert.Assert(t, len(finalPods.Items) == tc.expectedPods,
@@ -949,19 +949,19 @@ func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	// Use in-flight requests for scaling decisions
-	fn.GetScale().SetTargetInFlightRequests(1)
-	fn.GetScale().SetTargetCpuUsageMilli(0)
-	fn.GetScale().SetTargetMemoryUsageMib(0)
+	a.GetScale().SetTargetInFlightRequests(1)
+	a.GetScale().SetTargetCpuUsageMilli(0)
+	a.GetScale().SetTargetMemoryUsageMib(0)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Create 3 assigned pods
-	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
-	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
-	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, a))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
 
 	cfg := testConfig()
 	cfg.HPADownscaleStabilization = 5 * time.Minute // long stabilization period
@@ -973,7 +973,7 @@ func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	supervisor := ctrl.supervisor(fn)
+	supervisor := ctrl.supervisor(a)
 
 	// Pre-populate stabilization window with a high recommendation (3 instances)
 	// This simulates recent high load
@@ -984,7 +984,7 @@ func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
 	// Set heartbeat with LOW in-flight requests - current decision would be 1 instance
 	// But stabilization window has max recommendation of 3
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment:       fn,
+		Assignment:       a,
 		Timestamp:        timestamppb.Now(),
 		InFlightRequests: proto.Uint32(1), // with TargetInFlightRequests=1, this means desired=1
 	}.Build())
@@ -994,8 +994,8 @@ func TestConvergeUsesMaxRecommendationWhenScalingDown(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify all 3 pods are still running (stabilized to max recommendation)
-	finalPods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	finalPods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(finalPods.Items) == 3,
@@ -1020,12 +1020,12 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Create assigned pods for the assignment
 	for range 3 {
-		fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+		fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
 	}
 
 	cfg := testConfig()
@@ -1034,11 +1034,11 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	supervisor := ctrl.supervisor(fn)
+	supervisor := ctrl.supervisor(a)
 
 	// Add a heartbeat so we don't scale to 0
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment: fn,
+		Assignment: a,
 		Timestamp:  timestamppb.Now(),
 	}.Build())
 
@@ -1056,7 +1056,7 @@ func TestConvergeConcurrentAccess(t *testing.T) {
 			for range iterationsPerGoroutine {
 				// Update heartbeat timestamp to keep assignment alive
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-					Assignment: fn,
+					Assignment: a,
 					Timestamp:  timestamppb.Now(),
 				}.Build())
 				_ = supervisor.converge(ctx)
@@ -1178,10 +1178,10 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Configure target usage on a single fn snapshot — the new signature
+			// Configure target usage on a single a snapshot — the new signature
 			// reads scale targets from the supplied Assignment, not from each
 			// instance's historical assignment.
-			fn := skipper.Assignment_builder{
+			a := skipper.Assignment_builder{
 				Namespace:  new("ns"),
 				Deployment: new("deploy"),
 				Tenant:     new("tenant"),
@@ -1189,12 +1189,12 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 			}.Build()
 			switch tc.metricName {
 			case MetricCPU:
-				fn.GetScale().SetTargetCpuUsageMilli(tc.targetUsage)
+				a.GetScale().SetTargetCpuUsageMilli(tc.targetUsage)
 			case MetricMemory:
-				fn.GetScale().SetTargetMemoryUsageMib(tc.targetUsage)
+				a.GetScale().SetTargetMemoryUsageMib(tc.targetUsage)
 			}
 
-			instances, _ := calculateDesiredInstancesForMetric(t.Context(), fn, cfg, tc.metricName, tc.podMetrics)
+			instances, _ := calculateDesiredInstancesForMetric(t.Context(), a, cfg, tc.metricName, tc.podMetrics)
 			assert.Assert(t, instances == tc.expectedInstances)
 		})
 	}
@@ -1207,7 +1207,7 @@ func TestHeartbeat(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig()
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 
 	testCases := []struct {
 		name           string
@@ -1264,12 +1264,12 @@ func TestHeartbeat(t *testing.T) {
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			ctrl := New(cfg, nil, fakeKubernetes, nil)
-			supervisor := ctrl.supervisor(fn)
+			supervisor := ctrl.supervisor(a)
 
 			// Set up existing heartbeat if specified
 			if tc.existingRouter != "" {
 				supervisor.routerHeartbeats.Store(tc.existingRouter, skipper.Heartbeat_builder{
-					Assignment:       fn,
+					Assignment:       a,
 					Timestamp:        timestamppb.New(tc.existingTime),
 					InFlightRequests: proto.Uint32(10),
 				}.Build())
@@ -1277,7 +1277,7 @@ func TestHeartbeat(t *testing.T) {
 
 			// Send new heartbeat
 			hb := skipper.Heartbeat_builder{
-				Assignment:       fn,
+				Assignment:       a,
 				Timestamp:        timestamppb.New(tc.newTime),
 				InFlightRequests: proto.Uint32(20),
 			}.Build()
@@ -1307,28 +1307,28 @@ func TestHeartbeatGarbageCollection(t *testing.T) {
 	cfg := testConfig()
 	cfg.HeartbeatTimeout = 30 * time.Second
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	ctrl := New(cfg, nil, fakeKubernetes, nil)
-	supervisor := ctrl.supervisor(fn)
+	supervisor := ctrl.supervisor(a)
 
 	// Store an expired heartbeat
 	expiredTime := time.Now().Add(-cfg.HeartbeatTimeout - time.Second)
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment: fn,
+		Assignment: a,
 		Timestamp:  timestamppb.New(expiredTime),
 	}.Build())
 
 	// Store a fresh heartbeat from a different router
 	freshTime := time.Now()
 	supervisor.routerHeartbeats.Store(fixture.RouterIP2, skipper.Heartbeat_builder{
-		Assignment: fn,
+		Assignment: a,
 		Timestamp:  timestamppb.New(freshTime),
 	}.Build())
 
 	// Trigger garbage collection by sending any heartbeat
 	supervisor.heartbeat("127.0.1.99", skipper.Heartbeat_builder{
-		Assignment: fn,
+		Assignment: a,
 		Timestamp:  timestamppb.Now(),
 	}.Build())
 
@@ -1348,7 +1348,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 	t.Parallel()
 
 	cfg := testConfig()
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 
 	testCases := []struct {
 		name                     string
@@ -1362,7 +1362,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 			name: "single router heartbeat",
 			routerHeartbeats: map[string]*skipper.Heartbeat{
 				fixture.RouterIP: skipper.Heartbeat_builder{
-					Assignment:       fn,
+					Assignment:       a,
 					Timestamp:        timestamppb.Now(),
 					InFlightRequests: proto.Uint32(10),
 				}.Build(),
@@ -1376,12 +1376,12 @@ func TestCombinedHeartbeat(t *testing.T) {
 			name: "sums in-flight requests from multiple routers",
 			routerHeartbeats: map[string]*skipper.Heartbeat{
 				fixture.RouterIP: skipper.Heartbeat_builder{
-					Assignment:       fn,
+					Assignment:       a,
 					Timestamp:        timestamppb.New(time.Now().Add(-time.Minute)),
 					InFlightRequests: proto.Uint32(10),
 				}.Build(),
 				fixture.RouterIP2: skipper.Heartbeat_builder{
-					Assignment:       fn,
+					Assignment:       a,
 					Timestamp:        timestamppb.Now(),
 					InFlightRequests: proto.Uint32(15),
 				}.Build(),
@@ -1395,14 +1395,14 @@ func TestCombinedHeartbeat(t *testing.T) {
 			name: "uses instance AssignedAt when newer than router heartbeats",
 			routerHeartbeats: map[string]*skipper.Heartbeat{
 				fixture.RouterIP: skipper.Heartbeat_builder{
-					Assignment:       fn,
+					Assignment:       a,
 					Timestamp:        timestamppb.New(time.Now().Add(-time.Minute)),
 					InFlightRequests: proto.Uint32(5),
 				}.Build(),
 			},
 			instances: []*skipper.Instance{
 				skipper.Instance_builder{
-					Assignment: fn,
+					Assignment: a,
 					AssignedAt: timestamppb.Now(),
 				}.Build(),
 			},
@@ -1414,14 +1414,14 @@ func TestCombinedHeartbeat(t *testing.T) {
 			name: "uses router heartbeat timestamp when newer than instance",
 			routerHeartbeats: map[string]*skipper.Heartbeat{
 				fixture.RouterIP: skipper.Heartbeat_builder{
-					Assignment:       fn,
+					Assignment:       a,
 					Timestamp:        timestamppb.Now(),
 					InFlightRequests: proto.Uint32(8),
 				}.Build(),
 			},
 			instances: []*skipper.Instance{
 				skipper.Instance_builder{
-					Assignment: fn,
+					Assignment: a,
 					AssignedAt: timestamppb.New(time.Now().Add(-time.Minute)),
 				}.Build(),
 			},
@@ -1444,7 +1444,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			ctrl := New(cfg, nil, fakeKubernetes, nil)
-			supervisor := ctrl.supervisor(fn)
+			supervisor := ctrl.supervisor(a)
 
 			// Set up router heartbeats
 			var router1Time, router2Time time.Time
@@ -1464,7 +1464,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 				instanceTime = tc.instances[0].GetAssignedAt().AsTime()
 			}
 
-			combined := supervisor.combinedHeartbeat(fn, tc.instances)
+			combined := supervisor.combinedHeartbeat(a, tc.instances)
 
 			// Verify in-flight requests sum
 			assert.Equal(t, tc.expectedInFlightRequests, combined.GetInFlightRequests())
@@ -1483,7 +1483,7 @@ func TestCombinedHeartbeat(t *testing.T) {
 			}
 
 			// Verify assignment is set
-			assert.Assert(t, combined.GetAssignment() == fn)
+			assert.Assert(t, combined.GetAssignment() == a)
 		})
 	}
 }
@@ -1494,7 +1494,7 @@ func TestGetReadyInstance(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Assignment
+		assignment     *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		instance       *skipper.Instance
 	}
@@ -1510,11 +1510,11 @@ func TestGetReadyInstance(t *testing.T) {
 			// Returns a ready instance when available
 			name: "returns ready instance when available",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.instance != nil)
-				assert.Assert(t, proto.Equal(state.instance.GetAssignment(), state.fn))
+				assert.Assert(t, proto.Equal(state.instance.GetAssignment(), state.assignment))
 			},
 		},
 		{
@@ -1522,7 +1522,7 @@ func TestGetReadyInstance(t *testing.T) {
 			name: "scales up when no instances available",
 			setup: func(t *testing.T, state *testState) {
 				// Add an available pod that can be assigned
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.instance != nil)
@@ -1534,12 +1534,12 @@ func TestGetReadyInstance(t *testing.T) {
 			excludeNames: []string{"excluded-pod"},
 			setup: func(t *testing.T, state *testState) {
 				// Add excluded pod
-				excludedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				excludedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				excludedPod.Name = "excluded-pod"
 				state.fakeKubernetes.Tracker().Add(excludedPod)
 
 				// Add included pod
-				includedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				includedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				includedPod.Name = "included-pod"
 				state.fakeKubernetes.Tracker().Add(includedPod)
 			},
@@ -1554,11 +1554,11 @@ func TestGetReadyInstance(t *testing.T) {
 			excludeNames: []string{"pod-1", "pod-2"},
 			setup: func(t *testing.T, state *testState) {
 				// Add pods that would all be excluded
-				pod1 := fixture.NewAssignedPod(t, state.fn, nil)
+				pod1 := fixture.NewAssignedPod(t, state.assignment, nil)
 				pod1.Name = "pod-1"
 				state.fakeKubernetes.Tracker().Add(pod1)
 
-				pod2 := fixture.NewAssignedPod(t, state.fn, nil)
+				pod2 := fixture.NewAssignedPod(t, state.assignment, nil)
 				pod2.Name = "pod-2"
 				state.fakeKubernetes.Tracker().Add(pod2)
 			},
@@ -1573,11 +1573,11 @@ func TestGetReadyInstance(t *testing.T) {
 			name: "limits instances to maxInstances",
 			setup: func(t *testing.T, state *testState) {
 				// Set max instances to 2
-				state.fn.GetScale().SetMaxInstances(2)
+				state.assignment.GetScale().SetMaxInstances(2)
 
 				// Add more pods than max instances
 				for i := range 5 {
-					pod := fixture.NewAssignedPod(t, state.fn, nil)
+					pod := fixture.NewAssignedPod(t, state.assignment, nil)
 					// Set AssignedAt to different times so newest are kept
 					pod.Annotations[key.AssignedAt.Label] = time.Now().Add(time.Duration(i) * time.Second).UTC().Format(time.RFC3339)
 					state.fakeKubernetes.Tracker().Add(pod)
@@ -1608,7 +1608,7 @@ func TestGetReadyInstance(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewAssignment(t),
+				assignment:     fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -1618,7 +1618,7 @@ func TestGetReadyInstance(t *testing.T) {
 			err := ctrl.startInformers(ctx)
 			assert.NilError(t, err)
 
-			state.instance, err = ctrl.supervisor(state.fn).getReadyInstance(ctx, tc.excludeNames)
+			state.instance, err = ctrl.supervisor(state.assignment).getReadyInstance(ctx, tc.excludeNames)
 			if tc.err != nil {
 				assert.ErrorIs(t, err, tc.err)
 			} else {
@@ -1982,7 +1982,7 @@ func TestSupervisorLifecycle(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 
@@ -1990,7 +1990,7 @@ func TestSupervisorLifecycle(t *testing.T) {
 				ctrl:             ctrl,
 				routerHeartbeats: nil, // not needed for lifecycle tests
 			}
-			supervisor.fn.Store(fn)
+			supervisor.assignment.Store(a)
 
 			tc.setup(t, supervisor)
 			tc.check(t, supervisor)
@@ -2007,11 +2007,11 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Add an available pod that can be assigned
-	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, a, nil))
 
 	// Use a short scale interval so the loop runs quickly
 	cfg := testConfig()
@@ -2028,11 +2028,11 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Create supervisor without starting its loop (ctrl.ctx is nil)
-	supervisor := ctrl.supervisor(fn)
+	supervisor := ctrl.supervisor(a)
 
 	// Add a heartbeat so the assignment doesn't scale to 0
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment:       fn,
+		Assignment:       a,
 		Timestamp:        timestamppb.Now(),
 		InFlightRequests: proto.Uint32(1), // request in flight should trigger scale to 1
 	}.Build())
@@ -2043,8 +2043,8 @@ func TestSupervisorLoopConvergesIndependently(t *testing.T) {
 
 	// Wait for the loop to converge and assign a pod
 	poll.WaitOn(t, func(t poll.LogT) poll.Result {
-		pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-			LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+		pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+			LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 		})
 		if err != nil {
 			return poll.Continue("failed to list pods: %v", err)
@@ -2086,10 +2086,10 @@ func TestScaleToZeroStopsLoop(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 			if tc.startWithInstance {
-				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+				fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
 			}
 
 			cfg := testConfig()
@@ -2106,11 +2106,11 @@ func TestScaleToZeroStopsLoop(t *testing.T) {
 			assert.NilError(t, err)
 
 			// Create supervisor without starting its loop (ctrl.ctx is nil)
-			supervisor := ctrl.supervisor(fn)
+			supervisor := ctrl.supervisor(a)
 
 			// Add an old heartbeat that will timeout
 			supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-				Assignment: fn,
+				Assignment: a,
 				Timestamp:  timestamppb.New(time.Now().Add(-cfg.HeartbeatTimeout - time.Second)),
 			}.Build())
 
@@ -2118,12 +2118,12 @@ func TestScaleToZeroStopsLoop(t *testing.T) {
 			ctrl.ctx = ctx
 			supervisor.start(ctx)
 
-			_, exists := ctrl.supervisors.Load(fn.Hash())
+			_, exists := ctrl.supervisors.Load(a.Hash())
 			assert.Assert(t, exists, "supervisor should exist in map initially")
 
 			// Wait for heartbeat timeout to trigger scale-to-0 and supervisor removal
 			poll.WaitOn(t, func(t poll.LogT) poll.Result {
-				_, exists := ctrl.supervisors.Load(fn.Hash())
+				_, exists := ctrl.supervisors.Load(a.Hash())
 				if !exists {
 					return poll.Success()
 				}
@@ -2141,7 +2141,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Assignment
+		assignment     *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 	}
@@ -2154,10 +2154,10 @@ func TestCleanupStuckInstances(t *testing.T) {
 		{
 			name: "terminates instance stuck in assigned state",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
 
 				// create a pod that was assigned long ago but never became ready
-				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod := fixture.NewAssignedPod(t, state.assignment, nil)
 				stuckTime := time.Now().Add(-state.ctrl.config.AssignTimeout * 3) // well past the 2x threshold
 				pod.Annotations[key.AssignedAt.Label] = stuckTime.Format(time.RFC3339)
 				delete(pod.Annotations, key.ReadyAt.Label) // never became ready
@@ -2165,7 +2165,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// ensure the stuck instance was terminated
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 0)
 				assert.Assert(t, len(instances) == 0)
@@ -2174,17 +2174,17 @@ func TestCleanupStuckInstances(t *testing.T) {
 		{
 			name: "does not terminate recently assigned unready instance",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
 
 				// create a pod that was assigned recently and isn't ready yet
-				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod := fixture.NewAssignedPod(t, state.assignment, nil)
 				pod.Annotations[key.AssignedAt.Label] = time.Now().Format(time.RFC3339)
 				delete(pod.Annotations, key.ReadyAt.Label) // not yet ready
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// ensure the instance was not terminated
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				assert.Assert(t, len(instances) == 1)
@@ -2200,7 +2200,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewAssignment(t),
+				assignment:     fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
@@ -2211,11 +2211,11 @@ func TestCleanupStuckInstances(t *testing.T) {
 			assert.NilError(t, err)
 
 			// Get instances and call cleanupStuckInstances via the supervisor
-			instances, err := state.ctrl.getInstances(ctx, state.fn)
+			instances, err := state.ctrl.getInstances(ctx, state.assignment)
 			assert.NilError(t, err)
 
-			supervisor := state.ctrl.supervisor(state.fn)
-			instances = supervisor.cleanupStuckInstances(ctx, state.fn, instances)
+			supervisor := state.ctrl.supervisor(state.assignment)
+			instances = supervisor.cleanupStuckInstances(ctx, state.assignment, instances)
 
 			tc.check(t, state, instances)
 		})
@@ -2228,7 +2228,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Assignment
+		assignment     *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 	}
@@ -2243,21 +2243,21 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "replaces stale instance on old replica set",
 			setup: func(t *testing.T, state *testState) {
 				// create an assigned pod on the old replica set
-				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				assignedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				state.fakeKubernetes.Tracker().Add(assignedPod)
 
 				// create a stale replica set (scaled to 0)
-				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				currentReplicaSet.Status.Replicas = 0
 				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
 
 				// add a new replica set with an available pod
-				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.assignment))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// ensure the stale instance was replaced
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				assert.Assert(t, len(instances) == 1)
@@ -2268,20 +2268,20 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "replaces instance with stale assignment spec",
 			setup: func(t *testing.T, state *testState) {
 				// Create an assigned pod with the old assignment spec (different metadata)
-				oldFn := proto.Clone(state.fn).(*skipper.Assignment)
-				oldFn.SetMetadata("old-metadata")
-				assignedPod := fixture.NewAssignedPod(t, oldFn, nil)
+				oldAssignment := proto.Clone(state.assignment).(*skipper.Assignment)
+				oldAssignment.SetMetadata("old-metadata")
+				assignedPod := fixture.NewAssignedPod(t, oldAssignment, nil)
 				state.fakeKubernetes.Tracker().Add(assignedPod)
 
 				// Create the current (active) replica set
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
 
 				// Add a new available pod for replacement
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// The stale-assignment instance should be replaced
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 				assert.Assert(t, len(instances) == 1)
@@ -2292,7 +2292,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "keeps instance when replica set lookup fails",
 			setup: func(t *testing.T, state *testState) {
 				// Create an assigned pod that references a non-existent replica set
-				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				assignedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				assignedPod.Annotations[key.ReplicaSet.Label] = "nonexistent-replicaset"
 				state.fakeKubernetes.Tracker().Add(assignedPod)
 				// Don't add the replica set - this will cause lookup to fail
@@ -2300,7 +2300,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Instance should be kept since replica set lookup failed
 				assert.Assert(t, len(instances) == 1)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 			},
@@ -2310,22 +2310,22 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "keeps stale instance when no replacement pod available",
 			setup: func(t *testing.T, state *testState) {
 				// Create an assigned pod on the old replica set
-				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				assignedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				state.fakeKubernetes.Tracker().Add(assignedPod)
 
 				// Create a stale replica set (scaled to 0)
-				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				currentReplicaSet.Status.Replicas = 0
 				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
 
 				// Add a new replica set but NO available pods
-				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.assignment))
 				// No available pod added - assignPod will fail
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Stale instance should be kept because we couldn't assign a replacement
 				assert.Assert(t, len(instances) == 1)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
 			},
@@ -2336,20 +2336,20 @@ func TestReplaceStaleInstances(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				// Create multiple assigned pods on the old replica set
 				for i := range 3 {
-					assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+					assignedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 					assignedPod.Name = fmt.Sprintf("stale-pod-%d", i)
 					state.fakeKubernetes.Tracker().Add(assignedPod)
 				}
 
 				// Create a stale replica set (scaled to 0)
-				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				currentReplicaSet.Status.Replicas = 0
 				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
 
 				// Add a new replica set with multiple available pods
-				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.assignment))
 				for i := range 3 {
-					availablePod := fixture.NewAvailablePod(t, state.fn, nil)
+					availablePod := fixture.NewAvailablePod(t, state.assignment, nil)
 					availablePod.Name = fmt.Sprintf("available-pod-%d", i)
 					state.fakeKubernetes.Tracker().Add(availablePod)
 				}
@@ -2357,7 +2357,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// All 3 stale instances should be replaced with new ones
 				assert.Assert(t, len(instances) == 3)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				// Should have 3 new assigned pods (stale ones deleted)
 				assert.Assert(t, len(pods.Items) == 3)
@@ -2370,24 +2370,24 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "replaces all stale instances when at maxInstances",
 			setup: func(t *testing.T, state *testState) {
 				// Set maxInstances to exactly the number of stale instances
-				state.fn.GetScale().SetMaxInstances(3)
+				state.assignment.GetScale().SetMaxInstances(3)
 
 				// Create 3 stale pods on the old replica set
 				for i := range 3 {
-					assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+					assignedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 					assignedPod.Name = fmt.Sprintf("stale-pod-%d", i)
 					state.fakeKubernetes.Tracker().Add(assignedPod)
 				}
 
 				// Create a stale replica set (scaled to 0)
-				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				currentReplicaSet.Status.Replicas = 0
 				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
 
 				// Add a new replica set with available pods for replacement
-				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.assignment))
 				for i := range 3 {
-					availablePod := fixture.NewAvailablePod(t, state.fn, nil)
+					availablePod := fixture.NewAvailablePod(t, state.assignment, nil)
 					availablePod.Name = fmt.Sprintf("available-pod-%d", i)
 					state.fakeKubernetes.Tracker().Add(availablePod)
 				}
@@ -2396,8 +2396,8 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// All 3 stale instances should be replaced
 				assert.Assert(t, len(instances) == 3, "expected 3 instances, got %d", len(instances))
 
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
-					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.assignment.GetTenant(),
 				})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 3, "expected 3 pods, got %d", len(pods.Items))
@@ -2416,36 +2416,36 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "replaces stale instance even when at max instances",
 			setup: func(t *testing.T, state *testState) {
 				// Set max instances to 2
-				state.fn.GetScale().SetMaxInstances(2)
+				state.assignment.GetScale().SetMaxInstances(2)
 
 				// First, create the old (stale) replica set - this sets the "current" name
-				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				staleReplicaSetName := staleReplicaSet.Name
 				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
 				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
 
 				// Now create the new replica set - this changes the "current" name
-				newReplicaSet := fixture.NewReplicaSet(t, state.fn)
+				newReplicaSet := fixture.NewReplicaSet(t, state.assignment)
 				state.fakeKubernetes.Tracker().Add(newReplicaSet)
 
 				// Create a stale pod pointing to the old replica set
-				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod := fixture.NewAssignedPod(t, state.assignment, nil)
 				stalePod.Name = "stale-pod"
 				stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 				state.fakeKubernetes.Tracker().Add(stalePod)
 
 				// Create a fresh pod pointing to the new replica set (uses current name)
-				freshPod := fixture.NewAssignedPod(t, state.fn, nil)
+				freshPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				freshPod.Name = "fresh-pod"
 				state.fakeKubernetes.Tracker().Add(freshPod)
 
 				// Add an available pod for replacement
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Should have 2 instances (1 fresh kept + 1 replacement for stale)
 				assert.Assert(t, len(instances) == 2)
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				// Should have 2 pods: fresh-pod and the new replacement
 				assert.Assert(t, len(pods.Items) == 2)
@@ -2460,23 +2460,23 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "adds new instance even when stale deletion fails",
 			setup: func(t *testing.T, state *testState) {
 				// First, create the old (stale) replica set
-				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				staleReplicaSetName := staleReplicaSet.Name
 				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
 				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
 
 				// Now create the new replica set
-				newReplicaSet := fixture.NewReplicaSet(t, state.fn)
+				newReplicaSet := fixture.NewReplicaSet(t, state.assignment)
 				state.fakeKubernetes.Tracker().Add(newReplicaSet)
 
 				// Create a stale pod pointing to the old replica set
-				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod := fixture.NewAssignedPod(t, state.assignment, nil)
 				stalePod.Name = "stale-pod"
 				stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 				state.fakeKubernetes.Tracker().Add(stalePod)
 
 				// Add an available pod for replacement
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			beforeTerminate: func(t *testing.T, ctx context.Context, state *testState, instances []*skipper.Instance) {
 				// Simulate deletion failure by deleting the stale pod before replaceStaleInstances tries to delete it
@@ -2496,7 +2496,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// Verify the new instance is in the list (not the stale one)
 				assert.Assert(t, instances[0].GetName() != "stale-pod", "stale instance should not be in the result")
 				// Verify stale pod is gone
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				for _, pod := range pods.Items {
 					assert.Assert(t, pod.Name != "stale-pod", "stale pod should have been deleted")
@@ -2509,39 +2509,39 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "skips replacement when already at maxInstances+1",
 			setup: func(t *testing.T, state *testState) {
 				// Set max instances to 2
-				state.fn.GetScale().SetMaxInstances(2)
+				state.assignment.GetScale().SetMaxInstances(2)
 
 				// First, create the old (stale) replica set
-				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				staleReplicaSetName := staleReplicaSet.Name
 				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
 				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
 
 				// Now create the new replica set
-				newReplicaSet := fixture.NewReplicaSet(t, state.fn)
+				newReplicaSet := fixture.NewReplicaSet(t, state.assignment)
 				state.fakeKubernetes.Tracker().Add(newReplicaSet)
 
 				// Create a stale pod pointing to the old replica set (simulates failed deletion)
-				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod := fixture.NewAssignedPod(t, state.assignment, nil)
 				stalePod.Name = "stale-pod"
 				stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 				state.fakeKubernetes.Tracker().Add(stalePod)
 
 				// Create 2 fresh pods pointing to the new replica set (already at maxInstances+1 = 3 total)
 				for i := range 2 {
-					freshPod := fixture.NewAssignedPod(t, state.fn, nil)
+					freshPod := fixture.NewAssignedPod(t, state.assignment, nil)
 					freshPod.Name = fmt.Sprintf("fresh-pod-%d", i)
 					state.fakeKubernetes.Tracker().Add(freshPod)
 				}
 
 				// Add available pod that should NOT be used (we're already at maxInstances+1)
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Should have 3 instances (1 stale kept + 2 fresh) - no new replacement
 				assert.Assert(t, len(instances) == 3, "expected 3 instances, got %d", len(instances))
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
-					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.assignment.GetTenant(),
 				})
 				assert.NilError(t, err)
 				// Should still have exactly 3 assigned pods (+ 1 available) - stale pod still exists
@@ -2564,22 +2564,22 @@ func TestReplaceStaleInstances(t *testing.T) {
 			name: "defers replacement when semaphore at capacity",
 			setup: func(t *testing.T, state *testState) {
 				// First, create the old (stale) replica set
-				staleReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				staleReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				staleReplicaSetName := staleReplicaSet.Name
 				staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
 				state.fakeKubernetes.Tracker().Add(staleReplicaSet)
 
 				// Now create the new replica set
-				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.assignment))
 
 				// Create a stale pod pointing to the old replica set
-				stalePod := fixture.NewAssignedPod(t, state.fn, nil)
+				stalePod := fixture.NewAssignedPod(t, state.assignment, nil)
 				stalePod.Name = "stale-pod"
 				stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 				state.fakeKubernetes.Tracker().Add(stalePod)
 
 				// Add an available pod for replacement (should NOT be used)
-				availablePod := fixture.NewAvailablePod(t, state.fn, nil)
+				availablePod := fixture.NewAvailablePod(t, state.assignment, nil)
 				availablePod.Name = "available-pod"
 				state.fakeKubernetes.Tracker().Add(availablePod)
 			},
@@ -2593,7 +2593,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// List all pods (not just assigned ones) to verify state
-				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				allPods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 
 				// Count assigned vs available pods
@@ -2629,25 +2629,25 @@ func TestReplaceStaleInstances(t *testing.T) {
 			// would create a pod that serves nothing. Verify it's skipped entirely.
 			name: "skips replacement for oneshot assignments",
 			setup: func(t *testing.T, state *testState) {
-				state.fn.SetOneshot(true)
+				state.assignment.SetOneshot(true)
 
 				// Create an assigned pod on the old replica set
-				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				assignedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				state.fakeKubernetes.Tracker().Add(assignedPod)
 
 				// Create a stale replica set (scaled to 0)
-				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				currentReplicaSet.Status.Replicas = 0
 				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
 
 				// Add a new replica set with an available pod (should NOT be used)
-				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.assignment))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
 				// Stale instance should be kept — no replacement attempted
 				assert.Assert(t, len(instances) == 1, "expected 1 instance, got %d", len(instances))
-				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.assignment.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				// Original assigned pod + untouched available pod
 				assert.Assert(t, len(pods.Items) == 2, "expected 2 pods (1 assigned + 1 available), got %d", len(pods.Items))
@@ -2663,7 +2663,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewAssignment(t),
+				assignment:     fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
@@ -2674,7 +2674,7 @@ func TestReplaceStaleInstances(t *testing.T) {
 			assert.NilError(t, err)
 
 			// Get instances and call replaceStaleInstances via the supervisor
-			instances, err := state.ctrl.getInstances(ctx, state.fn)
+			instances, err := state.ctrl.getInstances(ctx, state.assignment)
 			assert.NilError(t, err)
 
 			// Run optional beforeTerminate hook (e.g., to simulate race conditions)
@@ -2682,11 +2682,11 @@ func TestReplaceStaleInstances(t *testing.T) {
 				tc.beforeTerminate(t, ctx, state, instances)
 			}
 
-			supervisor := state.ctrl.supervisor(state.fn)
-			supervisor.replaceStaleInstances(ctx, state.fn, instances, len(instances))
+			supervisor := state.ctrl.supervisor(state.assignment)
+			supervisor.replaceStaleInstances(ctx, state.assignment, instances, len(instances))
 
 			// Fetch fresh instances to check results
-			finalInstances, err := state.ctrl.getInstances(ctx, state.fn)
+			finalInstances, err := state.ctrl.getInstances(ctx, state.assignment)
 			assert.NilError(t, err)
 			tc.check(t, state, finalInstances)
 		})
@@ -2743,22 +2743,22 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	for i := range numAssignments {
-		fn := fixture.NewAssignment(t)
-		fn.GetScale().SetMaxInstances(uint32(stalePerFunc + 10)) // ensure we don't hit max instances limit
-		assignments[i] = fn
+		a := fixture.NewAssignment(t)
+		a.GetScale().SetMaxInstances(uint32(stalePerFunc + 10)) // ensure we don't hit max instances limit
+		assignments[i] = a
 
 		// Create stale replica set (scaled to 0)
-		staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+		staleReplicaSet := fixture.CurrentReplicaSet(t, a)
 		staleReplicaSetNames[i] = staleReplicaSet.Name
 		staleReplicaSet.Status.Replicas = 0
 		fakeKubernetes.Tracker().Add(staleReplicaSet)
 
 		// Create new replica set
-		fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, fn))
+		fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, a))
 
 		// Create stale assigned pods on old replica set
 		for j := range stalePerFunc {
-			assignedPod := fixture.NewAssignedPod(t, fn, nil)
+			assignedPod := fixture.NewAssignedPod(t, a, nil)
 			assignedPod.Name = fmt.Sprintf("stale-pod-%d-%d", i, j)
 			assignedPod.Annotations[key.ReplicaSet.Label] = staleReplicaSetNames[i]
 			fakeKubernetes.Tracker().Add(assignedPod)
@@ -2766,7 +2766,7 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 
 		// Create available pods with slow handler for replacements
 		for j := range stalePerFunc {
-			availablePod := fixture.NewAvailablePod(t, fn, slowHandler)
+			availablePod := fixture.NewAvailablePod(t, a, slowHandler)
 			availablePod.Name = fmt.Sprintf("available-pod-%d-%d", i, j)
 			fakeKubernetes.Tracker().Add(availablePod)
 		}
@@ -2787,17 +2787,17 @@ func TestReplaceStaleInstancesConcurrencyLimit(t *testing.T) {
 	wg.Add(numAssignments)
 
 	for i := range numAssignments {
-		go func(fn *skipper.Assignment) {
+		go func(a *skipper.Assignment) {
 			defer wg.Done()
 
-			instances, err := ctrl.getInstances(ctx, fn)
+			instances, err := ctrl.getInstances(ctx, a)
 			if err != nil {
 				t.Errorf("getInstances failed: %v", err)
 				return
 			}
 
-			supervisor := ctrl.supervisor(fn)
-			supervisor.replaceStaleInstances(ctx, fn, instances, len(instances))
+			supervisor := ctrl.supervisor(a)
+			supervisor.replaceStaleInstances(ctx, a, instances, len(instances))
 		}(assignments[i])
 	}
 
@@ -2827,7 +2827,7 @@ func TestReplaceStaleInstancesNamespaceListerNotFound(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
@@ -2837,18 +2837,18 @@ func TestReplaceStaleInstancesNamespaceListerNotFound(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Create a supervisor for an assignment in a different namespace that doesn't have a lister
-	fnInUnknownNamespace := fixture.NewAssignment(t)
-	fnInUnknownNamespace.SetNamespace("unknown-namespace")
-	supervisor := ctrl.supervisor(fnInUnknownNamespace)
+	assignmentInUnknownNamespace := fixture.NewAssignment(t)
+	assignmentInUnknownNamespace.SetNamespace("unknown-namespace")
+	supervisor := ctrl.supervisor(assignmentInUnknownNamespace)
 
 	// Manually construct instances (can't use getInstances since no lister exists)
 	instances := []*skipper.Instance{
-		fixture.NewInstance(t, fn, nil),
-		fixture.NewInstance(t, fn, nil),
+		fixture.NewInstance(t, a, nil),
+		fixture.NewInstance(t, a, nil),
 	}
 
 	// Call replaceStaleInstances - should return void and do nothing
-	supervisor.replaceStaleInstances(ctx, fnInUnknownNamespace, instances, len(instances))
+	supervisor.replaceStaleInstances(ctx, assignmentInUnknownNamespace, instances, len(instances))
 
 	// Verify no pods were created in the unknown namespace
 	pods, err := fakeKubernetes.CoreV1().Pods("unknown-namespace").List(ctx, metav1.ListOptions{})
@@ -2868,24 +2868,24 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.GetScale().SetMaxInstances(2)
+	a := fixture.NewAssignment(t)
+	a.GetScale().SetMaxInstances(2)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 
 	// Create the old (stale) replica set
-	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+	staleReplicaSet := fixture.CurrentReplicaSet(t, a)
 	staleReplicaSetName := staleReplicaSet.Name
 	staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
 	fakeKubernetes.Tracker().Add(staleReplicaSet)
 
 	// Create the new replica set
-	newReplicaSet := fixture.NewReplicaSet(t, fn)
+	newReplicaSet := fixture.NewReplicaSet(t, a)
 	fakeKubernetes.Tracker().Add(newReplicaSet)
 
 	// Create 1 stale ready pod on the old replica set
-	stalePod := fixture.NewAssignedPod(t, fn, nil)
+	stalePod := fixture.NewAssignedPod(t, a, nil)
 	stalePod.Name = "stale-ready-pod"
 	stalePod.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 	fakeKubernetes.Tracker().Add(stalePod)
@@ -2893,20 +2893,20 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 	// Create 2 unready pods (assigned but no ReadyAt annotation)
 	// These bring the total to 3 (maxInstances+1 = 3), but only 1 is ready
 	for i := range 2 {
-		unreadyPod := fixture.NewAssignedPod(t, fn, nil)
+		unreadyPod := fixture.NewAssignedPod(t, a, nil)
 		unreadyPod.Name = fmt.Sprintf("unready-pod-%d", i)
 		delete(unreadyPod.Annotations, key.ReadyAt.Label) // make it unready
 		fakeKubernetes.Tracker().Add(unreadyPod)
 	}
 
 	// Add available pod that should NOT be used (we're already at maxInstances+1)
-	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, a, nil))
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
 	// Get ALL instances from cluster
-	allInstances, err := ctrl.getInstances(ctx, fn)
+	allInstances, err := ctrl.getInstances(ctx, a)
 	assert.NilError(t, err)
 	assert.Assert(t, len(allInstances) == 3, "expected 3 total instances, got %d", len(allInstances))
 
@@ -2922,13 +2922,13 @@ func TestReplaceStaleInstancesCountsUnreadyInstances(t *testing.T) {
 	// Call replaceStaleInstances with only ready instances
 	// Before the fix: len(readyInstances)=1 < maxInstances+1=3, so it would try to replace
 	// After the fix: we explicitly pass 3 total, so it correctly skips replacement
-	supervisor := ctrl.supervisor(fn)
-	supervisor.replaceStaleInstances(ctx, fn, readyInstances, len(allInstances))
+	supervisor := ctrl.supervisor(a)
+	supervisor.replaceStaleInstances(ctx, a, readyInstances, len(allInstances))
 
 	// Verify instances in cluster haven't changed (stale one kept)
 	// Verify no new pods were assigned (total should still be 3 assigned + 1 available)
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(t.Context(), metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 3, "expected 3 assigned pods (no new replacement), got %d", len(pods.Items))
@@ -2952,7 +2952,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Assignment
+		assignment     *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 		supervisor     *Supervisor
@@ -2982,20 +2982,20 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			setupError: func(t *testing.T, ctx context.Context, state *testState, supervisor *Supervisor) {
 				// Add only a replica set, but NO available pods
 				// This will cause assignPod to fail within converge when trying to scale up
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
 
 				// Add a heartbeat with high in-flight requests to trigger scale-up
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-					Assignment:       state.fn,
+					Assignment:       state.assignment,
 					Timestamp:        timestamppb.Now(),
 					InFlightRequests: proto.Uint32(10),
 				}.Build())
 			},
 			resolveError: func(t *testing.T, ctx context.Context, state *testState, supervisor *Supervisor) {
 				// Add an available pod and update heartbeat
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-					Assignment:       state.fn,
+					Assignment:       state.assignment,
 					Timestamp:        timestamppb.Now(),
 					InFlightRequests: proto.Uint32(1),
 				}.Build())
@@ -3013,7 +3013,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 			fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 			// Use a short scale interval so the loop runs quickly
@@ -3028,7 +3028,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			// storing the heartbeat.
 
 			state := &testState{
-				fn:             fn,
+				assignment:     a,
 				fakeKubernetes: fakeKubernetes,
 				ctrl:           ctrl,
 			}
@@ -3040,7 +3040,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			}
 
 			// Create supervisor (loop won't start yet because startedAtNano is zero)
-			state.supervisor = ctrl.supervisor(fn)
+			state.supervisor = ctrl.supervisor(a)
 
 			// Set up error condition (supervisor is now available)
 			tc.setupError(t, ctx, state, state.supervisor)
@@ -3049,7 +3049,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			// (if not already set by setupError)
 			if state.supervisor.routerHeartbeats.Size() == 0 {
 				state.supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-					Assignment:       fn,
+					Assignment:       a,
 					Timestamp:        timestamppb.Now(),
 					InFlightRequests: proto.Uint32(1),
 				}.Build())
@@ -3064,7 +3064,7 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			time.Sleep(tc.waitForErrors)
 
 			// Verify the supervisor is still in the map (loop didn't crash and remove it)
-			_, exists := ctrl.supervisors.Load(fn.Hash())
+			_, exists := ctrl.supervisors.Load(a.Hash())
 			assert.Assert(t, exists, "supervisor should still exist after errors")
 
 			// Resolve error condition (if provided)
@@ -3075,8 +3075,8 @@ func TestSupervisorLoopErrorHandling(t *testing.T) {
 			// Wait for the loop to eventually succeed (unless skipped to avoid race conditions)
 			if !tc.skipRecoveryVerification {
 				poll.WaitOn(t, func(t poll.LogT) poll.Result {
-					pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-						LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+					pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+						LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 					})
 					if err != nil {
 						return poll.Continue("failed to list pods: %v", err)
@@ -3100,8 +3100,8 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.GetScale().SetMaxInstances(3)
+	a := fixture.NewAssignment(t)
+	a.GetScale().SetMaxInstances(3)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	cfg := testConfig()
@@ -3111,29 +3111,29 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	ctrl.setStartedAt(time.Now().Add(-cfg.HPADownscaleStabilization - time.Second))
 
 	// First, create the old (stale) replica set
-	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+	staleReplicaSet := fixture.CurrentReplicaSet(t, a)
 	staleReplicaSetName := staleReplicaSet.Name
 	staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
 	fakeKubernetes.Tracker().Add(staleReplicaSet)
 
 	// Now create the new replica set
-	newReplicaSet := fixture.NewReplicaSet(t, fn)
+	newReplicaSet := fixture.NewReplicaSet(t, a)
 	fakeKubernetes.Tracker().Add(newReplicaSet)
 
 	// Create 2 stale instances on the old replica set
-	stalePod1 := fixture.NewAssignedPod(t, fn, nil)
+	stalePod1 := fixture.NewAssignedPod(t, a, nil)
 	stalePod1.Name = "stale-pod-1"
 	stalePod1.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 	fakeKubernetes.Tracker().Add(stalePod1)
 
-	stalePod2 := fixture.NewAssignedPod(t, fn, nil)
+	stalePod2 := fixture.NewAssignedPod(t, a, nil)
 	stalePod2.Name = "stale-pod-2"
 	stalePod2.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 	fakeKubernetes.Tracker().Add(stalePod2)
 
 	// Add 3 available pods on the new replica set for replacements + scale up
 	for i := range 3 {
-		availablePod := fixture.NewAvailablePod(t, fn, nil)
+		availablePod := fixture.NewAvailablePod(t, a, nil)
 		availablePod.Name = fmt.Sprintf("available-pod-%d", i)
 		fakeKubernetes.Tracker().Add(availablePod)
 	}
@@ -3142,14 +3142,14 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Get instances - should return the 2 stale instances
-	instances, err := ctrl.getInstances(ctx, fn)
+	instances, err := ctrl.getInstances(ctx, a)
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 2)
 
 	// Create supervisor and set up heartbeat requesting 3 instances
-	supervisor := ctrl.supervisor(fn)
+	supervisor := ctrl.supervisor(a)
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment:       fn,
+		Assignment:       a,
 		Timestamp:        timestamppb.Now(),
 		InFlightRequests: proto.Uint32(150), // high load to trigger scale up to 3 (150/50 target = 3)
 	}.Build())
@@ -3161,8 +3161,8 @@ func TestConvergeReplacesStaleInstancesAfterScaling(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify stale pods are gone and we have fresh pods
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 3, "expected 3 pods, got %d", len(pods.Items))
@@ -3188,11 +3188,11 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.GetScale().SetMaxInstances(3)
+	a := fixture.NewAssignment(t)
+	a.GetScale().SetMaxInstances(3)
 	// Disable CPU/memory scaling to focus on in-flight requests for this test
-	fn.GetScale().SetTargetCpuUsageMilli(0)
-	fn.GetScale().SetTargetMemoryUsageMib(0)
+	a.GetScale().SetTargetCpuUsageMilli(0)
+	a.GetScale().SetTargetMemoryUsageMib(0)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	cfg := testConfig()
@@ -3205,37 +3205,37 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	ctrl.setStartedAt(time.Now().Add(-cfg.HeartbeatTimeout - time.Second))
 
 	// First, create the old (stale) replica set
-	staleReplicaSet := fixture.CurrentReplicaSet(t, fn)
+	staleReplicaSet := fixture.CurrentReplicaSet(t, a)
 	staleReplicaSetName := staleReplicaSet.Name
 	staleReplicaSet.Status.Replicas = 0 // mark it as scaled to 0 (stale)
 	fakeKubernetes.Tracker().Add(staleReplicaSet)
 
 	// Now create the new replica set
-	newReplicaSet := fixture.NewReplicaSet(t, fn)
+	newReplicaSet := fixture.NewReplicaSet(t, a)
 	fakeKubernetes.Tracker().Add(newReplicaSet)
 
 	// Create 3 instances: 2 stale + 1 fresh
 	// The stale pods are OLDER (assigned earlier) so they'll be deleted first during scale-down
-	stalePod1 := fixture.NewAssignedPod(t, fn, nil)
+	stalePod1 := fixture.NewAssignedPod(t, a, nil)
 	stalePod1.Name = "stale-pod-1"
 	stalePod1.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 	stalePod1.Annotations[key.AssignedAt.Label] = time.Now().Add(-time.Hour).Format(time.RFC3339)
 	fakeKubernetes.Tracker().Add(stalePod1)
 
-	stalePod2 := fixture.NewAssignedPod(t, fn, nil)
+	stalePod2 := fixture.NewAssignedPod(t, a, nil)
 	stalePod2.Name = "stale-pod-2"
 	stalePod2.Annotations[key.ReplicaSet.Label] = staleReplicaSetName
 	stalePod2.Annotations[key.AssignedAt.Label] = time.Now().Add(-30 * time.Minute).Format(time.RFC3339)
 	fakeKubernetes.Tracker().Add(stalePod2)
 
-	freshPod := fixture.NewAssignedPod(t, fn, nil)
+	freshPod := fixture.NewAssignedPod(t, a, nil)
 	freshPod.Name = "fresh-pod"
 	freshPod.Annotations[key.AssignedAt.Label] = time.Now().Format(time.RFC3339)
 	fakeKubernetes.Tracker().Add(freshPod)
 
 	// Add available pods that should NOT be used (we're scaling down, not up)
 	for i := range 3 {
-		availablePod := fixture.NewAvailablePod(t, fn, nil)
+		availablePod := fixture.NewAvailablePod(t, a, nil)
 		availablePod.Name = fmt.Sprintf("available-pod-%d", i)
 		fakeKubernetes.Tracker().Add(availablePod)
 	}
@@ -3244,21 +3244,21 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Get instances - should return 3 instances
-	instances, err := ctrl.getInstances(ctx, fn)
+	instances, err := ctrl.getInstances(ctx, a)
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 3, "expected 3 instances initially, got %d", len(instances))
 
 	// Create supervisor and set up heartbeat requesting only 1 instance (scale down)
-	supervisor := ctrl.supervisor(fn)
+	supervisor := ctrl.supervisor(a)
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment:       fn,
+		Assignment:       a,
 		Timestamp:        timestamppb.Now(),
 		InFlightRequests: proto.Uint32(10), // low load to trigger scale down to 1 (ceil(10/50) = 1)
 	}.Build())
 
 	// Verify the scaling decision would request 1 instance
-	heartbeat := supervisor.combinedHeartbeat(fn, instances)
-	scalingDecision := calculateDesiredInstances(ctx, fn, cfg, heartbeat, instances)
+	heartbeat := supervisor.combinedHeartbeat(a, instances)
+	scalingDecision := calculateDesiredInstances(ctx, a, cfg, heartbeat, instances)
 	assert.Assert(t, scalingDecision.GetDesiredInstances() == 1,
 		"expected scaling decision of 1 instance, got %d", scalingDecision.GetDesiredInstances())
 
@@ -3269,8 +3269,8 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify remaining instances in cluster
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 
@@ -3302,9 +3302,9 @@ func TestSupervisorStartup(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				t.Cleanup(cancel)
 
-				fn := fixture.NewAssignment(t)
-				assignedPod := fixture.NewAssignedPod(t, fn, nil)
-				replicaSet := fixture.CurrentReplicaSet(t, fn)
+				a := fixture.NewAssignment(t)
+				assignedPod := fixture.NewAssignedPod(t, a, nil)
+				replicaSet := fixture.CurrentReplicaSet(t, a)
 
 				fakeKubernetes := fake.NewClientset(
 					fixture.NewControllerPod(),
@@ -3313,10 +3313,10 @@ func TestSupervisorStartup(t *testing.T) {
 				)
 
 				ctrl := New(testConfig(), nil, fakeKubernetes, nil)
-				return ctrl, fn, ctx
+				return ctrl, a, ctx
 			},
-			getSupervisor: func(t *testing.T, ctrl *Controller, fn *skipper.Assignment) *Supervisor {
-				supervisor, ok := ctrl.supervisors.Load(fn.Hash())
+			getSupervisor: func(t *testing.T, ctrl *Controller, a *skipper.Assignment) *Supervisor {
+				supervisor, ok := ctrl.supervisors.Load(a.Hash())
 				assert.Assert(t, ok, "supervisor should exist after discovery")
 				return supervisor
 			},
@@ -3333,7 +3333,7 @@ func TestSupervisorStartup(t *testing.T) {
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				t.Cleanup(cancel)
 
-				fn := fixture.NewAssignment(t)
+				a := fixture.NewAssignment(t)
 				fakeKubernetes := fake.NewClientset(
 					fixture.NewControllerPod(),
 				)
@@ -3342,16 +3342,16 @@ func TestSupervisorStartup(t *testing.T) {
 
 				// Create supervisor before controller is started (ctrl.ctx is nil)
 				// The supervisor should be created but not started
-				supervisor := ctrl.supervisor(fn)
+				supervisor := ctrl.supervisor(a)
 				assert.Assert(t, supervisor != nil, "supervisor should be created")
 				assert.Assert(t, supervisor.ctx == nil, "supervisor should not be started when ctrl.ctx is nil")
 				assert.Assert(t, supervisor.cancel == nil, "supervisor cancel should not be set when not started")
 
-				return ctrl, fn, ctx
+				return ctrl, a, ctx
 			},
-			getSupervisor: func(t *testing.T, ctrl *Controller, fn *skipper.Assignment) *Supervisor {
+			getSupervisor: func(t *testing.T, ctrl *Controller, a *skipper.Assignment) *Supervisor {
 				// Call supervisor() again - should start it now
-				return ctrl.supervisor(fn)
+				return ctrl.supervisor(a)
 			},
 			waitAfterStart: 0,
 			check: func(t *testing.T, supervisor *Supervisor) {
@@ -3366,7 +3366,7 @@ func TestSupervisorStartup(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			ctrl, fn, ctx := tc.setup(t)
+			ctrl, a, ctx := tc.setup(t)
 
 			// Start the controller. This will immediately trigger discoverSupervisors
 			// via timer.Loop (which executes its callback immediately).
@@ -3378,7 +3378,7 @@ func TestSupervisorStartup(t *testing.T) {
 			// 1. The read of ctrl.ctx happens after Start() has completed (write happens before)
 			// 2. The writes to supervisor.ctx and supervisor.cancel complete before we check them
 			// This fixes the race condition without modifying production code.
-			_ = ctrl.supervisor(fn)
+			_ = ctrl.supervisor(a)
 
 			// Give the goroutine a moment to run discoverSupervisors if needed
 			if tc.waitAfterStart > 0 {
@@ -3386,7 +3386,7 @@ func TestSupervisorStartup(t *testing.T) {
 			}
 
 			// Get the supervisor for verification
-			supervisor := tc.getSupervisor(t, ctrl, fn)
+			supervisor := tc.getSupervisor(t, ctrl, a)
 			tc.check(t, supervisor)
 		})
 	}
@@ -3402,7 +3402,7 @@ func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	// No pods - simulates all instances dying
 
@@ -3417,7 +3417,7 @@ func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	supervisor := ctrl.supervisor(fn)
+	supervisor := ctrl.supervisor(a)
 
 	// Simulate that this supervisor previously had instances (which then died)
 	supervisor.hadInstances = true
@@ -3425,11 +3425,11 @@ func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
 	// Add a FRESH heartbeat (only 1 second old, well within 10s timeout)
 	// This simulates: traffic stopped recently, then all pods died
 	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment: fn,
+		Assignment: a,
 		Timestamp:  timestamppb.New(time.Now().Add(-1 * time.Second)),
 	}.Build())
 
-	_, exists := ctrl.supervisors.Load(fn.Hash())
+	_, exists := ctrl.supervisors.Load(a.Hash())
 	assert.Assert(t, exists, "supervisor should exist in map initially")
 
 	ctrl.ctx = ctx
@@ -3440,7 +3440,7 @@ func TestSupervisorStopsWhenNoInstancesWithFreshHeartbeat(t *testing.T) {
 	// With the fix, the supervisor should stop quickly because
 	// there are no instances and heartbeats are cleared.
 	poll.WaitOn(t, func(t poll.LogT) poll.Result {
-		_, exists := ctrl.supervisors.Load(fn.Hash())
+		_, exists := ctrl.supervisors.Load(a.Hash())
 		if !exists {
 			return poll.Success()
 		}
@@ -3460,73 +3460,73 @@ func TestUpdateAssignment(t *testing.T) {
 		{
 			name: "updates assignment when identity matches but spec differs",
 			check: func(t *testing.T) {
-				fn := fixture.NewAssignment(t)
+				a := fixture.NewAssignment(t)
 				s := &Supervisor{}
-				s.fn.Store(fn)
+				s.assignment.Store(a)
 
 				// Create updated assignment with same identity but different metadata
-				updatedFn := proto.Clone(fn).(*skipper.Assignment)
-				updatedFn.SetMetadata("new-metadata")
+				updatedAssignment := proto.Clone(a).(*skipper.Assignment)
+				updatedAssignment.SetMetadata("new-metadata")
 
-				assert.Assert(t, fn.Hash() == updatedFn.Hash(), "identity hashes should match")
-				assert.Assert(t, !proto.Equal(fn, updatedFn), "protos should differ")
+				assert.Assert(t, a.Hash() == updatedAssignment.Hash(), "identity hashes should match")
+				assert.Assert(t, !proto.Equal(a, updatedAssignment), "protos should differ")
 
-				s.updateAssignment(updatedFn)
+				s.updateAssignment(updatedAssignment)
 
-				assert.Assert(t, proto.Equal(s.fn.Load(), updatedFn), "assignment should be updated")
+				assert.Assert(t, proto.Equal(s.assignment.Load(), updatedAssignment), "assignment should be updated")
 			},
 		},
 		{
 			name: "updates assignment when identity matches but scale differs",
 			check: func(t *testing.T) {
-				fn := fixture.NewAssignment(t)
+				a := fixture.NewAssignment(t)
 				s := &Supervisor{}
-				s.fn.Store(fn)
+				s.assignment.Store(a)
 
 				// Create updated assignment with same identity but different scale
-				updatedFn := proto.Clone(fn).(*skipper.Assignment)
-				updatedFn.GetScale().SetMaxInstances(99)
+				updatedAssignment := proto.Clone(a).(*skipper.Assignment)
+				updatedAssignment.GetScale().SetMaxInstances(99)
 
-				assert.Assert(t, fn.Hash() == updatedFn.Hash(), "identity hashes should match")
+				assert.Assert(t, a.Hash() == updatedAssignment.Hash(), "identity hashes should match")
 
-				s.updateAssignment(updatedFn)
+				s.updateAssignment(updatedAssignment)
 
-				assert.Assert(t, proto.Equal(s.fn.Load(), updatedFn), "assignment should be updated")
-				assert.Equal(t, s.fn.Load().GetScale().GetMaxInstances(), uint32(99))
+				assert.Assert(t, proto.Equal(s.assignment.Load(), updatedAssignment), "assignment should be updated")
+				assert.Equal(t, s.assignment.Load().GetScale().GetMaxInstances(), uint32(99))
 			},
 		},
 		{
 			name: "no-op when protos are equal",
 			check: func(t *testing.T) {
-				fn := fixture.NewAssignment(t)
+				a := fixture.NewAssignment(t)
 				s := &Supervisor{}
-				s.fn.Store(fn)
+				s.assignment.Store(a)
 
 				// Pass the exact same assignment
-				sameFn := proto.Clone(fn).(*skipper.Assignment)
+				sameAssignment := proto.Clone(a).(*skipper.Assignment)
 
-				s.updateAssignment(sameFn)
+				s.updateAssignment(sameAssignment)
 
 				// Should still be the original pointer (not swapped)
-				assert.Assert(t, s.fn.Load() == fn, "pointer should not change when protos are equal")
+				assert.Assert(t, s.assignment.Load() == a, "pointer should not change when protos are equal")
 			},
 		},
 		{
 			name: "no-op when identity differs",
 			check: func(t *testing.T) {
-				fn := fixture.NewAssignment(t)
+				a := fixture.NewAssignment(t)
 				s := &Supervisor{}
-				s.fn.Store(fn)
+				s.assignment.Store(a)
 
 				// Create assignment with different identity
-				differentFn := fixture.NewAssignment(t)
-				differentFn.SetDeployment("other-deployment")
+				differentAssignment := fixture.NewAssignment(t)
+				differentAssignment.SetDeployment("other-deployment")
 
-				assert.Assert(t, fn.Hash() != differentFn.Hash(), "identity hashes should differ")
+				assert.Assert(t, a.Hash() != differentAssignment.Hash(), "identity hashes should differ")
 
-				s.updateAssignment(differentFn)
+				s.updateAssignment(differentAssignment)
 
-				assert.Assert(t, s.fn.Load() == fn, "pointer should not change when identity differs")
+				assert.Assert(t, s.assignment.Load() == a, "pointer should not change when identity differs")
 			},
 		},
 	}
@@ -3550,60 +3550,60 @@ func TestSupervisorAssignmentUpdateViaHeartbeat(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.SetMetadata("old-metadata")
+	a := fixture.NewAssignment(t)
+	a.SetMetadata("old-metadata")
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 
 	// Create supervisor with the old assignment spec
-	supervisor := ctrl.supervisor(fn)
-	assert.Assert(t, proto.Equal(supervisor.fn.Load(), fn))
+	supervisor := ctrl.supervisor(a)
+	assert.Assert(t, proto.Equal(supervisor.assignment.Load(), a))
 
 	// Create updated assignment with same identity but different metadata
-	updatedFn := proto.Clone(fn).(*skipper.Assignment)
-	updatedFn.SetMetadata("new-metadata")
-	assert.Assert(t, fn.Hash() == updatedFn.Hash(), "identity hashes should match")
+	updatedAssignment := proto.Clone(a).(*skipper.Assignment)
+	updatedAssignment.SetMetadata("new-metadata")
+	assert.Assert(t, a.Hash() == updatedAssignment.Hash(), "identity hashes should match")
 
-	// Simulate the heartbeat path: ctrl.supervisor(updatedFn) calls updateAssignment
-	returnedSupervisor := ctrl.supervisor(updatedFn)
+	// Simulate the heartbeat path: ctrl.supervisor(updatedAssignment) calls updateAssignment
+	returnedSupervisor := ctrl.supervisor(updatedAssignment)
 
 	// Should return the same supervisor (same identity hash)
 	assert.Assert(t, returnedSupervisor == supervisor, "should return same supervisor instance")
 
 	// The supervisor's assignment should now reflect the updated spec
-	assert.Assert(t, proto.Equal(supervisor.fn.Load(), updatedFn), "supervisor assignment should be updated")
-	assert.Equal(t, supervisor.fn.Load().GetMetadata(), "new-metadata")
+	assert.Assert(t, proto.Equal(supervisor.assignment.Load(), updatedAssignment), "supervisor assignment should be updated")
+	assert.Equal(t, supervisor.assignment.Load().GetMetadata(), "new-metadata")
 
 	// Now verify that existing instances with the old spec are detected as stale.
 	// Create an assigned pod with the old assignment spec.
-	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
-	assignedPod := fixture.NewAssignedPod(t, fn, nil)
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, a))
+	assignedPod := fixture.NewAssignedPod(t, a, nil)
 	fakeKubernetes.Tracker().Add(assignedPod)
 
 	// Add an available pod for replacement
-	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, updatedFn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, updatedAssignment, nil))
 
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
 	// Get instances — they carry the old assignment spec from the pod annotation
-	instances, err := ctrl.getInstances(ctx, updatedFn)
+	instances, err := ctrl.getInstances(ctx, updatedAssignment)
 	assert.NilError(t, err)
 	assert.Assert(t, len(instances) == 1)
 
 	// The instance's assignment spec should differ from the supervisor's current spec
-	assert.Assert(t, !proto.Equal(instances[0].GetAssignment(), updatedFn),
+	assert.Assert(t, !proto.Equal(instances[0].GetAssignment(), updatedAssignment),
 		"instance should have old assignment spec")
 
 	// replaceStaleInstances should detect and replace the stale instance
-	supervisor.replaceStaleInstances(ctx, updatedFn, instances, len(instances))
+	supervisor.replaceStaleInstances(ctx, updatedAssignment, instances, len(instances))
 
 	// Verify the stale instance was replaced
-	finalInstances, err := ctrl.getInstances(ctx, updatedFn)
+	finalInstances, err := ctrl.getInstances(ctx, updatedAssignment)
 	assert.NilError(t, err)
 	assert.Assert(t, len(finalInstances) == 1, "should have 1 instance after replacement")
-	assert.Assert(t, proto.Equal(finalInstances[0].GetAssignment(), updatedFn),
+	assert.Assert(t, proto.Equal(finalInstances[0].GetAssignment(), updatedAssignment),
 		"replacement instance should have updated assignment spec")
 }
 
@@ -3616,20 +3616,20 @@ func TestGetReadyInstanceOneshotAssignsPod(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.SetOneshot(true)
+	a := fixture.NewAssignment(t)
+	a.SetOneshot(true)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Add two available (unassigned) pods for assignment
-	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
-	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, a, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, a, nil))
 
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	s := ctrl.supervisor(fn)
+	s := ctrl.supervisor(a)
 
 	// Each call should assign a fresh pod
 	inst1, err := s.getReadyInstance(ctx, nil)
@@ -3652,26 +3652,26 @@ func TestConvergeOneshotSafetyNetOnly(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.SetOneshot(true)
+	a := fixture.NewAssignment(t)
+	a.SetOneshot(true)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Create 3 assigned pods (simulating 3 active oneshot requests)
 	for range 3 {
-		fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+		fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
 	}
 
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	s := ctrl.supervisor(fn)
+	s := ctrl.supervisor(a)
 
 	// Send a heartbeat with only 1 in-flight request — for a non-oneshot
 	// assignment, converge would try to scale down. For oneshot, it should not.
 	s.heartbeat("10.0.0.1", skipper.Heartbeat_builder{
-		Assignment:       fn,
+		Assignment:       a,
 		Timestamp:        timestamppb.Now(),
 		InFlightRequests: proto.Uint32(1),
 	}.Build())
@@ -3680,8 +3680,8 @@ func TestConvergeOneshotSafetyNetOnly(t *testing.T) {
 	assert.NilError(t, err)
 
 	// All 3 pods should still exist — converge must not scale down oneshot pods
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Equal(t, len(pods.Items), 3, "converge should not delete active oneshot pods")
@@ -3878,11 +3878,11 @@ func TestReleaseInstanceDeletesPod(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.SetOneshot(true)
+	a := fixture.NewAssignment(t)
+	a.SetOneshot(true)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
-	pod := fixture.NewAssignedPod(t, fn, nil)
+	pod := fixture.NewAssignedPod(t, a, nil)
 	fakeKubernetes.Tracker().Add(pod)
 
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
@@ -3893,7 +3893,7 @@ func TestReleaseInstanceDeletesPod(t *testing.T) {
 
 	inst := &skipper.Instance{}
 	inst.SetName(pod.Name)
-	inst.SetAssignment(fn)
+	inst.SetAssignment(a)
 
 	// Release the pod
 	_, err = server.ReleaseInstance(ctx, skipper.ReleaseInstanceRequest_builder{
@@ -3902,7 +3902,7 @@ func TestReleaseInstanceDeletesPod(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify the pod was deleted
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{})
+	pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{})
 	assert.NilError(t, err)
 	// Only the controller pod should remain
 	for _, p := range pods.Items {
@@ -3925,11 +3925,11 @@ func TestOneshotTerminationAfterHeartbeatTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.SetOneshot(true)
+	a := fixture.NewAssignment(t)
+	a.SetOneshot(true)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
-	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
+	fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, a, nil))
 
 	cfg := testConfig()
 	cfg.ScaleInterval = 50 * time.Millisecond
@@ -3941,11 +3941,11 @@ func TestOneshotTerminationAfterHeartbeatTimeout(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Create supervisor without starting its loop (ctrl.ctx is nil)
-	s := ctrl.supervisor(fn)
+	s := ctrl.supervisor(a)
 
 	// Add an expired heartbeat to trigger cleanup
 	s.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-		Assignment:       fn,
+		Assignment:       a,
 		Timestamp:        timestamppb.New(time.Now().Add(-cfg.HeartbeatTimeout - time.Second)),
 		InFlightRequests: proto.Uint32(0),
 	}.Build())
@@ -3956,7 +3956,7 @@ func TestOneshotTerminationAfterHeartbeatTimeout(t *testing.T) {
 
 	// Wait for heartbeat timeout to trigger cleanup and supervisor removal
 	poll.WaitOn(t, func(t poll.LogT) poll.Result {
-		_, exists := ctrl.supervisors.Load(fn.Hash())
+		_, exists := ctrl.supervisors.Load(a.Hash())
 		if !exists {
 			return poll.Success()
 		}
@@ -3964,8 +3964,8 @@ func TestOneshotTerminationAfterHeartbeatTimeout(t *testing.T) {
 	}, poll.WithDelay(100*time.Millisecond), poll.WithTimeout(5*time.Second))
 
 	// Verify the pod was deleted
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 0, "oneshot pod should be deleted after heartbeat timeout")
@@ -3986,14 +3986,14 @@ func TestOneshotProtectionPeriodPreventsOrphanDeletion(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
-	fn := fixture.NewAssignment(t)
-	fn.SetOneshot(true)
+	a := fixture.NewAssignment(t)
+	a.SetOneshot(true)
 
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// Create an assigned pod that was assigned long ago (older than HeartbeatTimeout).
 	// This simulates a long-running oneshot request.
-	pod := fixture.NewAssignedPod(t, fn, nil)
+	pod := fixture.NewAssignedPod(t, a, nil)
 	assignedAt := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
 	pod.Annotations[key.AssignedAt.Label] = assignedAt
 	fakeKubernetes.Tracker().Add(pod)
@@ -4008,7 +4008,7 @@ func TestOneshotProtectionPeriodPreventsOrphanDeletion(t *testing.T) {
 	err := ctrl.startInformers(ctx)
 	assert.NilError(t, err)
 
-	s := ctrl.supervisor(fn)
+	s := ctrl.supervisor(a)
 
 	// No router heartbeats stored — simulates restart with empty heartbeat state.
 	// combinedHeartbeat will fall back to assigned_at (2 hours ago), which exceeds
@@ -4018,8 +4018,8 @@ func TestOneshotProtectionPeriodPreventsOrphanDeletion(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Pod must still exist — protection period should prevent deletion
-	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
-		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	pods, err := fakeKubernetes.CoreV1().Pods(a.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + a.GetTenant(),
 	})
 	assert.NilError(t, err)
 	assert.Equal(t, len(pods.Items), 1, "oneshot pod should survive during protection period")
@@ -4078,7 +4078,7 @@ func TestSupervisorEvents(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Assignment
+		assignment     *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 	}
@@ -4094,12 +4094,12 @@ func TestSupervisorEvents(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				// add 2 available pods for scale up
 				for range 2 {
-					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 				}
 			},
 			run: func(t *testing.T, ctx context.Context, state *testState) {
-				supervisor := state.ctrl.supervisor(state.fn)
-				_, _, err := supervisor.scaleWithoutLock(ctx, state.fn, nil, skipper.ScaleDecision_builder{
+				supervisor := state.ctrl.supervisor(state.assignment)
+				_, _, err := supervisor.scaleWithoutLock(ctx, state.assignment, nil, skipper.ScaleDecision_builder{
 					DesiredInstances: proto.Uint32(2),
 					Reason:           skipper.ScaleReason_SCALE_REASON_CPU.Enum(),
 				}.Build())
@@ -4124,14 +4124,14 @@ func TestSupervisorEvents(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				// create 3 assigned pods
 				for range 3 {
-					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+					state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.assignment, nil))
 				}
 			},
 			run: func(t *testing.T, ctx context.Context, state *testState) {
-				supervisor := state.ctrl.supervisor(state.fn)
-				instances, err := state.ctrl.getInstances(ctx, state.fn)
+				supervisor := state.ctrl.supervisor(state.assignment)
+				instances, err := state.ctrl.getInstances(ctx, state.assignment)
 				assert.NilError(t, err)
-				_, _, err = supervisor.scaleWithoutLock(ctx, state.fn, instances, skipper.ScaleDecision_builder{
+				_, _, err = supervisor.scaleWithoutLock(ctx, state.assignment, instances, skipper.ScaleDecision_builder{
 					DesiredInstances: proto.Uint32(1),
 					Reason:           skipper.ScaleReason_SCALE_REASON_CPU.Enum(),
 				}.Build())
@@ -4154,20 +4154,20 @@ func TestSupervisorEvents(t *testing.T) {
 		{
 			name: "stuck instance cleanup records event",
 			setup: func(t *testing.T, state *testState) {
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
 
 				// create a pod stuck past the threshold
-				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod := fixture.NewAssignedPod(t, state.assignment, nil)
 				stuckTime := time.Now().Add(-state.ctrl.config.AssignTimeout * 3)
 				pod.Annotations[key.AssignedAt.Label] = stuckTime.Format(time.RFC3339)
 				delete(pod.Annotations, key.ReadyAt.Label)
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			run: func(t *testing.T, ctx context.Context, state *testState) {
-				instances, err := state.ctrl.getInstances(ctx, state.fn)
+				instances, err := state.ctrl.getInstances(ctx, state.assignment)
 				assert.NilError(t, err)
-				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.cleanupStuckInstances(ctx, state.fn, instances)
+				supervisor := state.ctrl.supervisor(state.assignment)
+				supervisor.cleanupStuckInstances(ctx, state.assignment, instances)
 			},
 			check: func(t *testing.T, state *testState) {
 				events := state.ctrl.events.snapshot()
@@ -4180,23 +4180,23 @@ func TestSupervisorEvents(t *testing.T) {
 			name: "stale instance replacement records event",
 			setup: func(t *testing.T, state *testState) {
 				// create an assigned pod on the old replica set
-				assignedPod := fixture.NewAssignedPod(t, state.fn, nil)
+				assignedPod := fixture.NewAssignedPod(t, state.assignment, nil)
 				state.fakeKubernetes.Tracker().Add(assignedPod)
 
 				// create a stale replica set (scaled to 0)
-				currentReplicaSet := fixture.CurrentReplicaSet(t, state.fn)
+				currentReplicaSet := fixture.CurrentReplicaSet(t, state.assignment)
 				currentReplicaSet.Status.Replicas = 0
 				state.fakeKubernetes.Tracker().Add(currentReplicaSet)
 
 				// add a new replica set with an available pod
-				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.fn))
-				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+				state.fakeKubernetes.Tracker().Add(fixture.NewReplicaSet(t, state.assignment))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.assignment, nil))
 			},
 			run: func(t *testing.T, ctx context.Context, state *testState) {
-				instances, err := state.ctrl.getInstances(ctx, state.fn)
+				instances, err := state.ctrl.getInstances(ctx, state.assignment)
 				assert.NilError(t, err)
-				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.replaceStaleInstances(ctx, state.fn, instances, len(instances))
+				supervisor := state.ctrl.supervisor(state.assignment)
+				supervisor.replaceStaleInstances(ctx, state.assignment, instances, len(instances))
 			},
 			check: func(t *testing.T, state *testState) {
 				events := state.ctrl.events.snapshot()
@@ -4221,14 +4221,14 @@ func TestSupervisorEvents(t *testing.T) {
 			name: "heartbeat timeout records event",
 			setup: func(t *testing.T, state *testState) {
 				// disable resource scaling so heartbeat timeout drives the decision
-				state.fn.GetScale().SetTargetCpuUsageMilli(0)
-				state.fn.GetScale().SetTargetMemoryUsageMib(0)
-				state.fn.GetScale().SetTargetInFlightRequests(0)
+				state.assignment.GetScale().SetTargetCpuUsageMilli(0)
+				state.assignment.GetScale().SetTargetMemoryUsageMib(0)
+				state.assignment.GetScale().SetTargetInFlightRequests(0)
 
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
 
 				// create an assigned pod with old assignment time
-				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod := fixture.NewAssignedPod(t, state.assignment, nil)
 				assignedAt := time.Now().Add(-2 * time.Hour).UTC().Format(time.RFC3339)
 				pod.Annotations[key.AssignedAt.Label] = assignedAt
 				pod.Annotations[key.ReadyAt.Label] = assignedAt
@@ -4239,7 +4239,7 @@ func TestSupervisorEvents(t *testing.T) {
 				state.ctrl.setStartedAt(time.Now().Add(-protectionPeriod - time.Second))
 			},
 			run: func(t *testing.T, ctx context.Context, state *testState) {
-				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor := state.ctrl.supervisor(state.assignment)
 				// no heartbeats stored — will trigger heartbeat timeout
 				err := supervisor.converge(ctx)
 				assert.NilError(t, err)
@@ -4270,22 +4270,22 @@ func TestSupervisorEvents(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				// Set maxInstances=0 so clamping forces desiredInstances=0
 				// even though the heartbeat is fresh.
-				state.fn.GetScale().SetMaxInstances(0)
-				state.fn.GetScale().SetTargetCpuUsageMilli(0)
-				state.fn.GetScale().SetTargetMemoryUsageMib(0)
-				state.fn.GetScale().SetTargetInFlightRequests(0)
+				state.assignment.GetScale().SetMaxInstances(0)
+				state.assignment.GetScale().SetTargetCpuUsageMilli(0)
+				state.assignment.GetScale().SetTargetMemoryUsageMib(0)
+				state.assignment.GetScale().SetTargetInFlightRequests(0)
 
-				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.assignment))
 
 				// set controller started long ago so protection period is expired
 				protectionPeriod := max(state.ctrl.config.HPADownscaleStabilization, state.ctrl.config.HeartbeatTimeout)
 				state.ctrl.setStartedAt(time.Now().Add(-protectionPeriod - time.Second))
 			},
 			run: func(t *testing.T, ctx context.Context, state *testState) {
-				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor := state.ctrl.supervisor(state.assignment)
 				// store a fresh heartbeat so the reason is NOT heartbeat timeout
 				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
-					Assignment: state.fn,
+					Assignment: state.assignment,
 					Timestamp:  timestamppb.Now(),
 				}.Build())
 				err := supervisor.converge(ctx)
@@ -4311,7 +4311,7 @@ func TestSupervisorEvents(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewAssignment(t),
+				assignment:     fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)

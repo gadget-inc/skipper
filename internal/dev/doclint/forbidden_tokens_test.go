@@ -145,7 +145,7 @@ func TestForbiddenTokens_FlagsStaleAssignmentVocabulary(t *testing.T) {
 	src := strings.Join([]string{
 		"the FunctionHash uniquely identifies a function",  // FunctionHash
 		"FunctionFromHeader parses the request",            // FunctionFromHeader
-		"call skipper.FunctionKey.Slog(fn) for logging",    // skipper.FunctionKey
+		"call skipper.FunctionKey.Slog(a) for logging",     // skipper.FunctionKey
 		"the skipper.Function type is the canonical model", // skipper.Function (not -FunctionKey)
 		"index pods by functionHash for fast lookup",       // functionHash (lowercase indexer)
 	}, "\n")

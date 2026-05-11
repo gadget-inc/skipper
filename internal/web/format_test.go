@@ -78,26 +78,26 @@ func TestDurationBetween(t *testing.T) {
 func TestAssignmentKey(t *testing.T) {
 	t.Parallel()
 
-	fn := skipper.Assignment_builder{
+	a := skipper.Assignment_builder{
 		Namespace:  new("default"),
 		Deployment: new("web-app"),
 		Tenant:     new("tenant-1"),
 	}.Build()
 
-	assert.Equal(t, assignmentKey(fn), "default:web-app:tenant-1")
+	assert.Equal(t, assignmentKey(a), "default:web-app:tenant-1")
 	assert.Equal(t, assignmentKey(nil), "")
 }
 
 func TestAssignmentPath(t *testing.T) {
 	t.Parallel()
 
-	fn := skipper.Assignment_builder{
+	a := skipper.Assignment_builder{
 		Namespace:  new("default"),
 		Deployment: new("web-app"),
 		Tenant:     new("tenant-1"),
 	}.Build()
 
-	assert.Equal(t, assignmentPath(fn), "/assignments/default:web-app:tenant-1")
+	assert.Equal(t, assignmentPath(a), "/assignments/default:web-app:tenant-1")
 }
 
 func TestScaleReasonLabel(t *testing.T) {

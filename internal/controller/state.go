@@ -27,14 +27,14 @@ func (ctrl *Controller) ClusterState(ctx context.Context) *skipper.ClusterState 
 
 	var supervisors []*skipper.SupervisorState
 	for _, sup := range ctrl.supervisors.All() {
-		fn := sup.fn.Load()
+		a := sup.assignment.Load()
 
 		supState := &skipper.SupervisorState{}
-		supState.SetAssignment(fn)
+		supState.SetAssignment(a)
 
-		instances, err := ctrl.listInstances(ctx, fn)
+		instances, err := ctrl.listInstances(ctx, a)
 		if err != nil {
-			log.Warn(ctx, "failed to get instances for cluster state", key.Error.Slog(err), skipper.LegacyFunctionKey.Slog(fn), skipper.AssignmentKey.Slog(fn))
+			log.Warn(ctx, "failed to get instances for cluster state", key.Error.Slog(err), skipper.LegacyFunctionKey.Slog(a), skipper.AssignmentKey.Slog(a))
 		} else {
 			supState.SetInstances(instances)
 		}
@@ -48,10 +48,10 @@ func (ctrl *Controller) ClusterState(ctx context.Context) *skipper.ClusterState 
 		}
 		supState.SetRouterHeartbeats(heartbeats)
 
-		supState.SetResponsibleControllerIp(ctrl.ring.Get(fn))
+		supState.SetResponsibleControllerIp(ctrl.ring.Get(a))
 
 		// Active replica set
-		activeRS := ctrl.getActiveReplicaSet(ctx, fn)
+		activeRS := ctrl.getActiveReplicaSet(ctx, a)
 		if activeRS != "" {
 			supState.SetActiveReplicaSet(activeRS)
 		}
@@ -68,18 +68,18 @@ func (ctrl *Controller) ClusterState(ctx context.Context) *skipper.ClusterState 
 
 // getActiveReplicaSet returns the name of the newest replica set with Status.Replicas > 0
 // for the given assignment's deployment.
-func (ctrl *Controller) getActiveReplicaSet(ctx context.Context, fn *skipper.Assignment) string {
-	namespaceLister, ok := ctrl.namespaceListers[fn.GetNamespace()]
+func (ctrl *Controller) getActiveReplicaSet(ctx context.Context, a *skipper.Assignment) string {
+	namespaceLister, ok := ctrl.namespaceListers[a.GetNamespace()]
 	if !ok {
-		log.Warn(ctx, "namespace not found in listers for active RS detection", skipper.LegacyFunctionKey.Slog(fn), skipper.AssignmentKey.Slog(fn))
+		log.Warn(ctx, "namespace not found in listers for active RS detection", skipper.LegacyFunctionKey.Slog(a), skipper.AssignmentKey.Slog(a))
 		return ""
 	}
 
 	// Lists all replica sets from the in-memory informer cache (no API call), then filters
 	// by owner reference. O(replica_sets) per namespace but typically small and infrequent.
-	replicaSets, err := namespaceLister.replicaSetLister.ReplicaSets(fn.GetNamespace()).List(labels.Everything())
+	replicaSets, err := namespaceLister.replicaSetLister.ReplicaSets(a.GetNamespace()).List(labels.Everything())
 	if err != nil {
-		log.Warn(ctx, "failed to list replica sets for active RS detection", key.Error.Slog(err), skipper.LegacyFunctionKey.Slog(fn), skipper.AssignmentKey.Slog(fn))
+		log.Warn(ctx, "failed to list replica sets for active RS detection", key.Error.Slog(err), skipper.LegacyFunctionKey.Slog(a), skipper.AssignmentKey.Slog(a))
 		return ""
 	}
 
@@ -88,7 +88,7 @@ func (ctrl *Controller) getActiveReplicaSet(ctx context.Context, fn *skipper.Ass
 
 	for _, rs := range replicaSets {
 		for _, ownerRef := range rs.OwnerReferences {
-			if ownerRef.Kind == "Deployment" && ownerRef.Name == fn.GetDeployment() {
+			if ownerRef.Kind == "Deployment" && ownerRef.Name == a.GetDeployment() {
 				if rs.Status.Replicas > 0 && rs.CreationTimestamp.UnixNano() > newestTime {
 					newestTime = rs.CreationTimestamp.UnixNano()
 					newestName = rs.Name

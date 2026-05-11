@@ -15,10 +15,10 @@ type eventLog struct {
 	events []*skipper.Event
 }
 
-func (el *eventLog) add(fn *skipper.Assignment, eventType skipper.EventType, severity skipper.EventSeverity, message string) {
+func (el *eventLog) add(a *skipper.Assignment, eventType skipper.EventType, severity skipper.EventSeverity, message string) {
 	event := &skipper.Event{}
 	event.SetTimestamp(timestamppb.Now())
-	event.SetAssignment(fn)
+	event.SetAssignment(a)
 	event.SetType(eventType)
 	event.SetMessage(message)
 	event.SetSeverity(severity)

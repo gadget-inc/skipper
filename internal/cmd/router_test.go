@@ -206,14 +206,14 @@ func TestDefaultNewControllerClientDepsErrors(t *testing.T) {
 func TestRouterGracefulShutdownDrainsInFlightRequests(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 	var clientClosed atomic.Bool
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -271,7 +271,7 @@ func TestRouterGracefulShutdownDrainsInFlightRequests(t *testing.T) {
 	}, 1)
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		resp, err := http.DefaultClient.Do(req)
 		result := struct {
 			body string
@@ -378,14 +378,14 @@ func TestRouterMultipleConcurrentRequestsDrain(t *testing.T) {
 	t.Parallel()
 
 	const numRequests = 5
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestsStarted := make(chan struct{}, numRequests)
 	requestsCanFinish := make(chan struct{})
 	var clientClosed atomic.Bool
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			requestsStarted <- struct{}{}
 			<-requestsCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -441,7 +441,7 @@ func TestRouterMultipleConcurrentRequestsDrain(t *testing.T) {
 	for range numRequests {
 		go func() {
 			req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
-			fn.SetHeader(req)
+			a.SetHeader(req)
 			resp, err := http.DefaultClient.Do(req)
 			r := result{err: err}
 			if err == nil {
@@ -497,14 +497,14 @@ func TestRouterMultipleConcurrentRequestsDrain(t *testing.T) {
 func TestRouterShutdownTimeoutExceeded(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	// This channel is never closed - request will hang until timeout
 	requestCanFinish := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish // Will block until test closes this or context is done
 			rw.WriteHeader(http.StatusOK)
@@ -548,7 +548,7 @@ func TestRouterShutdownTimeoutExceeded(t *testing.T) {
 	requestErr := make(chan error, 1)
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		_, err := http.DefaultClient.Do(req)
 		requestErr <- err
 	}()
@@ -576,14 +576,14 @@ func TestRouterShutdownTimeoutExceeded(t *testing.T) {
 func TestRouterNewRequestsRejectedDuringShutdown(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 	shutdownStarted := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -631,7 +631,7 @@ func TestRouterNewRequestsRejectedDuringShutdown(t *testing.T) {
 	}, 1)
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		resp, err := http.DefaultClient.Do(req)
 		result := struct {
 			body string
@@ -661,7 +661,7 @@ func TestRouterNewRequestsRejectedDuringShutdown(t *testing.T) {
 		// Use a client with a short timeout to avoid hanging
 		client := &http.Client{Timeout: 2 * time.Second}
 		req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		_, err := client.Do(req)
 		secondResult <- err
 	}()
@@ -722,14 +722,14 @@ func TestRouterControllerClientCreationFailure(t *testing.T) {
 func TestRouterHeartbeatContinuesDuringLongRequest(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 	var heartbeatCount atomic.Int32
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -774,7 +774,7 @@ func TestRouterHeartbeatContinuesDuringLongRequest(t *testing.T) {
 	requestDone := make(chan struct{})
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		_, _ = http.DefaultClient.Do(req)
 		close(requestDone)
 	}()
@@ -811,7 +811,7 @@ func TestRouterClientClosedAfterAllRequestsDrain(t *testing.T) {
 	t.Parallel()
 
 	const numRequests = 3
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestsStarted := make(chan struct{}, numRequests)
 	requestsCanFinish := make([]chan struct{}, numRequests)
 	for i := range requestsCanFinish {
@@ -822,9 +822,9 @@ func TestRouterClientClosedAfterAllRequestsDrain(t *testing.T) {
 	var clientClosedWhileRequestsInFlight atomic.Bool
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		idx := int(requestIndex.Add(1)) - 1
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			requestsStarted <- struct{}{}
 			<-requestsCanFinish[idx]
 			rw.WriteHeader(http.StatusOK)
@@ -880,7 +880,7 @@ func TestRouterClientClosedAfterAllRequestsDrain(t *testing.T) {
 	for range numRequests {
 		go func() {
 			req, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:"+itoa(port)+"/", nil)
-			fn.SetHeader(req)
+			a.SetHeader(req)
 			_, err := http.DefaultClient.Do(req)
 			results <- err
 		}()

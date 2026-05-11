@@ -35,7 +35,7 @@ type Supervisor struct {
 	cancel              context.CancelFunc
 	once                sync.Once
 	mu                  sync.Mutex
-	fn                  atomic.Pointer[skipper.Assignment]
+	assignment          atomic.Pointer[skipper.Assignment]
 	ctrl                *Controller
 	routerHeartbeats    *xsync.Map[string, *skipper.Heartbeat]
 	stabilizationWindow []Recommendation
@@ -46,9 +46,9 @@ type Supervisor struct {
 // If the controller has been started (ctrl.ctx is set), the supervisor's loop will
 // be started automatically. The supervisor's assignment spec is updated if the
 // provided assignment has the same identity but a different spec.
-func (ctrl *Controller) supervisor(fn *skipper.Assignment) *Supervisor {
-	s := ctrl.ensureSupervisor(fn)
-	s.updateAssignment(fn)
+func (ctrl *Controller) supervisor(a *skipper.Assignment) *Supervisor {
+	s := ctrl.ensureSupervisor(a)
+	s.updateAssignment(a)
 	return s
 }
 
@@ -56,13 +56,13 @@ func (ctrl *Controller) supervisor(fn *skipper.Assignment) *Supervisor {
 // necessary but never updating an existing supervisor's assignment spec. Use this
 // when the spec may be stale (e.g., read from pod annotations during discovery)
 // to avoid regressing an already-updated spec.
-func (ctrl *Controller) ensureSupervisor(fn *skipper.Assignment) *Supervisor {
-	supervisor, _ := ctrl.supervisors.LoadOrCompute(fn.Hash(), func() (*Supervisor, bool) {
+func (ctrl *Controller) ensureSupervisor(a *skipper.Assignment) *Supervisor {
+	supervisor, _ := ctrl.supervisors.LoadOrCompute(a.Hash(), func() (*Supervisor, bool) {
 		s := &Supervisor{
 			ctrl:             ctrl,
 			routerHeartbeats: xsync.NewMap[string, *skipper.Heartbeat](),
 		}
-		s.fn.Store(fn)
+		s.assignment.Store(a)
 		return s, false
 	})
 	supervisor.start(ctrl.ctx)
@@ -74,10 +74,10 @@ func (ctrl *Controller) ensureSupervisor(fn *skipper.Assignment) *Supervisor {
 // CompareAndSwap to avoid overwriting a concurrent update from another
 // goroutine (e.g., racing GetInstance and Heartbeat handlers). If the CAS
 // fails, we skip the update and let the next heartbeat cycle correct it.
-func (s *Supervisor) updateAssignment(fn *skipper.Assignment) {
-	current := s.fn.Load()
-	if current.Hash() == fn.Hash() && !proto.Equal(current, fn) {
-		s.fn.CompareAndSwap(current, fn)
+func (s *Supervisor) updateAssignment(a *skipper.Assignment) {
+	current := s.assignment.Load()
+	if current.Hash() == a.Hash() && !proto.Equal(current, a) {
+		s.assignment.CompareAndSwap(current, a)
 	}
 }
 
@@ -98,7 +98,7 @@ func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace strin
 	seenAssignments := make(map[skipper.AssignmentHash]bool)
 
 	for _, pod := range pods {
-		fn, err := ctrl.assignmentFromPod(pod)
+		a, err := ctrl.assignmentFromPod(pod)
 		if err != nil {
 			log.Warn(ctx, "failed to get assignment from pod", key.Error.Slog(err), key.Pod.Slog(pod))
 			err = ctrl.deletePod(ctx, pod.Namespace, pod.Name, metav1.DeleteOptions{})
@@ -108,9 +108,9 @@ func (ctrl *Controller) discoverSupervisors(ctx context.Context, namespace strin
 			continue
 		}
 
-		if !seenAssignments[fn.Hash()] {
-			seenAssignments[fn.Hash()] = true
-			ctrl.ensureSupervisor(fn) // ensure supervisor exists; its loop handles scaling
+		if !seenAssignments[a.Hash()] {
+			seenAssignments[a.Hash()] = true
+			ctrl.ensureSupervisor(a) // ensure supervisor exists; its loop handles scaling
 		}
 	}
 
@@ -135,7 +135,7 @@ func (s *Supervisor) start(ctx context.Context) {
 // scale-to-0 or controller shutdown), it removes itself from the
 // supervisors map.
 func (s *Supervisor) loop() {
-	defer s.ctrl.supervisors.Delete(s.fn.Load().Hash())
+	defer s.ctrl.supervisors.Delete(s.assignment.Load().Hash())
 
 	timer.Loop(s.ctx, s.ctrl.config.ScaleInterval, func(ctx context.Context) error {
 		defer func() {
@@ -175,7 +175,7 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 	// garbage collect expired router heartbeats. Resolve heartbeat_timeout
 	// from the current assignment snapshot so a per-tenant override applies
 	// to this supervisor's GC.
-	timeout := s.fn.Load().HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout)
+	timeout := s.assignment.Load().HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout)
 	for routerIP, heartbeat := range s.routerHeartbeats.AllRelaxed() {
 		if time.Since(heartbeat.GetTimestamp().AsTime()) > timeout {
 			s.routerHeartbeats.Delete(routerIP)
@@ -186,9 +186,9 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 // combinedHeartbeat aggregates heartbeats from all routers for this
 // assignment, summing in-flight requests and using the most recent
 // timestamp from either router heartbeats or instance assignments.
-func (s *Supervisor) combinedHeartbeat(fn *skipper.Assignment, instances []*skipper.Instance) *skipper.Heartbeat {
+func (s *Supervisor) combinedHeartbeat(a *skipper.Assignment, instances []*skipper.Instance) *skipper.Heartbeat {
 	heartbeat := &skipper.Heartbeat{}
-	heartbeat.SetAssignment(fn)
+	heartbeat.SetAssignment(a)
 
 	var latestTimestamp time.Time
 	var totalInFlightRequests uint32
@@ -218,11 +218,11 @@ func (s *Supervisor) combinedHeartbeat(fn *skipper.Assignment, instances []*skip
 
 // recordRecommendation adds a scaling recommendation to the stabilization window,
 // prunes expired entries, and returns the maximum recommendation within the window.
-// The fn snapshot resolves the per-assignment downscale-stabilization window with
+// The assignment snapshot resolves the per-assignment downscale-stabilization window with
 // fallback to the cluster default.
-func (s *Supervisor) recordRecommendation(fn *skipper.Assignment, desiredInstances uint32) Recommendation {
+func (s *Supervisor) recordRecommendation(a *skipper.Assignment, desiredInstances uint32) Recommendation {
 	now := time.Now()
-	cutoff := now.Add(-fn.ScaleDownscaleStabilization(s.ctrl.config.HPADownscaleStabilization))
+	cutoff := now.Add(-a.ScaleDownscaleStabilization(s.ctrl.config.HPADownscaleStabilization))
 	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{
 		DesiredInstances: desiredInstances,
 		Timestamp:        now,
@@ -264,9 +264,9 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	fn := s.fn.Load()
+	a := s.assignment.Load()
 
-	instances, err := s.ctrl.getInstances(ctx, fn)
+	instances, err := s.ctrl.getInstances(ctx, a)
 	if err != nil {
 		return fmt.Errorf("failed to get instances: %w", err)
 	}
@@ -285,16 +285,16 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	}
 
 	// 1. Calculate scaling decision
-	heartbeat := s.combinedHeartbeat(fn, instances)
-	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn), skipper.HeartbeatKey.Attr(heartbeat))
+	heartbeat := s.combinedHeartbeat(a, instances)
+	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(a), skipper.AssignmentKey.Attr(a), skipper.HeartbeatKey.Attr(heartbeat))
 
-	scalingDecision := calculateDesiredInstances(ctx, fn, s.ctrl.config, heartbeat, instances)
+	scalingDecision := calculateDesiredInstances(ctx, a, s.ctrl.config, heartbeat, instances)
 
 	// For oneshot assignments, the converge loop is a safety net only.
 	// All binding happens synchronously in GetInstance via assignPod.
 	// The only role here is to delete orphaned pods when the heartbeat times out
 	// (e.g., router crashed without calling ReleaseInstance).
-	if fn.GetOneshot() {
+	if a.GetOneshot() {
 		if scalingDecision.GetReason() != skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT {
 			return nil
 		}
@@ -304,7 +304,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		// oneshot requests (older than HeartbeatTimeout), this would incorrectly
 		// trigger heartbeat_timeout before the router's heartbeats have arrived.
 		// Skip deletion until we've been running long enough to receive heartbeats.
-		if time.Since(s.ctrl.StartedAt()) < fn.HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout) {
+		if time.Since(s.ctrl.StartedAt()) < a.HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout) {
 			return nil
 		}
 
@@ -313,7 +313,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		// controller proceeds to delete the orphaned pods below.
 		defer s.stop()
 
-		responsibleIP := s.ctrl.ring.Get(fn)
+		responsibleIP := s.ctrl.ring.Get(a)
 		if responsibleIP != s.ctrl.config.PodIP {
 			return nil
 		}
@@ -327,7 +327,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		return nil
 	}
 
-	maxRecommendation := s.recordRecommendation(fn, scalingDecision.GetDesiredInstances())
+	maxRecommendation := s.recordRecommendation(a, scalingDecision.GetDesiredInstances())
 
 	currentInstances := uint32(len(instances))
 	isScalingDown := scalingDecision.GetDesiredInstances() < currentInstances || scalingDecision.GetDesiredInstances() == 0
@@ -340,8 +340,8 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		//    instances bound longer than HeartbeatTimeout ago would immediately trigger
 		//    heartbeat_timeout scale-to-zero when a new controller starts with empty heartbeat state
 		protectionPeriod := max(
-			fn.ScaleDownscaleStabilization(s.ctrl.config.HPADownscaleStabilization),
-			fn.HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout),
+			a.ScaleDownscaleStabilization(s.ctrl.config.HPADownscaleStabilization),
+			a.HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout),
 		)
 		if time.Since(s.ctrl.StartedAt()) < protectionPeriod {
 			log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", s.ctrl.StartedAt()))
@@ -359,7 +359,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	}
 
 	// 2. Check responsibility
-	responsibleIP := s.ctrl.ring.Get(fn)
+	responsibleIP := s.ctrl.ring.Get(a)
 	if responsibleIP != s.ctrl.config.PodIP {
 		return nil
 	}
@@ -371,14 +371,14 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	// 0" event.
 	if isScalingDown && scalingDecision.GetDesiredInstances() == 0 && currentInstances > 0 {
 		eventType, eventMessage := scaleToZeroEvent(scalingDecision.GetReason())
-		s.ctrl.events.add(fn, eventType, skipper.EventSeverity_EVENT_SEVERITY_WARN, eventMessage)
+		s.ctrl.events.add(a, eventType, skipper.EventSeverity_EVENT_SEVERITY_WARN, eventMessage)
 	}
 
 	// 3. Cleanup stuck instances (cheap, run before scaling execution)
-	instances = s.cleanupStuckInstances(ctx, fn, instances)
+	instances = s.cleanupStuckInstances(ctx, a, instances)
 
 	// 4. Execute scaling
-	ready, unready, err := s.scaleWithoutLock(ctx, fn, instances, scalingDecision)
+	ready, unready, err := s.scaleWithoutLock(ctx, a, instances, scalingDecision)
 	if err != nil {
 		return err
 	}
@@ -388,7 +388,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	// (oldest instances deleted first, and stale instances are typically older).
 	// This avoids wasteful pod assignments when we're reducing capacity anyway.
 	if !isScalingDown {
-		s.replaceStaleInstances(ctx, fn, ready, len(ready)+len(unready))
+		s.replaceStaleInstances(ctx, a, ready, len(ready)+len(unready))
 	}
 
 	return nil
@@ -403,27 +403,27 @@ func (s *Supervisor) scale(ctx context.Context, decision *skipper.ScaleDecision)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	fn := s.fn.Load()
+	a := s.assignment.Load()
 
-	responsibleIP := s.ctrl.ring.Get(fn)
+	responsibleIP := s.ctrl.ring.Get(a)
 	if responsibleIP != s.ctrl.config.PodIP {
 		log.Debug(ctx, "forwarding scale request to responsible controller", key.ResponsibleIP.Slog(responsibleIP))
-		return s.ctrl.getControllerClient(responsibleIP).Scale(ctx, fn, decision.GetDesiredInstances(), decision.GetReason())
+		return s.ctrl.getControllerClient(responsibleIP).Scale(ctx, a, decision.GetDesiredInstances(), decision.GetReason())
 	}
 
-	instances, err := s.ctrl.getInstances(ctx, fn)
+	instances, err := s.ctrl.getInstances(ctx, a)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
 
-	ready, _, err := s.scaleWithoutLock(ctx, fn, instances, decision)
+	ready, _, err := s.scaleWithoutLock(ctx, a, instances, decision)
 	return ready, err
 }
 
 // scaleWithoutLock is the internal implementation of scale that assumes
 // the caller already holds s.mu. It executes the scaling decision
 // without forwarding to another controller.
-func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignment, instances []*skipper.Instance, decision *skipper.ScaleDecision) ([]*skipper.Instance, []*skipper.Instance, error) {
+func (s *Supervisor) scaleWithoutLock(ctx context.Context, a *skipper.Assignment, instances []*skipper.Instance, decision *skipper.ScaleDecision) ([]*skipper.Instance, []*skipper.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.scale")
 	defer span.End()
 
@@ -443,7 +443,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 		key.UnreadyInstances.Slog(len(unreadyInstances)),
 	)
 
-	maxInstances := fn.ScaleMaxInstances()
+	maxInstances := a.ScaleMaxInstances()
 
 	if maxInstances > 1 && decision.GetUnclampedDesiredInstances() > decision.GetDesiredInstances() {
 		// this assignment is allowed to scale beyond a single instance
@@ -472,17 +472,17 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 		}
 
 		log.Info(ctx, "scaling assignment up")
-		scaleUpsTotal.WithLabelValues(fn.GetDeployment(), fn.GetDeployment()).Add(float64(desired - ready))
+		scaleUpsTotal.WithLabelValues(a.GetDeployment(), a.GetDeployment()).Add(float64(desired - ready))
 
-		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+		s.ctrl.events.add(a, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO,
 			fmt.Sprintf("scaling up from %d to %d instances", ready, desired))
 
 		for range desired - ready {
-			instance, err := s.ctrl.assignPod(ctx, fn)
+			instance, err := s.ctrl.assignPod(ctx, a)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to assign pod: %w", err)
 			}
-			s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_POD_ASSIGNED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+			s.ctrl.events.add(a, skipper.EventType_EVENT_TYPE_POD_ASSIGNED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
 				fmt.Sprintf("assigned pod %s", instance.GetName()))
 			readyInstances = append(readyInstances, instance)
 		}
@@ -495,7 +495,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 		// we either need to scale down or we're already at the desired number of instances but have extra unready instances
 		log.Info(ctx, "scaling assignment down")
 
-		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_SCALE_DOWN, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+		s.ctrl.events.add(a, skipper.EventType_EVENT_TYPE_SCALE_DOWN, skipper.EventSeverity_EVENT_SEVERITY_INFO,
 			fmt.Sprintf("scaling down from %d to %d instances", total, desired))
 
 		// delete all unready instances
@@ -505,12 +505,12 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
-			s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_POD_DELETED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+			s.ctrl.events.add(a, skipper.EventType_EVENT_TYPE_POD_DELETED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
 				fmt.Sprintf("deleted pod %s", unreadyInstance.GetName()))
 		}
 		unreadyInstances = nil
 
-		scaleDownsTotal.WithLabelValues(fn.GetDeployment(), fn.GetDeployment()).Add(float64(uint32(unreadyCount) + ready - desired))
+		scaleDownsTotal.WithLabelValues(a.GetDeployment(), a.GetDeployment()).Add(float64(uint32(unreadyCount) + ready - desired))
 
 		// sort ready instances by assigned at in descending order (newest first)
 		slices.SortFunc(readyInstances, func(a, b *skipper.Instance) int {
@@ -524,7 +524,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to delete pod: %w", err)
 			}
-			s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_POD_DELETED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+			s.ctrl.events.add(a, skipper.EventType_EVENT_TYPE_POD_DELETED, skipper.EventSeverity_EVENT_SEVERITY_INFO,
 				fmt.Sprintf("deleted pod %s", instance.GetName()))
 			readyInstances = readyInstances[:len(readyInstances)-1]
 		}
@@ -534,13 +534,13 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 }
 
 // cleanupStuckInstances terminates instances that are stuck in the
-// assigned state (not ready) for longer than AssignTimeout*2. The fn
-// snapshot resolves the per-assignment assign-timeout window with
-// fallback to the cluster default.
+// assigned state (not ready) for longer than AssignTimeout*2. The
+// assignment snapshot resolves the per-assignment assign-timeout
+// window with fallback to the cluster default.
 // This is a cheap operation (just deletes) and should be called before
 // scaling execution to remove broken pods from consideration.
-func (s *Supervisor) cleanupStuckInstances(ctx context.Context, fn *skipper.Assignment, instances []*skipper.Instance) []*skipper.Instance {
-	stuckThreshold := fn.AssignTimeout(s.ctrl.config.AssignTimeout) * 2
+func (s *Supervisor) cleanupStuckInstances(ctx context.Context, a *skipper.Assignment, instances []*skipper.Instance) []*skipper.Instance {
+	stuckThreshold := a.AssignTimeout(s.ctrl.config.AssignTimeout) * 2
 	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
 		if !instance.HasReadyAt() && time.Since(instance.GetAssignedAt().AsTime()) > stuckThreshold {
 			ctx := log.With(ctx, skipper.InstanceKey.Slog(instance))
@@ -575,22 +575,22 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, fn *skipper.Assi
 // instance count reaches or exceeds maxInstances+1. In this case, the
 // stale instance is kept and scale() will handle cleanup on subsequent
 // iterations.
-func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assignment, instances []*skipper.Instance, currentTotalInstances int) {
+func (s *Supervisor) replaceStaleInstances(ctx context.Context, a *skipper.Assignment, instances []*skipper.Instance, currentTotalInstances int) {
 	// Oneshot assignments bind a fresh pod per request — replacing a stale
 	// instance would create a pod that serves nothing while the original
 	// continues processing its in-flight request.
-	if fn.GetOneshot() {
+	if a.GetOneshot() {
 		return
 	}
 
-	namespaceLister, ok := s.ctrl.namespaceListers[fn.GetNamespace()]
+	namespaceLister, ok := s.ctrl.namespaceListers[a.GetNamespace()]
 	if !ok {
-		log.Warn(ctx, "namespace lister not found for assignment namespace", key.Namespace.Slog(fn.GetNamespace()))
+		log.Warn(ctx, "namespace lister not found for assignment namespace", key.Namespace.Slog(a.GetNamespace()))
 		return
 	}
 
 	for _, instance := range instances {
-		replicaSet, err := namespaceLister.replicaSetLister.ReplicaSets(fn.GetNamespace()).Get(instance.GetReplicaSet())
+		replicaSet, err := namespaceLister.replicaSetLister.ReplicaSets(a.GetNamespace()).Get(instance.GetReplicaSet())
 		if err != nil {
 			log.Warn(ctx, "failed to get replica set for instance", key.Error.Slog(err), skipper.InstanceKey.Slog(instance))
 			continue
@@ -598,7 +598,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 
 		// Stale if the replica set was scaled to zero (deployment rollout)
 		// or if the assignment config (metadata/scale) has changed.
-		isStale := replicaSet.Status.Replicas == 0 || !proto.Equal(instance.GetAssignment(), fn)
+		isStale := replicaSet.Status.Replicas == 0 || !proto.Equal(instance.GetAssignment(), a)
 		if !isStale {
 			continue
 		}
@@ -610,7 +610,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 		// This can happen if a previous iteration assigned a replacement but failed
 		// to delete the stale pod. In this case, keep the stale instance and let
 		// scale() handle cleanup.
-		if currentTotalInstances >= int(fn.ScaleMaxInstances())+1 {
+		if currentTotalInstances >= int(a.ScaleMaxInstances())+1 {
 			log.Info(ctx, "skipping stale instance replacement, already at maxInstances+1")
 			continue
 		}
@@ -624,7 +624,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 		}
 
 		log.Info(ctx, "replacing stale instance")
-		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+		s.ctrl.events.add(a, skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT, skipper.EventSeverity_EVENT_SEVERITY_INFO,
 			fmt.Sprintf("replacing stale instance %s", instance.GetName()))
 
 		// Assign a new pod from the active replica set (temporarily exceeding max instances).
@@ -632,7 +632,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 		var assignErr error
 		func() {
 			defer s.ctrl.staleReplacementSem.Release(1)
-			_, assignErr = s.ctrl.assignPod(ctx, fn)
+			_, assignErr = s.ctrl.assignPod(ctx, a)
 		}()
 		if assignErr != nil {
 			log.Error(ctx, "failed to assign replacement pod for stale instance", key.Error.Slog(assignErr))
@@ -662,13 +662,13 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 // For oneshot assignments, each call binds a fresh pod via assignPod's
 // atomic test-and-set, guaranteeing a unique pod per request.
 func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string) (*skipper.Instance, error) {
-	fn := s.fn.Load()
+	a := s.assignment.Load()
 
-	if fn.GetOneshot() {
-		return s.ctrl.assignPod(ctx, fn)
+	if a.GetOneshot() {
+		return s.ctrl.assignPod(ctx, a)
 	}
 
-	instances, err := s.ctrl.getReadyInstances(ctx, fn)
+	instances, err := s.ctrl.getReadyInstances(ctx, a)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
@@ -685,7 +685,7 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 		}
 	}
 
-	maxInstances := fn.ScaleMaxInstances()
+	maxInstances := a.ScaleMaxInstances()
 	if len(instances) > int(maxInstances) {
 		// sort instances by assigned at in descending order (newest first)
 		slices.SortFunc(instances, func(a, b *skipper.Instance) int {
@@ -734,14 +734,14 @@ func scaleToZeroEvent(reason skipper.ScaleReason) (skipper.EventType, string) {
 }
 
 // calculateDesiredInstancesForMetric computes desired instances based on a single metric.
-// fn is the converge-tick snapshot; scale targets and HPA tolerance / readiness
+// The assignment is the converge-tick snapshot; scale targets and HPA tolerance / readiness
 // delay are resolved through it so a tenant override applies uniformly.
-func calculateDesiredInstancesForMetric(_ context.Context, fn *skipper.Assignment, cfg *Config, metric Metric, instances []*skipper.Instance) (int, float64) {
+func calculateDesiredInstancesForMetric(_ context.Context, a *skipper.Assignment, cfg *Config, metric Metric, instances []*skipper.Instance) (int, float64) {
 	currentInstances := len(instances)
 	var instancesWithMetrics []*skipper.Instance
 	var instancesWithoutMetrics []*skipper.Instance
 
-	readinessDelay := fn.ScaleInitialReadinessDelay(cfg.HPAInitialReadinessDelay)
+	readinessDelay := a.ScaleInitialReadinessDelay(cfg.HPAInitialReadinessDelay)
 
 	for _, instance := range instances {
 		var usage uint32
@@ -774,9 +774,9 @@ func calculateDesiredInstancesForMetric(_ context.Context, fn *skipper.Assignmen
 	var targetUsage uint32
 	switch metric {
 	case MetricCPU:
-		targetUsage = fn.ScaleTargetCPUMillicores()
+		targetUsage = a.ScaleTargetCPUMillicores()
 	case MetricMemory:
-		targetUsage = fn.ScaleTargetMemoryMebibytes()
+		targetUsage = a.ScaleTargetMemoryMebibytes()
 	}
 	var totalUsage uint32
 	for _, instance := range instancesWithMetrics {
@@ -793,7 +793,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, fn *skipper.Assignmen
 		return currentInstances, 0
 	}
 
-	tolerance := fn.ScaleTolerance(cfg.HPATolerance)
+	tolerance := a.ScaleTolerance(cfg.HPATolerance)
 
 	averageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
 	usageRatio := averageUsage / float64(targetUsage)
@@ -836,10 +836,10 @@ func calculateDesiredInstancesForMetric(_ context.Context, fn *skipper.Assignmen
 
 // calculateDesiredInstances computes desired instances based on multiple metrics.
 // All per-assignment knobs (heartbeat timeout, scale targets, min/max bounds)
-// are read from the supplied fn snapshot so a converge tick observes a single
-// view of the tenant's policy.
-func calculateDesiredInstances(ctx context.Context, fn *skipper.Assignment, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) *skipper.ScaleDecision {
-	if !heartbeat.HasTimestamp() || time.Since(heartbeat.GetTimestamp().AsTime()) >= fn.HeartbeatTimeout(cfg.HeartbeatTimeout) {
+// are read from the supplied assignment snapshot so a converge tick observes
+// a single view of the tenant's policy.
+func calculateDesiredInstances(ctx context.Context, a *skipper.Assignment, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) *skipper.ScaleDecision {
+	if !heartbeat.HasTimestamp() || time.Since(heartbeat.GetTimestamp().AsTime()) >= a.HeartbeatTimeout(cfg.HeartbeatTimeout) {
 		decision := &skipper.ScaleDecision{}
 		decision.SetDesiredInstances(0)
 		decision.SetUnclampedDesiredInstances(0)
@@ -847,14 +847,14 @@ func calculateDesiredInstances(ctx context.Context, fn *skipper.Assignment, cfg 
 		return decision
 	}
 
-	minInst := fn.ScaleMinInstances()
-	maxInst := fn.ScaleMaxInstances()
-	targetCPU := fn.ScaleTargetCPUMillicores()
-	targetMem := fn.ScaleTargetMemoryMebibytes()
-	targetIFR := fn.ScaleTargetInFlightRequests()
+	minInst := a.ScaleMinInstances()
+	maxInst := a.ScaleMaxInstances()
+	targetCPU := a.ScaleTargetCPUMillicores()
+	targetMem := a.ScaleTargetMemoryMebibytes()
+	targetIFR := a.ScaleTargetInFlightRequests()
 
 	// Oneshot assignments scale 1:1 with in-flight requests.
-	if fn.GetOneshot() {
+	if a.GetOneshot() {
 		desiredInstances := int(heartbeat.GetInFlightRequests())
 		clamped := min(max(uint32(desiredInstances), minInst), maxInst)
 
@@ -890,7 +890,7 @@ func calculateDesiredInstances(ctx context.Context, fn *skipper.Assignment, cfg 
 	}
 
 	if targetCPU > 0 {
-		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, fn, cfg, MetricCPU, instances)
+		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, a, cfg, MetricCPU, instances)
 		metric := &skipper.ScaleMetric{}
 		metric.SetName("cpu")
 		metric.SetValue(averageUsage)
@@ -902,7 +902,7 @@ func calculateDesiredInstances(ctx context.Context, fn *skipper.Assignment, cfg 
 	}
 
 	if targetMem > 0 {
-		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, fn, cfg, MetricMemory, instances)
+		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, a, cfg, MetricMemory, instances)
 		metric := &skipper.ScaleMetric{}
 		metric.SetName("memory")
 		metric.SetValue(averageUsage)

@@ -112,7 +112,7 @@ func (r *Router) Start(ctx context.Context) {
 }
 
 func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	fn, err := skipper.AssignmentFromHeader(req)
+	a, err := skipper.AssignmentFromHeader(req)
 	if err != nil {
 		if req.Method == http.MethodGet && req.URL.Path == "/healthz" {
 			rw.WriteHeader(http.StatusOK)
@@ -123,16 +123,16 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn))
-	deployment := fn.GetDeployment()
+	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), skipper.LegacyFunctionKey.Attr(a), skipper.AssignmentKey.Attr(a))
+	deployment := a.GetDeployment()
 	requestsTotal.WithLabelValues(deployment, deployment).Inc()
 
 	// get or create the heartbeat state for this assignment
-	state, loaded := r.heartbeats.LoadOrCompute(fn.Hash(), func() (*heartbeatState, bool) {
-		return newHeartbeatState(fn), false
+	state, loaded := r.heartbeats.LoadOrCompute(a.Hash(), func() (*heartbeatState, bool) {
+		return newHeartbeatState(a), false
 	})
 	if loaded {
-		state.updateAssignment(fn)
+		state.updateAssignment(a)
 	}
 
 	// continuously update the heartbeat timestamp for this assignment while the request is in flight
@@ -153,11 +153,11 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		state.touch()
 	}()
 
-	reqCtx := withAssignment(ctx, fn)
+	reqCtx := withAssignment(ctx, a)
 
 	// For oneshot assignments, track the assigned instance so we can release it after the request.
 	var instResult *instanceResult
-	if fn.GetOneshot() {
+	if a.GetOneshot() {
 		instResult = &instanceResult{}
 		reqCtx = withInstanceResult(reqCtx, instResult)
 	}
@@ -178,7 +178,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
-	fn, err := assignmentFromContext(req.Context())
+	a, err := assignmentFromContext(req.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -197,9 +197,9 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		defer func() { req.Body = originalBody }()
 	}
 
-	maxAttempts := fn.RetryMaxAttempts(r.config.MaxRoundTripAttempts)
-	minBackoff := fn.RetryMinBackoff(r.config.RoundTripRetryMinTimeout)
-	maxBackoff := fn.RetryMaxBackoff(r.config.RoundTripRetryMaxTimeout)
+	maxAttempts := a.RetryMaxAttempts(r.config.MaxRoundTripAttempts)
+	minBackoff := a.RetryMinBackoff(r.config.RoundTripRetryMinTimeout)
+	maxBackoff := a.RetryMaxBackoff(r.config.RoundTripRetryMaxTimeout)
 
 	var excludedInstanceNames []string
 	getInstanceDuration := time.Duration(0)
@@ -222,7 +222,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		ctx := telemetry.With(req.Context(), key.Attempt.Attr(attempt), key.ExcludeInstanceNames.Attr(excludedInstanceNames))
 
 		getInstanceStart := time.Now()
-		instance, err := r.ctrl.Instance(ctx, fn, excludedInstanceNames...)
+		instance, err := r.ctrl.Instance(ctx, a, excludedInstanceNames...)
 		getInstanceDuration += time.Since(getInstanceStart)
 		if err != nil {
 			log.Warn(ctx, "failed to get instance for assignment", key.Error.Slog(err))

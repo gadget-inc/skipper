@@ -34,16 +34,16 @@ func NewServer(ctrl *Controller) *Server {
 }
 
 func (s *Server) GetInstance(ctx context.Context, req *skipper.GetInstanceRequest) (*skipper.GetInstanceResponse, error) {
-	fn := req.GetAssignment()
-	if err := fn.Validate(); err != nil {
+	a := req.GetAssignment()
+	if err := a.Validate(); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid assignment: %v", err)
 	}
 
-	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn))
+	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(a), skipper.AssignmentKey.Attr(a))
 
 	excludeNames := req.GetExcludeInstanceNames()
 
-	instance, err := s.ctrl.supervisor(fn).getReadyInstance(ctx, excludeNames)
+	instance, err := s.ctrl.supervisor(a).getReadyInstance(ctx, excludeNames)
 	if err != nil {
 		log.Error(ctx, "failed to get ready instance", key.Error.Slog(err))
 		return nil, status.Errorf(codes.Internal, "failed to get ready instance: %v", err)
@@ -117,12 +117,12 @@ func (s *Server) GetClusterState(ctx context.Context, _ *skipper.GetClusterState
 }
 
 func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper.ScaleResponse, error) {
-	fn := req.GetAssignment()
-	if err := fn.Validate(); err != nil {
+	a := req.GetAssignment()
+	if err := a.Validate(); err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid assignment: %v", err)
 	}
 
-	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn))
+	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(a), skipper.AssignmentKey.Attr(a))
 
 	desiredInstances := req.GetDesiredInstances()
 	reason := req.GetReason()
@@ -131,7 +131,7 @@ func (s *Server) Scale(ctx context.Context, req *skipper.ScaleRequest) (*skipper
 	decision.SetDesiredInstances(desiredInstances)
 	decision.SetReason(reason)
 
-	instances, err := s.ctrl.supervisor(fn).scale(ctx, decision)
+	instances, err := s.ctrl.supervisor(a).scale(ctx, decision)
 	if err != nil {
 		log.Error(ctx, "failed to scale assignment", key.Error.Slog(err))
 		return nil, status.Errorf(codes.Internal, "failed to scale assignment: %v", err)

@@ -14,7 +14,7 @@ func TestScaleResolversFlatPreferred(t *testing.T) {
 
 	tests := []struct {
 		name                   string
-		fn                     *Assignment
+		assignment             *Assignment
 		wantMin                uint32
 		wantMax                uint32
 		wantTargetCPU          uint32
@@ -24,7 +24,7 @@ func TestScaleResolversFlatPreferred(t *testing.T) {
 	}{
 		{
 			name: "nested only",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace:  new("n"),
 				Deployment: new("d"),
 				Tenant:     new("t"),
@@ -41,7 +41,7 @@ func TestScaleResolversFlatPreferred(t *testing.T) {
 		},
 		{
 			name: "flat only",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace:                   new("n"),
 				Deployment:                  new("d"),
 				Tenant:                      new("t"),
@@ -56,7 +56,7 @@ func TestScaleResolversFlatPreferred(t *testing.T) {
 		},
 		{
 			name: "both shapes, flat wins",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace:  new("n"),
 				Deployment: new("d"),
 				Tenant:     new("t"),
@@ -78,7 +78,7 @@ func TestScaleResolversFlatPreferred(t *testing.T) {
 		},
 		{
 			name: "hybrid: min from nested, max from flat",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace:  new("n"),
 				Deployment: new("d"),
 				Tenant:     new("t"),
@@ -92,7 +92,7 @@ func TestScaleResolversFlatPreferred(t *testing.T) {
 		},
 		{
 			name: "neither shape present",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace:  new("n"),
 				Deployment: new("d"),
 				Tenant:     new("t"),
@@ -105,23 +105,23 @@ func TestScaleResolversFlatPreferred(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotMin, hasMin := tc.fn.resolvedScaleMin()
-			gotMax, hasMax := tc.fn.resolvedScaleMax()
+			gotMin, hasMin := tc.assignment.resolvedScaleMin()
+			gotMax, hasMax := tc.assignment.resolvedScaleMax()
 
 			assert.Equal(t, hasMin, tc.wantHasMin, "resolvedScaleMin presence")
 			assert.Equal(t, hasMax, tc.wantHasMax, "resolvedScaleMax presence")
 			if tc.wantHasMin {
 				assert.Equal(t, gotMin, tc.wantMin)
-				assert.Equal(t, tc.fn.ScaleMinInstances(), tc.wantMin)
+				assert.Equal(t, tc.assignment.ScaleMinInstances(), tc.wantMin)
 			}
 			if tc.wantHasMax {
 				assert.Equal(t, gotMax, tc.wantMax)
-				assert.Equal(t, tc.fn.ScaleMaxInstances(), tc.wantMax)
+				assert.Equal(t, tc.assignment.ScaleMaxInstances(), tc.wantMax)
 			}
 
-			assert.Equal(t, tc.fn.ScaleTargetCPUMillicores(), tc.wantTargetCPU)
-			assert.Equal(t, tc.fn.ScaleTargetMemoryMebibytes(), tc.wantTargetMem)
-			assert.Equal(t, tc.fn.ScaleTargetInFlightRequests(), tc.wantTargetInFlight)
+			assert.Equal(t, tc.assignment.ScaleTargetCPUMillicores(), tc.wantTargetCPU)
+			assert.Equal(t, tc.assignment.ScaleTargetMemoryMebibytes(), tc.wantTargetMem)
+			assert.Equal(t, tc.assignment.ScaleTargetInFlightRequests(), tc.wantTargetInFlight)
 		})
 	}
 }
@@ -331,18 +331,18 @@ func TestValidatePolicyFields(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		fn      *Assignment
-		wantErr string
+		name       string
+		assignment *Assignment
+		wantErr    string
 	}{
-		{name: "flat-only valid", fn: base(func(b *Assignment_builder) {}), wantErr: ""},
-		{name: "nested-only valid", fn: Assignment_builder{
+		{name: "flat-only valid", assignment: base(func(b *Assignment_builder) {}), wantErr: ""},
+		{name: "nested-only valid", assignment: Assignment_builder{
 			Namespace: new("n"), Deployment: new("d"), Tenant: new("t"),
 			Scale: Scale_builder{MaxInstances: proto.Uint32(1)}.Build(),
 		}.Build(), wantErr: ""},
 		{
 			name: "hybrid min flat / max nested - invalid bounds",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace: new("n"), Deployment: new("d"), Tenant: new("t"),
 				Scale:             Scale_builder{MaxInstances: proto.Uint32(3)}.Build(),
 				ScaleMinInstances: proto.Uint32(5),
@@ -350,58 +350,58 @@ func TestValidatePolicyFields(t *testing.T) {
 			wantErr: "scale.min_instances (5) must be <= scale.max_instances (3)",
 		},
 		{
-			name:    "no scale at all",
-			fn:      Assignment_builder{Namespace: new("n"), Deployment: new("d"), Tenant: new("t")}.Build(),
-			wantErr: "missing scale",
+			name:       "no scale at all",
+			assignment: Assignment_builder{Namespace: new("n"), Deployment: new("d"), Tenant: new("t")}.Build(),
+			wantErr:    "missing scale",
 		},
-		{name: "negative scale_tolerance", fn: base(func(b *Assignment_builder) {
+		{name: "negative scale_tolerance", assignment: base(func(b *Assignment_builder) {
 			b.ScaleTolerance = new(-0.1)
 		}), wantErr: "scale_tolerance"},
-		{name: "negative heartbeat_timeout", fn: base(func(b *Assignment_builder) {
+		{name: "negative heartbeat_timeout", assignment: base(func(b *Assignment_builder) {
 			b.HeartbeatTimeout = durationpb.New(-1 * time.Second)
 		}), wantErr: "heartbeat_timeout"},
-		{name: "zero heartbeat_timeout", fn: base(func(b *Assignment_builder) {
+		{name: "zero heartbeat_timeout", assignment: base(func(b *Assignment_builder) {
 			b.HeartbeatTimeout = durationpb.New(0)
 		}), wantErr: "heartbeat_timeout must be > 0"},
-		{name: "zero assign_timeout", fn: base(func(b *Assignment_builder) {
+		{name: "zero assign_timeout", assignment: base(func(b *Assignment_builder) {
 			b.AssignTimeout = durationpb.New(0)
 		}), wantErr: "assign_timeout must be > 0"},
-		{name: "zero assign_token_ttl", fn: base(func(b *Assignment_builder) {
+		{name: "zero assign_token_ttl", assignment: base(func(b *Assignment_builder) {
 			b.AssignTokenTtl = durationpb.New(0)
 		}), wantErr: "assign_token_ttl must be > 0"},
-		{name: "zero retry_max_attempts", fn: base(func(b *Assignment_builder) {
+		{name: "zero retry_max_attempts", assignment: base(func(b *Assignment_builder) {
 			b.RetryMaxAttempts = proto.Uint32(0)
 		}), wantErr: "retry_max_attempts must be > 0"},
-		{name: "negative retry_min_backoff", fn: base(func(b *Assignment_builder) {
+		{name: "negative retry_min_backoff", assignment: base(func(b *Assignment_builder) {
 			b.RetryMinBackoff = durationpb.New(-1 * time.Millisecond)
 		}), wantErr: "retry_min_backoff"},
-		{name: "inverted retry backoff bounds", fn: base(func(b *Assignment_builder) {
+		{name: "inverted retry backoff bounds", assignment: base(func(b *Assignment_builder) {
 			b.RetryMinBackoff = durationpb.New(5 * time.Second)
 			b.RetryMaxBackoff = durationpb.New(1 * time.Second)
 		}), wantErr: "retry_min_backoff (5s) must be <= retry_max_backoff (1s)"},
-		{name: "negative scale_downscale_stabilization", fn: base(func(b *Assignment_builder) {
+		{name: "negative scale_downscale_stabilization", assignment: base(func(b *Assignment_builder) {
 			b.ScaleDownscaleStabilization = durationpb.New(-1 * time.Second)
 		}), wantErr: "scale_downscale_stabilization"},
-		{name: "negative scale_initial_readiness_delay", fn: base(func(b *Assignment_builder) {
+		{name: "negative scale_initial_readiness_delay", assignment: base(func(b *Assignment_builder) {
 			b.ScaleInitialReadinessDelay = durationpb.New(-1 * time.Second)
 		}), wantErr: "scale_initial_readiness_delay"},
-		{name: "negative transport_dial_timeout", fn: base(func(b *Assignment_builder) {
+		{name: "negative transport_dial_timeout", assignment: base(func(b *Assignment_builder) {
 			b.TransportDialTimeout = durationpb.New(-1 * time.Millisecond)
 		}), wantErr: "transport_dial_timeout"},
-		{name: "negative heartbeat_interval (placeholder)", fn: base(func(b *Assignment_builder) {
+		{name: "negative heartbeat_interval (placeholder)", assignment: base(func(b *Assignment_builder) {
 			b.HeartbeatInterval = durationpb.New(-1 * time.Second)
 		}), wantErr: "heartbeat_interval"},
 		// Placeholder enum: UNSPECIFIED is valid (placeholder-knob policy:
 		// Validate is wired-state-agnostic; followups treat UNSPECIFIED as
 		// fall back to cluster default).
-		{name: "zone_spread unspecified accepted", fn: base(func(b *Assignment_builder) {
+		{name: "zone_spread unspecified accepted", assignment: base(func(b *Assignment_builder) {
 			b.ZoneSpread = ZoneSpread_ZONE_SPREAD_UNSPECIFIED.Enum()
 		}), wantErr: ""},
-		{name: "zone_spread explicit value accepted", fn: base(func(b *Assignment_builder) {
+		{name: "zone_spread explicit value accepted", assignment: base(func(b *Assignment_builder) {
 			b.ZoneSpread = ZoneSpread_ZONE_SPREAD_REQUIRED.Enum()
 		}), wantErr: ""},
 		// Well-formed placeholder values pass.
-		{name: "transport_dial_timeout 100ms accepted", fn: base(func(b *Assignment_builder) {
+		{name: "transport_dial_timeout 100ms accepted", assignment: base(func(b *Assignment_builder) {
 			b.TransportDialTimeout = durationpb.New(100 * time.Millisecond)
 		}), wantErr: ""},
 	}
@@ -410,7 +410,7 @@ func TestValidatePolicyFields(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := tc.fn.Validate()
+			err := tc.assignment.Validate()
 			if tc.wantErr == "" {
 				assert.NilError(t, err)
 			} else {

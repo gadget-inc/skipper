@@ -758,20 +758,20 @@ func buildDeploymentRows(state *skipper.ClusterState) []deploymentRow {
 	m := make(map[string]*deploymentStats)
 
 	for _, sup := range state.GetSupervisors() {
-		fn := sup.GetAssignment()
-		name := fn.GetDeployment()
+		a := sup.GetAssignment()
+		name := a.GetDeployment()
 		stats, ok := m[name]
 		if !ok {
 			stats = &deploymentStats{
-				namespace: fn.GetNamespace(),
+				namespace: a.GetNamespace(),
 				tenants:   make(map[string]struct{}),
 			}
 			m[name] = stats
 		}
-		stats.tenants[fn.GetTenant()] = struct{}{}
+		stats.tenants[a.GetTenant()] = struct{}{}
 		stats.totalInstances += len(sup.GetInstances())
 		stats.readyInstances += countReady(sup.GetInstances())
-		if scale := fn.GetScale(); scale != nil {
+		if scale := a.GetScale(); scale != nil {
 			stats.scaleMin += scale.GetMinInstances()
 			stats.scaleMax += scale.GetMaxInstances()
 		}
@@ -796,18 +796,18 @@ func buildDeploymentRows(state *skipper.ClusterState) []deploymentRow {
 	return rows
 }
 
-func filterEvents(events []*skipper.Event, fnFilter, sevFilter string) []*skipper.Event {
-	if fnFilter == "" && (sevFilter == "" || sevFilter == "all") {
+func filterEvents(events []*skipper.Event, assignmentFilter, sevFilter string) []*skipper.Event {
+	if assignmentFilter == "" && (sevFilter == "" || sevFilter == "all") {
 		return events
 	}
 
 	var filtered []*skipper.Event
 	for _, e := range events {
-		if fnFilter != "" {
+		if assignmentFilter != "" {
 			if e.GetAssignment() == nil {
 				continue
 			}
-			if !strings.Contains(strings.ToLower(assignmentKey(e.GetAssignment())), strings.ToLower(fnFilter)) {
+			if !strings.Contains(strings.ToLower(assignmentKey(e.GetAssignment())), strings.ToLower(assignmentFilter)) {
 				continue
 			}
 		}
@@ -837,10 +837,10 @@ func filterSupervisors(sups []*skipper.SupervisorState, search string) []*skippe
 	lower := strings.ToLower(search)
 	var filtered []*skipper.SupervisorState
 	for _, sup := range sups {
-		fn := sup.GetAssignment()
-		if strings.Contains(strings.ToLower(fn.GetDeployment()), lower) ||
-			strings.Contains(strings.ToLower(fn.GetNamespace()), lower) ||
-			strings.Contains(strings.ToLower(fn.GetTenant()), lower) {
+		a := sup.GetAssignment()
+		if strings.Contains(strings.ToLower(a.GetDeployment()), lower) ||
+			strings.Contains(strings.ToLower(a.GetNamespace()), lower) ||
+			strings.Contains(strings.ToLower(a.GetTenant()), lower) {
 			filtered = append(filtered, sup)
 		}
 	}

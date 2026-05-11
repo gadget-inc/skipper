@@ -66,14 +66,14 @@ func TestRetryMaxAttemptsOverride(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			fn := tc.assignment()
+			a := tc.assignment()
 
 			mcc := fixture.NewMockControllerClient(t)
 			var attempts atomic.Int32
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				attempts.Add(1)
 				inst := skipper.Instance_builder{
-					Assignment: fn,
+					Assignment: a,
 					Name:       new("failing-instance"),
 					Addr:       new("127.0.0.1:1"), // unroutable
 				}.Build()
@@ -91,7 +91,7 @@ func TestRetryMaxAttemptsOverride(t *testing.T) {
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
+			req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil)
 			router.ServeHTTP(rw, req)
 
 			assert.Equal(t, rw.Code, tc.wantStatus)
@@ -112,9 +112,9 @@ func TestRetryBackoffOverride(t *testing.T) {
 	// bound rather than the fast-tenant latency to keep the test stable on
 	// loaded CI runners.
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return skipper.Instance_builder{
-			Assignment: fn,
+			Assignment: a,
 			Name:       new("failing-instance"),
 			Addr:       new("127.0.0.1:1"),
 		}.Build(), nil
@@ -131,7 +131,7 @@ func TestRetryBackoffOverride(t *testing.T) {
 
 	// Tenant override: 50ms min, 200ms max — backoff totals across 2 retry
 	// gaps should be at least 100ms even on the fastest hardware.
-	overrideFn := retryAssignment(t, func(b *skipper.Assignment_builder) {
+	overrideAssignment := retryAssignment(t, func(b *skipper.Assignment_builder) {
 		b.RetryMaxAttempts = proto.Uint32(3)
 		b.RetryMinBackoff = durationpb.New(50 * time.Millisecond)
 		b.RetryMaxBackoff = durationpb.New(200 * time.Millisecond)
@@ -139,7 +139,7 @@ func TestRetryBackoffOverride(t *testing.T) {
 
 	start := time.Now()
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, overrideFn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, overrideAssignment, http.MethodGet, "/", nil)
 	router.ServeHTTP(rw, req)
 	elapsed := time.Since(start)
 
@@ -157,21 +157,21 @@ func TestPlaceholderKnobsNoEffectOnRouter(t *testing.T) {
 
 	mcc := fixture.NewMockControllerClient(t)
 
-	successInstance := func(t *testing.T, fn *skipper.Assignment) *skipper.Instance {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	successInstance := func(t *testing.T, a *skipper.Assignment) *skipper.Instance {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("ok"))
 		})
 	}
 
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return successInstance(t, fn), nil
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return successInstance(t, a), nil
 	})
 
 	cfg := testConfig()
 	router := New(cfg, mcc)
 
-	baseFn := retryAssignment(t, nil)
+	baseAssignment := retryAssignment(t, nil)
 	withPlaceholders := retryAssignment(t, func(b *skipper.Assignment_builder) {
 		b.ZoneSpread = skipper.ZoneSpread_ZONE_SPREAD_REQUIRED.Enum()
 		b.ZoneMin = proto.Uint32(3)
@@ -190,9 +190,9 @@ func TestPlaceholderKnobsNoEffectOnRouter(t *testing.T) {
 		b.TransportFlushInterval = durationpb.New(100 * time.Millisecond)
 	})
 
-	for _, fn := range []*skipper.Assignment{baseFn, withPlaceholders} {
+	for _, a := range []*skipper.Assignment{baseAssignment, withPlaceholders} {
 		rw := httptest.NewRecorder()
-		req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
+		req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil)
 		router.ServeHTTP(rw, req)
 		assert.Equal(t, rw.Code, http.StatusOK)
 		assert.Equal(t, rw.Body.String(), "ok")

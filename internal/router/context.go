@@ -10,15 +10,15 @@ import (
 type assignmentCtxKey struct{}
 
 func assignmentFromContext(ctx context.Context) (*skipper.Assignment, error) {
-	fn, ok := ctx.Value(assignmentCtxKey{}).(*skipper.Assignment)
+	a, ok := ctx.Value(assignmentCtxKey{}).(*skipper.Assignment)
 	if !ok {
 		return nil, errors.New("assignment not found in context")
 	}
-	return fn, nil
+	return a, nil
 }
 
-func withAssignment(ctx context.Context, fn *skipper.Assignment) context.Context {
-	return context.WithValue(ctx, assignmentCtxKey{}, fn)
+func withAssignment(ctx context.Context, a *skipper.Assignment) context.Context {
+	return context.WithValue(ctx, assignmentCtxKey{}, a)
 }
 
 // instanceResult is a mutable container placed in the context so that

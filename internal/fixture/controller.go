@@ -13,8 +13,8 @@ import (
 )
 
 type (
-	InstanceHandler        func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error)
-	ScaleHandler           func(ctx context.Context, fn *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
+	InstanceHandler        func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error)
+	ScaleHandler           func(ctx context.Context, a *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
 	HeartbeatHandler       func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
 	ReleaseInstanceHandler func(ctx context.Context, inst *skipper.Instance) error
 )
@@ -98,21 +98,21 @@ func (f *MockControllerClient) AllowReleaseInstance() {
 }
 
 // Instance implements controller.Client.
-func (f *MockControllerClient) Instance(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (instance *skipper.Instance, err error) {
+func (f *MockControllerClient) Instance(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (instance *skipper.Instance, err error) {
 	if f.instanceHandler == nil {
 		f.t.Fatalf("mcc.Instance was called but not mocked")
 	}
 	f.instanceWasCalled.Store(true)
-	return f.instanceHandler(ctx, fn, excludeInstanceNames...)
+	return f.instanceHandler(ctx, a, excludeInstanceNames...)
 }
 
 // Scale implements controller.Client.
-func (f *MockControllerClient) Scale(ctx context.Context, fn *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
+func (f *MockControllerClient) Scale(ctx context.Context, a *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
 	if f.scaleHandler == nil {
 		f.t.Fatalf("mcc.Scale was called but not mocked")
 	}
 	f.scaleWasCalled.Store(true)
-	return f.scaleHandler(ctx, fn, desiredInstances, reason)
+	return f.scaleHandler(ctx, a, desiredInstances, reason)
 }
 
 // Heartbeat implements controller.Client.

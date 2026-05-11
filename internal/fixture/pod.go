@@ -28,11 +28,11 @@ import (
 // This allows each assignment to have its own replicaset lineage without global counters.
 var replicaSetNames = xsync.NewMap[skipper.AssignmentHash, string]()
 
-func NewAvailablePod(t *testing.T, fn *skipper.Assignment, handler http.Handler) *v1.Pod {
+func NewAvailablePod(t *testing.T, a *skipper.Assignment, handler http.Handler) *v1.Pod {
 	t.Helper()
 
 	if handler == nil {
-		handler = defaultAvailablePodHandler(t, fn)
+		handler = defaultAvailablePodHandler(t, a)
 	}
 
 	testServer := httptest.NewServer(handler)
@@ -46,10 +46,10 @@ func NewAvailablePod(t *testing.T, fn *skipper.Assignment, handler http.Handler)
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.GetDeployment() + "-" + uuid.NewString()[:8],
-			Namespace: fn.GetNamespace(),
+			Name:      a.GetDeployment() + "-" + uuid.NewString()[:8],
+			Namespace: a.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.GetDeployment(),
+				key.Deployment.Label: a.GetDeployment(),
 			},
 			Annotations: map[string]string{
 				key.Port.Label: "http",
@@ -57,7 +57,7 @@ func NewAvailablePod(t *testing.T, fn *skipper.Assignment, handler http.Handler)
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					Kind: "ReplicaSet",
-					Name: CurrentReplicaSetName(fn),
+					Name: CurrentReplicaSetName(a),
 				},
 			},
 		},
@@ -87,17 +87,17 @@ func NewAvailablePod(t *testing.T, fn *skipper.Assignment, handler http.Handler)
 	}
 }
 
-func defaultAvailablePodHandler(t *testing.T, fn *skipper.Assignment) http.HandlerFunc {
+func defaultAvailablePodHandler(t *testing.T, a *skipper.Assignment) http.HandlerFunc {
 	return func(rw http.ResponseWriter, req *http.Request) {
 		assert.Assert(t, req.Method == http.MethodPost)
 		assert.Assert(t, req.URL.Path == "/__skipper/assign")
 
-		assignedFn, err := skipper.AssignmentFromHeader(req)
+		assignedAssignment, err := skipper.AssignmentFromHeader(req)
 		assert.NilError(t, err)
-		assert.Assert(t, proto.Equal(assignedFn, fn))
+		assert.Assert(t, proto.Equal(assignedAssignment, a))
 
 		parser := paseto.NewParserForValidNow()
-		parser.AddRule(paseto.Subject(fn.GetTenant()))
+		parser.AddRule(paseto.Subject(a.GetTenant()))
 		_, err = parser.ParseV2Public(ControllerPasetoPublicKey, req.Header.Get(key.Token.Header))
 		assert.NilError(t, err)
 
@@ -105,7 +105,7 @@ func defaultAvailablePodHandler(t *testing.T, fn *skipper.Assignment) http.Handl
 	}
 }
 
-func NewAssignedPod(t *testing.T, fn *skipper.Assignment, handler http.Handler) *v1.Pod {
+func NewAssignedPod(t *testing.T, a *skipper.Assignment, handler http.Handler) *v1.Pod {
 	t.Helper()
 
 	testServer := httptest.NewServer(handler)
@@ -117,21 +117,21 @@ func NewAssignedPod(t *testing.T, fn *skipper.Assignment, handler http.Handler) 
 	port, err := strconv.Atoi(portStr)
 	assert.NilError(t, err)
 
-	body, err := json.Marshal(fn)
+	body, err := json.Marshal(a)
 	assert.NilError(t, err)
 
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fn.GetDeployment() + "-" + uuid.NewString()[:8],
-			Namespace: fn.GetNamespace(),
+			Name:      a.GetDeployment() + "-" + uuid.NewString()[:8],
+			Namespace: a.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.GetDeployment(),
-				key.Tenant.Label:     fn.GetTenant(),
+				key.Deployment.Label: a.GetDeployment(),
+				key.Tenant.Label:     a.GetTenant(),
 			},
 			Annotations: map[string]string{
 				skipper.LegacyFunctionKey.Label: string(body),
 				skipper.AssignmentKey.Label:     string(body),
-				key.ReplicaSet.Label:            CurrentReplicaSetName(fn),
+				key.ReplicaSet.Label:            CurrentReplicaSetName(a),
 				key.AssignedAt.Label:            time.Now().UTC().Format(time.RFC3339),
 				key.ReadyAt.Label:               time.Now().UTC().Format(time.RFC3339),
 			},
@@ -152,8 +152,8 @@ func NewAssignedPod(t *testing.T, fn *skipper.Assignment, handler http.Handler) 
 					Ports:   []v1.ContainerPort{{ContainerPort: int32(port)}},
 					Resources: v1.ResourceRequirements{
 						Requests: v1.ResourceList{
-							v1.ResourceCPU:    resource.MustParse(strconv.FormatUint(uint64(fn.GetScale().GetTargetCpuUsageMilli()), 10) + "m"),
-							v1.ResourceMemory: resource.MustParse(strconv.FormatUint(uint64(fn.GetScale().GetTargetMemoryUsageMib()), 10) + "Mi"),
+							v1.ResourceCPU:    resource.MustParse(strconv.FormatUint(uint64(a.GetScale().GetTargetCpuUsageMilli()), 10) + "m"),
+							v1.ResourceMemory: resource.MustParse(strconv.FormatUint(uint64(a.GetScale().GetTargetMemoryUsageMib()), 10) + "Mi"),
 						},
 					},
 				},
@@ -164,21 +164,21 @@ func NewAssignedPod(t *testing.T, fn *skipper.Assignment, handler http.Handler) 
 
 // CurrentReplicaSetName returns the current replicaset name for the given assignment.
 // If no replicaset has been created yet for this assignment, it generates one.
-func CurrentReplicaSetName(fn *skipper.Assignment) string {
-	name, _ := replicaSetNames.LoadOrCompute(fn.Hash(), func() (string, bool) {
-		return fn.GetDeployment() + "-rs-" + uuid.NewString()[:8], false
+func CurrentReplicaSetName(a *skipper.Assignment) string {
+	name, _ := replicaSetNames.LoadOrCompute(a.Hash(), func() (string, bool) {
+		return a.GetDeployment() + "-rs-" + uuid.NewString()[:8], false
 	})
 	return name
 }
 
-func CurrentReplicaSet(t *testing.T, fn *skipper.Assignment) *appsv1.ReplicaSet {
+func CurrentReplicaSet(t *testing.T, a *skipper.Assignment) *appsv1.ReplicaSet {
 	t.Helper()
 	return &appsv1.ReplicaSet{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      CurrentReplicaSetName(fn),
-			Namespace: fn.GetNamespace(),
+			Name:      CurrentReplicaSetName(a),
+			Namespace: a.GetNamespace(),
 			Labels: map[string]string{
-				key.Deployment.Label: fn.GetDeployment(),
+				key.Deployment.Label: a.GetDeployment(),
 			},
 		},
 		Status: appsv1.ReplicaSetStatus{
@@ -189,10 +189,10 @@ func CurrentReplicaSet(t *testing.T, fn *skipper.Assignment) *appsv1.ReplicaSet 
 }
 
 // NewReplicaSet creates a new replicaset for the assignment, replacing any existing one.
-func NewReplicaSet(t *testing.T, fn *skipper.Assignment) *appsv1.ReplicaSet {
+func NewReplicaSet(t *testing.T, a *skipper.Assignment) *appsv1.ReplicaSet {
 	t.Helper()
-	replicaSetNames.Store(fn.Hash(), fn.GetDeployment()+"-rs-"+uuid.NewString()[:8])
-	return CurrentReplicaSet(t, fn)
+	replicaSetNames.Store(a.Hash(), a.GetDeployment()+"-rs-"+uuid.NewString()[:8])
+	return CurrentReplicaSet(t, a)
 }
 
 // NewPodMetrics returns PodMetrics for the given pod.

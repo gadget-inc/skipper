@@ -37,13 +37,13 @@ func TestAssignmentKeyEquivalence(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name string
-		fn   *Assignment
+		name       string
+		assignment *Assignment
 	}{
-		{name: "fully populated", fn: testAssignment},
+		{name: "fully populated", assignment: testAssignment},
 		{
 			name: "minimal required fields",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace:  new("ns"),
 				Deployment: new("deploy"),
 				Tenant:     new("tenant"),
@@ -52,7 +52,7 @@ func TestAssignmentKeyEquivalence(t *testing.T) {
 		},
 		{
 			name: "oneshot true",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace:  new("ns"),
 				Deployment: new("deploy"),
 				Tenant:     new("tenant"),
@@ -62,7 +62,7 @@ func TestAssignmentKeyEquivalence(t *testing.T) {
 		},
 		{
 			name: "empty metadata",
-			fn: Assignment_builder{
+			assignment: Assignment_builder{
 				Namespace:  new("ns"),
 				Deployment: new("deploy"),
 				Tenant:     new("tenant"),
@@ -78,8 +78,8 @@ func TestAssignmentKeyEquivalence(t *testing.T) {
 			t.Run(kc.name+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
 
-				got := kc.key.Attr(tc.fn)
-				want := uncached.Attr(tc.fn)
+				got := kc.key.Attr(tc.assignment)
+				want := uncached.Attr(tc.assignment)
 
 				assert.Assert(t, got.Slog.Equal(want.Slog), "Slog mismatch:\n got: %v\nwant: %v", got.Slog, want.Slog)
 				assert.DeepEqual(t, got.Otel, want.Otel, cmpopts.EquateComparable(attribute.KeyValue{}))
@@ -91,7 +91,7 @@ func TestAssignmentKeyEquivalence(t *testing.T) {
 func TestAssignmentKeyConcurrent(t *testing.T) {
 	t.Parallel()
 
-	fn := Assignment_builder{
+	a := Assignment_builder{
 		Namespace:  new("concurrent-ns"),
 		Deployment: new("concurrent-deploy"),
 		Tenant:     new("concurrent-tenant"),
@@ -106,7 +106,7 @@ func TestAssignmentKeyConcurrent(t *testing.T) {
 		t.Run(kc.name, func(t *testing.T) {
 			t.Parallel()
 
-			want := kc.key.Attr(fn)
+			want := kc.key.Attr(a)
 
 			var wg sync.WaitGroup
 			wg.Add(goroutines)
@@ -114,7 +114,7 @@ func TestAssignmentKeyConcurrent(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					for range iterations {
-						if got := kc.key.Attr(fn); !got.Slog.Equal(want.Slog) {
+						if got := kc.key.Attr(a); !got.Slog.Equal(want.Slog) {
 							t.Errorf("Slog mismatch under concurrent access")
 							return
 						}
@@ -127,7 +127,7 @@ func TestAssignmentKeyConcurrent(t *testing.T) {
 }
 
 func BenchmarkAssignmentKeyAttr(b *testing.B) {
-	fn := Assignment_builder{
+	a := Assignment_builder{
 		Namespace:  new("bench-ns"),
 		Deployment: new("bench-deploy"),
 		Tenant:     new("bench-tenant"),
@@ -137,11 +137,11 @@ func BenchmarkAssignmentKeyAttr(b *testing.B) {
 
 	for _, kc := range cachedAssignmentKeys {
 		b.Run(kc.name, func(b *testing.B) {
-			_ = kc.key.Attr(fn) // prime the cache so we measure the hit path
+			_ = kc.key.Attr(a) // prime the cache so we measure the hit path
 
 			b.ReportAllocs()
 			for b.Loop() {
-				sinkAttrResult = kc.key.Attr(fn)
+				sinkAttrResult = kc.key.Attr(a)
 			}
 		})
 	}
