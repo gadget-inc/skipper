@@ -2,6 +2,7 @@ package docssite
 
 import (
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -180,15 +181,13 @@ func TestRenderMessageTable_MissingDescriptionFails(t *testing.T) {
 func TestRenderMessageTable_ExtraDescriptionFails(t *testing.T) {
 	t.Parallel()
 
-	descriptions := map[string]string{
-		"Assignment.namespace":  "x",
-		"Assignment.deployment": "x",
-		"Assignment.tenant":     "x",
-		"Assignment.metadata":   "x",
-		"Assignment.scale":      "x",
-		"Assignment.oneshot":    "x",
-		"Assignment.bogus":      "extraneous",
-	}
+	// Start from the live description map so adding fields to Assignment
+	// doesn't trip the missing-description check before the "extra key"
+	// check this case actually exercises.
+	descriptions := make(map[string]string, len(messageTableDescriptions)+1)
+	maps.Copy(descriptions, messageTableDescriptions)
+	descriptions["Assignment.bogus"] = "extraneous"
+
 	_, err := renderMessageRows("Assignment", descriptions, messageTableRegistry)
 	assert.Assert(t, err != nil)
 	assert.Assert(t, errors.Is(err, errMessageDescriptionDrift))

@@ -10,6 +10,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	_ "google.golang.org/protobuf/types/gofeaturespb"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	unsafe "unsafe"
@@ -21,6 +22,156 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// ZoneSpread controls how the controller spreads instances across availability
+// zones for an assignment. Placeholder (followup: zone-aware-placement); no
+// decision site reads it in the current release.
+type ZoneSpread int32
+
+const (
+	ZoneSpread_ZONE_SPREAD_UNSPECIFIED ZoneSpread = 0
+	ZoneSpread_ZONE_SPREAD_NONE        ZoneSpread = 1
+	ZoneSpread_ZONE_SPREAD_PREFERRED   ZoneSpread = 2
+	ZoneSpread_ZONE_SPREAD_REQUIRED    ZoneSpread = 3
+)
+
+// Enum value maps for ZoneSpread.
+var (
+	ZoneSpread_name = map[int32]string{
+		0: "ZONE_SPREAD_UNSPECIFIED",
+		1: "ZONE_SPREAD_NONE",
+		2: "ZONE_SPREAD_PREFERRED",
+		3: "ZONE_SPREAD_REQUIRED",
+	}
+	ZoneSpread_value = map[string]int32{
+		"ZONE_SPREAD_UNSPECIFIED": 0,
+		"ZONE_SPREAD_NONE":        1,
+		"ZONE_SPREAD_PREFERRED":   2,
+		"ZONE_SPREAD_REQUIRED":    3,
+	}
+)
+
+func (x ZoneSpread) Enum() *ZoneSpread {
+	p := new(ZoneSpread)
+	*p = x
+	return p
+}
+
+func (x ZoneSpread) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ZoneSpread) Descriptor() protoreflect.EnumDescriptor {
+	return file_types_proto_enumTypes[0].Descriptor()
+}
+
+func (ZoneSpread) Type() protoreflect.EnumType {
+	return &file_types_proto_enumTypes[0]
+}
+
+func (x ZoneSpread) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// ZoneAffinity controls how the router prefers same-zone instances when routing
+// requests for an assignment. Placeholder (followup: zone-aware-affinity); no
+// decision site reads it in the current release.
+type ZoneAffinity int32
+
+const (
+	ZoneAffinity_ZONE_AFFINITY_UNSPECIFIED ZoneAffinity = 0
+	ZoneAffinity_ZONE_AFFINITY_NONE        ZoneAffinity = 1
+	ZoneAffinity_ZONE_AFFINITY_PREFERRED   ZoneAffinity = 2
+	ZoneAffinity_ZONE_AFFINITY_REQUIRED    ZoneAffinity = 3
+)
+
+// Enum value maps for ZoneAffinity.
+var (
+	ZoneAffinity_name = map[int32]string{
+		0: "ZONE_AFFINITY_UNSPECIFIED",
+		1: "ZONE_AFFINITY_NONE",
+		2: "ZONE_AFFINITY_PREFERRED",
+		3: "ZONE_AFFINITY_REQUIRED",
+	}
+	ZoneAffinity_value = map[string]int32{
+		"ZONE_AFFINITY_UNSPECIFIED": 0,
+		"ZONE_AFFINITY_NONE":        1,
+		"ZONE_AFFINITY_PREFERRED":   2,
+		"ZONE_AFFINITY_REQUIRED":    3,
+	}
+)
+
+func (x ZoneAffinity) Enum() *ZoneAffinity {
+	p := new(ZoneAffinity)
+	*p = x
+	return p
+}
+
+func (x ZoneAffinity) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ZoneAffinity) Descriptor() protoreflect.EnumDescriptor {
+	return file_types_proto_enumTypes[1].Descriptor()
+}
+
+func (ZoneAffinity) Type() protoreflect.EnumType {
+	return &file_types_proto_enumTypes[1]
+}
+
+func (x ZoneAffinity) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Backpressure controls how the router responds when an upstream instance
+// signals backpressure on a request. Placeholder (followup: backpressure); no
+// decision site reads it in the current release.
+type Backpressure int32
+
+const (
+	Backpressure_BACKPRESSURE_UNSPECIFIED     Backpressure = 0
+	Backpressure_BACKPRESSURE_IGNORE          Backpressure = 1
+	Backpressure_BACKPRESSURE_RETRY           Backpressure = 2
+	Backpressure_BACKPRESSURE_RETRY_AND_EJECT Backpressure = 3
+)
+
+// Enum value maps for Backpressure.
+var (
+	Backpressure_name = map[int32]string{
+		0: "BACKPRESSURE_UNSPECIFIED",
+		1: "BACKPRESSURE_IGNORE",
+		2: "BACKPRESSURE_RETRY",
+		3: "BACKPRESSURE_RETRY_AND_EJECT",
+	}
+	Backpressure_value = map[string]int32{
+		"BACKPRESSURE_UNSPECIFIED":     0,
+		"BACKPRESSURE_IGNORE":          1,
+		"BACKPRESSURE_RETRY":           2,
+		"BACKPRESSURE_RETRY_AND_EJECT": 3,
+	}
+)
+
+func (x Backpressure) Enum() *Backpressure {
+	p := new(Backpressure)
+	*p = x
+	return p
+}
+
+func (x Backpressure) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Backpressure) Descriptor() protoreflect.EnumDescriptor {
+	return file_types_proto_enumTypes[2].Descriptor()
+}
+
+func (Backpressure) Type() protoreflect.EnumType {
+	return &file_types_proto_enumTypes[2]
+}
+
+func (x Backpressure) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
 
 type ScaleReason int32
 
@@ -64,11 +215,11 @@ func (x ScaleReason) String() string {
 }
 
 func (ScaleReason) Descriptor() protoreflect.EnumDescriptor {
-	return file_types_proto_enumTypes[0].Descriptor()
+	return file_types_proto_enumTypes[3].Descriptor()
 }
 
 func (ScaleReason) Type() protoreflect.EnumType {
-	return &file_types_proto_enumTypes[0]
+	return &file_types_proto_enumTypes[3]
 }
 
 func (x ScaleReason) Number() protoreflect.EnumNumber {
@@ -123,11 +274,11 @@ func (x EventType) String() string {
 }
 
 func (EventType) Descriptor() protoreflect.EnumDescriptor {
-	return file_types_proto_enumTypes[1].Descriptor()
+	return file_types_proto_enumTypes[4].Descriptor()
 }
 
 func (EventType) Type() protoreflect.EnumType {
-	return &file_types_proto_enumTypes[1]
+	return &file_types_proto_enumTypes[4]
 }
 
 func (x EventType) Number() protoreflect.EnumNumber {
@@ -167,11 +318,11 @@ func (x EventSeverity) String() string {
 }
 
 func (EventSeverity) Descriptor() protoreflect.EnumDescriptor {
-	return file_types_proto_enumTypes[2].Descriptor()
+	return file_types_proto_enumTypes[5].Descriptor()
 }
 
 func (EventSeverity) Type() protoreflect.EnumType {
-	return &file_types_proto_enumTypes[2]
+	return &file_types_proto_enumTypes[5]
 }
 
 func (x EventSeverity) Number() protoreflect.EnumNumber {
@@ -373,18 +524,58 @@ func (b0 Scale_builder) Build() *Scale {
 	return m0
 }
 
+// Assignment carries the per-tenant identity and policy for a deployment.
+// Field numbers are grouped by concern, reserving ranges for future growth:
+//
+//	1-9    identity
+//	10-29  scale (excluding scale = 5, grandfathered)
+//	30-39  zone
+//	40-49  assign
+//	50-59  heartbeat
+//	60-79  retry
+//	80-109 transport
+//	110-199 future
 type Assignment struct {
-	state                  protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Namespace   *string                `protobuf:"bytes,1,opt,name=namespace"`
-	xxx_hidden_Deployment  *string                `protobuf:"bytes,2,opt,name=deployment"`
-	xxx_hidden_Tenant      *string                `protobuf:"bytes,3,opt,name=tenant"`
-	xxx_hidden_Metadata    *string                `protobuf:"bytes,4,opt,name=metadata"`
-	xxx_hidden_Scale       *Scale                 `protobuf:"bytes,5,opt,name=scale"`
-	xxx_hidden_Oneshot     bool                   `protobuf:"varint,6,opt,name=oneshot"`
-	XXX_raceDetectHookData protoimpl.RaceDetectHookData
-	XXX_presence           [1]uint32
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	state                                   protoimpl.MessageState `protogen:"opaque.v1"`
+	xxx_hidden_Namespace                    *string                `protobuf:"bytes,1,opt,name=namespace"`
+	xxx_hidden_Deployment                   *string                `protobuf:"bytes,2,opt,name=deployment"`
+	xxx_hidden_Tenant                       *string                `protobuf:"bytes,3,opt,name=tenant"`
+	xxx_hidden_Metadata                     *string                `protobuf:"bytes,4,opt,name=metadata"`
+	xxx_hidden_Scale                        *Scale                 `protobuf:"bytes,5,opt,name=scale"`
+	xxx_hidden_Oneshot                      bool                   `protobuf:"varint,6,opt,name=oneshot"`
+	xxx_hidden_ScaleMinInstances            uint32                 `protobuf:"varint,10,opt,name=scale_min_instances,json=scaleMinInstances"`
+	xxx_hidden_ScaleMaxInstances            uint32                 `protobuf:"varint,11,opt,name=scale_max_instances,json=scaleMaxInstances"`
+	xxx_hidden_ScaleTargetCpuMillicores     uint32                 `protobuf:"varint,12,opt,name=scale_target_cpu_millicores,json=scaleTargetCpuMillicores"`
+	xxx_hidden_ScaleTargetMemoryMebibytes   uint32                 `protobuf:"varint,13,opt,name=scale_target_memory_mebibytes,json=scaleTargetMemoryMebibytes"`
+	xxx_hidden_ScaleTargetInFlightRequests  uint32                 `protobuf:"varint,14,opt,name=scale_target_in_flight_requests,json=scaleTargetInFlightRequests"`
+	xxx_hidden_ScaleTolerance               float64                `protobuf:"fixed64,15,opt,name=scale_tolerance,json=scaleTolerance"`
+	xxx_hidden_ScaleDownscaleStabilization  *durationpb.Duration   `protobuf:"bytes,16,opt,name=scale_downscale_stabilization,json=scaleDownscaleStabilization"`
+	xxx_hidden_ScaleInitialReadinessDelay   *durationpb.Duration   `protobuf:"bytes,17,opt,name=scale_initial_readiness_delay,json=scaleInitialReadinessDelay"`
+	xxx_hidden_ZoneSpread                   ZoneSpread             `protobuf:"varint,30,opt,name=zone_spread,json=zoneSpread,enum=skipper.ZoneSpread"`
+	xxx_hidden_ZoneMin                      uint32                 `protobuf:"varint,31,opt,name=zone_min,json=zoneMin"`
+	xxx_hidden_ZoneAffinity                 ZoneAffinity           `protobuf:"varint,32,opt,name=zone_affinity,json=zoneAffinity,enum=skipper.ZoneAffinity"`
+	xxx_hidden_AssignPath                   *string                `protobuf:"bytes,40,opt,name=assign_path,json=assignPath"`
+	xxx_hidden_AssignTimeout                *durationpb.Duration   `protobuf:"bytes,41,opt,name=assign_timeout,json=assignTimeout"`
+	xxx_hidden_AssignTokenTtl               *durationpb.Duration   `protobuf:"bytes,42,opt,name=assign_token_ttl,json=assignTokenTtl"`
+	xxx_hidden_HeartbeatInterval            *durationpb.Duration   `protobuf:"bytes,50,opt,name=heartbeat_interval,json=heartbeatInterval"`
+	xxx_hidden_HeartbeatTimeout             *durationpb.Duration   `protobuf:"bytes,51,opt,name=heartbeat_timeout,json=heartbeatTimeout"`
+	xxx_hidden_RetryMaxAttempts             uint32                 `protobuf:"varint,60,opt,name=retry_max_attempts,json=retryMaxAttempts"`
+	xxx_hidden_RetryMinBackoff              *durationpb.Duration   `protobuf:"bytes,61,opt,name=retry_min_backoff,json=retryMinBackoff"`
+	xxx_hidden_RetryMaxBackoff              *durationpb.Duration   `protobuf:"bytes,62,opt,name=retry_max_backoff,json=retryMaxBackoff"`
+	xxx_hidden_RetryBackpressure            Backpressure           `protobuf:"varint,63,opt,name=retry_backpressure,json=retryBackpressure,enum=skipper.Backpressure"`
+	xxx_hidden_RetryStatusCodes             []uint32               `protobuf:"varint,64,rep,packed,name=retry_status_codes,json=retryStatusCodes"`
+	xxx_hidden_TransportDialTimeout         *durationpb.Duration   `protobuf:"bytes,80,opt,name=transport_dial_timeout,json=transportDialTimeout"`
+	xxx_hidden_TransportKeepalive           *durationpb.Duration   `protobuf:"bytes,81,opt,name=transport_keepalive,json=transportKeepalive"`
+	xxx_hidden_TransportIdleConnTimeout     *durationpb.Duration   `protobuf:"bytes,82,opt,name=transport_idle_conn_timeout,json=transportIdleConnTimeout"`
+	xxx_hidden_TransportTlsHandshakeTimeout *durationpb.Duration   `protobuf:"bytes,83,opt,name=transport_tls_handshake_timeout,json=transportTlsHandshakeTimeout"`
+	xxx_hidden_TransportMaxIdleConns        uint32                 `protobuf:"varint,84,opt,name=transport_max_idle_conns,json=transportMaxIdleConns"`
+	xxx_hidden_TransportForceHttp2          bool                   `protobuf:"varint,85,opt,name=transport_force_http2,json=transportForceHttp2"`
+	xxx_hidden_TransportDisableCompression  bool                   `protobuf:"varint,86,opt,name=transport_disable_compression,json=transportDisableCompression"`
+	xxx_hidden_TransportFlushInterval       *durationpb.Duration   `protobuf:"bytes,87,opt,name=transport_flush_interval,json=transportFlushInterval"`
+	XXX_raceDetectHookData                  protoimpl.RaceDetectHookData
+	XXX_presence                            [2]uint32
+	unknownFields                           protoimpl.UnknownFields
+	sizeCache                               protoimpl.SizeCache
 }
 
 func (x *Assignment) Reset() {
@@ -466,24 +657,236 @@ func (x *Assignment) GetOneshot() bool {
 	return false
 }
 
+func (x *Assignment) GetScaleMinInstances() uint32 {
+	if x != nil {
+		return x.xxx_hidden_ScaleMinInstances
+	}
+	return 0
+}
+
+func (x *Assignment) GetScaleMaxInstances() uint32 {
+	if x != nil {
+		return x.xxx_hidden_ScaleMaxInstances
+	}
+	return 0
+}
+
+func (x *Assignment) GetScaleTargetCpuMillicores() uint32 {
+	if x != nil {
+		return x.xxx_hidden_ScaleTargetCpuMillicores
+	}
+	return 0
+}
+
+func (x *Assignment) GetScaleTargetMemoryMebibytes() uint32 {
+	if x != nil {
+		return x.xxx_hidden_ScaleTargetMemoryMebibytes
+	}
+	return 0
+}
+
+func (x *Assignment) GetScaleTargetInFlightRequests() uint32 {
+	if x != nil {
+		return x.xxx_hidden_ScaleTargetInFlightRequests
+	}
+	return 0
+}
+
+func (x *Assignment) GetScaleTolerance() float64 {
+	if x != nil {
+		return x.xxx_hidden_ScaleTolerance
+	}
+	return 0
+}
+
+func (x *Assignment) GetScaleDownscaleStabilization() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_ScaleDownscaleStabilization
+	}
+	return nil
+}
+
+func (x *Assignment) GetScaleInitialReadinessDelay() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_ScaleInitialReadinessDelay
+	}
+	return nil
+}
+
+func (x *Assignment) GetZoneSpread() ZoneSpread {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 14) {
+			return x.xxx_hidden_ZoneSpread
+		}
+	}
+	return ZoneSpread_ZONE_SPREAD_UNSPECIFIED
+}
+
+func (x *Assignment) GetZoneMin() uint32 {
+	if x != nil {
+		return x.xxx_hidden_ZoneMin
+	}
+	return 0
+}
+
+func (x *Assignment) GetZoneAffinity() ZoneAffinity {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 16) {
+			return x.xxx_hidden_ZoneAffinity
+		}
+	}
+	return ZoneAffinity_ZONE_AFFINITY_UNSPECIFIED
+}
+
+func (x *Assignment) GetAssignPath() string {
+	if x != nil {
+		if x.xxx_hidden_AssignPath != nil {
+			return *x.xxx_hidden_AssignPath
+		}
+		return ""
+	}
+	return ""
+}
+
+func (x *Assignment) GetAssignTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_AssignTimeout
+	}
+	return nil
+}
+
+func (x *Assignment) GetAssignTokenTtl() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_AssignTokenTtl
+	}
+	return nil
+}
+
+func (x *Assignment) GetHeartbeatInterval() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_HeartbeatInterval
+	}
+	return nil
+}
+
+func (x *Assignment) GetHeartbeatTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_HeartbeatTimeout
+	}
+	return nil
+}
+
+func (x *Assignment) GetRetryMaxAttempts() uint32 {
+	if x != nil {
+		return x.xxx_hidden_RetryMaxAttempts
+	}
+	return 0
+}
+
+func (x *Assignment) GetRetryMinBackoff() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_RetryMinBackoff
+	}
+	return nil
+}
+
+func (x *Assignment) GetRetryMaxBackoff() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_RetryMaxBackoff
+	}
+	return nil
+}
+
+func (x *Assignment) GetRetryBackpressure() Backpressure {
+	if x != nil {
+		if protoimpl.X.Present(&(x.XXX_presence[0]), 25) {
+			return x.xxx_hidden_RetryBackpressure
+		}
+	}
+	return Backpressure_BACKPRESSURE_UNSPECIFIED
+}
+
+func (x *Assignment) GetRetryStatusCodes() []uint32 {
+	if x != nil {
+		return x.xxx_hidden_RetryStatusCodes
+	}
+	return nil
+}
+
+func (x *Assignment) GetTransportDialTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_TransportDialTimeout
+	}
+	return nil
+}
+
+func (x *Assignment) GetTransportKeepalive() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_TransportKeepalive
+	}
+	return nil
+}
+
+func (x *Assignment) GetTransportIdleConnTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_TransportIdleConnTimeout
+	}
+	return nil
+}
+
+func (x *Assignment) GetTransportTlsHandshakeTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_TransportTlsHandshakeTimeout
+	}
+	return nil
+}
+
+func (x *Assignment) GetTransportMaxIdleConns() uint32 {
+	if x != nil {
+		return x.xxx_hidden_TransportMaxIdleConns
+	}
+	return 0
+}
+
+func (x *Assignment) GetTransportForceHttp2() bool {
+	if x != nil {
+		return x.xxx_hidden_TransportForceHttp2
+	}
+	return false
+}
+
+func (x *Assignment) GetTransportDisableCompression() bool {
+	if x != nil {
+		return x.xxx_hidden_TransportDisableCompression
+	}
+	return false
+}
+
+func (x *Assignment) GetTransportFlushInterval() *durationpb.Duration {
+	if x != nil {
+		return x.xxx_hidden_TransportFlushInterval
+	}
+	return nil
+}
+
 func (x *Assignment) SetNamespace(v string) {
 	x.xxx_hidden_Namespace = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 0, 35)
 }
 
 func (x *Assignment) SetDeployment(v string) {
 	x.xxx_hidden_Deployment = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 1, 35)
 }
 
 func (x *Assignment) SetTenant(v string) {
 	x.xxx_hidden_Tenant = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 35)
 }
 
 func (x *Assignment) SetMetadata(v string) {
 	x.xxx_hidden_Metadata = &v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 3, 35)
 }
 
 func (x *Assignment) SetScale(v *Scale) {
@@ -492,7 +895,138 @@ func (x *Assignment) SetScale(v *Scale) {
 
 func (x *Assignment) SetOneshot(v bool) {
 	x.xxx_hidden_Oneshot = v
-	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 6)
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 5, 35)
+}
+
+func (x *Assignment) SetScaleMinInstances(v uint32) {
+	x.xxx_hidden_ScaleMinInstances = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 6, 35)
+}
+
+func (x *Assignment) SetScaleMaxInstances(v uint32) {
+	x.xxx_hidden_ScaleMaxInstances = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 7, 35)
+}
+
+func (x *Assignment) SetScaleTargetCpuMillicores(v uint32) {
+	x.xxx_hidden_ScaleTargetCpuMillicores = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 8, 35)
+}
+
+func (x *Assignment) SetScaleTargetMemoryMebibytes(v uint32) {
+	x.xxx_hidden_ScaleTargetMemoryMebibytes = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 9, 35)
+}
+
+func (x *Assignment) SetScaleTargetInFlightRequests(v uint32) {
+	x.xxx_hidden_ScaleTargetInFlightRequests = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 10, 35)
+}
+
+func (x *Assignment) SetScaleTolerance(v float64) {
+	x.xxx_hidden_ScaleTolerance = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 11, 35)
+}
+
+func (x *Assignment) SetScaleDownscaleStabilization(v *durationpb.Duration) {
+	x.xxx_hidden_ScaleDownscaleStabilization = v
+}
+
+func (x *Assignment) SetScaleInitialReadinessDelay(v *durationpb.Duration) {
+	x.xxx_hidden_ScaleInitialReadinessDelay = v
+}
+
+func (x *Assignment) SetZoneSpread(v ZoneSpread) {
+	x.xxx_hidden_ZoneSpread = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 14, 35)
+}
+
+func (x *Assignment) SetZoneMin(v uint32) {
+	x.xxx_hidden_ZoneMin = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 15, 35)
+}
+
+func (x *Assignment) SetZoneAffinity(v ZoneAffinity) {
+	x.xxx_hidden_ZoneAffinity = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 16, 35)
+}
+
+func (x *Assignment) SetAssignPath(v string) {
+	x.xxx_hidden_AssignPath = &v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 17, 35)
+}
+
+func (x *Assignment) SetAssignTimeout(v *durationpb.Duration) {
+	x.xxx_hidden_AssignTimeout = v
+}
+
+func (x *Assignment) SetAssignTokenTtl(v *durationpb.Duration) {
+	x.xxx_hidden_AssignTokenTtl = v
+}
+
+func (x *Assignment) SetHeartbeatInterval(v *durationpb.Duration) {
+	x.xxx_hidden_HeartbeatInterval = v
+}
+
+func (x *Assignment) SetHeartbeatTimeout(v *durationpb.Duration) {
+	x.xxx_hidden_HeartbeatTimeout = v
+}
+
+func (x *Assignment) SetRetryMaxAttempts(v uint32) {
+	x.xxx_hidden_RetryMaxAttempts = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 22, 35)
+}
+
+func (x *Assignment) SetRetryMinBackoff(v *durationpb.Duration) {
+	x.xxx_hidden_RetryMinBackoff = v
+}
+
+func (x *Assignment) SetRetryMaxBackoff(v *durationpb.Duration) {
+	x.xxx_hidden_RetryMaxBackoff = v
+}
+
+func (x *Assignment) SetRetryBackpressure(v Backpressure) {
+	x.xxx_hidden_RetryBackpressure = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 25, 35)
+}
+
+func (x *Assignment) SetRetryStatusCodes(v []uint32) {
+	x.xxx_hidden_RetryStatusCodes = v
+}
+
+func (x *Assignment) SetTransportDialTimeout(v *durationpb.Duration) {
+	x.xxx_hidden_TransportDialTimeout = v
+}
+
+func (x *Assignment) SetTransportKeepalive(v *durationpb.Duration) {
+	x.xxx_hidden_TransportKeepalive = v
+}
+
+func (x *Assignment) SetTransportIdleConnTimeout(v *durationpb.Duration) {
+	x.xxx_hidden_TransportIdleConnTimeout = v
+}
+
+func (x *Assignment) SetTransportTlsHandshakeTimeout(v *durationpb.Duration) {
+	x.xxx_hidden_TransportTlsHandshakeTimeout = v
+}
+
+func (x *Assignment) SetTransportMaxIdleConns(v uint32) {
+	x.xxx_hidden_TransportMaxIdleConns = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 31, 35)
+}
+
+func (x *Assignment) SetTransportForceHttp2(v bool) {
+	x.xxx_hidden_TransportForceHttp2 = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 32, 35)
+}
+
+func (x *Assignment) SetTransportDisableCompression(v bool) {
+	x.xxx_hidden_TransportDisableCompression = v
+	protoimpl.X.SetPresent(&(x.XXX_presence[1]), 33, 35)
+}
+
+func (x *Assignment) SetTransportFlushInterval(v *durationpb.Duration) {
+	x.xxx_hidden_TransportFlushInterval = v
 }
 
 func (x *Assignment) HasNamespace() bool {
@@ -537,6 +1071,202 @@ func (x *Assignment) HasOneshot() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 5)
 }
 
+func (x *Assignment) HasScaleMinInstances() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 6)
+}
+
+func (x *Assignment) HasScaleMaxInstances() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 7)
+}
+
+func (x *Assignment) HasScaleTargetCpuMillicores() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 8)
+}
+
+func (x *Assignment) HasScaleTargetMemoryMebibytes() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 9)
+}
+
+func (x *Assignment) HasScaleTargetInFlightRequests() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 10)
+}
+
+func (x *Assignment) HasScaleTolerance() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 11)
+}
+
+func (x *Assignment) HasScaleDownscaleStabilization() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_ScaleDownscaleStabilization != nil
+}
+
+func (x *Assignment) HasScaleInitialReadinessDelay() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_ScaleInitialReadinessDelay != nil
+}
+
+func (x *Assignment) HasZoneSpread() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 14)
+}
+
+func (x *Assignment) HasZoneMin() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 15)
+}
+
+func (x *Assignment) HasZoneAffinity() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 16)
+}
+
+func (x *Assignment) HasAssignPath() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 17)
+}
+
+func (x *Assignment) HasAssignTimeout() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_AssignTimeout != nil
+}
+
+func (x *Assignment) HasAssignTokenTtl() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_AssignTokenTtl != nil
+}
+
+func (x *Assignment) HasHeartbeatInterval() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_HeartbeatInterval != nil
+}
+
+func (x *Assignment) HasHeartbeatTimeout() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_HeartbeatTimeout != nil
+}
+
+func (x *Assignment) HasRetryMaxAttempts() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 22)
+}
+
+func (x *Assignment) HasRetryMinBackoff() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_RetryMinBackoff != nil
+}
+
+func (x *Assignment) HasRetryMaxBackoff() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_RetryMaxBackoff != nil
+}
+
+func (x *Assignment) HasRetryBackpressure() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 25)
+}
+
+func (x *Assignment) HasTransportDialTimeout() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_TransportDialTimeout != nil
+}
+
+func (x *Assignment) HasTransportKeepalive() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_TransportKeepalive != nil
+}
+
+func (x *Assignment) HasTransportIdleConnTimeout() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_TransportIdleConnTimeout != nil
+}
+
+func (x *Assignment) HasTransportTlsHandshakeTimeout() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_TransportTlsHandshakeTimeout != nil
+}
+
+func (x *Assignment) HasTransportMaxIdleConns() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[0]), 31)
+}
+
+func (x *Assignment) HasTransportForceHttp2() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[1]), 32)
+}
+
+func (x *Assignment) HasTransportDisableCompression() bool {
+	if x == nil {
+		return false
+	}
+	return protoimpl.X.Present(&(x.XXX_presence[1]), 33)
+}
+
+func (x *Assignment) HasTransportFlushInterval() bool {
+	if x == nil {
+		return false
+	}
+	return x.xxx_hidden_TransportFlushInterval != nil
+}
+
 func (x *Assignment) ClearNamespace() {
 	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 0)
 	x.xxx_hidden_Namespace = nil
@@ -566,15 +1296,181 @@ func (x *Assignment) ClearOneshot() {
 	x.xxx_hidden_Oneshot = false
 }
 
+func (x *Assignment) ClearScaleMinInstances() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 6)
+	x.xxx_hidden_ScaleMinInstances = 0
+}
+
+func (x *Assignment) ClearScaleMaxInstances() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 7)
+	x.xxx_hidden_ScaleMaxInstances = 0
+}
+
+func (x *Assignment) ClearScaleTargetCpuMillicores() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 8)
+	x.xxx_hidden_ScaleTargetCpuMillicores = 0
+}
+
+func (x *Assignment) ClearScaleTargetMemoryMebibytes() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 9)
+	x.xxx_hidden_ScaleTargetMemoryMebibytes = 0
+}
+
+func (x *Assignment) ClearScaleTargetInFlightRequests() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 10)
+	x.xxx_hidden_ScaleTargetInFlightRequests = 0
+}
+
+func (x *Assignment) ClearScaleTolerance() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 11)
+	x.xxx_hidden_ScaleTolerance = 0
+}
+
+func (x *Assignment) ClearScaleDownscaleStabilization() {
+	x.xxx_hidden_ScaleDownscaleStabilization = nil
+}
+
+func (x *Assignment) ClearScaleInitialReadinessDelay() {
+	x.xxx_hidden_ScaleInitialReadinessDelay = nil
+}
+
+func (x *Assignment) ClearZoneSpread() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 14)
+	x.xxx_hidden_ZoneSpread = ZoneSpread_ZONE_SPREAD_UNSPECIFIED
+}
+
+func (x *Assignment) ClearZoneMin() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 15)
+	x.xxx_hidden_ZoneMin = 0
+}
+
+func (x *Assignment) ClearZoneAffinity() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 16)
+	x.xxx_hidden_ZoneAffinity = ZoneAffinity_ZONE_AFFINITY_UNSPECIFIED
+}
+
+func (x *Assignment) ClearAssignPath() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 17)
+	x.xxx_hidden_AssignPath = nil
+}
+
+func (x *Assignment) ClearAssignTimeout() {
+	x.xxx_hidden_AssignTimeout = nil
+}
+
+func (x *Assignment) ClearAssignTokenTtl() {
+	x.xxx_hidden_AssignTokenTtl = nil
+}
+
+func (x *Assignment) ClearHeartbeatInterval() {
+	x.xxx_hidden_HeartbeatInterval = nil
+}
+
+func (x *Assignment) ClearHeartbeatTimeout() {
+	x.xxx_hidden_HeartbeatTimeout = nil
+}
+
+func (x *Assignment) ClearRetryMaxAttempts() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 22)
+	x.xxx_hidden_RetryMaxAttempts = 0
+}
+
+func (x *Assignment) ClearRetryMinBackoff() {
+	x.xxx_hidden_RetryMinBackoff = nil
+}
+
+func (x *Assignment) ClearRetryMaxBackoff() {
+	x.xxx_hidden_RetryMaxBackoff = nil
+}
+
+func (x *Assignment) ClearRetryBackpressure() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 25)
+	x.xxx_hidden_RetryBackpressure = Backpressure_BACKPRESSURE_UNSPECIFIED
+}
+
+func (x *Assignment) ClearTransportDialTimeout() {
+	x.xxx_hidden_TransportDialTimeout = nil
+}
+
+func (x *Assignment) ClearTransportKeepalive() {
+	x.xxx_hidden_TransportKeepalive = nil
+}
+
+func (x *Assignment) ClearTransportIdleConnTimeout() {
+	x.xxx_hidden_TransportIdleConnTimeout = nil
+}
+
+func (x *Assignment) ClearTransportTlsHandshakeTimeout() {
+	x.xxx_hidden_TransportTlsHandshakeTimeout = nil
+}
+
+func (x *Assignment) ClearTransportMaxIdleConns() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[0]), 31)
+	x.xxx_hidden_TransportMaxIdleConns = 0
+}
+
+func (x *Assignment) ClearTransportForceHttp2() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[1]), 32)
+	x.xxx_hidden_TransportForceHttp2 = false
+}
+
+func (x *Assignment) ClearTransportDisableCompression() {
+	protoimpl.X.ClearPresent(&(x.XXX_presence[1]), 33)
+	x.xxx_hidden_TransportDisableCompression = false
+}
+
+func (x *Assignment) ClearTransportFlushInterval() {
+	x.xxx_hidden_TransportFlushInterval = nil
+}
+
 type Assignment_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
+	// Identity (1-9).
 	Namespace  *string
 	Deployment *string
 	Tenant     *string
 	Metadata   *string
-	Scale      *Scale
-	Oneshot    *bool
+	// reserved: scale = 5 (grandfathered, predates flat layout)
+	Scale   *Scale
+	Oneshot *bool
+	// Scale policy (10-29). The first five fields are flat aliases for the
+	// long-shipped Scale sub-message; resolvers prefer flat with fallback to
+	// Scale. The remaining three are flat-only additions.
+	ScaleMinInstances           *uint32
+	ScaleMaxInstances           *uint32
+	ScaleTargetCpuMillicores    *uint32
+	ScaleTargetMemoryMebibytes  *uint32
+	ScaleTargetInFlightRequests *uint32
+	ScaleTolerance              *float64
+	ScaleDownscaleStabilization *durationpb.Duration
+	ScaleInitialReadinessDelay  *durationpb.Duration
+	// Zone policy (30-39). All placeholder.
+	ZoneSpread   *ZoneSpread
+	ZoneMin      *uint32
+	ZoneAffinity *ZoneAffinity
+	// Assign policy (40-49).
+	AssignPath     *string
+	AssignTimeout  *durationpb.Duration
+	AssignTokenTtl *durationpb.Duration
+	// Heartbeat policy (50-59).
+	HeartbeatInterval *durationpb.Duration
+	HeartbeatTimeout  *durationpb.Duration
+	// Retry policy (60-79).
+	RetryMaxAttempts  *uint32
+	RetryMinBackoff   *durationpb.Duration
+	RetryMaxBackoff   *durationpb.Duration
+	RetryBackpressure *Backpressure
+	RetryStatusCodes  []uint32
+	// Transport policy (80-109). All placeholder (followup: per-assignment-transport).
+	TransportDialTimeout         *durationpb.Duration
+	TransportKeepalive           *durationpb.Duration
+	TransportIdleConnTimeout     *durationpb.Duration
+	TransportTlsHandshakeTimeout *durationpb.Duration
+	TransportMaxIdleConns        *uint32
+	TransportForceHttp2          *bool
+	TransportDisableCompression  *bool
+	TransportFlushInterval       *durationpb.Duration
 }
 
 func (b0 Assignment_builder) Build() *Assignment {
@@ -582,26 +1478,100 @@ func (b0 Assignment_builder) Build() *Assignment {
 	b, x := &b0, m0
 	_, _ = b, x
 	if b.Namespace != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 0, 35)
 		x.xxx_hidden_Namespace = b.Namespace
 	}
 	if b.Deployment != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 35)
 		x.xxx_hidden_Deployment = b.Deployment
 	}
 	if b.Tenant != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 2, 35)
 		x.xxx_hidden_Tenant = b.Tenant
 	}
 	if b.Metadata != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 3, 35)
 		x.xxx_hidden_Metadata = b.Metadata
 	}
 	x.xxx_hidden_Scale = b.Scale
 	if b.Oneshot != nil {
-		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 6)
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 5, 35)
 		x.xxx_hidden_Oneshot = *b.Oneshot
 	}
+	if b.ScaleMinInstances != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 6, 35)
+		x.xxx_hidden_ScaleMinInstances = *b.ScaleMinInstances
+	}
+	if b.ScaleMaxInstances != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 7, 35)
+		x.xxx_hidden_ScaleMaxInstances = *b.ScaleMaxInstances
+	}
+	if b.ScaleTargetCpuMillicores != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 8, 35)
+		x.xxx_hidden_ScaleTargetCpuMillicores = *b.ScaleTargetCpuMillicores
+	}
+	if b.ScaleTargetMemoryMebibytes != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 9, 35)
+		x.xxx_hidden_ScaleTargetMemoryMebibytes = *b.ScaleTargetMemoryMebibytes
+	}
+	if b.ScaleTargetInFlightRequests != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 10, 35)
+		x.xxx_hidden_ScaleTargetInFlightRequests = *b.ScaleTargetInFlightRequests
+	}
+	if b.ScaleTolerance != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 11, 35)
+		x.xxx_hidden_ScaleTolerance = *b.ScaleTolerance
+	}
+	x.xxx_hidden_ScaleDownscaleStabilization = b.ScaleDownscaleStabilization
+	x.xxx_hidden_ScaleInitialReadinessDelay = b.ScaleInitialReadinessDelay
+	if b.ZoneSpread != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 14, 35)
+		x.xxx_hidden_ZoneSpread = *b.ZoneSpread
+	}
+	if b.ZoneMin != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 15, 35)
+		x.xxx_hidden_ZoneMin = *b.ZoneMin
+	}
+	if b.ZoneAffinity != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 16, 35)
+		x.xxx_hidden_ZoneAffinity = *b.ZoneAffinity
+	}
+	if b.AssignPath != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 17, 35)
+		x.xxx_hidden_AssignPath = b.AssignPath
+	}
+	x.xxx_hidden_AssignTimeout = b.AssignTimeout
+	x.xxx_hidden_AssignTokenTtl = b.AssignTokenTtl
+	x.xxx_hidden_HeartbeatInterval = b.HeartbeatInterval
+	x.xxx_hidden_HeartbeatTimeout = b.HeartbeatTimeout
+	if b.RetryMaxAttempts != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 22, 35)
+		x.xxx_hidden_RetryMaxAttempts = *b.RetryMaxAttempts
+	}
+	x.xxx_hidden_RetryMinBackoff = b.RetryMinBackoff
+	x.xxx_hidden_RetryMaxBackoff = b.RetryMaxBackoff
+	if b.RetryBackpressure != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 25, 35)
+		x.xxx_hidden_RetryBackpressure = *b.RetryBackpressure
+	}
+	x.xxx_hidden_RetryStatusCodes = b.RetryStatusCodes
+	x.xxx_hidden_TransportDialTimeout = b.TransportDialTimeout
+	x.xxx_hidden_TransportKeepalive = b.TransportKeepalive
+	x.xxx_hidden_TransportIdleConnTimeout = b.TransportIdleConnTimeout
+	x.xxx_hidden_TransportTlsHandshakeTimeout = b.TransportTlsHandshakeTimeout
+	if b.TransportMaxIdleConns != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 31, 35)
+		x.xxx_hidden_TransportMaxIdleConns = *b.TransportMaxIdleConns
+	}
+	if b.TransportForceHttp2 != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 32, 35)
+		x.xxx_hidden_TransportForceHttp2 = *b.TransportForceHttp2
+	}
+	if b.TransportDisableCompression != nil {
+		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[1]), 33, 35)
+		x.xxx_hidden_TransportDisableCompression = *b.TransportDisableCompression
+	}
+	x.xxx_hidden_TransportFlushInterval = b.TransportFlushInterval
 	return m0
 }
 
@@ -2046,13 +3016,13 @@ var File_types_proto protoreflect.FileDescriptor
 
 const file_types_proto_rawDesc = "" +
 	"\n" +
-	"\vtypes.proto\x12\askipper\x1a!google/protobuf/go_features.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf8\x01\n" +
+	"\vtypes.proto\x12\askipper\x1a\x1egoogle/protobuf/duration.proto\x1a!google/protobuf/go_features.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf8\x01\n" +
 	"\x05Scale\x12#\n" +
 	"\rmin_instances\x18\x01 \x01(\rR\fminInstances\x12#\n" +
 	"\rmax_instances\x18\x02 \x01(\rR\fmaxInstances\x123\n" +
 	"\x16target_cpu_usage_milli\x18\x03 \x01(\rR\x13targetCpuUsageMilli\x125\n" +
 	"\x17target_memory_usage_mib\x18\x04 \x01(\rR\x14targetMemoryUsageMib\x129\n" +
-	"\x19target_in_flight_requests\x18\x05 \x01(\rR\x16targetInFlightRequests\"\xbe\x01\n" +
+	"\x19target_in_flight_requests\x18\x05 \x01(\rR\x16targetInFlightRequests\"\xa2\x10\n" +
 	"\n" +
 	"Assignment\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1e\n" +
@@ -2062,7 +3032,39 @@ const file_types_proto_rawDesc = "" +
 	"\x06tenant\x18\x03 \x01(\tR\x06tenant\x12\x1a\n" +
 	"\bmetadata\x18\x04 \x01(\tR\bmetadata\x12$\n" +
 	"\x05scale\x18\x05 \x01(\v2\x0e.skipper.ScaleR\x05scale\x12\x18\n" +
-	"\aoneshot\x18\x06 \x01(\bR\aoneshot\"\xce\x02\n" +
+	"\aoneshot\x18\x06 \x01(\bR\aoneshot\x12.\n" +
+	"\x13scale_min_instances\x18\n" +
+	" \x01(\rR\x11scaleMinInstances\x12.\n" +
+	"\x13scale_max_instances\x18\v \x01(\rR\x11scaleMaxInstances\x12=\n" +
+	"\x1bscale_target_cpu_millicores\x18\f \x01(\rR\x18scaleTargetCpuMillicores\x12A\n" +
+	"\x1dscale_target_memory_mebibytes\x18\r \x01(\rR\x1ascaleTargetMemoryMebibytes\x12D\n" +
+	"\x1fscale_target_in_flight_requests\x18\x0e \x01(\rR\x1bscaleTargetInFlightRequests\x12'\n" +
+	"\x0fscale_tolerance\x18\x0f \x01(\x01R\x0escaleTolerance\x12]\n" +
+	"\x1dscale_downscale_stabilization\x18\x10 \x01(\v2\x19.google.protobuf.DurationR\x1bscaleDownscaleStabilization\x12\\\n" +
+	"\x1dscale_initial_readiness_delay\x18\x11 \x01(\v2\x19.google.protobuf.DurationR\x1ascaleInitialReadinessDelay\x124\n" +
+	"\vzone_spread\x18\x1e \x01(\x0e2\x13.skipper.ZoneSpreadR\n" +
+	"zoneSpread\x12\x19\n" +
+	"\bzone_min\x18\x1f \x01(\rR\azoneMin\x12:\n" +
+	"\rzone_affinity\x18  \x01(\x0e2\x15.skipper.ZoneAffinityR\fzoneAffinity\x12\x1f\n" +
+	"\vassign_path\x18( \x01(\tR\n" +
+	"assignPath\x12@\n" +
+	"\x0eassign_timeout\x18) \x01(\v2\x19.google.protobuf.DurationR\rassignTimeout\x12C\n" +
+	"\x10assign_token_ttl\x18* \x01(\v2\x19.google.protobuf.DurationR\x0eassignTokenTtl\x12H\n" +
+	"\x12heartbeat_interval\x182 \x01(\v2\x19.google.protobuf.DurationR\x11heartbeatInterval\x12F\n" +
+	"\x11heartbeat_timeout\x183 \x01(\v2\x19.google.protobuf.DurationR\x10heartbeatTimeout\x12,\n" +
+	"\x12retry_max_attempts\x18< \x01(\rR\x10retryMaxAttempts\x12E\n" +
+	"\x11retry_min_backoff\x18= \x01(\v2\x19.google.protobuf.DurationR\x0fretryMinBackoff\x12E\n" +
+	"\x11retry_max_backoff\x18> \x01(\v2\x19.google.protobuf.DurationR\x0fretryMaxBackoff\x12D\n" +
+	"\x12retry_backpressure\x18? \x01(\x0e2\x15.skipper.BackpressureR\x11retryBackpressure\x12,\n" +
+	"\x12retry_status_codes\x18@ \x03(\rR\x10retryStatusCodes\x12O\n" +
+	"\x16transport_dial_timeout\x18P \x01(\v2\x19.google.protobuf.DurationR\x14transportDialTimeout\x12J\n" +
+	"\x13transport_keepalive\x18Q \x01(\v2\x19.google.protobuf.DurationR\x12transportKeepalive\x12X\n" +
+	"\x1btransport_idle_conn_timeout\x18R \x01(\v2\x19.google.protobuf.DurationR\x18transportIdleConnTimeout\x12`\n" +
+	"\x1ftransport_tls_handshake_timeout\x18S \x01(\v2\x19.google.protobuf.DurationR\x1ctransportTlsHandshakeTimeout\x127\n" +
+	"\x18transport_max_idle_conns\x18T \x01(\rR\x15transportMaxIdleConns\x122\n" +
+	"\x15transport_force_http2\x18U \x01(\bR\x13transportForceHttp2\x12B\n" +
+	"\x1dtransport_disable_compression\x18V \x01(\bR\x1btransportDisableCompression\x12S\n" +
+	"\x18transport_flush_interval\x18W \x01(\v2\x19.google.protobuf.DurationR\x16transportFlushInterval\"\xce\x02\n" +
 	"\bInstance\x123\n" +
 	"\n" +
 	"assignment\x18\x01 \x01(\v2\x13.skipper.AssignmentR\n" +
@@ -2120,7 +3122,23 @@ const file_types_proto_rawDesc = "" +
 	"\x0econtroller_ips\x18\x03 \x03(\tR\rcontrollerIps\x12:\n" +
 	"\vsupervisors\x18\x04 \x03(\v2\x18.skipper.SupervisorStateR\vsupervisors\x12&\n" +
 	"\x06events\x18\x05 \x03(\v2\x0e.skipper.EventR\x06events\x12,\n" +
-	"\x06config\x18\x06 \x03(\v2\x14.skipper.ConfigValueR\x06config*\xc8\x01\n" +
+	"\x06config\x18\x06 \x03(\v2\x14.skipper.ConfigValueR\x06config*t\n" +
+	"\n" +
+	"ZoneSpread\x12\x1b\n" +
+	"\x17ZONE_SPREAD_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10ZONE_SPREAD_NONE\x10\x01\x12\x19\n" +
+	"\x15ZONE_SPREAD_PREFERRED\x10\x02\x12\x18\n" +
+	"\x14ZONE_SPREAD_REQUIRED\x10\x03*~\n" +
+	"\fZoneAffinity\x12\x1d\n" +
+	"\x19ZONE_AFFINITY_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12ZONE_AFFINITY_NONE\x10\x01\x12\x1b\n" +
+	"\x17ZONE_AFFINITY_PREFERRED\x10\x02\x12\x1a\n" +
+	"\x16ZONE_AFFINITY_REQUIRED\x10\x03*\x7f\n" +
+	"\fBackpressure\x12\x1c\n" +
+	"\x18BACKPRESSURE_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13BACKPRESSURE_IGNORE\x10\x01\x12\x16\n" +
+	"\x12BACKPRESSURE_RETRY\x10\x02\x12 \n" +
+	"\x1cBACKPRESSURE_RETRY_AND_EJECT\x10\x03*\xc8\x01\n" +
 	"\vScaleReason\x12\x1c\n" +
 	"\x18SCALE_REASON_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10SCALE_REASON_CPU\x10\x01\x12\"\n" +
@@ -2142,51 +3160,71 @@ const file_types_proto_rawDesc = "" +
 	"\x13EVENT_SEVERITY_INFO\x10\x01\x12\x17\n" +
 	"\x13EVENT_SEVERITY_WARN\x10\x02B8Z.github.com/gadget-inc/skipper/internal/skipper\x92\x03\x05\xd2>\x02\x10\x03b\beditionsp\xe8\a"
 
-var file_types_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_types_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
 var file_types_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_types_proto_goTypes = []any{
-	(ScaleReason)(0),              // 0: skipper.ScaleReason
-	(EventType)(0),                // 1: skipper.EventType
-	(EventSeverity)(0),            // 2: skipper.EventSeverity
-	(*Scale)(nil),                 // 3: skipper.Scale
-	(*Assignment)(nil),            // 4: skipper.Assignment
-	(*Instance)(nil),              // 5: skipper.Instance
-	(*Heartbeat)(nil),             // 6: skipper.Heartbeat
-	(*ScaleMetric)(nil),           // 7: skipper.ScaleMetric
-	(*ScaleDecision)(nil),         // 8: skipper.ScaleDecision
-	(*Event)(nil),                 // 9: skipper.Event
-	(*ConfigValue)(nil),           // 10: skipper.ConfigValue
-	(*HeartbeatState)(nil),        // 11: skipper.HeartbeatState
-	(*SupervisorState)(nil),       // 12: skipper.SupervisorState
-	(*ClusterState)(nil),          // 13: skipper.ClusterState
-	(*timestamppb.Timestamp)(nil), // 14: google.protobuf.Timestamp
+	(ZoneSpread)(0),               // 0: skipper.ZoneSpread
+	(ZoneAffinity)(0),             // 1: skipper.ZoneAffinity
+	(Backpressure)(0),             // 2: skipper.Backpressure
+	(ScaleReason)(0),              // 3: skipper.ScaleReason
+	(EventType)(0),                // 4: skipper.EventType
+	(EventSeverity)(0),            // 5: skipper.EventSeverity
+	(*Scale)(nil),                 // 6: skipper.Scale
+	(*Assignment)(nil),            // 7: skipper.Assignment
+	(*Instance)(nil),              // 8: skipper.Instance
+	(*Heartbeat)(nil),             // 9: skipper.Heartbeat
+	(*ScaleMetric)(nil),           // 10: skipper.ScaleMetric
+	(*ScaleDecision)(nil),         // 11: skipper.ScaleDecision
+	(*Event)(nil),                 // 12: skipper.Event
+	(*ConfigValue)(nil),           // 13: skipper.ConfigValue
+	(*HeartbeatState)(nil),        // 14: skipper.HeartbeatState
+	(*SupervisorState)(nil),       // 15: skipper.SupervisorState
+	(*ClusterState)(nil),          // 16: skipper.ClusterState
+	(*durationpb.Duration)(nil),   // 17: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil), // 18: google.protobuf.Timestamp
 }
 var file_types_proto_depIdxs = []int32{
-	3,  // 0: skipper.Assignment.scale:type_name -> skipper.Scale
-	4,  // 1: skipper.Instance.assignment:type_name -> skipper.Assignment
-	14, // 2: skipper.Instance.assigned_at:type_name -> google.protobuf.Timestamp
-	14, // 3: skipper.Instance.ready_at:type_name -> google.protobuf.Timestamp
-	4,  // 4: skipper.Heartbeat.assignment:type_name -> skipper.Assignment
-	14, // 5: skipper.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
-	0,  // 6: skipper.ScaleDecision.reason:type_name -> skipper.ScaleReason
-	7,  // 7: skipper.ScaleDecision.metrics:type_name -> skipper.ScaleMetric
-	14, // 8: skipper.Event.timestamp:type_name -> google.protobuf.Timestamp
-	4,  // 9: skipper.Event.assignment:type_name -> skipper.Assignment
-	1,  // 10: skipper.Event.type:type_name -> skipper.EventType
-	2,  // 11: skipper.Event.severity:type_name -> skipper.EventSeverity
-	6,  // 12: skipper.HeartbeatState.heartbeat:type_name -> skipper.Heartbeat
-	4,  // 13: skipper.SupervisorState.assignment:type_name -> skipper.Assignment
-	5,  // 14: skipper.SupervisorState.instances:type_name -> skipper.Instance
-	11, // 15: skipper.SupervisorState.router_heartbeats:type_name -> skipper.HeartbeatState
-	14, // 16: skipper.ClusterState.started_at:type_name -> google.protobuf.Timestamp
-	12, // 17: skipper.ClusterState.supervisors:type_name -> skipper.SupervisorState
-	9,  // 18: skipper.ClusterState.events:type_name -> skipper.Event
-	10, // 19: skipper.ClusterState.config:type_name -> skipper.ConfigValue
-	20, // [20:20] is the sub-list for method output_type
-	20, // [20:20] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	6,  // 0: skipper.Assignment.scale:type_name -> skipper.Scale
+	17, // 1: skipper.Assignment.scale_downscale_stabilization:type_name -> google.protobuf.Duration
+	17, // 2: skipper.Assignment.scale_initial_readiness_delay:type_name -> google.protobuf.Duration
+	0,  // 3: skipper.Assignment.zone_spread:type_name -> skipper.ZoneSpread
+	1,  // 4: skipper.Assignment.zone_affinity:type_name -> skipper.ZoneAffinity
+	17, // 5: skipper.Assignment.assign_timeout:type_name -> google.protobuf.Duration
+	17, // 6: skipper.Assignment.assign_token_ttl:type_name -> google.protobuf.Duration
+	17, // 7: skipper.Assignment.heartbeat_interval:type_name -> google.protobuf.Duration
+	17, // 8: skipper.Assignment.heartbeat_timeout:type_name -> google.protobuf.Duration
+	17, // 9: skipper.Assignment.retry_min_backoff:type_name -> google.protobuf.Duration
+	17, // 10: skipper.Assignment.retry_max_backoff:type_name -> google.protobuf.Duration
+	2,  // 11: skipper.Assignment.retry_backpressure:type_name -> skipper.Backpressure
+	17, // 12: skipper.Assignment.transport_dial_timeout:type_name -> google.protobuf.Duration
+	17, // 13: skipper.Assignment.transport_keepalive:type_name -> google.protobuf.Duration
+	17, // 14: skipper.Assignment.transport_idle_conn_timeout:type_name -> google.protobuf.Duration
+	17, // 15: skipper.Assignment.transport_tls_handshake_timeout:type_name -> google.protobuf.Duration
+	17, // 16: skipper.Assignment.transport_flush_interval:type_name -> google.protobuf.Duration
+	7,  // 17: skipper.Instance.assignment:type_name -> skipper.Assignment
+	18, // 18: skipper.Instance.assigned_at:type_name -> google.protobuf.Timestamp
+	18, // 19: skipper.Instance.ready_at:type_name -> google.protobuf.Timestamp
+	7,  // 20: skipper.Heartbeat.assignment:type_name -> skipper.Assignment
+	18, // 21: skipper.Heartbeat.timestamp:type_name -> google.protobuf.Timestamp
+	3,  // 22: skipper.ScaleDecision.reason:type_name -> skipper.ScaleReason
+	10, // 23: skipper.ScaleDecision.metrics:type_name -> skipper.ScaleMetric
+	18, // 24: skipper.Event.timestamp:type_name -> google.protobuf.Timestamp
+	7,  // 25: skipper.Event.assignment:type_name -> skipper.Assignment
+	4,  // 26: skipper.Event.type:type_name -> skipper.EventType
+	5,  // 27: skipper.Event.severity:type_name -> skipper.EventSeverity
+	9,  // 28: skipper.HeartbeatState.heartbeat:type_name -> skipper.Heartbeat
+	7,  // 29: skipper.SupervisorState.assignment:type_name -> skipper.Assignment
+	8,  // 30: skipper.SupervisorState.instances:type_name -> skipper.Instance
+	14, // 31: skipper.SupervisorState.router_heartbeats:type_name -> skipper.HeartbeatState
+	18, // 32: skipper.ClusterState.started_at:type_name -> google.protobuf.Timestamp
+	15, // 33: skipper.ClusterState.supervisors:type_name -> skipper.SupervisorState
+	12, // 34: skipper.ClusterState.events:type_name -> skipper.Event
+	13, // 35: skipper.ClusterState.config:type_name -> skipper.ConfigValue
+	36, // [36:36] is the sub-list for method output_type
+	36, // [36:36] is the sub-list for method input_type
+	36, // [36:36] is the sub-list for extension type_name
+	36, // [36:36] is the sub-list for extension extendee
+	0,  // [0:36] is the sub-list for field type_name
 }
 
 func init() { file_types_proto_init() }
@@ -2199,7 +3237,7 @@ func file_types_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_types_proto_rawDesc), len(file_types_proto_rawDesc)),
-			NumEnums:      3,
+			NumEnums:      6,
 			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,

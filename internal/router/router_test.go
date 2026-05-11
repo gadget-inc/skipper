@@ -976,14 +976,9 @@ func TestCalculateBackoff(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := testConfig()
-			cfg.RoundTripRetryMinTimeout = tc.minTimeout
-			cfg.RoundTripRetryMaxTimeout = tc.maxTimeout
-			router := New(cfg, fixture.NewMockControllerClient(t))
-
 			// Run multiple times due to randomness
 			for range 100 {
-				backoff := router.calculateBackoff(tc.attempt)
+				backoff := calculateBackoff(tc.attempt, tc.minTimeout, tc.maxTimeout)
 				assert.Assert(t, backoff >= tc.checkMin, "attempt %d: backoff %v < min %v", tc.attempt, backoff, tc.checkMin)
 				assert.Assert(t, backoff <= tc.checkMax, "attempt %d: backoff %v > max %v", tc.attempt, backoff, tc.checkMax)
 			}
@@ -2237,10 +2232,8 @@ func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 func TestBackoffDoesNotOverflowAtHighAttempts(t *testing.T) {
 	t.Parallel()
 
-	cfg := testConfig()
-	cfg.RoundTripRetryMinTimeout = 100 * time.Millisecond
-	cfg.RoundTripRetryMaxTimeout = 5 * time.Second
-	router := New(cfg, fixture.NewMockControllerClient(t))
+	minBackoff := 100 * time.Millisecond
+	maxBackoff := 5 * time.Second
 
 	// Test various high attempt numbers that could cause overflow
 	testAttempts := []int{10, 50, 100, 1000, 10000}
@@ -2248,11 +2241,11 @@ func TestBackoffDoesNotOverflowAtHighAttempts(t *testing.T) {
 	for _, attempt := range testAttempts {
 		// Run multiple times due to randomness in backoff calculation
 		for range 10 {
-			backoff := router.calculateBackoff(attempt)
+			backoff := calculateBackoff(attempt, minBackoff, maxBackoff)
 
 			// Verify backoff is within valid range
 			assert.Assert(t, backoff >= 0, "attempt %d: backoff should not be negative: %v", attempt, backoff)
-			assert.Assert(t, backoff <= cfg.RoundTripRetryMaxTimeout, "attempt %d: backoff %v exceeds max %v", attempt, backoff, cfg.RoundTripRetryMaxTimeout)
+			assert.Assert(t, backoff <= maxBackoff, "attempt %d: backoff %v exceeds max %v", attempt, backoff, maxBackoff)
 		}
 	}
 }

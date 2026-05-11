@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/gadget-inc/skipper/internal/key"
@@ -76,7 +77,27 @@ func (a *Assignment) LogValue() slog.Value {
 		key.Tenant.Slog(a.GetTenant()),
 		key.Metadata.Slog(a.GetMetadata()),
 		key.Oneshot.Slog(a.GetOneshot()),
-		ScaleKey.Slog(a.GetScale()),
+		slog.Attr{Key: ScaleKey.Name, Value: a.resolvedScaleValue()},
+		// Flat-form companions for the three target_* fields. Each pair
+		// reports the same resolved value (flat-preferred-over-Scale) so
+		// dashboards keying on either vocabulary observe identical series.
+		// The cleanup plan drops the legacy `scale.target_*` emissions.
+		key.ScaleTargetCPUMillicores.Slog(a.ScaleTargetCPUMillicores()),
+		key.ScaleTargetMemoryMebibytes.Slog(a.ScaleTargetMemoryMebibytes()),
+		key.ScaleTargetInFlightRequests.Slog(a.ScaleTargetInFlightRequests()),
+	)
+}
+
+// resolvedScaleValue builds the slog group emitted under the `scale` key,
+// reading each subfield through the resolvers so flat-preferred-over-Scale
+// resolution applies before logging.
+func (a *Assignment) resolvedScaleValue() slog.Value {
+	return slog.GroupValue(
+		key.MinInstances.Slog(a.ScaleMinInstances()),
+		key.MaxInstances.Slog(a.ScaleMaxInstances()),
+		key.TargetCPUUsageMilli.Slog(a.ScaleTargetCPUMillicores()),
+		key.TargetMemoryUsageMiB.Slog(a.ScaleTargetMemoryMebibytes()),
+		key.TargetInFlightRequests.Slog(a.ScaleTargetInFlightRequests()),
 	)
 }
 
@@ -90,17 +111,85 @@ func (a *Assignment) Validate() error {
 	if a.GetTenant() == "" {
 		return errors.New("missing tenant")
 	}
-	scale := a.GetScale()
-	if scale == nil {
+
+	// Resolve min/max across flat scale_* fields and the nested Scale sub-message
+	// so a hybrid tenant header (e.g. scale.min_instances + scale_max_instances)
+	// is validated against the same value the runtime resolvers see.
+	maxInst, hasMax := a.resolvedScaleMax()
+	if !hasMax {
 		return errors.New("missing scale")
 	}
-	if scale.GetMaxInstances() < 1 {
+	if maxInst < 1 {
 		return errors.New("scale.max_instances must be >= 1")
 	}
-	if scale.GetMinInstances() > scale.GetMaxInstances() {
-		return fmt.Errorf("scale.min_instances (%d) must be <= scale.max_instances (%d)", scale.GetMinInstances(), scale.GetMaxInstances())
+	if minInst, hasMin := a.resolvedScaleMin(); hasMin && minInst > maxInst {
+		return fmt.Errorf("scale.min_instances (%d) must be <= scale.max_instances (%d)", minInst, maxInst)
 	}
+
+	if a.HasScaleTolerance() && a.GetScaleTolerance() < 0 {
+		return fmt.Errorf("scale_tolerance (%v) must be >= 0", a.GetScaleTolerance())
+	}
+
+	// Durations must be non-negative. proto3 admits negative durations because
+	// google.protobuf.Duration is a (seconds, nanos) pair; reject them at parse.
+	for _, d := range nonNegativeDurations(a) {
+		if d.has && d.value < 0 {
+			return fmt.Errorf("%s (%s) must be >= 0", d.name, d.value)
+		}
+	}
+
+	// Degenerate-zero rejection: a value of zero would deadlock the decision
+	// site (heartbeat scale-to-zero with zero timeout, retry loop with zero
+	// attempts, etc.).
+	if a.HasHeartbeatTimeout() && a.GetHeartbeatTimeout().AsDuration() == 0 {
+		return errors.New("heartbeat_timeout must be > 0")
+	}
+	if a.HasAssignTimeout() && a.GetAssignTimeout().AsDuration() == 0 {
+		return errors.New("assign_timeout must be > 0")
+	}
+	if a.HasAssignTokenTtl() && a.GetAssignTokenTtl().AsDuration() == 0 {
+		return errors.New("assign_token_ttl must be > 0")
+	}
+	if a.HasRetryMaxAttempts() && a.GetRetryMaxAttempts() == 0 {
+		return errors.New("retry_max_attempts must be > 0")
+	}
+
+	if a.HasRetryMinBackoff() && a.HasRetryMaxBackoff() {
+		minBackoff := a.GetRetryMinBackoff().AsDuration()
+		maxBackoff := a.GetRetryMaxBackoff().AsDuration()
+		if minBackoff > maxBackoff {
+			return fmt.Errorf("retry_min_backoff (%s) must be <= retry_max_backoff (%s)", minBackoff, maxBackoff)
+		}
+	}
+
 	return nil
+}
+
+type namedDuration struct {
+	name  string
+	has   bool
+	value time.Duration
+}
+
+// nonNegativeDurations returns every duration-typed policy field with its
+// presence bit and resolved value, so Validate can scan for negative values
+// in one place. Fields list mirrors the duration knobs declared on Assignment.
+func nonNegativeDurations(a *Assignment) []namedDuration {
+	return []namedDuration{
+		{"scale_downscale_stabilization", a.HasScaleDownscaleStabilization(), a.GetScaleDownscaleStabilization().AsDuration()},
+		{"scale_initial_readiness_delay", a.HasScaleInitialReadinessDelay(), a.GetScaleInitialReadinessDelay().AsDuration()},
+		{"assign_timeout", a.HasAssignTimeout(), a.GetAssignTimeout().AsDuration()},
+		{"assign_token_ttl", a.HasAssignTokenTtl(), a.GetAssignTokenTtl().AsDuration()},
+		{"heartbeat_interval", a.HasHeartbeatInterval(), a.GetHeartbeatInterval().AsDuration()},
+		{"heartbeat_timeout", a.HasHeartbeatTimeout(), a.GetHeartbeatTimeout().AsDuration()},
+		{"retry_min_backoff", a.HasRetryMinBackoff(), a.GetRetryMinBackoff().AsDuration()},
+		{"retry_max_backoff", a.HasRetryMaxBackoff(), a.GetRetryMaxBackoff().AsDuration()},
+		{"transport_dial_timeout", a.HasTransportDialTimeout(), a.GetTransportDialTimeout().AsDuration()},
+		{"transport_keepalive", a.HasTransportKeepalive(), a.GetTransportKeepalive().AsDuration()},
+		{"transport_idle_conn_timeout", a.HasTransportIdleConnTimeout(), a.GetTransportIdleConnTimeout().AsDuration()},
+		{"transport_tls_handshake_timeout", a.HasTransportTlsHandshakeTimeout(), a.GetTransportTlsHandshakeTimeout().AsDuration()},
+		{"transport_flush_interval", a.HasTransportFlushInterval(), a.GetTransportFlushInterval().AsDuration()},
+	}
 }
 
 // SetHeader serializes the assignment as JSON and writes it under both the

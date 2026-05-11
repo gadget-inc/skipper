@@ -172,9 +172,12 @@ func (s *Supervisor) heartbeat(routerIP string, heartbeat *skipper.Heartbeat) {
 		return existing, xsync.CancelOp
 	})
 
-	// garbage collect expired router heartbeats
+	// garbage collect expired router heartbeats. Resolve heartbeat_timeout
+	// from the current assignment snapshot so a per-tenant override applies
+	// to this supervisor's GC.
+	timeout := s.fn.Load().HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout)
 	for routerIP, heartbeat := range s.routerHeartbeats.AllRelaxed() {
-		if time.Since(heartbeat.GetTimestamp().AsTime()) > s.ctrl.config.HeartbeatTimeout {
+		if time.Since(heartbeat.GetTimestamp().AsTime()) > timeout {
 			s.routerHeartbeats.Delete(routerIP)
 		}
 	}
@@ -215,9 +218,11 @@ func (s *Supervisor) combinedHeartbeat(fn *skipper.Assignment, instances []*skip
 
 // recordRecommendation adds a scaling recommendation to the stabilization window,
 // prunes expired entries, and returns the maximum recommendation within the window.
-func (s *Supervisor) recordRecommendation(desiredInstances uint32) Recommendation {
+// The fn snapshot resolves the per-assignment downscale-stabilization window with
+// fallback to the cluster default.
+func (s *Supervisor) recordRecommendation(fn *skipper.Assignment, desiredInstances uint32) Recommendation {
 	now := time.Now()
-	cutoff := now.Add(-s.ctrl.config.HPADownscaleStabilization)
+	cutoff := now.Add(-fn.ScaleDownscaleStabilization(s.ctrl.config.HPADownscaleStabilization))
 	s.stabilizationWindow = append(s.stabilizationWindow, Recommendation{
 		DesiredInstances: desiredInstances,
 		Timestamp:        now,
@@ -283,7 +288,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	heartbeat := s.combinedHeartbeat(fn, instances)
 	ctx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.AssignmentKey.Attr(fn), skipper.HeartbeatKey.Attr(heartbeat))
 
-	scalingDecision := calculateDesiredInstances(ctx, s.ctrl.config, heartbeat, instances)
+	scalingDecision := calculateDesiredInstances(ctx, fn, s.ctrl.config, heartbeat, instances)
 
 	// For oneshot functions, the converge loop is a safety net only.
 	// All assignment happens synchronously in GetInstance via assignPod.
@@ -299,7 +304,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		// oneshot requests (older than HeartbeatTimeout), this would incorrectly
 		// trigger heartbeat_timeout before the router's heartbeats have arrived.
 		// Skip deletion until we've been running long enough to receive heartbeats.
-		if time.Since(s.ctrl.StartedAt()) < s.ctrl.config.HeartbeatTimeout {
+		if time.Since(s.ctrl.StartedAt()) < fn.HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout) {
 			return nil
 		}
 
@@ -322,7 +327,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		return nil
 	}
 
-	maxRecommendation := s.recordRecommendation(scalingDecision.GetDesiredInstances())
+	maxRecommendation := s.recordRecommendation(fn, scalingDecision.GetDesiredInstances())
 
 	currentInstances := uint32(len(instances))
 	isScalingDown := scalingDecision.GetDesiredInstances() < currentInstances || scalingDecision.GetDesiredInstances() == 0
@@ -334,7 +339,10 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		// 2. Receive heartbeats from routers (HeartbeatTimeout) - without this, functions with
 		//    instances assigned longer than HeartbeatTimeout ago would immediately trigger
 		//    heartbeat_timeout scale-to-zero when a new controller starts with empty heartbeat state
-		protectionPeriod := max(s.ctrl.config.HPADownscaleStabilization, s.ctrl.config.HeartbeatTimeout)
+		protectionPeriod := max(
+			fn.ScaleDownscaleStabilization(s.ctrl.config.HPADownscaleStabilization),
+			fn.HeartbeatTimeout(s.ctrl.config.HeartbeatTimeout),
+		)
 		if time.Since(s.ctrl.StartedAt()) < protectionPeriod {
 			log.Debug(ctx, "skipping scale down because controller hasn't been running long enough", slog.Time("started_at", s.ctrl.StartedAt()))
 			return nil
@@ -367,7 +375,7 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	}
 
 	// 3. Cleanup stuck instances (cheap, run before scaling execution)
-	instances = s.cleanupStuckInstances(ctx, instances)
+	instances = s.cleanupStuckInstances(ctx, fn, instances)
 
 	// 4. Execute scaling
 	ready, unready, err := s.scaleWithoutLock(ctx, fn, instances, scalingDecision)
@@ -435,7 +443,9 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 		key.UnreadyInstances.Slog(len(unreadyInstances)),
 	)
 
-	if fn.GetScale().GetMaxInstances() > 1 && decision.GetUnclampedDesiredInstances() > decision.GetDesiredInstances() {
+	maxInstances := fn.ScaleMaxInstances()
+
+	if maxInstances > 1 && decision.GetUnclampedDesiredInstances() > decision.GetDesiredInstances() {
 		// this function is allowed to scale beyond a single instance
 		// and it wanted to scale up higher than its max instances, so
 		// let's log that for observability
@@ -455,7 +465,7 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 
 	if desired > ready {
 		// we need to scale up
-		if total >= fn.GetScale().GetMaxInstances()+1 {
+		if total >= maxInstances+1 {
 			// we have too many instances in total, so we can't scale up
 			log.Info(ctx, "skipping scale up because function has too many instances")
 			return readyInstances, unreadyInstances, nil
@@ -524,12 +534,15 @@ func (s *Supervisor) scaleWithoutLock(ctx context.Context, fn *skipper.Assignmen
 }
 
 // cleanupStuckInstances terminates instances that are stuck in the
-// assigned state (not ready) for longer than AssignTimeout*2.
+// assigned state (not ready) for longer than AssignTimeout*2. The fn
+// snapshot resolves the per-assignment assign-timeout window with
+// fallback to the cluster default.
 // This is a cheap operation (just deletes) and should be called before
 // scaling execution to remove broken pods from consideration.
-func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*skipper.Instance) []*skipper.Instance {
+func (s *Supervisor) cleanupStuckInstances(ctx context.Context, fn *skipper.Assignment, instances []*skipper.Instance) []*skipper.Instance {
+	stuckThreshold := fn.AssignTimeout(s.ctrl.config.AssignTimeout) * 2
 	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
-		if !instance.HasReadyAt() && time.Since(instance.GetAssignedAt().AsTime()) > s.ctrl.config.AssignTimeout*2 {
+		if !instance.HasReadyAt() && time.Since(instance.GetAssignedAt().AsTime()) > stuckThreshold {
 			ctx := log.With(ctx, skipper.InstanceKey.Slog(instance))
 			log.Warn(ctx, "terminating instance stuck in assigned state")
 			err := s.ctrl.deletePod(ctx, instance.GetAssignment().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
@@ -597,7 +610,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Assi
 		// This can happen if a previous iteration assigned a replacement but failed
 		// to delete the stale pod. In this case, keep the stale instance and let
 		// scale() handle cleanup.
-		if currentTotalInstances >= int(fn.GetScale().GetMaxInstances())+1 {
+		if currentTotalInstances >= int(fn.ScaleMaxInstances())+1 {
 			log.Info(ctx, "skipping stale instance replacement, already at maxInstances+1")
 			continue
 		}
@@ -672,13 +685,14 @@ func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string
 		}
 	}
 
-	if len(instances) > int(fn.GetScale().GetMaxInstances()) {
+	maxInstances := fn.ScaleMaxInstances()
+	if len(instances) > int(maxInstances) {
 		// sort instances by assigned at in descending order (newest first)
 		slices.SortFunc(instances, func(a, b *skipper.Instance) int {
 			return b.GetAssignedAt().AsTime().Compare(a.GetAssignedAt().AsTime())
 		})
 		// keep the newest instances up to the max instances allowed for the function
-		instances = instances[:fn.GetScale().GetMaxInstances()]
+		instances = instances[:maxInstances]
 	}
 
 	if len(excludeNames) > 0 {
@@ -719,11 +733,15 @@ func scaleToZeroEvent(reason skipper.ScaleReason) (skipper.EventType, string) {
 	return skipper.EventType_EVENT_TYPE_SCALE_DOWN, "scaling to 0"
 }
 
-// calculateDesiredInstancesForMetric computes desired instances based on a single metric
-func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric Metric, instances []*skipper.Instance) (int, float64) {
+// calculateDesiredInstancesForMetric computes desired instances based on a single metric.
+// fn is the converge-tick snapshot; scale targets and HPA tolerance / readiness
+// delay are resolved through it so a tenant override applies uniformly.
+func calculateDesiredInstancesForMetric(_ context.Context, fn *skipper.Assignment, cfg *Config, metric Metric, instances []*skipper.Instance) (int, float64) {
 	currentInstances := len(instances)
 	var instancesWithMetrics []*skipper.Instance
 	var instancesWithoutMetrics []*skipper.Instance
+
+	readinessDelay := fn.ScaleInitialReadinessDelay(cfg.HPAInitialReadinessDelay)
 
 	for _, instance := range instances {
 		var usage uint32
@@ -736,7 +754,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 			return currentInstances, 0
 		}
 
-		if metric == MetricCPU && (!instance.HasReadyAt() || time.Since(instance.GetReadyAt().AsTime()) <= cfg.HPAInitialReadinessDelay) {
+		if metric == MetricCPU && (!instance.HasReadyAt() || time.Since(instance.GetReadyAt().AsTime()) <= readinessDelay) {
 			// ignore CPU metrics for pods that have been ready for less than the initial readiness delay
 			instancesWithoutMetrics = append(instancesWithoutMetrics, instance)
 			continue
@@ -754,15 +772,18 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 	}
 
 	var targetUsage uint32
+	switch metric {
+	case MetricCPU:
+		targetUsage = fn.ScaleTargetCPUMillicores()
+	case MetricMemory:
+		targetUsage = fn.ScaleTargetMemoryMebibytes()
+	}
 	var totalUsage uint32
 	for _, instance := range instancesWithMetrics {
-		// accumulate total usage and keep track of target usage (they should all be identical)
 		switch metric {
 		case MetricCPU:
-			targetUsage = instance.GetAssignment().GetScale().GetTargetCpuUsageMilli()
 			totalUsage += instance.GetCpuUsageMilli()
 		case MetricMemory:
-			targetUsage = instance.GetAssignment().GetScale().GetTargetMemoryUsageMib()
 			totalUsage += instance.GetMemoryUsageMib()
 		}
 	}
@@ -772,12 +793,14 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 		return currentInstances, 0
 	}
 
+	tolerance := fn.ScaleTolerance(cfg.HPATolerance)
+
 	averageUsage := float64(totalUsage) / float64(len(instancesWithMetrics))
 	usageRatio := averageUsage / float64(targetUsage)
 	usageDiscrepancy := math.Abs(1.0 - usageRatio)
 	desiredInstances := int(math.Ceil(float64(currentInstances) * usageRatio))
 
-	if usageDiscrepancy <= cfg.HPATolerance+1e-10 { // add a small epsilon to avoid floating point errors
+	if usageDiscrepancy <= tolerance+1e-10 { // add a small epsilon to avoid floating point errors
 		// the average usage is within tolerance of the target utilization, so we should not scale
 		return currentInstances, 0
 	}
@@ -797,7 +820,7 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 
 		if (adjustedUsageRatio > 1.0 && usageRatio < 1.0) ||
 			(adjustedUsageRatio < 1.0 && usageRatio > 1.0) ||
-			math.Abs(1.0-adjustedUsageRatio) <= cfg.HPATolerance+1e-10 {
+			math.Abs(1.0-adjustedUsageRatio) <= tolerance+1e-10 {
 			// the adjusted usage ratio is the opposite of the original
 			// usage ratio, or the adjusted usage ratio is within
 			// tolerance of the target utilization. either way, we
@@ -811,9 +834,12 @@ func calculateDesiredInstancesForMetric(_ context.Context, cfg *Config, metric M
 	return desiredInstances, averageUsage
 }
 
-// calculateDesiredInstances computes desired instances based on multiple metrics
-func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) *skipper.ScaleDecision {
-	if !heartbeat.HasTimestamp() || time.Since(heartbeat.GetTimestamp().AsTime()) >= cfg.HeartbeatTimeout {
+// calculateDesiredInstances computes desired instances based on multiple metrics.
+// All per-assignment knobs (heartbeat timeout, scale targets, min/max bounds)
+// are read from the supplied fn snapshot so a converge tick observes a single
+// view of the tenant's policy.
+func calculateDesiredInstances(ctx context.Context, fn *skipper.Assignment, cfg *Config, heartbeat *skipper.Heartbeat, instances []*skipper.Instance) *skipper.ScaleDecision {
+	if !heartbeat.HasTimestamp() || time.Since(heartbeat.GetTimestamp().AsTime()) >= fn.HeartbeatTimeout(cfg.HeartbeatTimeout) {
 		decision := &skipper.ScaleDecision{}
 		decision.SetDesiredInstances(0)
 		decision.SetUnclampedDesiredInstances(0)
@@ -821,11 +847,16 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skip
 		return decision
 	}
 
+	minInst := fn.ScaleMinInstances()
+	maxInst := fn.ScaleMaxInstances()
+	targetCPU := fn.ScaleTargetCPUMillicores()
+	targetMem := fn.ScaleTargetMemoryMebibytes()
+	targetIFR := fn.ScaleTargetInFlightRequests()
+
 	// Oneshot functions scale 1:1 with in-flight requests.
-	if heartbeat.GetAssignment().GetOneshot() {
+	if fn.GetOneshot() {
 		desiredInstances := int(heartbeat.GetInFlightRequests())
-		scale := heartbeat.GetAssignment().GetScale()
-		clamped := min(max(uint32(desiredInstances), scale.GetMinInstances()), scale.GetMaxInstances())
+		clamped := min(max(uint32(desiredInstances), minInst), maxInst)
 
 		metric := &skipper.ScaleMetric{}
 		metric.SetName("in_flight_requests")
@@ -845,10 +876,8 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skip
 	var scaleReason skipper.ScaleReason
 	var scaleMetrics []*skipper.ScaleMetric
 
-	scale := heartbeat.GetAssignment().GetScale()
-
-	if scale.GetTargetInFlightRequests() > 0 {
-		desiredInstances := int(math.Ceil(float64(heartbeat.GetInFlightRequests()) / float64(scale.GetTargetInFlightRequests())))
+	if targetIFR > 0 {
+		desiredInstances := int(math.Ceil(float64(heartbeat.GetInFlightRequests()) / float64(targetIFR)))
 		averageUsage := float64(heartbeat.GetInFlightRequests()) / float64(len(instances))
 		metric := &skipper.ScaleMetric{}
 		metric.SetName("in_flight_requests")
@@ -860,8 +889,8 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skip
 		}
 	}
 
-	if scale.GetTargetCpuUsageMilli() > 0 {
-		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricCPU, instances)
+	if targetCPU > 0 {
+		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, fn, cfg, MetricCPU, instances)
 		metric := &skipper.ScaleMetric{}
 		metric.SetName("cpu")
 		metric.SetValue(averageUsage)
@@ -872,8 +901,8 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skip
 		}
 	}
 
-	if scale.GetTargetMemoryUsageMib() > 0 {
-		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, cfg, MetricMemory, instances)
+	if targetMem > 0 {
+		desiredInstances, averageUsage := calculateDesiredInstancesForMetric(ctx, fn, cfg, MetricMemory, instances)
 		metric := &skipper.ScaleMetric{}
 		metric.SetName("memory")
 		metric.SetValue(averageUsage)
@@ -884,10 +913,7 @@ func calculateDesiredInstances(ctx context.Context, cfg *Config, heartbeat *skip
 		}
 	}
 
-	// Apply min/max clamping
-	minInstances := scale.GetMinInstances()
-	maxInstances := scale.GetMaxInstances()
-	clampedValue := min(max(uint32(maxDesiredInstances), minInstances), maxInstances)
+	clampedValue := min(max(uint32(maxDesiredInstances), minInst), maxInst)
 
 	decision := &skipper.ScaleDecision{}
 	decision.SetDesiredInstances(clampedValue)

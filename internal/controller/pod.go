@@ -37,6 +37,12 @@ var (
 	otelHTTPClient            = &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 )
 
+// defaultAssignTokenTTL is the cluster-wide fallback the controller passes to
+// Assignment.AssignTokenTTL when the tenant has not set a per-assignment
+// override. A future cluster flag can replace this constant without changing
+// the resolver call site.
+const defaultAssignTokenTTL = 7 * 24 * time.Hour
+
 func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Assignment) (instance *skipper.Instance, err error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
@@ -103,7 +109,7 @@ GET_UNASSIGNED_POD:
 	}()
 
 	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + ctrl.config.AssignPath
-	assignCtx, cancel := context.WithTimeout(ctx, ctrl.config.AssignTimeout)
+	assignCtx, cancel := context.WithTimeout(ctx, fn.AssignTimeout(ctrl.config.AssignTimeout))
 	defer cancel()
 
 	now := time.Now()
@@ -111,7 +117,7 @@ GET_UNASSIGNED_POD:
 	token.SetSubject(fn.GetTenant())
 	token.SetIssuedAt(now)
 	token.SetNotBefore(now)
-	token.SetExpiration(now.Add(7 * 24 * time.Hour))
+	token.SetExpiration(now.Add(fn.AssignTokenTTL(defaultAssignTokenTTL)))
 
 	var req *http.Request
 	req, err = http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
