@@ -1065,8 +1065,10 @@ func TestFlagAliases(t *testing.T) {
 	})
 
 	t.Run("env var alias falls back when canonical unset", func(t *testing.T) {
-		// Reset deprecation log so this test sees the warning.
-		deprecationLog.Delete("SKIPPER_OLD_NAME")
+		// Reset deprecation log so this test sees the warning. The key
+		// matches the `subject` passed to logDeprecation in the env-var
+		// fallback path (see addPreRun).
+		deprecationLog.Delete("env SKIPPER_OLD_NAME")
 		type cfg struct {
 			Name string `flag:"new-name,old-name"`
 		}
