@@ -75,8 +75,8 @@ func BenchmarkHash(b *testing.B) {
 func BenchmarkMapLookup(b *testing.B) {
 	b.Run("HashKey", func(b *testing.B) {
 		m := make(map[AssignmentHash]int)
-		for i, fn := range testAssignments {
-			m[fn.Hash()] = i
+		for i, a := range testAssignments {
+			m[a.Hash()] = i
 		}
 
 		lookupHash := testAssignments[2].Hash()
@@ -88,20 +88,20 @@ func BenchmarkMapLookup(b *testing.B) {
 
 	b.Run("HashKeyWithCompute", func(b *testing.B) {
 		m := make(map[AssignmentHash]int)
-		for i, fn := range testAssignments {
-			m[fn.Hash()] = i
+		for i, a := range testAssignments {
+			m[a.Hash()] = i
 		}
 
-		lookupFn := testAssignments[2]
+		lookupAssignment := testAssignments[2]
 
 		for b.Loop() {
-			_ = m[lookupFn.Hash()]
+			_ = m[lookupAssignment.Hash()]
 		}
 	})
 }
 
-func TestFunctionFromHeader(t *testing.T) {
-	validFn := Assignment_builder{
+func TestAssignmentFromHeader(t *testing.T) {
+	validAssignment := Assignment_builder{
 		Namespace:  new("test-ns"),
 		Deployment: new("test-deploy"),
 		Tenant:     new("test-tenant"),
@@ -116,10 +116,10 @@ func TestFunctionFromHeader(t *testing.T) {
 	}.Build()
 
 	tests := []struct {
-		name    string
-		header  string
-		wantErr string
-		wantFn  *Assignment
+		name           string
+		header         string
+		wantErr        string
+		wantAssignment *Assignment
 	}{
 		{
 			name:    "missing header",
@@ -187,14 +187,14 @@ func TestFunctionFromHeader(t *testing.T) {
 			wantErr: "scale.min_instances (5) must be <= scale.max_instances (3)",
 		},
 		{
-			name:   "valid function with scale",
-			header: `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`,
-			wantFn: validFn,
+			name:           "valid function with scale",
+			header:         `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`,
+			wantAssignment: validAssignment,
 		},
 		{
-			name:   "unknown fields are ignored",
-			header: `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","nonce":"abc123","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`,
-			wantFn: validFn,
+			name:           "unknown fields are ignored",
+			header:         `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","nonce":"abc123","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`,
+			wantAssignment: validAssignment,
 		},
 	}
 
@@ -205,14 +205,14 @@ func TestFunctionFromHeader(t *testing.T) {
 				req.Header.Set(LegacyFunctionKey.Header, tc.header)
 			}
 
-			fn, err := AssignmentFromHeader(req)
+			a, err := AssignmentFromHeader(req)
 
 			if tc.wantErr != "" {
 				assert.ErrorContains(t, err, tc.wantErr)
-				assert.Assert(t, fn == nil, "expected nil function on error")
+				assert.Assert(t, a == nil, "expected nil function on error")
 			} else {
 				assert.NilError(t, err)
-				assert.Assert(t, proto.Equal(fn, tc.wantFn), "function mismatch: got %+v, want %+v", fn, tc.wantFn)
+				assert.Assert(t, proto.Equal(a, tc.wantAssignment), "function mismatch: got %+v, want %+v", a, tc.wantAssignment)
 			}
 		})
 	}
@@ -256,15 +256,15 @@ func TestAssignmentFromHeaderDualParse(t *testing.T) {
 				req.Header.Set(AssignmentKey.Header, tc.canonical)
 			}
 
-			fn, err := AssignmentFromHeader(req)
+			a, err := AssignmentFromHeader(req)
 			assert.NilError(t, err)
-			assert.Equal(t, fn.GetTenant(), tc.wantTenant)
+			assert.Equal(t, a.GetTenant(), tc.wantTenant)
 		})
 	}
 }
 
 func TestSetHeaderDualWrites(t *testing.T) {
-	fn := Assignment_builder{
+	a := Assignment_builder{
 		Namespace:  new("ns"),
 		Deployment: new("deploy"),
 		Tenant:     new("tenant"),
@@ -272,7 +272,7 @@ func TestSetHeaderDualWrites(t *testing.T) {
 	}.Build()
 
 	req := httptest.NewRequest("GET", "/", nil)
-	fn.SetHeader(req)
+	a.SetHeader(req)
 
 	legacy := req.Header.Get(LegacyFunctionKey.Header)
 	canonical := req.Header.Get(AssignmentKey.Header)
@@ -281,12 +281,12 @@ func TestSetHeaderDualWrites(t *testing.T) {
 	assert.Equal(t, legacy, canonical, "both headers should carry identical bodies")
 }
 
-func TestFunctionHeaderCacheBounded(t *testing.T) {
+func TestAssignmentHeaderCacheBounded(t *testing.T) {
 	// Fill cache beyond capacity and confirm it stays bounded.
 	cap := 8
 	c := newAssignmentHeaderCache(cap)
 
-	fn := Assignment_builder{
+	a := Assignment_builder{
 		Namespace:  new("ns"),
 		Deployment: new("deploy"),
 		Tenant:     new("tenant"),
@@ -294,19 +294,19 @@ func TestFunctionHeaderCacheBounded(t *testing.T) {
 	}.Build()
 
 	for i := range cap + 10 {
-		c.Add(fmt.Sprintf("key-%d", i), fn)
+		c.Add(fmt.Sprintf("key-%d", i), a)
 	}
 
 	assert.Equal(t, c.Len(), cap, "cache must not exceed its capacity")
 }
 
-func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
+func TestAssignmentHeaderCacheLRUEviction(t *testing.T) {
 	// Verify that the oldest (least recently used) entry is evicted when the
 	// cache is full and a new entry is inserted.
 	cap := 3
 	c := newAssignmentHeaderCache(cap)
 
-	fn := Assignment_builder{
+	a := Assignment_builder{
 		Namespace:  new("ns"),
 		Deployment: new("deploy"),
 		Tenant:     new("tenant"),
@@ -315,7 +315,7 @@ func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 
 	// Fill to capacity: key-0, key-1, key-2 (key-0 is LRU).
 	for i := range cap {
-		c.Add(fmt.Sprintf("key-%d", i), fn)
+		c.Add(fmt.Sprintf("key-%d", i), a)
 	}
 
 	// Access key-0 to make it recently used; key-1 becomes LRU.
@@ -323,7 +323,7 @@ func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 	assert.Assert(t, ok, "key-0 should be present before eviction")
 
 	// Insert a new key; key-1 (LRU) should be evicted.
-	c.Add("key-new", fn)
+	c.Add("key-new", a)
 
 	_, stillThere := c.Get("key-1")
 	assert.Assert(t, !stillThere, "key-1 (LRU) should have been evicted")
@@ -338,7 +338,7 @@ func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 	assert.Assert(t, okNew, "key-new should be present")
 }
 
-func TestFunctionFromHeaderCacheIdentity(t *testing.T) {
+func TestAssignmentFromHeaderCacheIdentity(t *testing.T) {
 	// AssignmentFromHeader must return the same pointer for repeated calls with
 	// the same header value.
 	header := `{"namespace":"id-ns","deployment":"id-deploy","tenant":"id-tenant","scale":{"min_instances":1,"max_instances":5}}`
@@ -356,13 +356,13 @@ func TestFunctionFromHeaderCacheIdentity(t *testing.T) {
 	assert.Assert(t, fn1 == fn2, "same header must return the same pointer (cache identity)")
 }
 
-func TestFunctionHeaderCacheConcurrentAccess(t *testing.T) {
+func TestAssignmentHeaderCacheConcurrentAccess(t *testing.T) {
 	// Verify concurrent reads and writes don't panic or corrupt the cache.
 	t.Parallel()
 
 	c := newAssignmentHeaderCache(16)
 
-	fn := Assignment_builder{
+	a := Assignment_builder{
 		Namespace:  new("ns"),
 		Deployment: new("deploy"),
 		Tenant:     new("tenant"),
@@ -375,7 +375,7 @@ func TestFunctionHeaderCacheConcurrentAccess(t *testing.T) {
 			defer func() { done <- struct{}{} }()
 			for i := range 200 {
 				key := fmt.Sprintf("key-%d-%d", g, i%20)
-				c.Add(key, fn)
+				c.Add(key, a)
 				c.Get(key)
 			}
 		}()
@@ -392,7 +392,7 @@ var _ = xxhash.New
 
 var sinkAssignment *Assignment
 
-func BenchmarkFunctionFromHeader(b *testing.B) {
+func BenchmarkAssignmentFromHeader(b *testing.B) {
 	const validHeader = `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`
 
 	b.Run("cache_hit", func(b *testing.B) {

@@ -85,15 +85,15 @@ func durationBetween(start, end *timestamppb.Timestamp) string {
 	return fmt.Sprintf("%dm %ds", minutes, remaining)
 }
 
-func assignmentKey(fn *skipper.Assignment) string {
-	if fn == nil {
+func assignmentKey(a *skipper.Assignment) string {
+	if a == nil {
 		return ""
 	}
-	return fn.GetNamespace() + ":" + fn.GetDeployment() + ":" + fn.GetTenant()
+	return a.GetNamespace() + ":" + a.GetDeployment() + ":" + a.GetTenant()
 }
 
-func assignmentPath(fn *skipper.Assignment) string {
-	return "/assignments/" + url.PathEscape(assignmentKey(fn))
+func assignmentPath(a *skipper.Assignment) string {
+	return "/assignments/" + url.PathEscape(assignmentKey(a))
 }
 
 func scaleReasonLabel(reason skipper.ScaleReason) string {

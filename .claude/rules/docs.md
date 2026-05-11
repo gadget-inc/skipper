@@ -20,7 +20,7 @@ For guide content, ask: "Would an operator deploying Skipper need to know this?"
 
 These MUST NOT appear in guides:
 
-- Go type names or internal package paths (e.g., `FunctionHash`, `internal/key/`)
+- Go type names or internal package paths (e.g., `AssignmentHash`, `internal/key/`)
 - Code-level API signatures (e.g., `log.With(ctx, fields...)`)
 - Which Go stdlib types are used internally (e.g., `httputil.ReverseProxy`, `sync.Once`)
 - Internal coordination mechanisms (e.g., controller-to-controller forwarding)

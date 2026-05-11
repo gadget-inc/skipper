@@ -56,7 +56,7 @@ assert.DeepEqual(t, got, want)   // for structs, slices, maps
 Use `gotest.tools/v3/golden` for snapshot testing. Name fixtures with `golden` prefix:
 
 ```go
-var goldenFunction = &Function{...}
+var goldenAssignment = &Assignment{...}
 
 // Write golden file
 golden.Assert(t, string(output)+"\n", "filename.golden")
@@ -71,7 +71,7 @@ data := golden.Get(t, "filename.golden")
 - Use `t.Parallel()` for independent tests
 - Place package-specific helpers in the test file or `testutil_test.go`
 - Use `internal/fixture/` for cross-package test data
-- Name package-level fixtures with `test` prefix (e.g., `testFunction`)
+- Name package-level fixtures with `test` prefix (e.g., `testAssignment`)
 
 ## Benchmarks
 

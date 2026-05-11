@@ -3,7 +3,7 @@ title: Architecture overview
 description: How Skipper's controller and router work together.
 ---
 
-Skipper has two main components that run inside Kubernetes -- a **controller** that manages pod lifecycle and a **router** that proxies HTTP traffic. They communicate over gRPC so that the router can request instance assignments and send heartbeats.
+Skipper has two main components that run inside Kubernetes -- a **controller** that manages pod lifecycle and a **router** that proxies HTTP traffic. They communicate over gRPC so that the router can request bound instances and send heartbeats. See [`UBIQUITOUS_LANGUAGE.md`](https://github.com/gadget-inc/skipper/blob/main/UBIQUITOUS_LANGUAGE.md) for the canonical domain glossary.
 
 ```
 Clients
@@ -18,7 +18,7 @@ Pod (instance)            Pod lifecycle
 
 ## Hash ring and controller replicas
 
-Multiple controller replicas form a hash ring (`internal/hashring/`). Each controller pod adds its IP to the ring on startup. When a function needs to be managed, its `FunctionHash` is looked up against the ring to determine which controller replica is responsible.
+Multiple controller replicas form a hash ring (`internal/hashring/`). Each controller pod adds its IP to the ring on startup. When an assignment needs to be managed, its `AssignmentHash` is looked up against the ring to determine which controller replica is responsible.
 
 The ring uses 1024 virtual nodes per IP for even distribution. If a router sends a scale request to the wrong controller, that controller forwards the request to the responsible replica over gRPC.
 
@@ -26,14 +26,14 @@ The ring uses 1024 virtual nodes per IP for even distribution. If a router sends
 
 The controller uses Kubernetes shared informers to watch for changes rather than polling. Two informer sets drive the system:
 
-- **Controller pod informer** -- watches pods in the controller's own namespace. Add and delete events update the hash ring, which redistributes function ownership across replicas.
-- **Function namespace informers** -- one per configured namespace. Pod events (add, update, delete) are recorded for lag measurement and trigger informer cache updates.
+- **Controller pod informer** -- watches pods in the controller's own namespace. Add and delete events update the hash ring, which redistributes assignment ownership across replicas.
+- **Assignment namespace informers** -- one per configured namespace. Pod events (add, update, delete) are recorded for lag measurement and trigger informer cache updates.
 
-Supervisors are not created directly from pod events. Instead, the controller discovers supervisors on a timer loop and creates them lazily when `GetInstance` or `Heartbeat` RPCs reference a new function.
+Supervisors are not created directly from pod events. Instead, the controller discovers supervisors on a timer loop and creates them lazily when `GetInstance` or `Heartbeat` RPCs reference a new assignment.
 
 ## Supervisors
 
-Each active function gets its own `Supervisor` (`internal/controller/supervisor.go`) -- a goroutine with an independent converge loop. Supervisors are stored in a concurrent map keyed by `FunctionHash`.
+Each active assignment gets its own `Supervisor` (`internal/controller/supervisor.go`) -- a goroutine with an independent converge loop. Supervisors are stored in a concurrent map keyed by `AssignmentHash`.
 
 A supervisor's converge loop runs on a timer (`--scale-interval`, default 15s) and on each tick:
 
@@ -41,19 +41,19 @@ A supervisor's converge loop runs on a timer (`--scale-interval`, default 15s) a
 2. Collects metrics -- CPU, memory, and in-flight request counts from router heartbeats.
 3. Computes a scaling recommendation using an HPA-inspired algorithm that evaluates each metric independently and takes the highest recommendation.
 4. Applies a stabilization window for downscale decisions to avoid flapping.
-5. Assigns or terminates pods to reach the desired count, respecting `min_instances` and `max_instances` bounds.
+5. Binds or terminates pods to reach the desired count, respecting `min_instances` and `max_instances` bounds.
 
-Supervisors are created lazily when a pod event or scale request references a function, and stop themselves when the function has no instances and no heartbeats.
+Supervisors are created lazily when a pod event or scale request references an assignment, and stop themselves when the assignment has no instances and no heartbeats.
 
 ## Router request flow
 
-The router (`internal/router/`) receives HTTP requests and proxies them to function instances:
+The router (`internal/router/`) receives HTTP requests and proxies them to bound instances:
 
-1. Parse the `x-skipper-function` header to identify the target function.
-2. Call the controller's `GetInstance` RPC to obtain an instance address. The controller either returns an already-assigned pod or assigns a new one from the deployment's unassigned pool.
+1. Parse the `x-skipper-assignment` header (or legacy `x-skipper-function`) to identify the target assignment.
+2. Call the controller's `GetInstance` RPC to obtain an instance address. The controller either returns an already-bound pod or binds a new one from the deployment's unassigned pool.
 3. Proxy the request to the instance using a reverse proxy with configurable retry logic (up to `--max-round-trip-attempts` with exponential backoff).
-4. While the request is in flight, send periodic heartbeats to the controller (every `--heartbeat-interval`). Heartbeats prevent the controller from scaling the function to zero.
-5. For oneshot functions, call `ReleaseInstance` after the response completes to delete the single-use pod.
+4. While the request is in flight, send periodic heartbeats to the controller (every `--heartbeat-interval`). Heartbeats prevent the controller from scaling the assignment to zero.
+5. For oneshot assignments, call `ReleaseInstance` after the response completes to delete the single-use pod.
 
 ## Key packages
 
@@ -61,7 +61,7 @@ The router (`internal/router/`) receives HTTP requests and proxies them to funct
 | ---------------------- | ---------------------------------------------------------------------- |
 | `internal/controller/` | Kubernetes controller: informers, supervisors, scaling, pod assignment |
 | `internal/router/`     | HTTP reverse proxy, heartbeat sender, gRPC client                      |
-| `internal/skipper/`    | Core domain types: `Function`, `Instance`, `Heartbeat`                 |
+| `internal/skipper/`    | Core domain types: `Assignment`, `Instance`, `Heartbeat`               |
 | `internal/hashring/`   | Consistent hashing with virtual nodes for controller distribution      |
 | `internal/config/`     | Declarative flag binding via struct tags                               |
 | `internal/telemetry/`  | OTLP tracing and Prometheus metrics                                    |

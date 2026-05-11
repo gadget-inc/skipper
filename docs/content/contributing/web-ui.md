@@ -3,7 +3,7 @@ title: Web UI
 description: Develop and navigate the Skipper web UI.
 ---
 
-The web UI is a browser-based view of controller state — functions, tenants, instances, events, configuration, and more. During local development it is served at `http://127.0.0.1:8080` by the controller process.
+The web UI is a browser-based view of controller state — assignments, tenants, instances, events, configuration, and more. During local development it is served at `http://127.0.0.1:8080` by the controller process.
 
 ## Running in dev mode
 
@@ -19,20 +19,22 @@ dev up --only=controller,router # controller + router
 
 <div class="table-scroll">
 
-| Path                | Purpose                                                                  |
-| ------------------- | ------------------------------------------------------------------------ |
-| `/`                 | Dashboard — cluster summary with ready/total instances and recent events |
-| `/functions`        | List of all active functions                                             |
-| `/functions/{key}`  | Detail view for a single function (instances, scale history)             |
-| `/controllers`      | List of all controller peers and ring distribution                       |
-| `/controllers/{ip}` | Detail view for a single controller                                      |
-| `/routers`          | List of all router peers                                                 |
-| `/routers/{ip}`     | Detail view for a single router                                          |
-| `/instances/{name}` | Detail view for a single instance                                        |
-| `/tenants`          | List of all tenants                                                      |
-| `/tenants/{tenant}` | Detail view for a single tenant                                          |
-| `/events`           | Event log with function and severity filters                             |
-| `/config`           | Current controller configuration                                         |
+| Path                  | Purpose                                                                  |
+| --------------------- | ------------------------------------------------------------------------ |
+| `/`                   | Dashboard — cluster summary with ready/total instances and recent events |
+| `/assignments`        | List of all active assignments                                           |
+| `/assignments/{key}`  | Detail view for a single assignment (instances, scale history)           |
+| `/controllers`        | List of all controller peers and ring distribution                       |
+| `/controllers/{ip}`   | Detail view for a single controller                                      |
+| `/routers`            | List of all router peers                                                 |
+| `/routers/{ip}`       | Detail view for a single router                                          |
+| `/instances/{name}`   | Detail view for a single instance                                        |
+| `/tenants`            | List of all tenants                                                      |
+| `/tenants/{tenant}`   | Detail view for a single tenant                                          |
+| `/events`             | Event log with assignment and severity filters                           |
+| `/config`             | Current controller configuration                                         |
+
+The legacy `/functions` and `/functions/{key}` paths return 301 redirects to the new `/assignments` routes.
 
 </div>
 

@@ -78,12 +78,12 @@ func (env *fixtureEnv) mintToken(t *testing.T, tenant string) string {
 	return tok.V2Sign(env.secretKey)
 }
 
-func assignRequest(t *testing.T, baseURL, token, fnJSON string) *http.Request {
+func assignRequest(t *testing.T, baseURL, token, assignmentJSON string) *http.Request {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, baseURL+"/__skipper/assign", nil)
 	assert.NilError(t, err)
 	req.Header.Set(key.Token.Header, token)
-	req.Header.Set(skipper.LegacyFunctionKey.Header, fnJSON)
+	req.Header.Set(skipper.LegacyFunctionKey.Header, assignmentJSON)
 	return req
 }
 

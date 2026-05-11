@@ -42,29 +42,29 @@ b.Run("4-ips/parallel", func(b *testing.B) {
 })
 ```
 
-## FunctionHash
+## AssignmentHash
 
 ```go
-func BenchmarkFunctionHash(b *testing.B) {
+func BenchmarkAssignmentHash(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
-		testFunction.Hash()
+		testAssignment.Hash()
 	}
 }
 ```
 
-## FunctionFromHeader
+## AssignmentFromHeader
 
 Uses realistic HTTP request fixtures:
 
 ```go
-func BenchmarkFunctionFromHeader(b *testing.B) {
-	header := `{"namespace":"ns","deployment":"dep","tenant":"t","metadata":"m","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`
+func BenchmarkAssignmentFromHeader(b *testing.B) {
+	header := `{"namespace":"ns","deployment":"dep","tenant":"t","metadata":"m","scale_min_instances":1,"scale_max_instances":10,"scale_target_cpu_millicores":500,"scale_target_memory_mebibytes":256,"scale_target_in_flight_requests":100}`
 	b.ReportAllocs()
 	for b.Loop() {
 		req := httptest.NewRequest("GET", "/", nil)
-		req.Header.Set(skipper.FunctionKey.Header, header)
-		_, _ = FunctionFromHeader(req)
+		req.Header.Set(skipper.AssignmentKey.Header, header)
+		_, _ = AssignmentFromHeader(req)
 	}
 }
 ```

@@ -139,6 +139,46 @@ func TestForbiddenTokens_CaseInsensitiveAndCaseSensitiveTokens(t *testing.T) {
 	assert.Assert(t, !contains(tokens, "MDX"), "lowercase mdx should not match standalone MDX token")
 }
 
+func TestForbiddenTokens_FlagsStaleAssignmentVocabulary(t *testing.T) {
+	t.Parallel()
+
+	src := strings.Join([]string{
+		"the FunctionHash uniquely identifies a function",  // FunctionHash
+		"FunctionFromHeader parses the request",            // FunctionFromHeader
+		"call skipper.FunctionKey.Slog(a) for logging",     // skipper.FunctionKey
+		"the skipper.Function type is the canonical model", // skipper.Function (not -FunctionKey)
+		"index pods by functionHash for fast lookup",       // functionHash (lowercase indexer)
+	}, "\n")
+
+	got, err := scanForbiddenTokens(File{Path: "doc.md", Content: []byte(src)})
+	assert.NilError(t, err)
+
+	hits := uniqueRules(got, "forbidden-tokens")
+	want := []string{
+		"FunctionFromHeader",
+		"FunctionHash",
+		"functionHash",
+		"skipper.Function",
+		"skipper.FunctionKey",
+	}
+	assert.DeepEqual(t, hits, want)
+}
+
+func TestForbiddenTokens_AssignmentVocabularySkipperFunctionKeyDoesNotMatchSkipperFunction(t *testing.T) {
+	t.Parallel()
+
+	// `skipper.FunctionKey` should be flagged once as `skipper.FunctionKey`,
+	// not also as `skipper.Function` -- the word-boundary regex must
+	// exclude the FunctionKey case from the bare-Function token.
+	src := "skipper.FunctionKey is the renamed symbol"
+	got, err := scanForbiddenTokens(File{Path: "doc.md", Content: []byte(src)})
+	assert.NilError(t, err)
+
+	tokens := tokensFromFindings(got)
+	assert.Assert(t, contains(tokens, "skipper.FunctionKey"))
+	assert.Assert(t, !contains(tokens, "skipper.Function"), "bare skipper.Function should not match skipper.FunctionKey")
+}
+
 func TestForbiddenTokens_BinaryAndUnknownExtensionsScannedAsPlainText(t *testing.T) {
 	t.Parallel()
 

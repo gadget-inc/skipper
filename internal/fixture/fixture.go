@@ -11,9 +11,9 @@ import (
 
 func NewFixtureAssignment(t *testing.T) *skipper.Assignment {
 	t.Helper()
-	fn := NewAssignment(t)
-	fn.SetDeployment("fixture")
-	return fn
+	a := NewAssignment(t)
+	a.SetDeployment("fixture")
+	return a
 }
 
 type FixtureResponse struct {

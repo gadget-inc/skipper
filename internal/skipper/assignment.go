@@ -54,20 +54,15 @@ func (a *Assignment) Hash() AssignmentHash {
 
 var _ slog.LogValuer = (*Assignment)(nil)
 
-// LegacyFunctionKey emits the externally-visible "function" vocabulary on
-// telemetry, headers, and Kubernetes labels. Phase 1 keeps every existing
-// emission site pointed at this key; Phase 2 introduces dual-emit alongside
-// AssignmentKey.
-//
-// The Attr is shared across all concurrent readers of the same Assignment
-// pointer; treat the returned Attr as immutable.
+// LegacyFunctionKey is the back-compat shim that emits the "function"
+// vocabulary on telemetry, headers, and Kubernetes labels — paired with
+// AssignmentKey on every dual-emit site. The Attr is shared across all
+// concurrent readers of the same Assignment pointer; treat it as immutable.
 var LegacyFunctionKey = key.NewCached("function", (*Assignment).LogValue)
 
-// AssignmentKey emits the canonical "assignment" vocabulary. Phase 1
-// declares it but does not route any existing emission site through it
-// (except K8s annotation dual-write, which writes both this key's
-// PatchAnnotation and LegacyFunctionKey's). Phase 2 wires header dual-parse
-// and telemetry dual-emit via this key.
+// AssignmentKey is the canonical "assignment"-vocabulary key for telemetry,
+// headers, and Kubernetes labels. The Attr is shared across all concurrent
+// readers of the same Assignment pointer; treat it as immutable.
 var AssignmentKey = key.NewCached("assignment", (*Assignment).LogValue)
 
 func (a *Assignment) LogValue() slog.Value {
@@ -194,8 +189,7 @@ func nonNegativeDurations(a *Assignment) []namedDuration {
 
 // SetHeader serializes the assignment as JSON and writes it under both the
 // legacy ("X-Skipper-Function") and canonical ("X-Skipper-Assignment") header
-// names. Receivers that read either name accept the body. The cleanup plan
-// drops the legacy write after the deprecation window.
+// names. Receivers that read either name accept the body.
 func (a *Assignment) SetHeader(r *http.Request) {
 	body, err := json.Marshal(a)
 	if err != nil {

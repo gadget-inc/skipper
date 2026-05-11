@@ -43,16 +43,16 @@ var (
 // the resolver call site.
 const defaultAssignTokenTTL = 7 * 24 * time.Hour
 
-func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Assignment) (instance *skipper.Instance, err error) {
+func (ctrl *Controller) assignPod(ctx context.Context, a *skipper.Assignment) (instance *skipper.Instance, err error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
-	deployment := fn.GetDeployment()
+	deployment := a.GetDeployment()
 	assignmentsTotal.WithLabelValues(deployment, deployment).Inc()
 
 GET_UNASSIGNED_POD:
 	var unassignedPod *v1.Pod
-	unassignedPod, err = ctrl.getUnassignedPod(ctx, fn)
+	unassignedPod, err = ctrl.getUnassignedPod(ctx, a)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get unassigned pod: %w", err)
 	}
@@ -63,7 +63,7 @@ GET_UNASSIGNED_POD:
 		return nil, err
 	}
 
-	body, err := json.Marshal(fn)
+	body, err := json.Marshal(a)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal assignment: %w", err)
 	}
@@ -81,7 +81,7 @@ GET_UNASSIGNED_POD:
 		{ "op": "test", "path": "` + skipper.AssignmentKey.PatchAnnotation + `", "value": null },
 		{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
 		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
-		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.GetTenant() + `" },
+		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + a.GetTenant() + `" },
 		{ "op": "add", "path": "` + skipper.LegacyFunctionKey.PatchAnnotation + `", "value": ` + bodyJSON + ` },
 		{ "op": "add", "path": "` + skipper.AssignmentKey.PatchAnnotation + `", "value": ` + bodyJSON + ` },
 		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
@@ -109,15 +109,15 @@ GET_UNASSIGNED_POD:
 	}()
 
 	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + ctrl.config.AssignPath
-	assignCtx, cancel := context.WithTimeout(ctx, fn.AssignTimeout(ctrl.config.AssignTimeout))
+	assignCtx, cancel := context.WithTimeout(ctx, a.AssignTimeout(ctrl.config.AssignTimeout))
 	defer cancel()
 
 	now := time.Now()
 	token := paseto.NewToken()
-	token.SetSubject(fn.GetTenant())
+	token.SetSubject(a.GetTenant())
 	token.SetIssuedAt(now)
 	token.SetNotBefore(now)
-	token.SetExpiration(now.Add(fn.AssignTokenTTL(defaultAssignTokenTTL)))
+	token.SetExpiration(now.Add(a.AssignTokenTTL(defaultAssignTokenTTL)))
 
 	var req *http.Request
 	req, err = http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
@@ -126,7 +126,7 @@ GET_UNASSIGNED_POD:
 	}
 
 	req.Header.Set(key.Token.Header, token.V2Sign(ctrl.config.PasetoPrivateKey.V2AsymmetricSecretKey))
-	fn.SetHeader(req) // TODO: put the function in the token instead
+	a.SetHeader(req) // TODO: put the function in the token instead
 
 	log.Info(ctx, "assigning pod", key.Pod.Slog(assignedPod))
 	var res *http.Response
@@ -169,16 +169,16 @@ GET_UNASSIGNED_POD:
 	return
 }
 
-func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Assignment) (*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPod(ctx context.Context, a *skipper.Assignment) (*v1.Pod, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
-	deployment := fn.GetDeployment()
+	deployment := a.GetDeployment()
 	waitingForUnassignedPods.WithLabelValues(deployment, deployment).Inc()
 	defer waitingForUnassignedPods.WithLabelValues(deployment, deployment).Dec()
 
 	return timer.Poll(ctx, 250*time.Millisecond, func(ctx context.Context) (*v1.Pod, error) {
-		unassignedPods, err := ctrl.getUnassignedPods(fn)
+		unassignedPods, err := ctrl.getUnassignedPods(a)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list unassigned pods: %w", err)
 		}
@@ -190,13 +190,13 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Assign
 	})
 }
 
-func (ctrl *Controller) getUnassignedPods(fn *skipper.Assignment) ([]*v1.Pod, error) {
-	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.GetDeployment()})
+func (ctrl *Controller) getUnassignedPods(a *skipper.Assignment) ([]*v1.Pod, error) {
+	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{a.GetDeployment()})
 	if err != nil {
 		return nil, err
 	}
 
-	pods, err := ctrl.listPods(fn.GetNamespace(), doesNotHaveTenantSelector.Add(*equalDeploymentName))
+	pods, err := ctrl.listPods(a.GetNamespace(), doesNotHaveTenantSelector.Add(*equalDeploymentName))
 	if err != nil {
 		return nil, err
 	}
@@ -205,8 +205,8 @@ func (ctrl *Controller) getUnassignedPods(fn *skipper.Assignment) ([]*v1.Pod, er
 	return slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) }), nil
 }
 
-func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Assignment) ([]*skipper.Instance, error) {
-	instances, err := ctrl.getInstances(ctx, fn)
+func (ctrl *Controller) getReadyInstances(ctx context.Context, a *skipper.Assignment) ([]*skipper.Instance, error) {
+	instances, err := ctrl.getInstances(ctx, a)
 	if err != nil {
 		return nil, err
 	}
@@ -215,27 +215,27 @@ func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Assig
 	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool { return !instance.HasReadyAt() }), nil
 }
 
-func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Assignment) ([]*skipper.Instance, error) {
-	return ctrl.collectInstances(ctx, fn, true)
+func (ctrl *Controller) getInstances(ctx context.Context, a *skipper.Assignment) ([]*skipper.Instance, error) {
+	return ctrl.collectInstances(ctx, a, true)
 }
 
 // listInstances is a read-only variant of getInstances that does NOT
 // delete invalid pods. Use from observability paths (web UI, status
 // RPCs) where the call must not have side effects.
-func (ctrl *Controller) listInstances(ctx context.Context, fn *skipper.Assignment) ([]*skipper.Instance, error) {
-	return ctrl.collectInstances(ctx, fn, false)
+func (ctrl *Controller) listInstances(ctx context.Context, a *skipper.Assignment) ([]*skipper.Instance, error) {
+	return ctrl.collectInstances(ctx, a, false)
 }
 
-func (ctrl *Controller) collectInstances(ctx context.Context, fn *skipper.Assignment, cleanup bool) ([]*skipper.Instance, error) {
-	namespaceLister, found := ctrl.namespaceListers[fn.GetNamespace()]
+func (ctrl *Controller) collectInstances(ctx context.Context, a *skipper.Assignment, cleanup bool) ([]*skipper.Instance, error) {
+	namespaceLister, found := ctrl.namespaceListers[a.GetNamespace()]
 	if !found {
-		return nil, fmt.Errorf("managed pod lister not started for namespace %s", fn.GetNamespace())
+		return nil, fmt.Errorf("managed pod lister not started for namespace %s", a.GetNamespace())
 	}
 
-	hashKey := strconv.FormatUint(fn.Hash(), 10)
+	hashKey := strconv.FormatUint(a.Hash(), 10)
 	objs, err := namespaceLister.podIndexer.ByIndex(assignmentHashIndex, hashKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pods by function hash: %w", err)
+		return nil, fmt.Errorf("failed to get pods by assignment hash: %w", err)
 	}
 
 	instances := make([]*skipper.Instance, 0, len(objs))
@@ -446,7 +446,7 @@ func (ctrl *Controller) assignmentFromPod(pod *v1.Pod) (*skipper.Assignment, err
 }
 
 func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) {
-	fn, err := ctrl.assignmentFromPod(pod)
+	a, err := ctrl.assignmentFromPod(pod)
 	if err != nil {
 		return nil, err
 	}
@@ -479,7 +479,7 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 	}
 
 	instance := &skipper.Instance{}
-	instance.SetAssignment(fn)
+	instance.SetAssignment(a)
 	instance.SetName(pod.Name)
 	instance.SetReplicaSet(replicaSet)
 	instance.SetAssignedAt(timestamppb.New(assignedAt))

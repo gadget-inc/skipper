@@ -15,9 +15,9 @@ import (
 
 // Client is the interface for communicating with a controller.
 type Client interface {
-	Instance(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (instance *skipper.Instance, err error)
+	Instance(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (instance *skipper.Instance, err error)
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
-	Scale(ctx context.Context, fn *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
+	Scale(ctx context.Context, a *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
 	ReleaseInstance(ctx context.Context, inst *skipper.Instance) error
 	Close() error
 }
@@ -166,9 +166,9 @@ func NewClientWithResolver(builder resolver.Builder) (Client, error) {
 	}, nil
 }
 
-func (c *client) Instance(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+func (c *client) Instance(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 	req := &skipper.GetInstanceRequest{}
-	req.SetAssignment(fn)
+	req.SetAssignment(a)
 	req.SetExcludeInstanceNames(excludeInstanceNames)
 
 	resp, err := c.client.GetInstance(ctx, req)
@@ -197,9 +197,9 @@ func (c *client) Heartbeat(ctx context.Context, routerIP string, heartbeats []*s
 	return nil
 }
 
-func (c *client) Scale(ctx context.Context, fn *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
+func (c *client) Scale(ctx context.Context, a *skipper.Assignment, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error) {
 	req := &skipper.ScaleRequest{}
-	req.SetAssignment(fn)
+	req.SetAssignment(a)
 	req.SetDesiredInstances(desiredInstances)
 	req.SetReason(reason)
 

@@ -1,13 +1,13 @@
 ---
 title: Hashing
-description: How Skipper identifies functions and distributes responsibility across controllers using consistent hashing.
+description: How Skipper identifies assignments and distributes responsibility across controllers using consistent hashing.
 ---
 
-Skipper uses hashing at two levels: to uniquely identify each function, and to distribute function ownership across controller replicas via a consistent hash ring.
+Skipper uses hashing at two levels: to uniquely identify each assignment, and to distribute assignment ownership across controller replicas via a consistent hash ring.
 
-## Function hashing
+## Assignment hashing
 
-A function is uniquely identified by four fields: namespace, deployment, tenant, and oneshot flag. These are hashed together using xxhash to produce a `FunctionHash` (uint64) that serves as the function's identity throughout the system.
+An assignment is uniquely identified by four fields: namespace, deployment, tenant, and oneshot flag. These are hashed together using xxhash to produce an `AssignmentHash` (uint64) that serves as the assignment's identity throughout the system.
 
 ```
 hash = xxhash(namespace + NUL + deployment + NUL + tenant + NUL + oneshot)
@@ -15,11 +15,11 @@ hash = xxhash(namespace + NUL + deployment + NUL + tenant + NUL + oneshot)
 
 Fields are separated by null bytes (`NUL`, 0x00) to prevent collisions (e.g., namespace `ab` + deployment `cd` vs namespace `abc` + deployment `d`). The oneshot flag is encoded as a single byte (`0x01` or `0x00`).
 
-The `Function` type is defined as protobuf in `internal/skipper/types.proto`. Metadata and scale configuration are deliberately excluded from the hash — changing a function's scaling targets does not create a new identity.
+The `Assignment` type is defined as protobuf in `internal/skipper/types.proto`. Policy fields (scale, retry, transport, etc.) are deliberately excluded from the hash — changing an assignment's scaling targets does not create a new identity.
 
 ## Hash ring
 
-Skipper uses consistent hashing to distribute responsibility for functions across controller replicas. Each controller IP gets 1024 virtual nodes on the ring, ensuring even distribution even with a small number of controllers.
+Skipper uses consistent hashing to distribute responsibility for assignments across controller replicas. Each controller IP gets 1024 virtual nodes on the ring, ensuring even distribution even with a small number of controllers.
 
 ### Hash computation
 
@@ -27,9 +27,9 @@ Each virtual node's position is computed with FNV-1a over `ip + ":" + index` (wh
 
 ### Lookup
 
-To find the responsible controller for a function:
+To find the responsible controller for an assignment:
 
-1. XOR-fold the 64-bit function hash down to 32 bits
+1. XOR-fold the 64-bit assignment hash down to 32 bits
 2. Binary search the sorted ring for the next position (wraps around at the end)
 3. Return the controller IP that owns that position
 

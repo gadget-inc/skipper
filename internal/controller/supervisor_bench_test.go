@@ -43,16 +43,16 @@ var (
 // Allocation reductions (the whole point -- GC was the bottleneck):
 // FunctionAttr 26->0 (100%), HeartbeatAttr 7->3 (57%), Combined 41->11 (73%).
 func BenchmarkConvergeTelemetry(b *testing.B) {
-	fn := fixture.NewAssignment(b)
+	a := fixture.NewAssignment(b)
 	ctx := context.Background()
 
 	b.Run("FunctionAttr", func(b *testing.B) {
 		// Prime the cache so we measure the steady-state converge path where
 		// the Assignment pointer has already been seen.
-		_ = skipper.LegacyFunctionKey.Attr(fn)
+		_ = skipper.LegacyFunctionKey.Attr(a)
 		b.ReportAllocs()
 		for b.Loop() {
-			sinkAttr = skipper.LegacyFunctionKey.Attr(fn)
+			sinkAttr = skipper.LegacyFunctionKey.Attr(a)
 		}
 	})
 
@@ -61,7 +61,7 @@ func BenchmarkConvergeTelemetry(b *testing.B) {
 		// tick's message allocation (timestamppb + Heartbeat struct). The
 		// Combined sub-bench below still rebuilds per iteration to reflect
 		// the full converge loop.
-		hb := newBenchHeartbeat(fn)
+		hb := newBenchHeartbeat(a)
 		b.ReportAllocs()
 		for b.Loop() {
 			sinkAttr = skipper.HeartbeatKey.Attr(hb)
@@ -69,18 +69,18 @@ func BenchmarkConvergeTelemetry(b *testing.B) {
 	})
 
 	b.Run("Combined", func(b *testing.B) {
-		_ = skipper.LegacyFunctionKey.Attr(fn)
+		_ = skipper.LegacyFunctionKey.Attr(a)
 		b.ReportAllocs()
 		for b.Loop() {
-			hb := newBenchHeartbeat(fn)
-			sinkCtx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(fn), skipper.HeartbeatKey.Attr(hb))
+			hb := newBenchHeartbeat(a)
+			sinkCtx = telemetry.With(ctx, skipper.LegacyFunctionKey.Attr(a), skipper.HeartbeatKey.Attr(hb))
 		}
 	})
 }
 
-func newBenchHeartbeat(fn *skipper.Assignment) *skipper.Heartbeat {
+func newBenchHeartbeat(a *skipper.Assignment) *skipper.Heartbeat {
 	hb := &skipper.Heartbeat{}
-	hb.SetAssignment(fn)
+	hb.SetAssignment(a)
 	hb.SetTimestamp(timestamppb.New(time.Unix(1700000000, 0)))
 	hb.SetInFlightRequests(42)
 	return hb

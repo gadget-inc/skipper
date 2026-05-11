@@ -44,6 +44,11 @@ var forbiddenTokenList = []forbiddenToken{
 	{"@astrojs/", regexp.MustCompile(`@astrojs/`), "drop the Astro packages reference"},
 	{".mdx", regexp.MustCompile(`(?i)\b\w+\.mdx\b`), "rename to plain .md (the docs site uses Goldmark, not MDX)"},
 	{"MDX", regexp.MustCompile(`\bMDX\b`), "describe content as plain Markdown (the docs site is Goldmark-based)"},
+	{"FunctionHash", regexp.MustCompile(`\bFunctionHash\b`), "use AssignmentHash (the type was renamed)"},
+	{"FunctionFromHeader", regexp.MustCompile(`\bFunctionFromHeader\b`), "use AssignmentFromHeader (the parser was renamed)"},
+	{"skipper.FunctionKey", regexp.MustCompile(`\bskipper\.FunctionKey\b`), "use skipper.AssignmentKey (or skipper.LegacyFunctionKey for back-compat emissions)"},
+	{"skipper.Function", regexp.MustCompile(`\bskipper\.Function\b`), "use skipper.Assignment (the proto message was renamed)"},
+	{"functionHash", regexp.MustCompile(`\bfunctionHash\b`), "use assignmentHash (the informer indexer was renamed)"},
 }
 
 var forbiddenTokensAllowlist = []forbiddenTokensAllowEntry{

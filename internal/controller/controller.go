@@ -32,7 +32,7 @@ import (
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-const assignmentHashIndex = "functionHash"
+const assignmentHashIndex = "assignmentHash"
 
 type namespaceLister struct {
 	podIndexer        cache.Indexer
@@ -247,11 +247,11 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 				if !ok {
 					return nil, nil
 				}
-				fn, err := ctrl.assignmentFromPod(pod)
+				a, err := ctrl.assignmentFromPod(pod)
 				if err != nil {
 					return nil, nil
 				}
-				return []string{strconv.FormatUint(fn.Hash(), 10)}, nil
+				return []string{strconv.FormatUint(a.Hash(), 10)}, nil
 			},
 		})
 		if err != nil {

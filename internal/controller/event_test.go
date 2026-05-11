@@ -16,10 +16,10 @@ func TestEventLog(t *testing.T) {
 		t.Parallel()
 
 		el := &eventLog{}
-		fn := fixture.NewAssignment(t)
+		a := fixture.NewAssignment(t)
 
-		el.add(fn, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO, "scaled up to 3")
-		el.add(fn, skipper.EventType_EVENT_TYPE_SCALE_DOWN, skipper.EventSeverity_EVENT_SEVERITY_INFO, "scaled down to 1")
+		el.add(a, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO, "scaled up to 3")
+		el.add(a, skipper.EventType_EVENT_TYPE_SCALE_DOWN, skipper.EventSeverity_EVENT_SEVERITY_INFO, "scaled down to 1")
 
 		events := el.snapshot()
 		assert.Equal(t, len(events), 2)
@@ -32,10 +32,10 @@ func TestEventLog(t *testing.T) {
 		t.Parallel()
 
 		el := &eventLog{}
-		fn := fixture.NewAssignment(t)
+		a := fixture.NewAssignment(t)
 
 		for i := range 250 {
-			el.add(fn, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO, "event "+string(rune('A'+i%26)))
+			el.add(a, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO, "event "+string(rune('A'+i%26)))
 		}
 
 		events := el.snapshot()
@@ -46,11 +46,11 @@ func TestEventLog(t *testing.T) {
 		t.Parallel()
 
 		el := &eventLog{}
-		fn := fixture.NewAssignment(t)
+		a := fixture.NewAssignment(t)
 
-		el.add(fn, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO, "first")
-		el.add(fn, skipper.EventType_EVENT_TYPE_SCALE_DOWN, skipper.EventSeverity_EVENT_SEVERITY_INFO, "second")
-		el.add(fn, skipper.EventType_EVENT_TYPE_POD_ASSIGNED, skipper.EventSeverity_EVENT_SEVERITY_INFO, "third")
+		el.add(a, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO, "first")
+		el.add(a, skipper.EventType_EVENT_TYPE_SCALE_DOWN, skipper.EventSeverity_EVENT_SEVERITY_INFO, "second")
+		el.add(a, skipper.EventType_EVENT_TYPE_POD_ASSIGNED, skipper.EventSeverity_EVENT_SEVERITY_INFO, "third")
 
 		events := el.snapshot()
 		assert.Equal(t, events[0].GetMessage(), "third")
@@ -70,13 +70,13 @@ func TestEventLog(t *testing.T) {
 		t.Parallel()
 
 		el := &eventLog{}
-		fn := fixture.NewAssignment(t)
+		a := fixture.NewAssignment(t)
 
 		var wg sync.WaitGroup
 		for range 10 {
 			wg.Go(func() {
 				for range 50 {
-					el.add(fn, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO, "concurrent")
+					el.add(a, skipper.EventType_EVENT_TYPE_SCALE_UP, skipper.EventSeverity_EVENT_SEVERITY_INFO, "concurrent")
 				}
 			})
 		}
@@ -90,9 +90,9 @@ func TestEventLog(t *testing.T) {
 		t.Parallel()
 
 		el := &eventLog{}
-		fn := fixture.NewAssignment(t)
+		a := fixture.NewAssignment(t)
 
-		el.add(fn, skipper.EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP, skipper.EventSeverity_EVENT_SEVERITY_WARN, "stuck pod deleted")
+		el.add(a, skipper.EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP, skipper.EventSeverity_EVENT_SEVERITY_WARN, "stuck pod deleted")
 
 		events := el.snapshot()
 		assert.Equal(t, len(events), 1)
@@ -100,6 +100,6 @@ func TestEventLog(t *testing.T) {
 		assert.Equal(t, events[0].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_WARN)
 		assert.Equal(t, events[0].GetMessage(), "stuck pod deleted")
 		assert.Assert(t, events[0].HasTimestamp())
-		assert.Equal(t, events[0].GetAssignment().GetTenant(), fn.GetTenant())
+		assert.Equal(t, events[0].GetAssignment().GetTenant(), a.GetTenant())
 	})
 }

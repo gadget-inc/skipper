@@ -17,7 +17,7 @@ Flags:
       --log-file-level string                     Log level for the file output. Defaults to --log-level. (trace, debug, info, warn, error) (env SKIPPER_LOG_FILE_LEVEL)
       --log-format string                         The log format to use. (json, text) (env SKIPPER_LOG_FORMAT) (default "json")
       --log-level                                 The log level to use. (trace, debug, info, warn, error) (env SKIPPER_LOG_LEVEL) (default INFO)
-      --max-round-trip-attempts int               The maximum number of attempts to proxy a request to a function. (env SKIPPER_MAX_ROUND_TRIP_ATTEMPTS) (default 6)
+      --max-round-trip-attempts int               The maximum number of attempts to proxy a request to an assignment. (env SKIPPER_MAX_ROUND_TRIP_ATTEMPTS) (default 6)
       --pod-ip string                             The pod IP the router is running on. (env SKIPPER_POD_IP)
       --port int                                  The port the router listens on. (env SKIPPER_PORT) (default 8080)
       --pprof                                     Whether to enable pprof. (env SKIPPER_PPROF) (default true)

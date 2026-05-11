@@ -31,7 +31,7 @@ var docsSidebar = docssite.Sidebar{
 		{
 			Label: "Guides",
 			Items: []docssite.SidebarItem{
-				{Label: "Deploying Functions", Link: "/guides/deploying-functions/"},
+				{Label: "Deployments", Link: "/guides/deployments/"},
 				{Label: "Routing and Proxying", Link: "/guides/routing/"},
 				{Label: "Scaling", Link: "/guides/scaling/"},
 				{Label: "Heartbeats and Lifecycle", Link: "/guides/heartbeats-and-lifecycle/"},

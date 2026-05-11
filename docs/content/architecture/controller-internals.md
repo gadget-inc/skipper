@@ -1,9 +1,9 @@
 ---
 title: Controller Internals
-description: How the controller discovers pods, supervises functions, scales deployments, and safely assigns pods.
+description: How the controller discovers pods, supervises assignments, scales deployments, and safely binds pods.
 ---
 
-The controller is the stateful core of Skipper. It watches Kubernetes resources via informers, runs a per-function supervisor loop, and handles pod assignment with optimistic concurrency.
+The controller is the stateful core of Skipper. It watches Kubernetes resources via informers, runs a per-assignment supervisor loop, and handles pod binding with optimistic concurrency.
 
 ## Informer architecture
 
@@ -13,7 +13,7 @@ The controller uses Kubernetes informers (shared informer factory pattern) for e
 
 1. **Controller pod informer** -- watches controller pods to maintain the hash ring. When a controller pod appears or disappears, the ring is updated.
 
-2. **Function pod informers** -- per-namespace, filtered by the `skipper/deployment` label. These track the pods available for function assignment. A custom indexer on `functionHash` enables efficient lookups.
+2. **Assignment pod informers** -- per-namespace, filtered by the `skipper/deployment` label. These track the pods available for binding to assignments. A custom indexer on `assignmentHash` enables efficient lookups.
 
 3. **ReplicaSet informers** -- per-namespace, for tracking deployment rollouts and detecting stale pods that belong to old ReplicaSets.
 
@@ -23,28 +23,28 @@ Informer event lag (the time between an event occurring and the handler processi
 
 ## Supervisor pattern
 
-Each active function gets its own Supervisor goroutine that runs independently with its own context and cancel function. `sync.Once` ensures the converge loop starts exactly once per Supervisor.
+Each active assignment gets its own Supervisor goroutine that runs independently with its own context and cancel function. `sync.Once` ensures the converge loop starts exactly once per Supervisor.
 
 ### Converge loop
 
 The Supervisor executes the following steps every `--scale-interval` (default: 15s):
 
 1. Get current instances from the pod informer
-2. Clear stale heartbeats if the function lost all instances
+2. Clear stale heartbeats if the assignment lost all instances
 3. Calculate desired instances using the HPA algorithm
 4. Record the recommendation to the stabilization window
 5. Check responsibility via the hash ring (early return if not responsible)
 6. Clean up stuck instances
-7. Execute scaling (assign or delete pods)
+7. Execute scaling (bind or delete pods)
 8. Replace stale instances (only when not scaling down)
 
-For oneshot functions, each request gets its own pod. The supervisor only intervenes as a safety net — if a pod's heartbeat times out, the controller deletes it and stops the loop.
+For oneshot assignments, each request gets its own pod. The supervisor only intervenes as a safety net — if a pod's heartbeat times out, the controller deletes it and stops the loop.
 
 ## Scaling internals
 
 ### Controller startup stabilization
 
-New controllers wait `max(downscale_stabilization, heartbeat_timeout)` before executing their first downscale. This prevents a freshly started controller from immediately scaling down functions that were recently active on another replica.
+New controllers wait `max(downscale_stabilization, heartbeat_timeout)` before executing their first downscale. This prevents a freshly started controller from immediately scaling down assignments that were recently active on another replica.
 
 ### Recommendation tracking
 
@@ -61,7 +61,7 @@ For CPU metrics, pods newer than `--hpa-initial-readiness-delay` (default: 30s) 
 
 ## Pod assignment safety
 
-When a request arrives for a function with no ready instances, the controller assigns an unassigned pod from the deployment pool through a multi-step process designed for safety under concurrent access.
+When a request arrives for an assignment with no ready instances, the controller binds an unassigned pod from the deployment pool through a multi-step process designed for safety under concurrent access.
 
 ### Assignment walkthrough
 
@@ -70,7 +70,7 @@ When a request arrives for a function with no ready instances, the controller as
 3. **Atomic metadata patch.** Applies a JSON patch to the pod with four test operations:
    - Pod has a ReplicaSet owner
    - Pod is not already assigned (no tenant label)
-   - No function annotation exists
+   - No `skipper/assignment` (or legacy `skipper/function`) annotation exists
    - No assigned-at annotation exists
 
    All four conditions must hold for the patch to succeed. If any test fails, another controller (or a previous attempt) already claimed the pod — the controller retries with a different pod (409 conflict).
@@ -78,14 +78,14 @@ When a request arrives for a function with no ready instances, the controller as
 4. **Send assignment token.** HTTP POST to `/__skipper/assign` on the pod with a PASETO-signed token (Ed25519, 7-day expiry).
 5. **Mark ready.** On success, the controller patches the pod with a `ready-at` timestamp. On failure, it deletes the pod and retries.
 
-This makes assignment idempotent — if two controllers try to assign the same pod simultaneously, only one succeeds.
+This makes assignment idempotent — if two controllers try to bind the same pod simultaneously, only one succeeds.
 
 ## Caching
 
 The controller uses caching to avoid redundant work on hot paths:
 
 - **Pod port cache** by UID — avoids repeated annotation parsing for port resolution
-- **Function cache** by annotation JSON — avoids repeated deserialization of function annotations on pods
+- **Assignment cache** by annotation JSON — avoids repeated deserialization of `skipper/assignment` (and legacy `skipper/function`) pod annotations
 
 ## Heartbeat forwarding protocol
 

@@ -148,9 +148,9 @@ func TestHeaderDualParse(t *testing.T) {
 
 			var observedTenant string
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-				observedTenant = fn.GetTenant()
-				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				observedTenant = a.GetTenant()
+				return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(http.StatusOK)
 				}), nil
 			})
@@ -171,12 +171,12 @@ func TestHeaderDualParse(t *testing.T) {
 func TestGetInstanceDuration(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 
 	sentError := false
 
 	mockControllerClient := fixture.NewMockControllerClient(t)
-	mockControllerClient.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mockControllerClient.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		if !sentError {
 			time.Sleep(10 * time.Millisecond)
 			sentError = true
@@ -184,23 +184,23 @@ func TestGetInstanceDuration(t *testing.T) {
 		}
 
 		time.Sleep(10 * time.Millisecond)
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			assert.Assert(t, http.MethodGet == req.Method)
 			assert.Assert(t, req.URL.Path == "/")
 
 			rw.WriteHeader(http.StatusOK)
-			rw.Write([]byte("Hello, " + fn.GetTenant()))
+			rw.Write([]byte("Hello, " + a.GetTenant()))
 		}), nil
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil)
 
 	router := New(testConfig(), mockControllerClient)
 	router.ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
-	assert.Assert(t, "Hello, "+fn.GetTenant() == rw.Body.String())
+	assert.Assert(t, "Hello, "+a.GetTenant() == rw.Body.String())
 	assert.Assert(t, len(rw.Header()[key.GetInstanceDurationMs.Header]) == 1)
 
 	duration, err := strconv.ParseInt(rw.Header()[key.GetInstanceDurationMs.Header][0], 10, 64)
@@ -227,17 +227,17 @@ func TestMethods(t *testing.T) {
 		// unit tests
 		t.Run(tc.method, func(t *testing.T) {
 			t.Parallel()
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 					assert.Assert(t, tc.method == req.Method)
 				}), nil
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewAssignmentRequest(t, fn, tc.method, "/", nil)
+			req := fixture.NewAssignmentRequest(t, a, tc.method, "/", nil)
 
 			router := New(testConfig(), mcc)
 			router.ServeHTTP(rw, req)
@@ -251,8 +251,8 @@ func TestMethods(t *testing.T) {
 				t.Skip("skipping integration test in short mode")
 			}
 
-			fn := fixture.NewFixtureAssignment(t)
-			req := fixture.NewAssignmentRequest(t, fn, tc.method, fixture.RouterIntegrationURL(), nil)
+			a := fixture.NewFixtureAssignment(t)
+			req := fixture.NewAssignmentRequest(t, a, tc.method, fixture.RouterIntegrationURL(), nil)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
 			assert.NilError(t, err)
@@ -270,9 +270,9 @@ func TestHeaders(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn      *skipper.Assignment
-		req     *http.Request
-		headers http.Header
+		assignment *skipper.Assignment
+		req        *http.Request
+		headers    http.Header
 	}
 
 	testCases := []struct {
@@ -283,10 +283,10 @@ func TestHeaders(t *testing.T) {
 		{
 			name: "smoke",
 			setup: func(t *testing.T, state *testState) {
-				state.req.Host = state.fn.GetTenant() + ".example.com"
+				state.req.Host = state.assignment.GetTenant() + ".example.com"
 			},
 			check: func(t *testing.T, state *testState) {
-				expectedHost := state.fn.GetTenant() + ".example.com"
+				expectedHost := state.assignment.GetTenant() + ".example.com"
 				expectedProto := "http"
 
 				assert.DeepEqual(t, state.headers.Values("Host"), []string{expectedHost})
@@ -368,13 +368,13 @@ func TestHeaders(t *testing.T) {
 			t.Parallel()
 
 			state := &testState{
-				fn: fixture.NewAssignment(t),
+				assignment: fixture.NewAssignment(t),
 			}
-			state.req = fixture.NewAssignmentRequest(t, state.fn, http.MethodGet, "/", nil)
+			state.req = fixture.NewAssignmentRequest(t, state.assignment, http.MethodGet, "/", nil)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 					req.Header.Set("Host", req.Host) // go removes the Host header, so we manually set it back
 					state.headers = req.Header
 				}), nil
@@ -399,9 +399,9 @@ func TestHeaders(t *testing.T) {
 			}
 
 			state := &testState{
-				fn: fixture.NewFixtureAssignment(t),
+				assignment: fixture.NewFixtureAssignment(t),
 			}
-			state.req = fixture.NewAssignmentRequest(t, state.fn, http.MethodGet, fixture.RouterIntegrationURL(), nil)
+			state.req = fixture.NewAssignmentRequest(t, state.assignment, http.MethodGet, fixture.RouterIntegrationURL(), nil)
 			state.req.Header.Set("User-Agent", "") // disable the default User-Agent header
 
 			tc.setup(t, state)
@@ -427,7 +427,7 @@ func TestBody(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn           *skipper.Assignment
+		assignment   *skipper.Assignment
 		contentType  string
 		body         io.Reader
 		receivedBody string
@@ -476,14 +476,14 @@ func TestBody(t *testing.T) {
 			t.Parallel()
 
 			state := &testState{
-				fn: fixture.NewAssignment(t),
+				assignment: fixture.NewAssignment(t),
 			}
 
 			tc.setup(t, state)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 					content, err := io.ReadAll(req.Body)
 					assert.NilError(t, err)
 					state.receivedBody = string(content)
@@ -491,7 +491,7 @@ func TestBody(t *testing.T) {
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewAssignmentRequest(t, state.fn, http.MethodPost, "/", state.body)
+			req := fixture.NewAssignmentRequest(t, state.assignment, http.MethodPost, "/", state.body)
 			req.Header.Set("Content-Type", state.contentType)
 
 			router := New(testConfig(), mcc)
@@ -509,12 +509,12 @@ func TestBody(t *testing.T) {
 			}
 
 			state := &testState{
-				fn: fixture.NewFixtureAssignment(t),
+				assignment: fixture.NewFixtureAssignment(t),
 			}
 
 			tc.setup(t, state)
 
-			req := fixture.NewAssignmentRequest(t, state.fn, http.MethodPost, fixture.RouterIntegrationURL(), state.body)
+			req := fixture.NewAssignmentRequest(t, state.assignment, http.MethodPost, fixture.RouterIntegrationURL(), state.body)
 			req.Header.Set("Content-Type", state.contentType)
 
 			res, err := http.DefaultTransport.RoundTrip(req)
@@ -539,16 +539,16 @@ func TestHeartbeats(t *testing.T) {
 	defer cancel()
 
 	testStartTime := time.Now()
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	once := new(sync.Once)
 	done := make(chan struct{})
 	defer close(done)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
-			rw.Write([]byte("Hello, " + fn.GetTenant()))
+			rw.Write([]byte("Hello, " + a.GetTenant()))
 			<-done
 		}), nil
 	})
@@ -563,7 +563,7 @@ func TestHeartbeats(t *testing.T) {
 		assert.Assert(t, len(forwardedFor) == 0)
 
 		heartbeat := heartbeats[0]
-		assert.Assert(t, proto.Equal(heartbeat.GetAssignment(), fn))
+		assert.Assert(t, proto.Equal(heartbeat.GetAssignment(), a))
 		assert.Assert(t, heartbeat.GetTimestamp().AsTime().After(testStartTime))
 		if heartbeat.GetInFlightRequests() > 0 {
 			once.Do(func() {
@@ -574,18 +574,18 @@ func TestHeartbeats(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil).WithContext(ctx)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil).WithContext(ctx)
 
 	router := New(testConfig(), mcc)
 	router.Start(ctx)
 	router.ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
-	assert.Assert(t, rw.Body.String() == "Hello, "+fn.GetTenant())
+	assert.Assert(t, rw.Body.String() == "Hello, "+a.GetTenant())
 
-	state, ok := router.heartbeats.Load(fn.Hash())
+	state, ok := router.heartbeats.Load(a.Hash())
 	assert.Assert(t, ok)
-	assert.Assert(t, proto.Equal(state.fn.Load(), fn))
+	assert.Assert(t, proto.Equal(state.assignment.Load(), a))
 	assert.Assert(t, state.lastActiveTime().After(testStartTime))
 	assert.Assert(t, state.inFlight.Load() == 0) // ensure the number of in-flight requests is 0 now that the request is complete
 }
@@ -594,7 +594,7 @@ func TestRetries(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn            *skipper.Assignment
+		assignment    *skipper.Assignment
 		rw            *httptest.ResponseRecorder
 		maxAttempts   int
 		instanceErrs  []error
@@ -613,7 +613,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.GetTenant())
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.assignment.GetTenant())
 			},
 		},
 		{
@@ -624,7 +624,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.GetTenant())
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.assignment.GetTenant())
 			},
 		},
 		{
@@ -635,7 +635,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.GetTenant())
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.assignment.GetTenant())
 			},
 		},
 		{
@@ -647,7 +647,7 @@ func TestRetries(t *testing.T) {
 			},
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, state.rw.Code == http.StatusOK)
-				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.fn.GetTenant())
+				assert.Assert(t, state.rw.Body.String() == "Hello, "+state.assignment.GetTenant())
 			},
 		},
 		{
@@ -669,8 +669,8 @@ func TestRetries(t *testing.T) {
 			t.Parallel()
 
 			state := &testState{
-				fn: fixture.NewAssignment(t),
-				rw: httptest.NewRecorder(),
+				assignment: fixture.NewAssignment(t),
+				rw:         httptest.NewRecorder(),
 			}
 
 			tc.setup(t, state)
@@ -681,13 +681,13 @@ func TestRetries(t *testing.T) {
 
 			instanceErrsIndex := 0
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				if len(state.instanceErrs) > 0 && instanceErrsIndex < len(state.instanceErrs) {
 					instanceErrsIndex++
 					return nil, state.instanceErrs[instanceErrsIndex-1]
 				}
 
-				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+				return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 					assert.Assert(t, req.Method == expectedMethod)
 					assert.Assert(t, req.URL.Path == expectedPath)
 
@@ -696,12 +696,12 @@ func TestRetries(t *testing.T) {
 					assert.Assert(t, string(receivedBody) == expectedBody)
 
 					rw.WriteHeader(http.StatusOK)
-					rw.Write([]byte("Hello, " + fn.GetTenant()))
+					rw.Write([]byte("Hello, " + a.GetTenant()))
 				}), nil
 			})
 
 			body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
-			req := fixture.NewAssignmentRequest(t, state.fn, expectedMethod, expectedPath, body)
+			req := fixture.NewAssignmentRequest(t, state.assignment, expectedMethod, expectedPath, body)
 
 			cfg := testConfig()
 			cfg.MaxRoundTripAttempts = state.maxAttempts
@@ -758,7 +758,7 @@ func TestInstanceExclusion(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn                            *skipper.Assignment
+		assignment                    *skipper.Assignment
 		rw                            *httptest.ResponseRecorder
 		router                        *Router
 		mcc                           *fixture.MockControllerClient
@@ -774,17 +774,17 @@ func TestInstanceExclusion(t *testing.T) {
 			name: "dial error excludes instance",
 			setup: func(t *testing.T, state *testState) {
 				failingInstance := skipper.Instance_builder{
-					Assignment: state.fn,
+					Assignment: state.assignment,
 					Name:       new("failing-instance"),
 					Addr:       new("127.0.0.1:59999"), // non-existent address
 				}.Build()
-				successInstance := fixture.NewInstance(t, state.fn, func(rw http.ResponseWriter, req *http.Request) {
+				successInstance := fixture.NewInstance(t, state.assignment, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(http.StatusOK)
 					rw.Write([]byte("success"))
 				})
 
 				callCount := 0
-				state.mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				state.mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 					state.excludedInstanceNamesReceived = append(state.excludedInstanceNamesReceived, excludeInstanceNames)
 					callCount++
 					if callCount == 1 {
@@ -804,13 +804,13 @@ func TestInstanceExclusion(t *testing.T) {
 		{
 			name: "non-dial error does not exclude instance",
 			setup: func(t *testing.T, state *testState) {
-				instance := fixture.NewInstance(t, state.fn, func(rw http.ResponseWriter, req *http.Request) {
+				instance := fixture.NewInstance(t, state.assignment, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(http.StatusOK)
 					rw.Write([]byte("success"))
 				})
 
 				callCount := 0
-				state.mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				state.mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 					state.excludedInstanceNamesReceived = append(state.excludedInstanceNamesReceived, excludeInstanceNames)
 					callCount++
 					return instance, nil
@@ -841,15 +841,15 @@ func TestInstanceExclusion(t *testing.T) {
 			mcc := fixture.NewMockControllerClient(t)
 
 			state := &testState{
-				fn:     fixture.NewAssignment(t),
-				rw:     httptest.NewRecorder(),
-				router: New(cfg, mcc),
-				mcc:    mcc,
+				assignment: fixture.NewAssignment(t),
+				rw:         httptest.NewRecorder(),
+				router:     New(cfg, mcc),
+				mcc:        mcc,
 			}
 
 			tc.setup(t, state)
 
-			req := fixture.NewAssignmentRequest(t, state.fn, http.MethodGet, "/", nil)
+			req := fixture.NewAssignmentRequest(t, state.assignment, http.MethodGet, "/", nil)
 			state.router.ServeHTTP(state.rw, req)
 
 			tc.check(t, state)
@@ -878,7 +878,7 @@ func TestContextCancellation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 
 			var ctx context.Context
 			var cancel context.CancelFunc
@@ -893,7 +893,7 @@ func TestContextCancellation(t *testing.T) {
 
 			mcc := fixture.NewMockControllerClient(t)
 			callCount := 0
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+			mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 				callCount++
 				if callCount == 1 {
 					// First call fails, triggering a retry with backoff
@@ -915,9 +915,9 @@ func TestContextCancellation(t *testing.T) {
 			router := New(cfg, mcc)
 
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			fn.SetHeader(req)
-			// RoundTrip expects the function to be in context (normally set by ServeHTTP)
-			req = req.WithContext(withAssignment(ctx, fn))
+			a.SetHeader(req)
+			// RoundTrip expects the assignment to be in context (normally set by ServeHTTP)
+			req = req.WithContext(withAssignment(ctx, a))
 
 			_, err := router.RoundTrip(req)
 
@@ -989,14 +989,14 @@ func TestCalculateBackoff(t *testing.T) {
 func TestRequestDrainingOnShutdown(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 	requestCompleted := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -1021,7 +1021,7 @@ func TestRequestDrainingOnShutdown(t *testing.T) {
 	// Start a request in the background
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
 			defer resp.Body.Close()
@@ -1053,15 +1053,15 @@ func TestRequestDrainingOnShutdown(t *testing.T) {
 func TestConcurrentRequestsSameAssignment(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	const numRequests = 50
 	var maxInFlight int64
 	var currentInFlight int64
 	var mu sync.Mutex
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			mu.Lock()
 			currentInFlight++
 			if currentInFlight > maxInFlight {
@@ -1099,7 +1099,7 @@ func TestConcurrentRequestsSameAssignment(t *testing.T) {
 	for range numRequests {
 		wg.Go(func() {
 			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-			fn.SetHeader(req)
+			a.SetHeader(req)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				errors <- err
@@ -1123,7 +1123,7 @@ func TestConcurrentRequestsSameAssignment(t *testing.T) {
 	assert.Assert(t, maxInFlight > 1, "expected concurrent execution, but max in-flight was %d", maxInFlight)
 
 	// Verify in-flight count is back to 0
-	state, ok := router.heartbeats.Load(fn.Hash())
+	state, ok := router.heartbeats.Load(a.Hash())
 	if ok {
 		assert.Assert(t, state.inFlight.Load() == 0, "expected 0 in-flight requests, got %d", state.inFlight.Load())
 	}
@@ -1132,11 +1132,11 @@ func TestConcurrentRequestsSameAssignment(t *testing.T) {
 func TestHeartbeatStaleCleanup(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 		}), nil
 	})
@@ -1159,14 +1159,14 @@ func TestHeartbeatStaleCleanup(t *testing.T) {
 
 	// Make a request to create a heartbeat entry
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-	fn.SetHeader(req)
+	a.SetHeader(req)
 	resp, err := http.DefaultClient.Do(req)
 	assert.NilError(t, err)
 	resp.Body.Close()
 	assert.Assert(t, resp.StatusCode == http.StatusOK)
 
 	// Verify heartbeat exists
-	_, ok := router.heartbeats.Load(fn.Hash())
+	_, ok := router.heartbeats.Load(a.Hash())
 	assert.Assert(t, ok, "expected heartbeat to exist after request")
 
 	// Wait for more than 3x heartbeat interval for stale cleanup, plus buffer for jitter and loop
@@ -1175,21 +1175,21 @@ func TestHeartbeatStaleCleanup(t *testing.T) {
 	time.Sleep(cfg.HeartbeatInterval*4 + 500*time.Millisecond)
 
 	// Verify heartbeat was cleaned up
-	_, ok = router.heartbeats.Load(fn.Hash())
+	_, ok = router.heartbeats.Load(a.Hash())
 	assert.Assert(t, !ok, "expected heartbeat to be cleaned up after becoming stale")
 }
 
 func TestHeartbeatControllerError(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	heartbeatCalls := make(chan struct{}, 10)
 	requestHolding := make(chan struct{})
 	releaseRequest := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			select {
 			case requestHolding <- struct{}{}:
 			default:
@@ -1221,7 +1221,7 @@ func TestHeartbeatControllerError(t *testing.T) {
 
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		http.DefaultClient.Do(req) //nolint:errcheck
 	}()
 
@@ -1312,11 +1312,11 @@ func TestResponseStatusCodes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			fn := fixture.NewAssignment(t)
+			a := fixture.NewAssignment(t)
 
 			mcc := fixture.NewMockControllerClient(t)
-			mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-				return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+				return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 					rw.WriteHeader(tc.statusCode)
 					if tc.body != "" {
 						rw.Write([]byte(tc.body))
@@ -1325,7 +1325,7 @@ func TestResponseStatusCodes(t *testing.T) {
 			})
 
 			rw := httptest.NewRecorder()
-			req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
+			req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil)
 
 			router := New(testConfig(), mcc)
 			router.ServeHTTP(rw, req)
@@ -1339,11 +1339,11 @@ func TestResponseStatusCodes(t *testing.T) {
 func TestResponseHeaders(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			rw.Header().Set("X-Custom-Response", "custom-value")
 			rw.Header().Set("Content-Type", "application/json")
 			rw.Header().Add("X-Multi-Value", "value1")
@@ -1354,7 +1354,7 @@ func TestResponseHeaders(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil)
 
 	router := New(testConfig(), mcc)
 	router.ServeHTTP(rw, req)
@@ -1368,19 +1368,19 @@ func TestResponseHeaders(t *testing.T) {
 func TestQueryStringPreservation(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	var receivedQuery string
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			receivedQuery = req.URL.RawQuery
 			rw.WriteHeader(http.StatusOK)
 		}), nil
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/?foo=bar&baz=qux&special=%20encoded", nil)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/?foo=bar&baz=qux&special=%20encoded", nil)
 
 	router := New(testConfig(), mcc)
 	router.ServeHTTP(rw, req)
@@ -1400,8 +1400,8 @@ func TestHeartbeatBatching(t *testing.T) {
 	releaseRequests := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			requestsHolding <- struct{}{}
 			<-releaseRequests
 			rw.WriteHeader(http.StatusOK)
@@ -1433,10 +1433,10 @@ func TestHeartbeatBatching(t *testing.T) {
 
 	// Start 3 requests for different functions concurrently
 	var wg sync.WaitGroup
-	for _, fn := range []*skipper.Assignment{fn1, fn2, fn3} {
+	for _, a := range []*skipper.Assignment{fn1, fn2, fn3} {
 		wg.Go(func() {
 			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-			fn.SetHeader(req)
+			a.SetHeader(req)
 			http.DefaultClient.Do(req) //nolint:errcheck
 		})
 	}
@@ -1464,14 +1464,14 @@ func TestHeartbeatBatching(t *testing.T) {
 func TestLargeRequestBody(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	// 1MB body
 	largeBody := strings.Repeat("x", 1024*1024)
 	var receivedBody string
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
 				rw.WriteHeader(http.StatusInternalServerError)
@@ -1483,7 +1483,7 @@ func TestLargeRequestBody(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodPost, "/", strings.NewReader(largeBody))
+	req := fixture.NewAssignmentRequest(t, a, http.MethodPost, "/", strings.NewReader(largeBody))
 	req.Header.Set("Content-Type", "application/octet-stream")
 
 	router := New(testConfig(), mcc)
@@ -1496,13 +1496,13 @@ func TestLargeRequestBody(t *testing.T) {
 func TestLargeResponseBody(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	// 1MB response
 	largeResponse := strings.Repeat("y", 1024*1024)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			rw.Header().Set("Content-Type", "application/octet-stream")
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte(largeResponse))
@@ -1510,7 +1510,7 @@ func TestLargeResponseBody(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil)
 
 	router := New(testConfig(), mcc)
 	router.ServeHTTP(rw, req)
@@ -1528,8 +1528,8 @@ func TestMultipleConcurrentRequestsDrainOnShutdown(t *testing.T) {
 	requestResults := make(chan error, numRequests)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			requestsStarted <- struct{}{}
 			<-requestsCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -1553,10 +1553,10 @@ func TestMultipleConcurrentRequestsDrainOnShutdown(t *testing.T) {
 	// Start multiple concurrent requests
 	var wg sync.WaitGroup
 	for range numRequests {
-		fn := fixture.NewAssignment(t)
+		a := fixture.NewAssignment(t)
 		wg.Go(func() {
 			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-			fn.SetHeader(req)
+			a.SetHeader(req)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				requestResults <- err
@@ -1601,13 +1601,13 @@ func TestMultipleConcurrentRequestsDrainOnShutdown(t *testing.T) {
 func TestShutdownTimeoutExceeded(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -1636,7 +1636,7 @@ func TestShutdownTimeoutExceeded(t *testing.T) {
 	}, 1)
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		resp, err := http.DefaultClient.Do(req)
 		result := struct {
 			statusCode int
@@ -1682,7 +1682,7 @@ func TestShutdownTimeoutExceeded(t *testing.T) {
 func TestNewRequestsRejectedDuringShutdown(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 
 	mcc := fixture.NewMockControllerClient(t)
 	// Instance won't be called since server is closed before request
@@ -1715,7 +1715,7 @@ func TestNewRequestsRejectedDuringShutdown(t *testing.T) {
 
 	// Try to make a new request after server is closed
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-	fn.SetHeader(req)
+	a.SetHeader(req)
 	_, err := client.Do(req)
 
 	// The request should fail since the server is closed
@@ -1725,7 +1725,7 @@ func TestNewRequestsRejectedDuringShutdown(t *testing.T) {
 func TestHeartbeatTimestampUpdatedDuringLongRequest(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 
@@ -1734,8 +1734,8 @@ func TestHeartbeatTimestampUpdatedDuringLongRequest(t *testing.T) {
 	var heartbeatMu sync.Mutex
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -1768,7 +1768,7 @@ func TestHeartbeatTimestampUpdatedDuringLongRequest(t *testing.T) {
 	// Start a long-running request
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		http.DefaultClient.Do(req) //nolint:errcheck
 	}()
 
@@ -1802,7 +1802,7 @@ func TestHeartbeatTimestampUpdatedDuringLongRequest(t *testing.T) {
 func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	const numRequests = 5
 	requestsStarted := make(chan struct{}, numRequests)
 	requestCanFinish := make(chan struct{})
@@ -1812,8 +1812,8 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 	var inFlightMu sync.Mutex
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			requestsStarted <- struct{}{}
 			<-requestCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -1823,7 +1823,7 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 		inFlightMu.Lock()
 		defer inFlightMu.Unlock()
 		for _, hb := range heartbeats {
-			if hb.GetAssignment().Hash() == fn.Hash() {
+			if hb.GetAssignment().Hash() == a.Hash() {
 				inFlightCounts = append(inFlightCounts, hb.GetInFlightRequests())
 			}
 		}
@@ -1846,7 +1846,7 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 	for range numRequests {
 		wg.Go(func() {
 			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-			fn.SetHeader(req)
+			a.SetHeader(req)
 			http.DefaultClient.Do(req) //nolint:errcheck
 		})
 	}
@@ -1886,14 +1886,14 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 func TestStreamingResponseDuringShutdown(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	streamStarted := make(chan struct{})
 	streamCanContinue := make(chan struct{})
 	expectedChunks := 5
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			// Enable chunked transfer encoding
 			rw.Header().Set("Transfer-Encoding", "chunked")
 			rw.WriteHeader(http.StatusOK)
@@ -1936,7 +1936,7 @@ func TestStreamingResponseDuringShutdown(t *testing.T) {
 	}, 1)
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		resp, err := http.DefaultClient.Do(req)
 		result := struct {
 			body string
@@ -1977,7 +1977,7 @@ func TestStreamingResponseDuringShutdown(t *testing.T) {
 func TestRequestBodyReusedAcrossRetries(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	expectedBody := "this body should be readable on retry"
 
 	// Track how many times the body was successfully read
@@ -1985,8 +1985,8 @@ func TestRequestBodyReusedAcrossRetries(t *testing.T) {
 	var bodyReadMu sync.Mutex
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			body, err := io.ReadAll(req.Body)
 			if err == nil && string(body) == expectedBody {
 				bodyReadMu.Lock()
@@ -2017,7 +2017,7 @@ func TestRequestBodyReusedAcrossRetries(t *testing.T) {
 	})
 
 	body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodPost, "/", body)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodPost, "/", body)
 	rw := httptest.NewRecorder()
 
 	router.ServeHTTP(rw, req)
@@ -2035,7 +2035,7 @@ func TestRequestBodyReusedAcrossRetries(t *testing.T) {
 func TestControllerUnavailableMidRequest(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	requestStarted := make(chan struct{})
 	requestCanFinish := make(chan struct{})
 
@@ -2046,8 +2046,8 @@ func TestControllerUnavailableMidRequest(t *testing.T) {
 	failHeartbeats := false
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			close(requestStarted)
 			<-requestCanFinish
 			rw.WriteHeader(http.StatusOK)
@@ -2085,7 +2085,7 @@ func TestControllerUnavailableMidRequest(t *testing.T) {
 	}, 1)
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		resp, err := http.DefaultClient.Do(req)
 		result := struct {
 			statusCode int
@@ -2140,7 +2140,7 @@ func TestControllerUnavailableMidRequest(t *testing.T) {
 func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	instanceFetchStarted := make(chan struct{})
 	instanceFetchCanFinish := make(chan struct{})
 	requestCompleted := make(chan struct {
@@ -2150,7 +2150,7 @@ func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 	}, 1)
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		// Signal that we're waiting for an instance
 		select {
 		case instanceFetchStarted <- struct{}{}:
@@ -2162,7 +2162,7 @@ func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			rw.Write([]byte("completed"))
 		}), nil
@@ -2184,7 +2184,7 @@ func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 	// Start a request that will block during instance fetch
 	go func() {
 		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-		fn.SetHeader(req)
+		a.SetHeader(req)
 		resp, err := http.DefaultClient.Do(req)
 		result := struct {
 			statusCode int
@@ -2223,7 +2223,7 @@ func TestRequestDrainingDuringInstanceFetch(t *testing.T) {
 	}
 
 	// Verify in-flight count returns to 0
-	state, ok := router.heartbeats.Load(fn.Hash())
+	state, ok := router.heartbeats.Load(a.Hash())
 	if ok {
 		assert.Assert(t, state.inFlight.Load() == 0, "expected 0 in-flight requests, got %d", state.inFlight.Load())
 	}
@@ -2253,12 +2253,12 @@ func TestBackoffDoesNotOverflowAtHighAttempts(t *testing.T) {
 func TestZeroInFlightAfterAllRequestsComplete(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	const numRequests = 100
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			// Small delay to ensure concurrent execution
 			time.Sleep(5 * time.Millisecond)
 			rw.WriteHeader(http.StatusOK)
@@ -2284,7 +2284,7 @@ func TestZeroInFlightAfterAllRequestsComplete(t *testing.T) {
 	for range numRequests {
 		wg.Go(func() {
 			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-			fn.SetHeader(req)
+			a.SetHeader(req)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				errors <- err
@@ -2305,7 +2305,7 @@ func TestZeroInFlightAfterAllRequestsComplete(t *testing.T) {
 	}
 
 	// Verify in-flight count is exactly 0
-	state, ok := router.heartbeats.Load(fn.Hash())
+	state, ok := router.heartbeats.Load(a.Hash())
 	if ok {
 		assert.Assert(t, state.inFlight.Load() == 0,
 			"expected exactly 0 in-flight requests after all requests complete, got %d",
@@ -2316,11 +2316,11 @@ func TestZeroInFlightAfterAllRequestsComplete(t *testing.T) {
 func TestInstanceCallContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	instanceCallStarted := make(chan struct{})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		close(instanceCallStarted)
 		// Block until context is cancelled
 		<-ctx.Done()
@@ -2342,7 +2342,7 @@ func TestInstanceCallContextCancellation(t *testing.T) {
 	// Create a request with a cancellable context
 	reqCtx, reqCancel := context.WithCancel(t.Context())
 	req, _ := http.NewRequestWithContext(reqCtx, http.MethodGet, server.URL+"/", nil)
-	fn.SetHeader(req)
+	a.SetHeader(req)
 
 	requestCompleted := make(chan error, 1)
 	go func() {
@@ -2423,11 +2423,11 @@ func TestHeartbeatNotSentAfterContextCancellation(t *testing.T) {
 func TestRequestBodyReadErrorDuringRetry(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	var attemptCount int
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		attemptCount++
 		if attemptCount == 1 {
 			// First attempt - return an instance that will fail with dial error
@@ -2437,7 +2437,7 @@ func TestRequestBodyReadErrorDuringRetry(t *testing.T) {
 			return instance, nil
 		}
 		// Second attempt - return a working instance
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			// Read the body to verify it was preserved across retry
 			body, err := io.ReadAll(req.Body)
 			if err != nil {
@@ -2467,7 +2467,7 @@ func TestRequestBodyReadErrorDuringRetry(t *testing.T) {
 	// Make a request with a body
 	bodyContent := "test body content"
 	req, _ := http.NewRequest(http.MethodPost, server.URL+"/", strings.NewReader(bodyContent))
-	fn.SetHeader(req)
+	a.SetHeader(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	assert.NilError(t, err)
@@ -2482,11 +2482,11 @@ func TestRequestBodyReadErrorDuringRetry(t *testing.T) {
 func TestAllInstancesExhaustedReturnsError(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	var attemptCount int
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		attemptCount++
 		// Always return an instance at a non-routable address
 		instance := &skipper.Instance{}
@@ -2512,7 +2512,7 @@ func TestAllInstancesExhaustedReturnsError(t *testing.T) {
 	defer server.Close()
 
 	req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-	fn.SetHeader(req)
+	a.SetHeader(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	assert.NilError(t, err)
@@ -2529,13 +2529,13 @@ func TestAllInstancesExhaustedReturnsError(t *testing.T) {
 func TestRapidRequestsDuringShutdownWindow(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	var requestsStarted int64
 	var requestsCompleted int64
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			atomic.AddInt64(&requestsStarted, 1)
 			time.Sleep(50 * time.Millisecond) // Simulate processing
 			atomic.AddInt64(&requestsCompleted, 1)
@@ -2565,7 +2565,7 @@ func TestRapidRequestsDuringShutdownWindow(t *testing.T) {
 	for range numRequests {
 		wg.Go(func() {
 			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
-			fn.SetHeader(req)
+			a.SetHeader(req)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				results <- err
@@ -2610,28 +2610,28 @@ func TestRapidRequestsDuringShutdownWindow(t *testing.T) {
 func TestOneshotReleasesInstance(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
-	fn.SetOneshot(true)
+	a := fixture.NewAssignment(t)
+	a.SetOneshot(true)
 
-	instance := fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	instance := fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusOK)
 	})
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		return instance, nil
 	})
 
 	released := make(chan struct{})
 	mcc.HandleReleaseInstance(func(ctx context.Context, inst *skipper.Instance) error {
 		assert.Equal(t, inst.GetName(), instance.GetName())
-		assert.Equal(t, inst.GetAssignment().GetNamespace(), fn.GetNamespace())
+		assert.Equal(t, inst.GetAssignment().GetNamespace(), a.GetNamespace())
 		close(released)
 		return nil
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil)
 
 	router := New(testConfig(), mcc)
 	router.ServeHTTP(rw, req)
@@ -2648,26 +2648,26 @@ func TestOneshotReleasesInstance(t *testing.T) {
 func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
-	fn.SetOneshot(true)
+	a := fixture.NewAssignment(t)
+	a.SetOneshot(true)
 
-	successInstance := fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	successInstance := fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusOK)
 	})
 
 	failingInstance1 := &skipper.Instance{}
-	failingInstance1.SetAssignment(fn)
+	failingInstance1.SetAssignment(a)
 	failingInstance1.SetName("failing-1")
 	failingInstance1.SetAddr("127.0.0.1:1")
 
 	failingInstance2 := &skipper.Instance{}
-	failingInstance2.SetAssignment(fn)
+	failingInstance2.SetAssignment(a)
 	failingInstance2.SetName("failing-2")
 	failingInstance2.SetAddr("127.0.0.1:2")
 
 	callCount := 0
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
 		callCount++
 		switch callCount {
 		case 1:
@@ -2707,7 +2707,7 @@ func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
 	})
 
 	rw := httptest.NewRecorder()
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodGet, "/", nil)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodGet, "/", nil)
 	router.ServeHTTP(rw, req)
 
 	assert.Assert(t, rw.Code == http.StatusOK)
@@ -2735,12 +2735,12 @@ func TestOneshotReleasesInstanceOnDialError(t *testing.T) {
 func TestBodyClosedAfterServeHTTP(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewAssignment(t)
+	a := fixture.NewAssignment(t)
 	expectedBody := "request-body-content"
 
 	mcc := fixture.NewMockControllerClient(t)
-	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
-		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+	mcc.HandleInstance(func(ctx context.Context, a *skipper.Assignment, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		return fixture.NewInstance(t, a, func(rw http.ResponseWriter, req *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 		}), nil
 	})
@@ -2761,7 +2761,7 @@ func TestBodyClosedAfterServeHTTP(t *testing.T) {
 	})
 
 	body := &noReadAfterClose{ReadCloser: io.NopCloser(strings.NewReader(expectedBody))}
-	req := fixture.NewAssignmentRequest(t, fn, http.MethodPost, "/", body)
+	req := fixture.NewAssignmentRequest(t, a, http.MethodPost, "/", body)
 	rw := httptest.NewRecorder()
 
 	router.ServeHTTP(rw, req)

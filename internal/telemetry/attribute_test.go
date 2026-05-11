@@ -13,7 +13,7 @@ import (
 var sinkCtx context.Context
 
 func BenchmarkWith(b *testing.B) {
-	fn := skipper.Assignment_builder{
+	a := skipper.Assignment_builder{
 		Tenant:     new("bench-tenant"),
 		Metadata:   new("bench-metadata"),
 		Namespace:  new("bench-ns"),
@@ -33,7 +33,7 @@ func BenchmarkWith(b *testing.B) {
 
 	b.Run("3 attrs with groups", func(b *testing.B) {
 		b.ReportAllocs()
-		a1 := skipper.LegacyFunctionKey.Attr(fn)
+		a1 := skipper.LegacyFunctionKey.Attr(a)
 		a2 := key.Namespace.Attr("bench-ns")
 		a3 := key.Attempt.Attr(1)
 		ctx := context.Background()
@@ -44,7 +44,7 @@ func BenchmarkWith(b *testing.B) {
 
 	b.Run("5 attrs with groups", func(b *testing.B) {
 		b.ReportAllocs()
-		a1 := skipper.LegacyFunctionKey.Attr(fn)
+		a1 := skipper.LegacyFunctionKey.Attr(a)
 		a2 := key.Namespace.Attr("bench-ns")
 		a3 := key.Attempt.Attr(1)
 		a4 := key.Request.Attr(req)
