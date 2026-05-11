@@ -1178,22 +1178,23 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Configure target usage for each instance
-			for _, pm := range tc.podMetrics {
-				if pm.GetAssignment() == nil {
-					pm.SetAssignment(skipper.Assignment_builder{
-						Scale: skipper.Scale_builder{}.Build(),
-					}.Build())
-				}
-				switch tc.metricName {
-				case MetricCPU:
-					pm.GetAssignment().GetScale().SetTargetCpuUsageMilli(tc.targetUsage)
-				case MetricMemory:
-					pm.GetAssignment().GetScale().SetTargetMemoryUsageMib(tc.targetUsage)
-				}
+			// Configure target usage on a single fn snapshot — the new signature
+			// reads scale targets from the supplied Assignment, not from each
+			// instance's historical assignment.
+			fn := skipper.Assignment_builder{
+				Namespace:  new("ns"),
+				Deployment: new("deploy"),
+				Tenant:     new("tenant"),
+				Scale:      skipper.Scale_builder{MaxInstances: proto.Uint32(10)}.Build(),
+			}.Build()
+			switch tc.metricName {
+			case MetricCPU:
+				fn.GetScale().SetTargetCpuUsageMilli(tc.targetUsage)
+			case MetricMemory:
+				fn.GetScale().SetTargetMemoryUsageMib(tc.targetUsage)
 			}
 
-			instances, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, tc.metricName, tc.podMetrics)
+			instances, _ := calculateDesiredInstancesForMetric(t.Context(), fn, cfg, tc.metricName, tc.podMetrics)
 			assert.Assert(t, instances == tc.expectedInstances)
 		})
 	}
@@ -1869,7 +1870,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
+			decision := calculateDesiredInstances(t.Context(), tc.heartbeat.GetAssignment(), cfg, tc.heartbeat, tc.instances)
 
 			assert.Equal(t, tc.expectedDesiredInstances, decision.GetDesiredInstances())
 			assert.Equal(t, tc.expectedUnclampedDesired, decision.GetUnclampedDesiredInstances())
@@ -2214,7 +2215,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 			assert.NilError(t, err)
 
 			supervisor := state.ctrl.supervisor(state.fn)
-			instances = supervisor.cleanupStuckInstances(ctx, instances)
+			instances = supervisor.cleanupStuckInstances(ctx, state.fn, instances)
 
 			tc.check(t, state, instances)
 		})
@@ -3257,7 +3258,7 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 
 	// Verify the scaling decision would request 1 instance
 	heartbeat := supervisor.combinedHeartbeat(fn, instances)
-	scalingDecision := calculateDesiredInstances(ctx, cfg, heartbeat, instances)
+	scalingDecision := calculateDesiredInstances(ctx, fn, cfg, heartbeat, instances)
 	assert.Assert(t, scalingDecision.GetDesiredInstances() == 1,
 		"expected scaling decision of 1 instance, got %d", scalingDecision.GetDesiredInstances())
 
@@ -3816,7 +3817,7 @@ func TestCalculateDesiredInstancesOneshot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
+			decision := calculateDesiredInstances(t.Context(), tc.heartbeat.GetAssignment(), cfg, tc.heartbeat, tc.instances)
 
 			assert.Equal(t, tc.expectedDesiredInstances, decision.GetDesiredInstances())
 			assert.Equal(t, tc.expectedUnclampedDesired, decision.GetUnclampedDesiredInstances())
@@ -4026,6 +4027,13 @@ func TestOneshotProtectionPeriodPreventsOrphanDeletion(t *testing.T) {
 
 var sinkRecommendation Recommendation
 
+var benchAssignment = skipper.Assignment_builder{
+	Namespace:  new("ns"),
+	Deployment: new("deploy"),
+	Tenant:     new("tenant"),
+	Scale:      skipper.Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10)}.Build(),
+}.Build()
+
 func BenchmarkRecordRecommendation(b *testing.B) {
 	cfg := testConfig()
 
@@ -4052,7 +4060,7 @@ func BenchmarkRecordRecommendation(b *testing.B) {
 		s := &Supervisor{ctrl: &Controller{config: cfg}}
 		for b.Loop() {
 			s.stabilizationWindow = append(s.stabilizationWindow[:0], template...)
-			sinkRecommendation = s.recordRecommendation(5)
+			sinkRecommendation = s.recordRecommendation(benchAssignment, 5)
 		}
 	})
 
@@ -4061,7 +4069,7 @@ func BenchmarkRecordRecommendation(b *testing.B) {
 		s := &Supervisor{ctrl: &Controller{config: cfg}}
 		for b.Loop() {
 			s.stabilizationWindow = s.stabilizationWindow[:0]
-			sinkRecommendation = s.recordRecommendation(5)
+			sinkRecommendation = s.recordRecommendation(benchAssignment, 5)
 		}
 	})
 }
@@ -4159,7 +4167,7 @@ func TestSupervisorEvents(t *testing.T) {
 				instances, err := state.ctrl.getInstances(ctx, state.fn)
 				assert.NilError(t, err)
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.cleanupStuckInstances(ctx, instances)
+				supervisor.cleanupStuckInstances(ctx, state.fn, instances)
 			},
 			check: func(t *testing.T, state *testState) {
 				events := state.ctrl.events.snapshot()

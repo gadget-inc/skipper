@@ -2,6 +2,7 @@ edition = "2023";
 
 package skipper;
 
+import "google/protobuf/duration.proto";
 import "google/protobuf/go_features.proto";
 import "google/protobuf/timestamp.proto";
 
@@ -16,13 +17,98 @@ message Scale {
   uint32 target_in_flight_requests = 5;
 }
 
+// ZoneSpread controls how the controller spreads instances across availability
+// zones for an assignment. Placeholder (followup: zone-aware-placement); no
+// decision site reads it in the current release.
+enum ZoneSpread {
+  ZONE_SPREAD_UNSPECIFIED = 0;
+  ZONE_SPREAD_NONE = 1;
+  ZONE_SPREAD_PREFERRED = 2;
+  ZONE_SPREAD_REQUIRED = 3;
+}
+
+// ZoneAffinity controls how the router prefers same-zone instances when routing
+// requests for an assignment. Placeholder (followup: zone-aware-affinity); no
+// decision site reads it in the current release.
+enum ZoneAffinity {
+  ZONE_AFFINITY_UNSPECIFIED = 0;
+  ZONE_AFFINITY_NONE = 1;
+  ZONE_AFFINITY_PREFERRED = 2;
+  ZONE_AFFINITY_REQUIRED = 3;
+}
+
+// Backpressure controls how the router responds when an upstream instance
+// signals backpressure on a request. Placeholder (followup: backpressure); no
+// decision site reads it in the current release.
+enum Backpressure {
+  BACKPRESSURE_UNSPECIFIED = 0;
+  BACKPRESSURE_IGNORE = 1;
+  BACKPRESSURE_RETRY = 2;
+  BACKPRESSURE_RETRY_AND_EJECT = 3;
+}
+
+// Assignment carries the per-tenant identity and policy for a deployment.
+// Field numbers are grouped by concern, reserving ranges for future growth:
+//   1-9    identity
+//   10-29  scale (excluding scale = 5, grandfathered)
+//   30-39  zone
+//   40-49  assign
+//   50-59  heartbeat
+//   60-79  retry
+//   80-109 transport
+//   110-199 future
 message Assignment {
+  // Identity (1-9).
   string namespace = 1;
   string deployment = 2;
   string tenant = 3;
   string metadata = 4;
+  // reserved: scale = 5 (grandfathered, predates flat layout)
   Scale scale = 5;
   bool oneshot = 6;
+
+  // Scale policy (10-29). The first five fields are flat aliases for the
+  // long-shipped Scale sub-message; resolvers prefer flat with fallback to
+  // Scale. The remaining three are flat-only additions.
+  uint32 scale_min_instances = 10;
+  uint32 scale_max_instances = 11;
+  uint32 scale_target_cpu_millicores = 12;
+  uint32 scale_target_memory_mebibytes = 13;
+  uint32 scale_target_in_flight_requests = 14;
+  double scale_tolerance = 15;
+  google.protobuf.Duration scale_downscale_stabilization = 16;
+  google.protobuf.Duration scale_initial_readiness_delay = 17;
+
+  // Zone policy (30-39). All placeholder.
+  ZoneSpread zone_spread = 30;
+  uint32 zone_min = 31;
+  ZoneAffinity zone_affinity = 32;
+
+  // Assign policy (40-49).
+  string assign_path = 40; // placeholder (followup: per-assignment-assign-path)
+  google.protobuf.Duration assign_timeout = 41;
+  google.protobuf.Duration assign_token_ttl = 42;
+
+  // Heartbeat policy (50-59).
+  google.protobuf.Duration heartbeat_interval = 50; // placeholder (followup: per-assignment-heartbeat-interval)
+  google.protobuf.Duration heartbeat_timeout = 51;
+
+  // Retry policy (60-79).
+  uint32 retry_max_attempts = 60;
+  google.protobuf.Duration retry_min_backoff = 61;
+  google.protobuf.Duration retry_max_backoff = 62;
+  Backpressure retry_backpressure = 63;     // placeholder (followup: backpressure)
+  repeated uint32 retry_status_codes = 64;  // placeholder (followup: backpressure)
+
+  // Transport policy (80-109). All placeholder (followup: per-assignment-transport).
+  google.protobuf.Duration transport_dial_timeout = 80;
+  google.protobuf.Duration transport_keepalive = 81;
+  google.protobuf.Duration transport_idle_conn_timeout = 82;
+  google.protobuf.Duration transport_tls_handshake_timeout = 83;
+  uint32 transport_max_idle_conns = 84;
+  bool transport_force_http2 = 85;
+  bool transport_disable_compression = 86;
+  google.protobuf.Duration transport_flush_interval = 87;
 }
 
 message Instance {
