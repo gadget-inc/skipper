@@ -138,10 +138,19 @@ func (f *MockControllerClient) Close() error {
 	return nil
 }
 
+// NewControllerPod builds a controller pod with the default ControllerIP and a
+// random name. Use NewControllerPodAt to seed multiple peers with distinct IPs.
 func NewControllerPod() *v1.Pod {
+	return NewControllerPodAt("controller-"+rand.String(6), ControllerIP)
+}
+
+// NewControllerPodAt builds a controller pod with the given name and IP. Tests
+// that exercise the hash ring with N peer controllers use this to seed N
+// controller pods with distinct PodIPs in a single fake clientset.
+func NewControllerPodAt(name, ip string) *v1.Pod {
 	return &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "controller-" + rand.String(6),
+			Name:      name,
 			Namespace: ControllerNamespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/name":      "skipper",
@@ -150,7 +159,7 @@ func NewControllerPod() *v1.Pod {
 		},
 		Status: v1.PodStatus{
 			Phase: v1.PodRunning,
-			PodIP: ControllerIP,
+			PodIP: ip,
 			Conditions: []v1.PodCondition{
 				{
 					Type:   v1.PodReady,
