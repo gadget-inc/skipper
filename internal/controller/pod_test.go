@@ -243,15 +243,13 @@ func TestAssignPod(t *testing.T) {
 	}
 }
 
-// TestAssignPodRejectsAlreadyAssigned is separate from TestAssignPod because it
-// modifies a global variable (doesNotHaveTenantSelector) and cannot run in parallel.
+// TestAssignPodRejectsAlreadyAssigned asserts that pods already bound to a
+// tenant are never picked as assignment candidates. The unassigned-pool
+// label selector excludes pods carrying the tenant label, so giving
+// assignPod no other candidate forces it to wait out the context rather
+// than overwrite the existing assignment.
 func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
-	// make getAvailablePods return assigned pods (normally filtered out)
-	originalDoesNotHaveTenantSelector := doesNotHaveTenantSelector
-	t.Cleanup(func() {
-		doesNotHaveTenantSelector = originalDoesNotHaveTenantSelector
-	})
-	doesNotHaveTenantSelector = hasTenantSelector
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
@@ -259,7 +257,6 @@ func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
 	fn := fixture.NewFunction(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
-	// add a pod that already has a tenant label
 	pod := fixture.NewAvailablePod(t, fn, nil)
 	pod.Labels[key.Tenant.Label] = "other"
 	fakeKubernetes.Tracker().Add(pod)
@@ -273,7 +270,6 @@ func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Assert(t, instance == nil)
 
-	// verify pod still has original tenant and wasn't re-assigned
 	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 1)

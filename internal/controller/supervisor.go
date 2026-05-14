@@ -646,12 +646,24 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Func
 // getReadyInstance returns a ready instance for the function, scaling
 // up if necessary. If excludeNames is provided, those instances are
 // excluded from selection (unless all instances would be excluded).
-// For oneshot functions, each call assigns a fresh pod via assignPod's
-// atomic test-and-set, guaranteeing a unique pod per request.
+//
+// Oneshot functions assign a fresh pod per call. The entry-point controller
+// (whichever the gRPC GetInstance landed on) may not own this function in
+// the ring, and assignment only draws from the local pod partition, so we
+// forward to the function-responsible controller -- the same pattern scale
+// uses for non-oneshot scale-up. The receiving controller does not re-check
+// responsibility before calling assignPod, so a brief disagreement during
+// ring rebalance bounces a forward at most once; the gRPC Instance retry
+// policy in client.go covers further bounces.
 func (s *Supervisor) getReadyInstance(ctx context.Context, excludeNames []string) (*skipper.Instance, error) {
 	fn := s.fn.Load()
 
 	if fn.GetOneshot() {
+		responsibleIP := s.ctrl.ring.Get(fn)
+		if responsibleIP != s.ctrl.config.PodIP {
+			log.Debug(ctx, "forwarding oneshot to responsible controller", key.ResponsibleIP.Slog(responsibleIP))
+			return s.ctrl.getControllerClient(responsibleIP).Instance(ctx, fn, excludeNames...)
+		}
 		return s.ctrl.assignPod(ctx, fn)
 	}
 

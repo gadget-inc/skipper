@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"aidanwoods.dev/go-paseto"
+	"github.com/cespare/xxhash/v2"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/log"
 	"github.com/gadget-inc/skipper/internal/skipper"
@@ -22,14 +23,39 @@ import (
 	"github.com/go-json-experiment/json"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	jsonpatch "gopkg.in/evanphx/json-patch.v4"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
+	corev1ac "k8s.io/client-go/applyconfigurations/core/v1"
+	"k8s.io/client-go/util/retry"
 )
+
+// podHashKey adapts a pod name to hashring.Hasher so the existing ring (used
+// for function-to-controller routing) can also partition unassigned pods to
+// controllers. Reusing xxhash.Sum64String matches Function.Hash so the two
+// partitions live in the same 64-bit space.
+type podHashKey string
+
+func (k podHashKey) Hash() uint64 {
+	return xxhash.Sum64String(string(k))
+}
+
+// podOwnedByMe returns true when this controller is responsible for the given
+// pod under the current ring topology. On an empty ring -- which happens both
+// at boot before the controller-pod informer first fires AND in the
+// cohort-transition window where removeFromRing has just emptied the ring
+// before any peer is re-added -- the controller owns everything so assignment
+// stays reachable. With at least one ring member, ownership is the standard
+// consistent-hash lookup against the controller's PodIP.
+func (ctrl *Controller) podOwnedByMe(podName string) bool {
+	if len(ctrl.ring.List()) == 0 {
+		return true
+	}
+	return ctrl.ring.Get(podHashKey(podName)) == ctrl.config.PodIP
+}
 
 var (
 	hasTenantSelector         = labels.NewSelector().Add(*unwrap(labels.NewRequirement(key.Tenant.Label, selection.Exists, nil)))
@@ -37,56 +63,90 @@ var (
 	otelHTTPClient            = &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 )
 
-func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Function) (instance *skipper.Instance, err error) {
+// assignPod claims an unassigned pod from this controller's owned partition
+// (per podOwnedByMe) and binds it to fn. Concurrent callers inside the same
+// controller serialize through podReservations on the pod key, and the SSA
+// apply runs under retry.RetryOnConflict so cross-controller races during a
+// ring-rebalance window surface as a real apiserver Conflict that the retry
+// loop resolves. When a reservation is already held for the picked pod, the
+// caller loops back to getUnassignedPod for a different candidate; the outer
+// for-loop discards the reservation between iterations.
+func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Function) (*skipper.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
 	assignmentsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
-GET_UNASSIGNED_POD:
-	var unassignedPod *v1.Pod
-	unassignedPod, err = ctrl.getUnassignedPod(ctx, fn)
+	for {
+		unassignedPod, err := ctrl.getUnassignedPod(ctx, fn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get unassigned pod: %w", err)
+		}
+
+		instance, retryPick, err := ctrl.tryAssignPod(ctx, fn, unassignedPod)
+		if retryPick {
+			continue
+		}
+		return instance, err
+	}
+}
+
+// tryAssignPod runs one reservation-guarded assign attempt against the picked
+// pod. retryPick==true means another goroutine in this controller already
+// holds the reservation; the caller loops back to getUnassignedPod to pick a
+// different candidate. retryPick==false means the attempt either succeeded
+// (instance non-nil, err nil) or failed terminally (err set, deletePod was
+// invoked to release the pod K8s-side before the reservation released).
+func (ctrl *Controller) tryAssignPod(ctx context.Context, fn *skipper.Function, unassignedPod *v1.Pod) (instance *skipper.Instance, retryPick bool, err error) {
+	reservationKey := unassignedPod.Namespace + "/" + unassignedPod.Name
+	if _, claimed := ctrl.podReservations.LoadOrStore(reservationKey, struct{}{}); claimed {
+		log.Trace(ctx, "pod reservation held, retrying", key.Pod.Slog(unassignedPod))
+		return nil, true, nil
+	}
+	// Reservation deferred first so it releases LAST (LIFO) -- after the
+	// deletePod cleanup below has had its chance to run on the failure path.
+	// A peer goroutine that loops back through getUnassignedPod will not see
+	// this pod as a candidate again until both the K8s state and the in-
+	// memory reservation are clean.
+	defer ctrl.podReservations.Delete(reservationKey)
+
+	port, err := ctrl.portFromPod(unassignedPod)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get unassigned pod: %w", err)
+		return nil, false, err
 	}
 
-	var port string
-	port, err = ctrl.portFromPod(unassignedPod)
-	if err != nil {
-		return nil, err
+	if len(unassignedPod.OwnerReferences) == 0 || unassignedPod.OwnerReferences[0].Kind != "ReplicaSet" {
+		return nil, false, fmt.Errorf("unassigned pod %s/%s missing ReplicaSet owner reference", unassignedPod.Namespace, unassignedPod.Name)
 	}
+	replicaSetName := unassignedPod.OwnerReferences[0].Name
 
 	fnJSON, err := json.Marshal(fn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal function: %w", err)
+		return nil, false, fmt.Errorf("failed to marshal function: %w", err)
 	}
 
-	// ensure the pod is part of a replica set and isn't already assigned to a function (operations 1-4)
-	// then copy the replica set name and label/annotate the pod with the function (operations 5-8)
-	patches := []byte(`[
-		{ "op": "test", "path": "/metadata/ownerReferences/0/kind", "value": "ReplicaSet" },
-		{ "op": "test", "path": "` + key.Tenant.PatchLabel + `", "value": null },
-		{ "op": "test", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": null },
-		{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
-		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
-		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.GetTenant() + `" },
-		{ "op": "add", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": ` + strconv.Quote(string(fnJSON)) + ` },
-		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
-	]`)
+	assignedAt := time.Now().UTC().Format(time.RFC3339)
+	apply := corev1ac.Pod(unassignedPod.Name, unassignedPod.Namespace).
+		WithLabels(map[string]string{key.Tenant.Label: fn.GetTenant()}).
+		WithAnnotations(map[string]string{
+			skipper.FunctionKey.Label: string(fnJSON),
+			key.ReplicaSet.Label:      replicaSetName,
+			key.AssignedAt.Label:      assignedAt,
+		})
 
 	var assignedPod *v1.Pod
-	assignedPod, err = ctrl.patchPod(ctx, unassignedPod.Namespace, unassignedPod.Name, types.JSONPatchType, patches, metav1.PatchOptions{FieldManager: key.Controller.Label})
-	if err != nil {
-		if apierrors.IsInvalid(err) || errors.Is(err, jsonpatch.ErrTestFailed) {
-			log.Warn(ctx, "failed to patch pod, retrying", key.Error.Slog(err), key.Pod.Slog(unassignedPod))
-			// there are many reasons this can fail, but one hard to debug one is that the pod doesn't have any annotations
-			// see: https://stackoverflow.com/a/57480206, https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12
-			goto GET_UNASSIGNED_POD
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		applied, applyErr := ctrl.applyPod(ctx, apply, metav1.ApplyOptions{FieldManager: ctrl.ssaFieldManager()})
+		if applyErr != nil {
+			return applyErr
 		}
-		return nil, fmt.Errorf("failed to patch pod: %w", err)
+		assignedPod = applied
+		return nil
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to apply pod: %w", err)
 	}
 
-	// delete the unassigned pod if the assign request fails
 	defer func() {
 		if err != nil {
 			if deleteErr := ctrl.deletePod(ctx, unassignedPod.Namespace, unassignedPod.Name, metav1.DeleteOptions{}); deleteErr != nil {
@@ -106,35 +166,34 @@ GET_UNASSIGNED_POD:
 	token.SetNotBefore(now)
 	token.SetExpiration(now.Add(7 * 24 * time.Hour))
 
-	var req *http.Request
-	req, err = http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
+	req, err := http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create assign request: %w", err)
+		return nil, false, fmt.Errorf("failed to create assign request: %w", err)
 	}
 
 	req.Header.Set(key.Token.Header, token.V2Sign(ctrl.config.PasetoPrivateKey.V2AsymmetricSecretKey))
 	fn.SetHeader(req) // TODO: put the function in the token instead
 
 	log.Info(ctx, "assigning pod", key.Pod.Slog(assignedPod))
-	var res *http.Response
-	res, err = otelHTTPClient.Do(req)
+	res, err := otelHTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to send assign request: %w", err)
+		return nil, false, fmt.Errorf("failed to send assign request: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
 		err = fmt.Errorf("assign request failed: status=%d body=%s", res.StatusCode, getResponseBody(res))
-		return nil, err
+		return nil, false, err
 	}
 
 	// Populate ready-at on a deep copy of the assigned pod so instanceFromPod
-	// sees it. The apiserver patch runs asynchronously below — readers that
+	// sees it. The apiserver patch runs asynchronously below; readers that
 	// matter for routing (scaleWithoutLock's direct append, oneshot's
-	// single-use path) consume this in-memory value; other readers (informer
-	// cache, stuck cleanup, HPA CPU) tolerate a brief delay. We deep-copy
-	// because patchPod already inserted assignedPod into the informer
-	// indexer, and informer background goroutines iterate its annotations.
+	// single-use path) consume this in-memory value, while other readers
+	// (informer cache, stuck cleanup, HPA CPU) tolerate a brief delay. We
+	// deep-copy because applyPod already inserted assignedPod into the
+	// informer indexer and informer background goroutines iterate its
+	// annotations.
 	assignedPod = assignedPod.DeepCopy()
 	if assignedPod.Annotations == nil {
 		assignedPod.Annotations = map[string]string{}
@@ -153,7 +212,16 @@ GET_UNASSIGNED_POD:
 	}()
 
 	instance, err = ctrl.instanceFromPod(assignedPod)
-	return
+	return instance, false, err
+}
+
+// ssaFieldManager returns the unique-per-controller field manager for the
+// assignment SSA apply. Suffixing with PodIP keeps each controller's writes
+// distinguishable to the apiserver's managed-fields machinery, so a cross-
+// controller race during a ring-rebalance window surfaces as a real Conflict
+// that retry.RetryOnConflict can resolve.
+func (ctrl *Controller) ssaFieldManager() string {
+	return key.Controller.Label + "-" + ctrl.config.PodIP
 }
 
 func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Function) (*v1.Pod, error) {
@@ -188,7 +256,24 @@ func (ctrl *Controller) getUnassignedPods(fn *skipper.Function) ([]*v1.Pod, erro
 	}
 
 	// filter out pods that are unready
-	return slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) }), nil
+	pods = slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) })
+
+	// Partition by ring ownership so multiple controllers don't race on the
+	// same K8s pod. owned is a fresh slice so the caller can't see partial
+	// state when the filter leaves us with zero candidates.
+	owned := slices.Clone(pods)
+	owned = slices.DeleteFunc(owned, func(pod *v1.Pod) bool { return !ctrl.podOwnedByMe(pod.Name) })
+	if len(owned) > 0 {
+		return owned, nil
+	}
+	// Empty-partition fallback: when ring topology and the available pool
+	// disagree (e.g., cohort transition window, deployment pool smaller than
+	// the controller fleet, or an unlucky hash distribution), return the
+	// unfiltered pool so the function-responsible controller can still make
+	// progress. SSA's field-manager conflict detection and the per-pod
+	// in-process reservation in assignPod keep this safe under cross-
+	// controller races.
+	return pods, nil
 }
 
 func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
@@ -283,6 +368,22 @@ func (ctrl *Controller) updatePodCache(ctx context.Context, pod *v1.Pod) {
 // patchPod patches a pod via the Kubernetes API and updates the informer cache.
 func (ctrl *Controller) patchPod(ctx context.Context, namespace, name string, patchType types.PatchType, data []byte, opts metav1.PatchOptions) (*v1.Pod, error) {
 	pod, err := ctrl.kubernetes.CoreV1().Pods(namespace).Patch(ctx, name, patchType, data, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	ctrl.updatePodCache(ctx, pod)
+	return pod, nil
+}
+
+// applyPod runs a server-side-apply patch and mirrors patchPod's informer-
+// cache update so readers see the new tenant/function/replicaSet/assignedAt
+// labels and annotations before the watch event arrives.
+func (ctrl *Controller) applyPod(ctx context.Context, apply *corev1ac.PodApplyConfiguration, opts metav1.ApplyOptions) (*v1.Pod, error) {
+	if apply.Namespace == nil || apply.Name == nil {
+		return nil, fmt.Errorf("applyPod requires namespace and name on the apply configuration")
+	}
+	pod, err := ctrl.kubernetes.CoreV1().Pods(*apply.Namespace).Apply(ctx, apply, opts)
 	if err != nil {
 		return nil, err
 	}
