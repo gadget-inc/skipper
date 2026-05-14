@@ -1823,6 +1823,259 @@ func TestHeartbeatInFlightAccuracyDuringConcurrentRequests(t *testing.T) {
 	}
 }
 
+// TestHeartbeatInFlightExcludesRequestsWaitingForInstance pins the demand
+// signal to "actively being served by an instance" rather than "queued
+// somewhere in the router." If queued-waiting requests inflate inFlight, a
+// brief disruption to controller assignment becomes a positive feedback loop:
+// queue grows -> heartbeat reports high inFlight -> controller scales up ->
+// assignment slows further under contention -> queue grows more.
+func TestHeartbeatInFlightExcludesRequestsWaitingForInstance(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	const numRequests = 5
+	releaseInstance := make(chan struct{})
+	var instanceCallsStarted atomic.Int32
+
+	var inFlightCounts []uint32
+	var inFlightMu sync.Mutex
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		instanceCallsStarted.Add(1)
+		select {
+		case <-releaseInstance:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.HandleHeartbeat(func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error {
+		inFlightMu.Lock()
+		defer inFlightMu.Unlock()
+		for _, hb := range heartbeats {
+			if hb.GetFunction().Hash() == fn.Hash() {
+				inFlightCounts = append(inFlightCounts, hb.GetInFlightRequests())
+			}
+		}
+		return nil
+	})
+
+	cfg := testConfig()
+	cfg.HeartbeatInterval = 25 * time.Millisecond
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	var wg sync.WaitGroup
+	for range numRequests {
+		wg.Go(func() {
+			req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+			fn.SetHeader(req)
+			resp, err := http.DefaultClient.Do(req)
+			if err == nil {
+				resp.Body.Close()
+			}
+		})
+	}
+
+	// Wait until all N requests are blocked inside Instance().
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		if instanceCallsStarted.Load() == numRequests {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for %d Instance() calls, got %d", numRequests, instanceCallsStarted.Load())
+	}, poll.WithDelay(5*time.Millisecond), poll.WithTimeout(2*time.Second))
+
+	// Drain any heartbeats from before the requests landed.
+	inFlightMu.Lock()
+	inFlightCounts = inFlightCounts[:0]
+	inFlightMu.Unlock()
+
+	// While all N requests are stuck waiting for assignment, no request is
+	// actually being served. Heartbeats during this window MUST report
+	// inFlight == 0. Poll a few intervals to be sure we observed at least one.
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		inFlightMu.Lock()
+		defer inFlightMu.Unlock()
+		if len(inFlightCounts) >= 2 {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for heartbeats while requests are queued (got %d)", len(inFlightCounts))
+	}, poll.WithDelay(10*time.Millisecond), poll.WithTimeout(2*time.Second))
+
+	inFlightMu.Lock()
+	queuedCounts := slices.Clone(inFlightCounts)
+	inFlightMu.Unlock()
+
+	for _, count := range queuedCounts {
+		assert.Assert(t, count == 0,
+			"in-flight reported %d while all requests were queued waiting for Instance(); want 0", count)
+	}
+
+	close(releaseInstance)
+	wg.Wait()
+}
+
+// TestHeartbeatInFlightIdempotentAcrossRetries pins the per-request count to
+// exactly one even when ctrl.Instance() errors a few times before succeeding.
+// Without the CompareAndSwap guard, each retry would re-mark the tracker and
+// the heartbeat would over-report demand.
+func TestHeartbeatInFlightIdempotentAcrossRetries(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	const instanceErrors = 2
+
+	releasePodHandler := make(chan struct{})
+	var podHandlerEntered atomic.Bool
+	var instanceCalls atomic.Int32
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		if instanceCalls.Add(1) <= instanceErrors {
+			return nil, errors.New("transient")
+		}
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			podHandlerEntered.Store(true)
+			<-releasePodHandler
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.AllowHeartbeat()
+
+	cfg := testConfig()
+	cfg.MaxRoundTripAttempts = instanceErrors + 1
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+	})
+
+	// Wait until the request is being served by the pod handler — by which
+	// point ctrl.Instance() has been called instanceErrors+1 times.
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		if podHandlerEntered.Load() {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for pod handler to enter, Instance() calls so far: %d", instanceCalls.Load())
+	}, poll.WithDelay(5*time.Millisecond), poll.WithTimeout(2*time.Second))
+
+	assert.Assert(t, instanceCalls.Load() == instanceErrors+1,
+		"expected %d Instance() calls (errors+success), got %d", instanceErrors+1, instanceCalls.Load())
+
+	state, ok := router.heartbeats.Load(fn.Hash())
+	assert.Assert(t, ok, "expected heartbeat state for function")
+	assert.Assert(t, state.inFlight.Load() == 1,
+		"expected exactly 1 in-flight after %d retries, got %d", instanceErrors, state.inFlight.Load())
+
+	close(releasePodHandler)
+	wg.Wait()
+
+	assert.Assert(t, state.inFlight.Load() == 0,
+		"expected 0 in-flight after request completes, got %d", state.inFlight.Load())
+}
+
+// TestHeartbeatStateSurvivesLongInFlightRequest covers the touch goroutine's
+// keepalive role: a request in flight for longer than the GC threshold
+// (3 * HeartbeatInterval) must keep its heartbeat state alive and continue
+// to be reported to the controller. If the per-request touch goroutine ever
+// stopped firing or wired up the wrong context, state would be GC'd and the
+// controller would lose visibility into a still-active function.
+func TestHeartbeatStateSurvivesLongInFlightRequest(t *testing.T) {
+	t.Parallel()
+
+	fn := fixture.NewFunction(t)
+	releaseInstance := make(chan struct{})
+
+	mcc := fixture.NewMockControllerClient(t)
+	mcc.HandleInstance(func(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (*skipper.Instance, error) {
+		select {
+		case <-releaseInstance:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return fixture.NewInstance(t, fn, func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusOK)
+		}), nil
+	})
+	mcc.AllowHeartbeat()
+
+	// HeartbeatInterval must comfortably exceed timer.Loop's ±200ms jitter so
+	// the touch goroutine's worst-case actual interval still beats the GC
+	// threshold of 3 * HeartbeatInterval.
+	const heartbeatInterval = 500 * time.Millisecond
+	cfg := testConfig()
+	cfg.HeartbeatInterval = heartbeatInterval
+	router := New(cfg, mcc)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	router.Start(ctx)
+
+	server := httptest.NewServer(router)
+
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/", nil)
+		fn.SetHeader(req)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+	})
+	t.Cleanup(func() {
+		// Order matters: unblock Instance() first so the request can drain,
+		// then wait for the goroutine, then close the server. Otherwise a
+		// failed assertion below would wedge cleanup on the still-blocked
+		// request.
+		select {
+		case <-releaseInstance:
+		default:
+			close(releaseInstance)
+		}
+		wg.Wait()
+		server.Close()
+	})
+
+	// Wait until the request is in flight, then well past the GC threshold.
+	// Without the touch goroutine keeping state.lastActive fresh, the heartbeat
+	// sender will GC the state once time.Since(lastActive) crosses
+	// 3 * heartbeatInterval. We wait 6 intervals to absorb timer.Loop jitter
+	// (±200ms per tick) before asserting survival.
+	poll.WaitOn(t, func(t poll.LogT) poll.Result {
+		if _, ok := router.heartbeats.Load(fn.Hash()); ok {
+			return poll.Success()
+		}
+		return poll.Continue("waiting for heartbeat state to be created")
+	}, poll.WithDelay(20*time.Millisecond), poll.WithTimeout(2*time.Second))
+
+	time.Sleep(6 * heartbeatInterval)
+
+	_, ok := router.heartbeats.Load(fn.Hash())
+	assert.Assert(t, ok, "heartbeat state for fn was GC'd while request was still in flight")
+}
+
 func TestStreamingResponseDuringShutdown(t *testing.T) {
 	t.Parallel()
 
