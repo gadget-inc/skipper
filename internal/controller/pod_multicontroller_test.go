@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,14 +43,11 @@ func TestMultiControllerContention(t *testing.T) {
 
 	multi := newMultiControllerFixture(t, ctx, numControllers, pool...)
 
-	var applyCalls, totalPatches int64
-	var counterMu sync.Mutex
+	var applyCalls, totalPatches atomic.Int64
 	multi.fakeKubernetes.PrependReactor("patch", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
-		counterMu.Lock()
-		defer counterMu.Unlock()
-		totalPatches++
+		totalPatches.Add(1)
 		if pa, ok := action.(ktesting.PatchAction); ok && pa.GetPatchType() == types.ApplyPatchType {
-			applyCalls++
+			applyCalls.Add(1)
 		}
 		return false, nil, nil
 	})
@@ -87,13 +85,13 @@ func TestMultiControllerContention(t *testing.T) {
 	// (d) applies/success == 1 per successful assign: each controller ran SSA
 	// exactly once and RetryOnConflict's closure didn't re-enter. Plus one
 	// async ready-at JSON-patch per success, so total patches >= applies.
-	counterMu.Lock()
-	defer counterMu.Unlock()
-	assert.Equal(t, applyCalls, int64(numControllers),
-		"applies/success should be exactly 1 per assign (got %d applies for %d successes)", applyCalls, numControllers)
-	assert.Assert(t, totalPatches >= applyCalls,
+	apply := applyCalls.Load()
+	total := totalPatches.Load()
+	assert.Equal(t, apply, int64(numControllers),
+		"applies/success should be exactly 1 per assign (got %d applies for %d successes)", apply, numControllers)
+	assert.Assert(t, total >= apply,
 		"total patches (%d) should be at least applies (%d) -- async readyAt patches add 1 per success",
-		totalPatches, applyCalls)
+		total, apply)
 }
 
 // TestRingRebalanceReclaim asserts that when a controller leaves the ring,

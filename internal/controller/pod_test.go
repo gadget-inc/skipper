@@ -243,6 +243,33 @@ func TestAssignPod(t *testing.T) {
 	}
 }
 
+// TestAssignPodRejectsMissingReplicaSetOwner asserts that an unassigned pod
+// without a ReplicaSet `ownerReferences[0]` is refused before the SSA apply
+// runs. The SSA path copies the ReplicaSet name onto the assigned pod as an
+// annotation; without a ReplicaSet owner there is nothing to copy and the
+// resulting Instance would be unrouteable, so assignPod fails fast.
+func TestAssignPodRejectsMissingReplicaSetOwner(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	// Drop the ReplicaSet owner so assignPod hits the missing-owner branch.
+	pod := fixture.NewAvailablePod(t, fn, nil)
+	pod.OwnerReferences = nil
+	fakeKubernetes.Tracker().Add(pod)
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+	assert.NilError(t, ctrl.startInformers(ctx))
+
+	instance, err := ctrl.assignPod(ctx, fn)
+	assert.ErrorContains(t, err, "missing ReplicaSet owner reference")
+	assert.Assert(t, instance == nil)
+}
+
 // TestAssignPodRejectsAlreadyAssigned asserts that pods already bound to a
 // tenant are never picked as assignment candidates. The unassigned-pool
 // label selector excludes pods carrying the tenant label, so giving

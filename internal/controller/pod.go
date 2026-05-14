@@ -136,7 +136,7 @@ func (ctrl *Controller) tryAssignPod(ctx context.Context, fn *skipper.Function, 
 
 	var assignedPod *v1.Pod
 	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		applied, applyErr := ctrl.applyPod(ctx, apply, metav1.ApplyOptions{FieldManager: ctrl.ssaFieldManager()})
+		applied, applyErr := ctrl.applyPod(ctx, apply, metav1.ApplyOptions{FieldManager: ctrl.ssaFieldManager})
 		if applyErr != nil {
 			return applyErr
 		}
@@ -215,15 +215,6 @@ func (ctrl *Controller) tryAssignPod(ctx context.Context, fn *skipper.Function, 
 	return instance, false, err
 }
 
-// ssaFieldManager returns the unique-per-controller field manager for the
-// assignment SSA apply. Suffixing with PodIP keeps each controller's writes
-// distinguishable to the apiserver's managed-fields machinery, so a cross-
-// controller race during a ring-rebalance window surfaces as a real Conflict
-// that retry.RetryOnConflict can resolve.
-func (ctrl *Controller) ssaFieldManager() string {
-	return key.Controller.Label + "-" + ctrl.config.PodIP
-}
-
 func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Function) (*v1.Pod, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
@@ -272,8 +263,9 @@ func (ctrl *Controller) getUnassignedPods(fn *skipper.Function) ([]*v1.Pod, erro
 	// unfiltered pool so the function-responsible controller can still make
 	// progress. SSA's field-manager conflict detection and the per-pod
 	// in-process reservation in assignPod keep this safe under cross-
-	// controller races.
-	return pods, nil
+	// controller races. Clone so the caller can mutate the result without
+	// reaching the lister's slice.
+	return slices.Clone(pods), nil
 }
 
 func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {

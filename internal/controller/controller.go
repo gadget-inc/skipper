@@ -63,6 +63,10 @@ type Controller struct {
 	// SSA apply (which the fake clientset does not conflict-detect, and the
 	// real apiserver only conflicts when field managers differ).
 	podReservations *xsync.Map[string, struct{}]
+	// ssaFieldManager is the controller-unique field manager used for every
+	// assignPod SSA apply -- precomputed once so the hot path doesn't
+	// allocate a fresh string per call.
+	ssaFieldManager string
 	events          *eventLog
 }
 
@@ -81,6 +85,7 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 		portCache:           xsync.NewMap[types.UID, string](),
 		staleReplacementSem: semaphore.NewWeighted(int64(cfg.MaxConcurrentStaleReplacements)),
 		podReservations:     xsync.NewMap[string, struct{}](),
+		ssaFieldManager:     key.Controller.Label + "-" + cfg.PodIP,
 		events:              &eventLog{},
 	}
 }
