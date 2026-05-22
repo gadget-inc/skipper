@@ -56,7 +56,18 @@ type Controller struct {
 	functionCache       *xsync.Map[string, *skipper.Function]         // keyed by raw annotation JSON
 	portCache           *xsync.Map[types.UID, string]                 // keyed by pod UID
 	staleReplacementSem *semaphore.Weighted
-	events              *eventLog
+	// podReservations serializes pod claims across goroutines inside one
+	// controller. Keyed by "namespace/podName". A non-empty entry means some
+	// goroutine here is mid-assign on that pod; another goroutine that picks
+	// the same pod via getUnassignedPod loops back rather than racing the
+	// SSA apply (which the fake clientset does not conflict-detect, and the
+	// real apiserver only conflicts when field managers differ).
+	podReservations *xsync.Map[string, struct{}]
+	// ssaFieldManager is the controller-unique field manager used for every
+	// assignPod SSA apply -- precomputed once so the hot path doesn't
+	// allocate a fresh string per call.
+	ssaFieldManager string
+	events          *eventLog
 }
 
 func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interface, kubernetesMetrics kubernetesmetrics.Interface) *Controller {
@@ -73,6 +84,8 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 		functionCache:       xsync.NewMap[string, *skipper.Function](),
 		portCache:           xsync.NewMap[types.UID, string](),
 		staleReplacementSem: semaphore.NewWeighted(int64(cfg.MaxConcurrentStaleReplacements)),
+		podReservations:     xsync.NewMap[string, struct{}](),
+		ssaFieldManager:     key.Controller.Label + "-" + cfg.PodIP,
 		events:              &eventLog{},
 	}
 }

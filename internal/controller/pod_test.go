@@ -2,9 +2,11 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,9 +18,13 @@ import (
 	"gotest.tools/v3/assert"
 	"gotest.tools/v3/poll"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
+	ktesting "k8s.io/client-go/testing"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	fakekubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned/fake"
 )
@@ -243,15 +249,13 @@ func TestAssignPod(t *testing.T) {
 	}
 }
 
-// TestAssignPodRejectsAlreadyAssigned is separate from TestAssignPod because it
-// modifies a global variable (doesNotHaveTenantSelector) and cannot run in parallel.
-func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
-	// make getAvailablePods return assigned pods (normally filtered out)
-	originalDoesNotHaveTenantSelector := doesNotHaveTenantSelector
-	t.Cleanup(func() {
-		doesNotHaveTenantSelector = originalDoesNotHaveTenantSelector
-	})
-	doesNotHaveTenantSelector = hasTenantSelector
+// TestAssignPodRejectsMissingReplicaSetOwner asserts that an unassigned pod
+// without a ReplicaSet `ownerReferences[0]` is refused before the SSA apply
+// runs. The SSA path copies the ReplicaSet name onto the assigned pod as an
+// annotation; without a ReplicaSet owner there is nothing to copy and the
+// resulting Instance would be unrouteable, so assignPod fails fast.
+func TestAssignPodRejectsMissingReplicaSetOwner(t *testing.T) {
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
@@ -259,7 +263,33 @@ func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
 	fn := fixture.NewFunction(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
-	// add a pod that already has a tenant label
+	// Drop the ReplicaSet owner so assignPod hits the missing-owner branch.
+	pod := fixture.NewAvailablePod(t, fn, nil)
+	pod.OwnerReferences = nil
+	fakeKubernetes.Tracker().Add(pod)
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+	assert.NilError(t, ctrl.startInformers(ctx))
+
+	instance, err := ctrl.assignPod(ctx, fn)
+	assert.ErrorContains(t, err, "missing ReplicaSet owner reference")
+	assert.Assert(t, instance == nil)
+}
+
+// TestAssignPodRejectsAlreadyAssigned asserts that pods already bound to a
+// tenant are never picked as assignment candidates. The unassigned-pool
+// label selector excludes pods carrying the tenant label, so giving
+// assignPod no other candidate forces it to wait out the context rather
+// than overwrite the existing assignment.
+func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
 	pod := fixture.NewAvailablePod(t, fn, nil)
 	pod.Labels[key.Tenant.Label] = "other"
 	fakeKubernetes.Tracker().Add(pod)
@@ -273,7 +303,6 @@ func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Assert(t, instance == nil)
 
-	// verify pod still has original tenant and wasn't re-assigned
 	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 1)
@@ -282,6 +311,58 @@ func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
 	assert.Assert(t, resultPod.Labels[key.Tenant.Label] == "other")
 	delete(resultPod.Labels, key.Tenant.Label)
 	ensurePodIsNotAssignedToFunction(t, resultPod)
+}
+
+// TestAssignPod_RecoversFromSSAConflict asserts that a field-manager Conflict
+// from the SSA apply -- the cross-controller race signal during a ring
+// rebalance -- causes assignPod to pick a different candidate via its outer
+// loop rather than retrying the same apply (which is futile without
+// ApplyOptions.Force, and Force would defeat the partition guarantee). The
+// fake clientset doesn't model SSA field-manager ownership, so a reactor
+// injects a fixed number of synthetic Conflict responses; the count is well
+// above any plausible client-go retry budget so a same-apply retry path would
+// exhaust and return the Conflict error to the caller.
+func TestAssignPod_RecoversFromSSAConflict(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn := fixture.NewFunction(t)
+
+	const poolSize = 4
+	objs := []runtime.Object{fixture.NewControllerPod()}
+	for range poolSize {
+		objs = append(objs, fixture.NewAvailablePod(t, fn, nil))
+	}
+	fakeKubernetes := fake.NewClientset(objs...)
+
+	const injectedConflicts = 10
+	var applyCalls atomic.Int64
+	fakeKubernetes.PrependReactor("patch", "pods", func(action ktesting.Action) (bool, runtime.Object, error) {
+		pa, ok := action.(ktesting.PatchAction)
+		if !ok || pa.GetPatchType() != types.ApplyPatchType {
+			return false, nil, nil
+		}
+		if applyCalls.Add(1) <= injectedConflicts {
+			return true, nil, apierrors.NewConflict(
+				schema.GroupResource{Group: "", Resource: "pods"},
+				pa.GetName(),
+				fmt.Errorf(`field manager "peer-controller" already owns these fields`),
+			)
+		}
+		return false, nil, nil
+	})
+
+	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
+	assert.NilError(t, ctrl.startInformers(ctx))
+
+	instance, err := ctrl.assignPod(ctx, fn)
+	assert.NilError(t, err)
+	assert.Assert(t, instance != nil)
+	assert.Assert(t, applyCalls.Load() >= injectedConflicts+1,
+		"expected at least %d apply attempts (%d conflicts + 1 success), got %d",
+		injectedConflicts+1, injectedConflicts, applyCalls.Load())
 }
 
 func TestIsPodRunning(t *testing.T) {

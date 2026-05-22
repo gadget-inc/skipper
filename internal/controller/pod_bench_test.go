@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"slices"
 	"strconv"
 	"sync"
@@ -18,7 +19,8 @@ import (
 	"github.com/google/uuid"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ktesting "k8s.io/client-go/testing"
 )
 
@@ -26,28 +28,44 @@ import (
 // controllers backed by a single fake clientset, each calling assignPod
 // concurrently for a distinct function.
 //
-// The fake clientset serializes Patch actions through a tracker mutex and
-// does not implement optimistic-concurrency on ResourceVersion. As a result
-// the wall-clock numbers here are not directly comparable to the May 12
-// production incident's bimodal p99 (3-7 min); the meaningful "before" in
-// that comparison is the production-data baseline documented in the Brief's
-// Further Notes. This benchmark exists to set the forward-looking acceptance
-// bar for Phase 2 (p99 single-digit ms under partitioned assignment) and to
-// catch regressions in the assignment hot path between commits.
+// The fake clientset serializes Patch and Apply actions through a tracker
+// mutex and -- since k8s 1.30 -- uses managedFieldObjectTracker for
+// server-side apply, which is heavier per-call than the old JSON-patch
+// path. The bench cannot reproduce the May 12 production incident's
+// bimodal p99 (3-7 min); production tail latency was driven by N
+// controllers racing on the same K8s object via JSON-patch test ops, which
+// the partitioned design eliminates entirely. The meaningful "before"
+// for that comparison is the production-data baseline documented in the
+// Brief. This benchmark exists to set the forward-looking acceptance bar
+// for Phase 2 (no retries, bounded per-call latency under the parallelism
+// of the production controller cohort) and to catch regressions in the
+// assignment hot path between commits.
+//
+// GOMAXPROCS is pinned to numControllers for the duration of the run so
+// b.RunParallel uses exactly N goroutines (one per controller) -- the
+// production-shaped contention scenario. Without the pin, GOMAXPROCS on
+// the test host can be 10-14 and the bench measures fake-mutex contention
+// rather than the assignment hot path itself.
 //
 // Reported metrics:
 //   - ns/op: default mean latency per assignPod call
 //   - p99-ms: 99th-percentile per-iteration latency
-//   - patches/success: total Patch actions divided by successful assigns
-//     (each success consists of one main patch and one async ready-at
-//     patch, so the steady-state value is ~2 on this fake harness even
-//     with zero contention).
+//   - patches/success: total Patch+Apply actions divided by successful
+//     assigns (each success consists of one main apply and one async
+//     ready-at patch, so the steady-state value is ~2 here even when
+//     RetryOnConflict never fires)
+//   - applies/success: main SSA Apply actions divided by successful
+//     assigns -- the retry-path indicator. 1.0 means RetryOnConflict's
+//     fn ran exactly once per assign; values >1.0 indicate conflicts.
 func BenchmarkAssignPodContention(b *testing.B) {
 	const (
 		numControllers   = 3
 		poolPerFunction  = 20_000
 		assignCtxTimeout = 60 * time.Second
 	)
+
+	prevMaxProcs := runtime.GOMAXPROCS(numControllers)
+	b.Cleanup(func() { runtime.GOMAXPROCS(prevMaxProcs) })
 
 	ctx, cancel := context.WithTimeout(context.Background(), assignCtxTimeout)
 	b.Cleanup(cancel)
@@ -76,7 +94,7 @@ func BenchmarkAssignPodContention(b *testing.B) {
 	// after informers register would overflow it. Seeding through
 	// fake.NewClientset (via the fixture's extraObjects) lets informers pick
 	// the pool up via initial-list with no watch traffic.
-	poolObjs := make([]runtime.Object, 0, numControllers*poolPerFunction)
+	poolObjs := make([]k8sruntime.Object, 0, numControllers*poolPerFunction)
 	for c := range numControllers {
 		for range poolPerFunction {
 			poolObjs = append(poolObjs, benchAvailablePod(fns[c], sharedHost, int32(sharedPort)))
@@ -85,9 +103,12 @@ func BenchmarkAssignPodContention(b *testing.B) {
 
 	multi := newMultiControllerFixture(b, ctx, numControllers, poolObjs...)
 
-	var totalPatches atomic.Int64
-	multi.fakeKubernetes.PrependReactor("patch", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+	var totalPatches, applyPatches atomic.Int64
+	multi.fakeKubernetes.PrependReactor("patch", "pods", func(action ktesting.Action) (bool, k8sruntime.Object, error) {
 		totalPatches.Add(1)
+		if pa, ok := action.(ktesting.PatchAction); ok && pa.GetPatchType() == types.ApplyPatchType {
+			applyPatches.Add(1)
+		}
 		return false, nil, nil
 	})
 
@@ -128,6 +149,7 @@ func BenchmarkAssignPodContention(b *testing.B) {
 
 	if s := successes.Load(); s > 0 {
 		b.ReportMetric(float64(totalPatches.Load())/float64(s), "patches/success")
+		b.ReportMetric(float64(applyPatches.Load())/float64(s), "applies/success")
 	}
 
 	if len(allDurations) > 0 {
