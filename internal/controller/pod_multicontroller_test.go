@@ -83,8 +83,9 @@ func TestMultiControllerContention(t *testing.T) {
 	}
 
 	// (d) applies/success == 1 per successful assign: each controller ran SSA
-	// exactly once and RetryOnConflict's closure didn't re-enter. Plus one
-	// async ready-at JSON-patch per success, so total patches >= applies.
+	// exactly once -- no retryPick loops back, no conflict-driven outer
+	// retries. Plus one async ready-at JSON-patch per success, so total
+	// patches >= applies.
 	apply := applyCalls.Load()
 	total := totalPatches.Load()
 	assert.Equal(t, apply, int64(numControllers),

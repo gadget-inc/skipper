@@ -30,8 +30,14 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	corev1ac "k8s.io/client-go/applyconfigurations/core/v1"
-	"k8s.io/client-go/util/retry"
 )
+
+// podRetryPickBackoff bounds the CPU cost of looping back through
+// getUnassignedPod when tryAssignPod returns retryPick=true. The next call
+// returns instantly when candidates remain, so without a wait the loop spins
+// for the duration of the in-flight SSA (intra-controller reservation case)
+// or until the lister catches up to the winning peer (cross-controller race).
+const podRetryPickBackoff = 10 * time.Millisecond
 
 // podHashKey adapts a pod name to hashring.Hasher so the existing ring (used
 // for function-to-controller routing) can also partition unassigned pods to
@@ -65,12 +71,15 @@ var (
 
 // assignPod claims an unassigned pod from this controller's owned partition
 // (per podOwnedByMe) and binds it to fn. Concurrent callers inside the same
-// controller serialize through podReservations on the pod key, and the SSA
-// apply runs under retry.RetryOnConflict so cross-controller races during a
-// ring-rebalance window surface as a real apiserver Conflict that the retry
-// loop resolves. When a reservation is already held for the picked pod, the
-// caller loops back to getUnassignedPod for a different candidate; the outer
-// for-loop discards the reservation between iterations.
+// controller serialize through podReservations on the pod key; the SSA apply
+// runs without ApplyOptions.Force, so a cross-controller race during a
+// ring-rebalance window surfaces as a field-manager Conflict that
+// tryAssignPod converts to retryPick=true (picking another pod instead of
+// stealing ownership, which would break the partition guarantee). When a
+// reservation is already held or the SSA reports a Conflict, the caller
+// loops back to getUnassignedPod for a different candidate after a short
+// jittered backoff; the outer for-loop discards the reservation between
+// iterations.
 func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Function) (*skipper.Instance, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
@@ -85,6 +94,11 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Function) (*s
 
 		instance, retryPick, err := ctrl.tryAssignPod(ctx, fn, unassignedPod)
 		if retryPick {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(podRetryPickBackoff + time.Duration(rand.Int63n(int64(podRetryPickBackoff)))):
+			}
 			continue
 		}
 		return instance, err
@@ -93,10 +107,12 @@ func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Function) (*s
 
 // tryAssignPod runs one reservation-guarded assign attempt against the picked
 // pod. retryPick==true means another goroutine in this controller already
-// holds the reservation; the caller loops back to getUnassignedPod to pick a
-// different candidate. retryPick==false means the attempt either succeeded
-// (instance non-nil, err nil) or failed terminally (err set, deletePod was
-// invoked to release the pod K8s-side before the reservation released).
+// holds the reservation, OR the SSA apply lost a cross-controller race for
+// field-manager ownership (apiserver Conflict); either way the caller loops
+// back to getUnassignedPod for a different candidate. retryPick==false means
+// the attempt either succeeded (instance non-nil, err nil) or failed
+// terminally (err set, deletePod was invoked to release the pod K8s-side
+// before the reservation released).
 func (ctrl *Controller) tryAssignPod(ctx context.Context, fn *skipper.Function, unassignedPod *v1.Pod) (instance *skipper.Instance, retryPick bool, err error) {
 	reservationKey := unassignedPod.Namespace + "/" + unassignedPod.Name
 	if _, claimed := ctrl.podReservations.LoadOrStore(reservationKey, struct{}{}); claimed {
@@ -135,15 +151,20 @@ func (ctrl *Controller) tryAssignPod(ctx context.Context, fn *skipper.Function, 
 		})
 
 	var assignedPod *v1.Pod
-	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		applied, applyErr := ctrl.applyPod(ctx, apply, metav1.ApplyOptions{FieldManager: ctrl.ssaFieldManager})
-		if applyErr != nil {
-			return applyErr
-		}
-		assignedPod = applied
-		return nil
-	})
+	assignedPod, err = ctrl.applyPod(ctx, apply, metav1.ApplyOptions{FieldManager: ctrl.ssaFieldManager})
 	if err != nil {
+		if apierrors.IsConflict(err) {
+			// A peer's field manager already owns this pod's tenant
+			// (cross-controller race during a ring-rebalance window).
+			// ApplyOptions.Force is intentionally unset so the partition
+			// guarantee holds; retrying the same apply with the same
+			// manager is futile. Surface as retryPick so assignPod loops
+			// back through getUnassignedPod, where the lister will see
+			// the winning peer's tenant label and exclude the contested
+			// pod from this controller's unassigned pool.
+			log.Trace(ctx, "SSA conflict, peer claimed pod", key.Pod.Slog(unassignedPod), key.Error.Slog(err))
+			return nil, true, nil
+		}
 		return nil, false, fmt.Errorf("failed to apply pod: %w", err)
 	}
 
