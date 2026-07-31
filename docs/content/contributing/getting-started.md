@@ -14,6 +14,7 @@ description: Set up your development environment for Skipper.
 1. Install the prerequisites above.
 2. `cd` into the repository.
 3. Run `direnv allow` — direnv will automatically enter the `nix develop` shell that contains all the tools you need to build and run the project.
+4. Run `git config core.hooksPath .githooks` to enable the repo's git hooks (`dev lint` on commit, `dev test -short ./...` on push). Bypass with `--no-verify` when needed.
 
 Every new terminal opened in the repository will automatically provide the correct environment.
 
