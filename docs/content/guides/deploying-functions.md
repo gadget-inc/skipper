@@ -17,6 +17,45 @@ For a pod to be discovered, it needs the `skipper/deployment` label:
 
 The controller only watches namespaces listed in the `--function-namespaces` flag. Pods in other namespaces are invisible to Skipper regardless of labels.
 
+## Example deployment
+
+A deployment that Skipper can manage looks like this:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-server
+  labels:
+    skipper/deployment: echo-server
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      skipper/deployment: echo-server
+    matchExpressions:
+      - key: skipper/tenant
+        operator: DoesNotExist
+  template:
+    metadata:
+      labels:
+        skipper/deployment: echo-server
+      annotations:
+        skipper/port: "http"
+    spec:
+      containers:
+        - image: echo-server:latest
+          ports:
+            - name: http
+              containerPort: 3000
+```
+
+The `skipper/tenant` `DoesNotExist` match expression is what makes the deployment behave as a pool: assignment adds the `skipper/tenant` label to the pod, which removes it from the deployment's selector, so the ReplicaSet creates a fresh unassigned pod to replace it.
+
+:::note
+The `skipper/port` annotation isn't required, but the pod template must have at least one annotation defined, otherwise Skipper can't atomically add annotations during assignment because the JSON Patch will fail. See [this Stack Overflow answer](https://stackoverflow.com/a/57480206) and [this section of the JSON Patch RFC](https://datatracker.ietf.org/doc/html/rfc6902#appendix-A.12) for more details.
+:::
+
 ## Function identity
 
 A function is uniquely identified by four fields: **namespace**, **deployment**, **tenant**, and **oneshot** flag. These are combined into a unique identity used throughout the system.
