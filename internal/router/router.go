@@ -45,7 +45,7 @@ var (
 		Namespace: "skipper",
 		Subsystem: "router",
 		Name:      "requests_in_flight",
-		Help:      "Requests currently being handled by the router.",
+		Help:      "Requests currently being proxied to a function instance.",
 	}, []string{"function_deployment"})
 
 	heartbeatsTotal = metrics.NewCounterVec(prometheus.CounterOpts{
@@ -139,19 +139,19 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return nil
 	})
 
-	// increment the in-flight requests for this function
-	requestsInFlight.WithLabelValues(fn.GetDeployment()).Inc()
-	state.inFlight.Add(1)
 	state.touch()
 
-	// decrement the in-flight requests for this function when the request is complete
+	// In-flight count reflects requests being served by an instance, not
+	// requests queued waiting for one. RoundTrip flips the tracker after a
+	// successful Instance() call; this defer drops the count once the
+	// request finishes.
+	tracker := &inFlightTracker{state: state, fn: fn}
 	defer func() {
-		requestsInFlight.WithLabelValues(fn.GetDeployment()).Dec()
-		state.inFlight.Add(-1)
+		tracker.release()
 		state.touch()
 	}()
 
-	reqCtx := withFunction(ctx, fn)
+	reqCtx := withInFlightTracker(withFunction(ctx, fn), tracker)
 
 	// For oneshot functions, track the assigned instance so we can release it after the request.
 	var instResult *instanceResult
@@ -222,6 +222,10 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 			log.Warn(ctx, "failed to get instance for function", key.Error.Slog(err))
 			continue
 		}
+
+		// The request now has an instance to serve it — count it against the
+		// function's demand signal. Idempotent across retries.
+		inFlightTrackerFromContext(ctx).markActive()
 
 		ctx = telemetry.With(ctx, skipper.InstanceKey.Attr(instance))
 
