@@ -187,6 +187,10 @@ func TestRenderMessageTable_ExtraDescriptionFails(t *testing.T) {
 		"Function.metadata":   "x",
 		"Function.scale":      "x",
 		"Function.oneshot":    "x",
+		"Function.hpa":        "x",
+		"Function.heartbeat":  "x",
+		"Function.proxy":      "x",
+		"Function.lifecycle":  "x",
 		"Function.bogus":      "extraneous",
 	}
 	_, err := renderMessageRows("Function", descriptions, messageTableRegistry)
@@ -206,6 +210,10 @@ func TestRenderMessageTable_UnregisteredKeyFails(t *testing.T) {
 		"Function.metadata":   "x",
 		"Function.scale":      "x",
 		"Function.oneshot":    "x",
+		"Function.hpa":        "x",
+		"Function.heartbeat":  "x",
+		"Function.proxy":      "x",
+		"Function.lifecycle":  "x",
 		"Event.type":          "wrong message",
 	}
 	_, err := renderMessageRows("Function", descriptions, messageTableRegistry)

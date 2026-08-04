@@ -1191,7 +1191,7 @@ func TestCalculateDesiredInstancesForMetric(t *testing.T) {
 				}
 			}
 
-			instances, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, tc.metricName, tc.podMetrics)
+			instances, _ := calculateDesiredInstancesForMetric(t.Context(), cfg, tc.podMetrics[0].GetFunction(), tc.metricName, tc.podMetrics)
 			assert.Assert(t, instances == tc.expectedInstances)
 		})
 	}
@@ -1867,7 +1867,7 @@ func TestCalculateDesiredInstances(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
+			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat.GetFunction(), tc.heartbeat, tc.instances)
 
 			assert.Equal(t, tc.expectedDesiredInstances, decision.GetDesiredInstances())
 			assert.Equal(t, tc.expectedUnclampedDesired, decision.GetUnclampedDesiredInstances())
@@ -2212,7 +2212,7 @@ func TestCleanupStuckInstances(t *testing.T) {
 			assert.NilError(t, err)
 
 			supervisor := state.ctrl.supervisor(state.fn)
-			instances = supervisor.cleanupStuckInstances(ctx, instances)
+			instances = supervisor.cleanupStuckInstances(ctx, state.fn, instances)
 
 			tc.check(t, state, instances)
 		})
@@ -2619,6 +2619,43 @@ func TestReplaceStaleInstances(t *testing.T) {
 				// Verify available pod was NOT consumed (still available)
 				assert.Assert(t, foundAvailable, "available pod should not have been assigned")
 				assert.Assert(t, availablePods >= 1, "should have at least 1 available pod")
+			},
+		},
+		{
+			// A tenant changing only a per-function policy knob (heartbeat /
+			// hpa / proxy / lifecycle) must NOT trigger pod replacement: the
+			// resolver layer applies the new value on the next converge tick,
+			// no new pod pool. Without this guarantee, every policy update
+			// would cause a rolling replacement of every assigned pod -- the
+			// opposite of the per-function policy design.
+			name: "policy-only function change does not mark instance stale",
+			setup: func(t *testing.T, state *testState) {
+				// Pod was assigned when the function had no per-function policy.
+				oldFn := proto.Clone(state.fn).(*skipper.Function)
+				assignedPod := fixture.NewAssignedPod(t, oldFn, nil)
+				state.fakeKubernetes.Tracker().Add(assignedPod)
+
+				// Current replica set is still active (Replicas > 0 means not
+				// stale by replica-set scale-down).
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				// The live function gains an hpa policy. Metadata and scale
+				// are unchanged.
+				state.fn.SetHpa(skipper.HpaPolicy_builder{
+					Tolerance: new(0.05),
+				}.Build())
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				// Instance must survive: policy-only change is not staleness.
+				assert.Assert(t, len(instances) == 1, "expected 1 instance, got %d", len(instances))
+				// No stale-replacement event must fire -- the replacement
+				// pipeline runs even if the eventual assignPod errors out, so
+				// asserting on the event captures the staleness verdict
+				// itself, not the outcome of the replacement.
+				for _, event := range state.ctrl.events.snapshot() {
+					assert.Assert(t, event.GetType() != skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT,
+						"policy-only change must not mark the instance stale: %s", event.GetMessage())
+				}
 			},
 		},
 		{
@@ -3255,7 +3292,7 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 
 	// Verify the scaling decision would request 1 instance
 	heartbeat := supervisor.combinedHeartbeat(fn, instances)
-	scalingDecision := calculateDesiredInstances(ctx, cfg, heartbeat, instances)
+	scalingDecision := calculateDesiredInstances(ctx, cfg, fn, heartbeat, instances)
 	assert.Assert(t, scalingDecision.GetDesiredInstances() == 1,
 		"expected scaling decision of 1 instance, got %d", scalingDecision.GetDesiredInstances())
 
@@ -3814,7 +3851,7 @@ func TestCalculateDesiredInstancesOneshot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat, tc.instances)
+			decision := calculateDesiredInstances(t.Context(), cfg, tc.heartbeat.GetFunction(), tc.heartbeat, tc.instances)
 
 			assert.Equal(t, tc.expectedDesiredInstances, decision.GetDesiredInstances())
 			assert.Equal(t, tc.expectedUnclampedDesired, decision.GetUnclampedDesiredInstances())
@@ -4044,13 +4081,15 @@ func BenchmarkRecordRecommendation(b *testing.B) {
 		return window
 	}
 
+	fn := &skipper.Function{}
+
 	b.Run("with_300_entries", func(b *testing.B) {
 		b.ReportAllocs()
 		template := makeWindow()
 		s := &Supervisor{ctrl: &Controller{config: cfg}}
 		for b.Loop() {
 			s.stabilizationWindow = append(s.stabilizationWindow[:0], template...)
-			sinkRecommendation = s.recordRecommendation(5)
+			sinkRecommendation = s.recordRecommendation(fn, 5)
 		}
 	})
 
@@ -4059,7 +4098,7 @@ func BenchmarkRecordRecommendation(b *testing.B) {
 		s := &Supervisor{ctrl: &Controller{config: cfg}}
 		for b.Loop() {
 			s.stabilizationWindow = s.stabilizationWindow[:0]
-			sinkRecommendation = s.recordRecommendation(5)
+			sinkRecommendation = s.recordRecommendation(fn, 5)
 		}
 	})
 }
@@ -4157,7 +4196,7 @@ func TestSupervisorEvents(t *testing.T) {
 				instances, err := state.ctrl.getInstances(ctx, state.fn)
 				assert.NilError(t, err)
 				supervisor := state.ctrl.supervisor(state.fn)
-				supervisor.cleanupStuckInstances(ctx, instances)
+				supervisor.cleanupStuckInstances(ctx, state.fn, instances)
 			},
 			check: func(t *testing.T, state *testState) {
 				events := state.ctrl.events.snapshot()

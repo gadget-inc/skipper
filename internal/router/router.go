@@ -195,25 +195,50 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		defer func() { req.Body = originalBody }()
 	}
 
+	maxAttempts := fn.MaxRoundTripAttempts(uint32(r.config.MaxRoundTripAttempts))
+	// Resolve min and max independently, then clamp -- a tenant who sets only
+	// one half of the pair against a cluster default for the other can produce
+	// an inverted runtime pair that Function.Validate cannot catch.
+	rawMin := fn.RetryMinBackoff(r.config.RoundTripRetryMinTimeout)
+	rawMax := fn.RetryMaxBackoff(r.config.RoundTripRetryMaxTimeout)
+	minBackoff, maxBackoff, wasInverted := clampBackoffBounds(rawMin, rawMax)
+	if wasInverted {
+		// Warn once per RoundTrip, before the retry loop assembles its
+		// per-attempt log context, so a reader can see that a tenant override
+		// was silently demoted to the cluster ceiling.
+		log.Warn(req.Context(), "retry backoff bounds inverted; clamping minimum to cluster maximum",
+			key.RetryMinBackoff.Slog(rawMin),
+			key.RetryMaxBackoff.Slog(rawMax),
+		)
+	}
+
 	var excludedInstanceNames []string
 	getInstanceDuration := time.Duration(0)
 	attempt := 0
 
 	for {
 		attempt++
-		if attempt > r.config.MaxRoundTripAttempts {
-			return nil, fmt.Errorf("failed to proxy request after %d attempts", r.config.MaxRoundTripAttempts)
+		if attempt > int(maxAttempts) {
+			return nil, fmt.Errorf("failed to proxy request after %d attempts", maxAttempts)
 		}
 
 		if attempt > 1 {
 			select {
 			case <-req.Context().Done():
 				return nil, req.Context().Err()
-			case <-time.After(r.calculateBackoff(attempt)):
+			case <-time.After(calculateBackoff(attempt, minBackoff, maxBackoff)):
 			}
 		}
 
-		ctx := telemetry.With(req.Context(), key.Attempt.Attr(attempt), key.ExcludeInstanceNames.Attr(excludedInstanceNames))
+		// Attach the resolved (effective) retry policy to the per-attempt log
+		// context so a reader can tell whether the cluster default or a tenant
+		// override drove the attempt cap and backoff curve.
+		ctx := log.With(req.Context(),
+			key.MaxAttempts.Slog(maxAttempts),
+			key.RetryMinBackoff.Slog(minBackoff),
+			key.RetryMaxBackoff.Slog(maxBackoff),
+		)
+		ctx = telemetry.With(ctx, key.Attempt.Attr(attempt), key.ExcludeInstanceNames.Attr(excludedInstanceNames))
 
 		getInstanceStart := time.Now()
 		instance, err := r.ctrl.Instance(ctx, fn, excludedInstanceNames...)
@@ -340,9 +365,28 @@ func (r *Router) releaseInstance(inst *skipper.Instance) {
 	}()
 }
 
-func (r *Router) calculateBackoff(attempt int) time.Duration {
-	minTimeout := float64(r.config.RoundTripRetryMinTimeout)
-	maxTimeout := float64(r.config.RoundTripRetryMaxTimeout)
+// calculateBackoff returns a randomized exponential backoff between
+// minBackoff and maxBackoff for the given attempt. Bounds come from the
+// resolver in RoundTrip, so per-function overrides drive this curve.
+func calculateBackoff(attempt int, minBackoff, maxBackoff time.Duration) time.Duration {
+	minTimeout := float64(minBackoff)
+	maxTimeout := float64(maxBackoff)
 	factor := 1 + rand.Float64() // randomize the factor between 1 and 2 to add jitter
 	return time.Duration(min(factor*minTimeout*math.Pow(2, float64(attempt)), maxTimeout))
+}
+
+// clampBackoffBounds enforces min <= max on the resolved retry-backoff pair.
+// Function.Validate already rejects inverted pairs that come purely from the
+// proto, but the resolver pair (function value, cluster default) can land
+// inverted when the function sets only one half and the cluster default for
+// the other half is on the wrong side. Clamping the minimum to the maximum
+// preserves the operator's hard ceiling on a single backoff while keeping the
+// math in calculateBackoff well-defined. wasInverted reports whether the
+// clamp fired so the caller can warn the operator that a tenant override
+// was silently demoted to the cluster ceiling.
+func clampBackoffBounds(minBackoff, maxBackoff time.Duration) (time.Duration, time.Duration, bool) {
+	if minBackoff > maxBackoff {
+		return maxBackoff, maxBackoff, true
+	}
+	return minBackoff, maxBackoff, false
 }

@@ -10,6 +10,23 @@
 			"target_cpu_usage_milli": 500,
 			"target_memory_usage_mib": 256,
 			"target_in_flight_requests": 100
+		},
+		"hpa": {
+			"tolerance": 0.05,
+			"downscale_stabilization": "60s",
+			"initial_readiness_delay": "30s"
+		},
+		"heartbeat": {
+			"timeout": "1800s"
+		},
+		"proxy": {
+			"max_attempts": 3,
+			"retry_min_backoff": "0.010s",
+			"retry_max_backoff": "1s"
+		},
+		"lifecycle": {
+			"assign_timeout": "45s",
+			"token_ttl": "3600s"
 		}
 	},
 	"Heartbeat": {
@@ -24,6 +41,23 @@
 				"target_cpu_usage_milli": 500,
 				"target_memory_usage_mib": 256,
 				"target_in_flight_requests": 100
+			},
+			"hpa": {
+				"tolerance": 0.05,
+				"downscale_stabilization": "60s",
+				"initial_readiness_delay": "30s"
+			},
+			"heartbeat": {
+				"timeout": "1800s"
+			},
+			"proxy": {
+				"max_attempts": 3,
+				"retry_min_backoff": "0.010s",
+				"retry_max_backoff": "1s"
+			},
+			"lifecycle": {
+				"assign_timeout": "45s",
+				"token_ttl": "3600s"
 			}
 		},
 		"timestamp": "2024-01-15T10:30:00Z",
@@ -41,6 +75,23 @@
 				"target_cpu_usage_milli": 500,
 				"target_memory_usage_mib": 256,
 				"target_in_flight_requests": 100
+			},
+			"hpa": {
+				"tolerance": 0.05,
+				"downscale_stabilization": "60s",
+				"initial_readiness_delay": "30s"
+			},
+			"heartbeat": {
+				"timeout": "1800s"
+			},
+			"proxy": {
+				"max_attempts": 3,
+				"retry_min_backoff": "0.010s",
+				"retry_max_backoff": "1s"
+			},
+			"lifecycle": {
+				"assign_timeout": "45s",
+				"token_ttl": "3600s"
 			}
 		},
 		"name": "my-app-abc123",

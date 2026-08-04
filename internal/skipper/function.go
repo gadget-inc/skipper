@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/gadget-inc/skipper/internal/key"
@@ -65,6 +66,10 @@ func (f *Function) LogValue() slog.Value {
 		key.Metadata.Slog(f.GetMetadata()),
 		key.Oneshot.Slog(f.GetOneshot()),
 		ScaleKey.Slog(f.GetScale()),
+		HpaPolicyKey.Slog(f.GetHpa()),
+		HeartbeatPolicyKey.Slog(f.GetHeartbeat()),
+		ProxyPolicyKey.Slog(f.GetProxy()),
+		LifecyclePolicyKey.Slog(f.GetLifecycle()),
 	)
 }
 
@@ -88,7 +93,143 @@ func (f *Function) Validate() error {
 	if scale.GetMinInstances() > scale.GetMaxInstances() {
 		return fmt.Errorf("scale.min_instances (%d) must be <= scale.max_instances (%d)", scale.GetMinInstances(), scale.GetMaxInstances())
 	}
+	if hpa := f.GetHpa(); hpa != nil {
+		// Tolerance gates the HPA dead-band via `usageDiscrepancy <= tolerance`,
+		// where usageDiscrepancy is non-negative (math.Abs). A negative tolerance
+		// would silently disable the dead-band and trigger continuous scaling.
+		if t := hpa.GetTolerance(); t < 0 {
+			return fmt.Errorf("hpa.tolerance (%g) must be >= 0", t)
+		}
+		if d := hpa.GetDownscaleStabilization().AsDuration(); d < 0 {
+			return fmt.Errorf("hpa.downscale_stabilization (%s) must be >= 0", d)
+		}
+		if d := hpa.GetInitialReadinessDelay().AsDuration(); d < 0 {
+			return fmt.Errorf("hpa.initial_readiness_delay (%s) must be >= 0", d)
+		}
+	}
+	if hb := f.GetHeartbeat(); hb != nil && hb.HasTimeout() {
+		// Zero would scale the function to zero on the first converge tick;
+		// honour the cluster default by leaving the field unset.
+		if d := hb.GetTimeout().AsDuration(); d <= 0 {
+			return fmt.Errorf("heartbeat.timeout (%s) must be > 0 when set", d)
+		}
+	}
+	if proxy := f.GetProxy(); proxy != nil {
+		minBackoff := proxy.GetRetryMinBackoff().AsDuration()
+		maxBackoff := proxy.GetRetryMaxBackoff().AsDuration()
+		if minBackoff < 0 {
+			return fmt.Errorf("proxy.retry_min_backoff (%s) must be >= 0", minBackoff)
+		}
+		if maxBackoff < 0 {
+			return fmt.Errorf("proxy.retry_max_backoff (%s) must be >= 0", maxBackoff)
+		}
+		if minBackoff > 0 && maxBackoff > 0 && minBackoff > maxBackoff {
+			return fmt.Errorf("proxy.retry_min_backoff (%s) must be <= proxy.retry_max_backoff (%s)", minBackoff, maxBackoff)
+		}
+		// Zero attempts fails every request before the first proxy try.
+		if proxy.HasMaxAttempts() && proxy.GetMaxAttempts() == 0 {
+			return fmt.Errorf("proxy.max_attempts (0) must be > 0 when set")
+		}
+	}
+	if lc := f.GetLifecycle(); lc != nil {
+		if lc.HasAssignTimeout() {
+			// Zero immediately cancels the assign context; every assignment
+			// fails. Honour the cluster default by leaving the field unset.
+			if d := lc.GetAssignTimeout().AsDuration(); d <= 0 {
+				return fmt.Errorf("lifecycle.assign_timeout (%s) must be > 0 when set", d)
+			}
+		}
+		if lc.HasTokenTtl() {
+			// Zero issues an already-expired token; every backend rejects.
+			if d := lc.GetTokenTtl().AsDuration(); d <= 0 {
+				return fmt.Errorf("lifecycle.token_ttl (%s) must be > 0 when set", d)
+			}
+		}
+	}
 	return nil
+}
+
+// HPATolerance returns the per-function HPA tolerance, falling back to
+// clusterDefault when the function does not set one. Presence is checked via
+// HasTolerance so a tenant who explicitly sets zero (strict mode) is honored
+// rather than silently overridden by the cluster default.
+func (f *Function) HPATolerance(clusterDefault float64) float64 {
+	if hpa := f.GetHpa(); hpa.HasTolerance() {
+		return hpa.GetTolerance()
+	}
+	return clusterDefault
+}
+
+// HPADownscaleStabilization returns the per-function downscale-stabilization
+// window, falling back to clusterDefault when the function does not set one.
+func (f *Function) HPADownscaleStabilization(clusterDefault time.Duration) time.Duration {
+	if hpa := f.GetHpa(); hpa.HasDownscaleStabilization() {
+		return hpa.GetDownscaleStabilization().AsDuration()
+	}
+	return clusterDefault
+}
+
+// HPAInitialReadinessDelay returns the per-function initial-readiness delay,
+// falling back to clusterDefault when the function does not set one.
+func (f *Function) HPAInitialReadinessDelay(clusterDefault time.Duration) time.Duration {
+	if hpa := f.GetHpa(); hpa.HasInitialReadinessDelay() {
+		return hpa.GetInitialReadinessDelay().AsDuration()
+	}
+	return clusterDefault
+}
+
+// HeartbeatTimeout returns the per-function heartbeat timeout, falling back to
+// clusterDefault when the function does not set one.
+func (f *Function) HeartbeatTimeout(clusterDefault time.Duration) time.Duration {
+	if hb := f.GetHeartbeat(); hb.HasTimeout() {
+		return hb.GetTimeout().AsDuration()
+	}
+	return clusterDefault
+}
+
+// MaxRoundTripAttempts returns the per-function maximum number of retry
+// attempts, falling back to clusterDefault when the function does not set one.
+func (f *Function) MaxRoundTripAttempts(clusterDefault uint32) uint32 {
+	if proxy := f.GetProxy(); proxy.HasMaxAttempts() {
+		return proxy.GetMaxAttempts()
+	}
+	return clusterDefault
+}
+
+// RetryMinBackoff returns the per-function minimum retry backoff, falling
+// back to clusterDefault when the function does not set one.
+func (f *Function) RetryMinBackoff(clusterDefault time.Duration) time.Duration {
+	if proxy := f.GetProxy(); proxy.HasRetryMinBackoff() {
+		return proxy.GetRetryMinBackoff().AsDuration()
+	}
+	return clusterDefault
+}
+
+// RetryMaxBackoff returns the per-function maximum retry backoff, falling
+// back to clusterDefault when the function does not set one.
+func (f *Function) RetryMaxBackoff(clusterDefault time.Duration) time.Duration {
+	if proxy := f.GetProxy(); proxy.HasRetryMaxBackoff() {
+		return proxy.GetRetryMaxBackoff().AsDuration()
+	}
+	return clusterDefault
+}
+
+// AssignTimeout returns the per-function instance-assignment timeout, falling
+// back to clusterDefault when the function does not set one.
+func (f *Function) AssignTimeout(clusterDefault time.Duration) time.Duration {
+	if lc := f.GetLifecycle(); lc.HasAssignTimeout() {
+		return lc.GetAssignTimeout().AsDuration()
+	}
+	return clusterDefault
+}
+
+// TokenTTL returns the per-function PASETO token lifetime, falling back to
+// clusterDefault when the function does not set one.
+func (f *Function) TokenTTL(clusterDefault time.Duration) time.Duration {
+	if lc := f.GetLifecycle(); lc.HasTokenTtl() {
+		return lc.GetTokenTtl().AsDuration()
+	}
+	return clusterDefault
 }
 
 func (f *Function) SetHeader(r *http.Request) {

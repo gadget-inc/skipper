@@ -22,6 +22,62 @@ func (msg *Scale) UnmarshalJSON(b []byte) error {
 }
 
 // MarshalJSON implements json.Marshaler
+func (msg *HpaPolicy) MarshalJSON() ([]byte, error) {
+	return protojson.MarshalOptions{
+		UseProtoNames: true,
+	}.Marshal(msg)
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (msg *HpaPolicy) UnmarshalJSON(b []byte) error {
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
+}
+
+// MarshalJSON implements json.Marshaler
+func (msg *HeartbeatPolicy) MarshalJSON() ([]byte, error) {
+	return protojson.MarshalOptions{
+		UseProtoNames: true,
+	}.Marshal(msg)
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (msg *HeartbeatPolicy) UnmarshalJSON(b []byte) error {
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
+}
+
+// MarshalJSON implements json.Marshaler
+func (msg *ProxyPolicy) MarshalJSON() ([]byte, error) {
+	return protojson.MarshalOptions{
+		UseProtoNames: true,
+	}.Marshal(msg)
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (msg *ProxyPolicy) UnmarshalJSON(b []byte) error {
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
+}
+
+// MarshalJSON implements json.Marshaler
+func (msg *LifecyclePolicy) MarshalJSON() ([]byte, error) {
+	return protojson.MarshalOptions{
+		UseProtoNames: true,
+	}.Marshal(msg)
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (msg *LifecyclePolicy) UnmarshalJSON(b []byte) error {
+	return protojson.UnmarshalOptions{
+		DiscardUnknown: true,
+	}.Unmarshal(b, msg)
+}
+
+// MarshalJSON implements json.Marshaler
 func (msg *Function) MarshalJSON() ([]byte, error) {
 	return protojson.MarshalOptions{
 		UseProtoNames: true,

@@ -95,8 +95,10 @@ GET_UNASSIGNED_POD:
 		}
 	}()
 
+	assignTimeout := fn.AssignTimeout(ctrl.config.FunctionAssignTimeout)
+
 	assignURL := "http://" + net.JoinHostPort(assignedPod.Status.PodIP, port) + ctrl.config.FunctionAssignPath
-	assignCtx, cancel := context.WithTimeout(ctx, ctrl.config.FunctionAssignTimeout)
+	assignCtx, cancel := context.WithTimeout(ctx, assignTimeout)
 	defer cancel()
 
 	now := time.Now()
@@ -104,7 +106,7 @@ GET_UNASSIGNED_POD:
 	token.SetSubject(fn.GetTenant())
 	token.SetIssuedAt(now)
 	token.SetNotBefore(now)
-	token.SetExpiration(now.Add(7 * 24 * time.Hour))
+	token.SetExpiration(now.Add(fn.TokenTTL(ctrl.config.TokenTTL)))
 
 	var req *http.Request
 	req, err = http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
@@ -143,7 +145,7 @@ GET_UNASSIGNED_POD:
 	assignedPod.Annotations[key.ReadyAt.Label] = readyAtStr
 
 	go func() {
-		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ctrl.config.FunctionAssignTimeout)
+		asyncCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), assignTimeout)
 		defer cancel()
 
 		patches := []byte(`[{ "op": "add", "path": "` + key.ReadyAt.PatchAnnotation + `", "value": "` + readyAtStr + `" }]`)

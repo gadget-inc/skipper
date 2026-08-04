@@ -7,6 +7,7 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/assert"
 	"gotest.tools/v3/golden"
@@ -26,12 +27,37 @@ var (
 		TargetInFlightRequests: proto.Uint32(100),
 	}.Build()
 
+	goldenHpaPolicy = HpaPolicy_builder{
+		Tolerance:              new(0.05),
+		DownscaleStabilization: durationpb.New(60 * time.Second),
+		InitialReadinessDelay:  durationpb.New(30 * time.Second),
+	}.Build()
+
+	goldenHeartbeatPolicy = HeartbeatPolicy_builder{
+		Timeout: durationpb.New(30 * time.Minute),
+	}.Build()
+
+	goldenProxyPolicy = ProxyPolicy_builder{
+		MaxAttempts:     new(uint32(3)),
+		RetryMinBackoff: durationpb.New(10 * time.Millisecond),
+		RetryMaxBackoff: durationpb.New(time.Second),
+	}.Build()
+
+	goldenLifecyclePolicy = LifecyclePolicy_builder{
+		AssignTimeout: durationpb.New(45 * time.Second),
+		TokenTtl:      durationpb.New(time.Hour),
+	}.Build()
+
 	goldenFunction = Function_builder{
 		Namespace:  new("skipper-production"),
 		Deployment: new("my-app"),
 		Tenant:     new("tenant-123"),
 		Metadata:   new("metadata-value"),
 		Scale:      goldenScale,
+		Hpa:        goldenHpaPolicy,
+		Heartbeat:  goldenHeartbeatPolicy,
+		Proxy:      goldenProxyPolicy,
+		Lifecycle:  goldenLifecyclePolicy,
 	}.Build()
 
 	goldenHeartbeat = Heartbeat_builder{
