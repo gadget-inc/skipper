@@ -67,13 +67,13 @@ func (s *Server) sseFunctions(w http.ResponseWriter, r *http.Request) {
 	sups = sortSupervisors(sups, sig.FnSort, sig.FnSortDir)
 
 	sse := datastar.NewSSE(w, r)
-	s.patchFragment(sse, "functions", "functions-table", &functionsData{
+	s.patchFragment(sse, "functions", "functions-table", &assignmentsData{
 		State:       state,
 		Supervisors: sups,
 	})
 }
 
-func (s *Server) sseFunction(w http.ResponseWriter, r *http.Request) {
+func (s *Server) sseAssignment(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 	state := s.state(r.Context())
 	sup := findSupervisor(state, key)
@@ -81,7 +81,7 @@ func (s *Server) sseFunction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := &functionData{
+	data := &assignmentData{
 		Key:            key,
 		State:          state,
 		Supervisor:     sup,
@@ -236,7 +236,7 @@ func (s *Server) sseDeployment(w http.ResponseWriter, r *http.Request) {
 
 	var sups []*skipper.SupervisorState
 	for _, sup := range state.GetSupervisors() {
-		if sup.GetFunction().GetDeployment() == name {
+		if sup.GetAssignment().GetDeployment() == name {
 			sups = append(sups, sup)
 		}
 	}

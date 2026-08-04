@@ -45,7 +45,7 @@ func TestClientInstance(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Function
+		fn             *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 		client         Client
@@ -65,7 +65,7 @@ func TestClientInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, proto.Equal(instance.GetFunction(), state.fn))
+				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.fn))
 				assert.Assert(t, instance.HasReadyAt())
 			},
 		},
@@ -77,7 +77,7 @@ func TestClientInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, proto.Equal(instance.GetFunction(), state.fn))
+				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.fn))
 			},
 		},
 		{
@@ -112,13 +112,13 @@ func TestClientInstance(t *testing.T) {
 			},
 		},
 		{
-			name: "returns error for invalid function",
+			name: "returns error for invalid assignment",
 			setup: func(t *testing.T, state *testState) {
-				state.fn = &skipper.Function{} // empty fields fail validation
+				state.fn = &skipper.Assignment{} // empty fields fail validation
 			},
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.Assert(t, err != nil)
-				assert.ErrorContains(t, err, "invalid function")
+				assert.ErrorContains(t, err, "invalid assignment")
 			},
 		},
 		{
@@ -132,7 +132,7 @@ func TestClientInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, proto.Equal(instance.GetFunction(), state.fn))
+				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.fn))
 			},
 		},
 		{
@@ -160,7 +160,7 @@ func TestClientInstance(t *testing.T) {
 			check: func(t *testing.T, state *testState, instance *skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, instance != nil)
-				assert.Assert(t, proto.Equal(instance.GetFunction(), state.fn))
+				assert.Assert(t, proto.Equal(instance.GetAssignment(), state.fn))
 				assert.Assert(t, instance.HasReadyAt())
 
 				// Verify both pods still exist — the controller should not have
@@ -180,7 +180,7 @@ func TestClientInstance(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(t),
+				fn:             fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
@@ -220,7 +220,7 @@ func TestClientHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.routerIP = fixture.RouterIP
 				state.heartbeats = []*skipper.Heartbeat{
-					skipper.Heartbeat_builder{Function: fixture.NewFunction(t), Timestamp: timestamppb.Now()}.Build(),
+					skipper.Heartbeat_builder{Assignment: fixture.NewAssignment(t), Timestamp: timestamppb.Now()}.Build(),
 				}
 			},
 			check: func(t *testing.T, state *testState, err error) {
@@ -228,7 +228,7 @@ func TestClientHeartbeat(t *testing.T) {
 
 				// Verify heartbeat was recorded
 				sentHeartbeat := state.heartbeats[0]
-				supervisor := state.ctrl.supervisor(sentHeartbeat.GetFunction())
+				supervisor := state.ctrl.supervisor(sentHeartbeat.GetAssignment())
 				assert.Assert(t, supervisor.routerHeartbeats.Size() == 1)
 
 				receivedHeartbeat, ok := supervisor.routerHeartbeats.Load(fixture.RouterIP)
@@ -241,8 +241,8 @@ func TestClientHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.routerIP = fixture.RouterIP
 				state.heartbeats = []*skipper.Heartbeat{
-					skipper.Heartbeat_builder{Function: fixture.NewFunction(t), Timestamp: timestamppb.Now()}.Build(),
-					skipper.Heartbeat_builder{Function: fixture.NewFunction(t), Timestamp: timestamppb.Now()}.Build(),
+					skipper.Heartbeat_builder{Assignment: fixture.NewAssignment(t), Timestamp: timestamppb.Now()}.Build(),
+					skipper.Heartbeat_builder{Assignment: fixture.NewAssignment(t), Timestamp: timestamppb.Now()}.Build(),
 				}
 			},
 			check: func(t *testing.T, state *testState, err error) {
@@ -251,7 +251,7 @@ func TestClientHeartbeat(t *testing.T) {
 				// Verify all heartbeats were recorded
 				assert.Assert(t, state.ctrl.supervisors.Size() == len(state.heartbeats))
 				for _, sentHeartbeat := range state.heartbeats {
-					supervisor := state.ctrl.supervisor(sentHeartbeat.GetFunction())
+					supervisor := state.ctrl.supervisor(sentHeartbeat.GetAssignment())
 					assert.Assert(t, supervisor.routerHeartbeats.Size() == 1)
 
 					receivedHeartbeat, ok := supervisor.routerHeartbeats.Load(fixture.RouterIP)
@@ -277,7 +277,7 @@ func TestClientHeartbeat(t *testing.T) {
 			setup: func(t *testing.T, state *testState) {
 				state.routerIP = ""
 				state.heartbeats = []*skipper.Heartbeat{
-					skipper.Heartbeat_builder{Function: fixture.NewFunction(t), Timestamp: timestamppb.Now()}.Build(),
+					skipper.Heartbeat_builder{Assignment: fixture.NewAssignment(t), Timestamp: timestamppb.Now()}.Build(),
 				}
 			},
 			check: func(t *testing.T, state *testState, err error) {
@@ -289,23 +289,23 @@ func TestClientHeartbeat(t *testing.T) {
 			name: "keeps most recent heartbeat",
 			setup: func(t *testing.T, state *testState) {
 				state.routerIP = fixture.RouterIP
-				fn := fixture.NewFunction(t)
+				fn := fixture.NewAssignment(t)
 
 				// Seed supervisor with a recent heartbeat
 				recentTime := time.Now()
 				supervisor := state.ctrl.supervisor(fn)
-				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{Function: fn, Timestamp: timestamppb.New(recentTime)}.Build())
+				supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{Assignment: fn, Timestamp: timestamppb.New(recentTime)}.Build())
 
 				// Send an old heartbeat
 				state.heartbeats = []*skipper.Heartbeat{
-					skipper.Heartbeat_builder{Function: fn, Timestamp: timestamppb.New(recentTime.Add(-time.Hour))}.Build(),
+					skipper.Heartbeat_builder{Assignment: fn, Timestamp: timestamppb.New(recentTime.Add(-time.Hour))}.Build(),
 				}
 			},
 			check: func(t *testing.T, state *testState, err error) {
 				assert.NilError(t, err)
 
 				sentHeartbeat := state.heartbeats[0]
-				keptHeartbeat, ok := state.ctrl.supervisor(sentHeartbeat.GetFunction()).routerHeartbeats.Load(fixture.RouterIP)
+				keptHeartbeat, ok := state.ctrl.supervisor(sentHeartbeat.GetAssignment()).routerHeartbeats.Load(fixture.RouterIP)
 				assert.Assert(t, ok)
 				// Should have kept the more recent heartbeat, not the one we sent
 				assert.Assert(t, !keptHeartbeat.GetTimestamp().AsTime().Equal(sentHeartbeat.GetTimestamp().AsTime()))
@@ -428,9 +428,9 @@ func TestClientHeartbeatForwarding(t *testing.T) {
 			defer cleanup()
 			state.client = client
 
-			fn := fixture.NewFunction(t)
+			fn := fixture.NewAssignment(t)
 			heartbeats := []*skipper.Heartbeat{
-				skipper.Heartbeat_builder{Function: fn, Timestamp: timestamppb.Now()}.Build(),
+				skipper.Heartbeat_builder{Assignment: fn, Timestamp: timestamppb.Now()}.Build(),
 			}
 
 			var err error
@@ -586,7 +586,7 @@ func TestClientRetries(t *testing.T) {
 			assert.NilError(t, err)
 			defer client.Close()
 
-			fn := fixture.NewFunction(t)
+			fn := fixture.NewAssignment(t)
 
 			// Test GetInstance
 			_, err = client.Instance(ctx, fn)
@@ -598,7 +598,7 @@ func TestClientRetries(t *testing.T) {
 
 			// Test Heartbeat
 			err = client.Heartbeat(ctx, fixture.RouterIP, []*skipper.Heartbeat{
-				skipper.Heartbeat_builder{Function: fn, Timestamp: timestamppb.Now()}.Build(),
+				skipper.Heartbeat_builder{Assignment: fn, Timestamp: timestamppb.Now()}.Build(),
 			})
 			if tc.expectHeartbeat {
 				assert.NilError(t, err, "Heartbeat should succeed after retries")
@@ -621,7 +621,7 @@ func TestClientScale(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn               *skipper.Function
+		fn               *skipper.Assignment
 		fakeKubernetes   *fake.Clientset
 		ctrl             *Controller
 		client           Client
@@ -644,7 +644,7 @@ func TestClientScale(t *testing.T) {
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance, err error) {
 				assert.NilError(t, err)
 				assert.Assert(t, len(instances) == 1)
-				assert.Assert(t, proto.Equal(instances[0].GetFunction(), state.fn))
+				assert.Assert(t, proto.Equal(instances[0].GetAssignment(), state.fn))
 			},
 		},
 		{
@@ -676,15 +676,15 @@ func TestClientScale(t *testing.T) {
 			},
 		},
 		{
-			name: "returns error for invalid function",
+			name: "returns error for invalid assignment",
 			setup: func(t *testing.T, state *testState) {
-				state.fn = &skipper.Function{} // empty fields fail validation
+				state.fn = &skipper.Assignment{} // empty fields fail validation
 				state.desiredInstances = 1
 				state.reason = skipper.ScaleReason_SCALE_REASON_IN_FLIGHT_REQUESTS
 			},
 			check: func(t *testing.T, state *testState, instances []*skipper.Instance, err error) {
 				assert.Assert(t, err != nil)
-				assert.ErrorContains(t, err, "invalid function")
+				assert.ErrorContains(t, err, "invalid assignment")
 			},
 		},
 		{
@@ -721,7 +721,7 @@ func TestClientScale(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(t),
+				fn:             fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)

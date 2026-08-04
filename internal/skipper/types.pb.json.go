@@ -22,14 +22,14 @@ func (msg *Scale) UnmarshalJSON(b []byte) error {
 }
 
 // MarshalJSON implements json.Marshaler
-func (msg *Function) MarshalJSON() ([]byte, error) {
+func (msg *Assignment) MarshalJSON() ([]byte, error) {
 	return protojson.MarshalOptions{
 		UseProtoNames: true,
 	}.Marshal(msg)
 }
 
 // UnmarshalJSON implements json.Unmarshaler
-func (msg *Function) UnmarshalJSON(b []byte) error {
+func (msg *Assignment) UnmarshalJSON(b []byte) error {
 	return protojson.UnmarshalOptions{
 		DiscardUnknown: true,
 	}.Unmarshal(b, msg)

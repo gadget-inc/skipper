@@ -21,7 +21,7 @@ type dashboardData struct {
 	RecentEvents     []*skipper.Event
 }
 
-type functionsData struct {
+type assignmentsData struct {
 	Title       string
 	State       *skipper.ClusterState
 	Supervisors []*skipper.SupervisorState
@@ -30,7 +30,7 @@ type functionsData struct {
 	FnSortDir   string
 }
 
-type functionData struct {
+type assignmentData struct {
 	Title          string
 	Key            string
 	State          *skipper.ClusterState
@@ -105,11 +105,11 @@ type instanceData struct {
 }
 
 type eventsData struct {
-	Title          string
-	State          *skipper.ClusterState
-	FunctionFilter string
-	SeverityFilter string
-	FilteredEvents []*skipper.Event
+	Title            string
+	State            *skipper.ClusterState
+	AssignmentFilter string
+	SeverityFilter   string
+	FilteredEvents   []*skipper.Event
 }
 
 type tenantRow struct {
@@ -215,8 +215,8 @@ func buildDashboardData(state *skipper.ClusterState) *dashboardData {
 	tenantSet := make(map[string]struct{})
 	deploySet := make(map[string]struct{})
 	for _, sup := range state.GetSupervisors() {
-		tenantSet[sup.GetFunction().GetTenant()] = struct{}{}
-		deploySet[sup.GetFunction().GetDeployment()] = struct{}{}
+		tenantSet[sup.GetAssignment().GetTenant()] = struct{}{}
+		deploySet[sup.GetAssignment().GetDeployment()] = struct{}{}
 	}
 
 	topDeployments := slices.Clone(buildDeploymentRows(state))
@@ -242,7 +242,7 @@ func buildDashboardData(state *skipper.ClusterState) *dashboardData {
 	}
 }
 
-func (s *Server) handleFunctions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAssignments(w http.ResponseWriter, r *http.Request) {
 	state := s.state(r.Context())
 	q := r.URL.Query()
 	search := q.Get("search")
@@ -258,7 +258,7 @@ func (s *Server) handleFunctions(w http.ResponseWriter, r *http.Request) {
 	sups := filterSupervisors(state.GetSupervisors(), search)
 	sups = sortSupervisors(sups, sort, dir)
 
-	s.render(w, "functions", &functionsData{
+	s.render(w, "functions", &assignmentsData{
 		Title:       "Functions",
 		State:       state,
 		Supervisors: sups,
@@ -268,12 +268,12 @@ func (s *Server) handleFunctions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleFunction(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAssignment(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 	state := s.state(r.Context())
 	sup := findSupervisor(state, key)
 
-	data := &functionData{
+	data := &assignmentData{
 		Title:      "Function",
 		Key:        key,
 		State:      state,
@@ -383,11 +383,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	sevFilter := r.URL.Query().Get("severity")
 
 	s.render(w, "events", &eventsData{
-		Title:          "Events",
-		State:          state,
-		FunctionFilter: fnFilter,
-		SeverityFilter: sevFilter,
-		FilteredEvents: filterEvents(state.GetEvents(), fnFilter, sevFilter),
+		Title:            "Events",
+		State:            state,
+		AssignmentFilter: fnFilter,
+		SeverityFilter:   sevFilter,
+		FilteredEvents:   filterEvents(state.GetEvents(), fnFilter, sevFilter),
 	})
 }
 
@@ -439,7 +439,7 @@ func (s *Server) handleDeployment(w http.ResponseWriter, r *http.Request) {
 
 	var sups []*skipper.SupervisorState
 	for _, sup := range state.GetSupervisors() {
-		if sup.GetFunction().GetDeployment() == name {
+		if sup.GetAssignment().GetDeployment() == name {
 			sups = append(sups, sup)
 		}
 	}
@@ -497,7 +497,7 @@ func countReady(instances []*skipper.Instance) int {
 
 func findSupervisor(state *skipper.ClusterState, key string) *skipper.SupervisorState {
 	for _, sup := range state.GetSupervisors() {
-		if functionKey(sup.GetFunction()) == key {
+		if assignmentKey(sup.GetAssignment()) == key {
 			return sup
 		}
 	}
@@ -650,14 +650,14 @@ func buildTenantData(state *skipper.ClusterState, tenant string) *tenantData {
 	breakdownMap := make(map[string]*tenantDeploymentBreakdown)
 
 	for _, sup := range state.GetSupervisors() {
-		if sup.GetFunction().GetTenant() == tenant {
+		if sup.GetAssignment().GetTenant() == tenant {
 			sups = append(sups, sup)
 			instances := sup.GetInstances()
 			r := countReady(instances)
 			t := len(instances)
 			total += t
 			ready += r
-			deploy := sup.GetFunction().GetDeployment()
+			deploy := sup.GetAssignment().GetDeployment()
 			deploySet[deploy] = struct{}{}
 
 			bd, ok := breakdownMap[deploy]
@@ -706,7 +706,7 @@ func buildTenantRows(state *skipper.ClusterState) []tenantRow {
 	m := make(map[string]*tenantStats)
 
 	for _, sup := range state.GetSupervisors() {
-		tenant := sup.GetFunction().GetTenant()
+		tenant := sup.GetAssignment().GetTenant()
 		stats, ok := m[tenant]
 		if !ok {
 			stats = &tenantStats{deployments: make(map[string]struct{})}
@@ -715,7 +715,7 @@ func buildTenantRows(state *skipper.ClusterState) []tenantRow {
 		stats.functions++
 		stats.totalInstances += len(sup.GetInstances())
 		stats.readyInstances += countReady(sup.GetInstances())
-		stats.deployments[sup.GetFunction().GetDeployment()] = struct{}{}
+		stats.deployments[sup.GetAssignment().GetDeployment()] = struct{}{}
 	}
 
 	rows := make([]tenantRow, 0, len(m))
@@ -751,7 +751,7 @@ func buildDeploymentRows(state *skipper.ClusterState) []deploymentRow {
 	m := make(map[string]*deploymentStats)
 
 	for _, sup := range state.GetSupervisors() {
-		fn := sup.GetFunction()
+		fn := sup.GetAssignment()
 		name := fn.GetDeployment()
 		stats, ok := m[name]
 		if !ok {
@@ -797,10 +797,10 @@ func filterEvents(events []*skipper.Event, fnFilter, sevFilter string) []*skippe
 	var filtered []*skipper.Event
 	for _, e := range events {
 		if fnFilter != "" {
-			if e.GetFunction() == nil {
+			if e.GetAssignment() == nil {
 				continue
 			}
-			if !strings.Contains(strings.ToLower(functionKey(e.GetFunction())), strings.ToLower(fnFilter)) {
+			if !strings.Contains(strings.ToLower(assignmentKey(e.GetAssignment())), strings.ToLower(fnFilter)) {
 				continue
 			}
 		}
@@ -830,7 +830,7 @@ func filterSupervisors(sups []*skipper.SupervisorState, search string) []*skippe
 	lower := strings.ToLower(search)
 	var filtered []*skipper.SupervisorState
 	for _, sup := range sups {
-		fn := sup.GetFunction()
+		fn := sup.GetAssignment()
 		if strings.Contains(strings.ToLower(fn.GetDeployment()), lower) ||
 			strings.Contains(strings.ToLower(fn.GetNamespace()), lower) ||
 			strings.Contains(strings.ToLower(fn.GetTenant()), lower) {
@@ -846,13 +846,13 @@ func sortSupervisors(sups []*skipper.SupervisorState, col, dir string) []*skippe
 		var cmp int
 		switch col {
 		case "namespace":
-			cmp = strings.Compare(a.GetFunction().GetNamespace(), b.GetFunction().GetNamespace())
+			cmp = strings.Compare(a.GetAssignment().GetNamespace(), b.GetAssignment().GetNamespace())
 		case "tenant":
-			cmp = strings.Compare(a.GetFunction().GetTenant(), b.GetFunction().GetTenant())
+			cmp = strings.Compare(a.GetAssignment().GetTenant(), b.GetAssignment().GetTenant())
 		case "instances":
 			cmp = len(a.GetInstances()) - len(b.GetInstances())
 		default: // "deployment"
-			cmp = strings.Compare(a.GetFunction().GetDeployment(), b.GetFunction().GetDeployment())
+			cmp = strings.Compare(a.GetAssignment().GetDeployment(), b.GetAssignment().GetDeployment())
 		}
 		if dir == "desc" {
 			return -cmp

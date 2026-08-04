@@ -15,17 +15,17 @@ import (
 )
 
 const (
-	FunctionNamespace  = "skipper-test-fixtures"
-	FunctionDeployment = "test"
+	AssignmentNamespace  = "skipper-test-fixtures"
+	AssignmentDeployment = "test"
 )
 
-func NewFunction(t testing.TB) *skipper.Function {
+func NewAssignment(t testing.TB) *skipper.Assignment {
 	t.Helper()
-	return skipper.Function_builder{
+	return skipper.Assignment_builder{
 		Tenant:     new("tenant-" + uuid.NewString()[:8]),
 		Metadata:   new(uuid.NewString()),
-		Namespace:  new(FunctionNamespace),
-		Deployment: new(FunctionDeployment),
+		Namespace:  new(AssignmentNamespace),
+		Deployment: new(AssignmentDeployment),
 		Scale: skipper.Scale_builder{
 			MinInstances:           proto.Uint32(0),
 			MaxInstances:           proto.Uint32(5),
@@ -36,7 +36,7 @@ func NewFunction(t testing.TB) *skipper.Function {
 	}.Build()
 }
 
-func NewFunctionRequest(t *testing.T, fn *skipper.Function, method string, path string, body io.Reader) *http.Request {
+func NewAssignmentRequest(t *testing.T, fn *skipper.Assignment, method string, path string, body io.Reader) *http.Request {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -45,13 +45,13 @@ func NewFunctionRequest(t *testing.T, fn *skipper.Function, method string, path 
 	return req
 }
 
-func NewInstance(t *testing.T, fn *skipper.Function, handler http.HandlerFunc) *skipper.Instance {
+func NewInstance(t *testing.T, fn *skipper.Assignment, handler http.HandlerFunc) *skipper.Instance {
 	t.Helper()
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
 
 	return skipper.Instance_builder{
-		Function:   fn,
+		Assignment: fn,
 		Name:       new(uuid.NewString()),
 		Addr:       new(testServer.Listener.Addr().String()),
 		ReplicaSet: new(CurrentReplicaSetName(fn)),

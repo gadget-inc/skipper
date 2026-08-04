@@ -32,7 +32,7 @@ import (
 	kubernetesmetrics "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-const functionHashIndex = "functionHash"
+const assignmentHashIndex = "functionHash"
 
 type namespaceLister struct {
 	podIndexer        cache.Indexer
@@ -46,14 +46,14 @@ type Controller struct {
 	ctx                 context.Context
 	startedAtNano       atomic.Int64
 	ring                *hashring.HashRing
-	supervisors         *xsync.Map[skipper.FunctionHash, *Supervisor]
+	supervisors         *xsync.Map[skipper.AssignmentHash, *Supervisor]
 	newClientFunc       NewClientFunc
 	controllerClients   *xsync.Map[string, Client]
 	kubernetes          kubernetes.Interface
 	kubernetesMetrics   kubernetesmetrics.Interface
 	namespaceListers    map[string]namespaceLister
 	podMetrics          *xsync.Map[string, metricsv1beta1.PodMetrics] // keyed by "namespace/pod-name"
-	functionCache       *xsync.Map[string, *skipper.Function]         // keyed by raw annotation JSON
+	assignmentCache     *xsync.Map[string, *skipper.Assignment]       // keyed by raw annotation JSON
 	portCache           *xsync.Map[types.UID, string]                 // keyed by pod UID
 	staleReplacementSem *semaphore.Weighted
 	events              *eventLog
@@ -63,14 +63,14 @@ func New(cfg *Config, newClientFunc NewClientFunc, kubernetes kubernetes.Interfa
 	return &Controller{
 		config:              cfg,
 		ring:                hashring.New(hashring.WithWaitTime(cfg.HashRingWaitTime)),
-		supervisors:         xsync.NewMap[skipper.FunctionHash, *Supervisor](),
+		supervisors:         xsync.NewMap[skipper.AssignmentHash, *Supervisor](),
 		newClientFunc:       newClientFunc,
 		controllerClients:   xsync.NewMap[string, Client](),
 		kubernetes:          kubernetes,
 		kubernetesMetrics:   kubernetesMetrics,
 		namespaceListers:    make(map[string]namespaceLister, len(cfg.FunctionNamespaces)),
 		podMetrics:          xsync.NewMap[string, metricsv1beta1.PodMetrics](),
-		functionCache:       xsync.NewMap[string, *skipper.Function](),
+		assignmentCache:     xsync.NewMap[string, *skipper.Assignment](),
 		portCache:           xsync.NewMap[types.UID, string](),
 		staleReplacementSem: semaphore.NewWeighted(int64(cfg.MaxConcurrentStaleReplacements)),
 		events:              &eventLog{},
@@ -242,12 +242,12 @@ func (ctrl *Controller) startInformers(ctx context.Context) error {
 		}
 
 		err = podInformer.Informer().GetIndexer().AddIndexers(cache.Indexers{
-			functionHashIndex: func(obj any) ([]string, error) {
+			assignmentHashIndex: func(obj any) ([]string, error) {
 				pod, ok := obj.(*v1.Pod)
 				if !ok {
 					return nil, nil
 				}
-				fn, err := ctrl.functionFromPod(pod)
+				fn, err := ctrl.assignmentFromPod(pod)
 				if err != nil {
 					return nil, nil
 				}

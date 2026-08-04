@@ -283,7 +283,7 @@ var transportTableRe = regexp.MustCompile(`(?m)^\s*\{\{<\s*transportTable\s*>\}\
 // messageTableRe matches the protobuf-message shortcode on its own
 // line:
 //
-//	{{< messageTable Function >}}
+//	{{< messageTable Assignment >}}
 //
 // The captured argument is a proto message name -- uppercase-
 // leading CamelCase. It intentionally does NOT reuse

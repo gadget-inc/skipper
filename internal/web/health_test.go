@@ -17,12 +17,12 @@ func makeState(supervisors ...*skipper.SupervisorState) *skipper.ClusterState {
 
 func makeSupervisor(instances []*skipper.Instance, heartbeats []*skipper.HeartbeatState, activeRS string) *skipper.SupervisorState {
 	sup := &skipper.SupervisorState{}
-	fn := skipper.Function_builder{
+	fn := skipper.Assignment_builder{
 		Namespace:  new("default"),
 		Deployment: new("web-app"),
 		Tenant:     new("tenant-1"),
 	}.Build()
-	sup.SetFunction(fn)
+	sup.SetAssignment(fn)
 	sup.SetInstances(instances)
 	sup.SetRouterHeartbeats(heartbeats)
 	if activeRS != "" {

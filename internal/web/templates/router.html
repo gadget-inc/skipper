@@ -39,7 +39,7 @@
           </tr>
         </thead>
         <tbody>
-          {{range .Entries}} {{$fn := .Supervisor.GetFunction}}
+          {{range .Entries}} {{$fn := .Supervisor.GetAssignment}}
           <tr>
             <td><a href="{{functionPath $fn}}">{{$fn.GetDeployment}}</a></td>
             <td>{{$fn.GetNamespace}}</td>

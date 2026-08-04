@@ -25,12 +25,12 @@ import (
 
 func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod v1.Pod) {
 	t.Helper()
-	assert.Assert(t, instance.GetFunction().GetDeployment() == pod.Labels[key.Deployment.Label])
-	assert.Assert(t, instance.GetFunction().GetTenant() == pod.Labels[key.Tenant.Label])
+	assert.Assert(t, instance.GetAssignment().GetDeployment() == pod.Labels[key.Deployment.Label])
+	assert.Assert(t, instance.GetAssignment().GetTenant() == pod.Labels[key.Tenant.Label])
 
-	fnJSON, err := json.Marshal(instance.GetFunction())
+	fnJSON, err := json.Marshal(instance.GetAssignment())
 	assert.NilError(t, err)
-	assert.Assert(t, string(fnJSON) == pod.Annotations[skipper.FunctionKey.Label])
+	assert.Assert(t, string(fnJSON) == pod.Annotations[skipper.LegacyFunctionKey.Label])
 
 	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
 	port, err := ctrl.portFromPod(&pod)
@@ -68,9 +68,9 @@ func listAssignedPods(t *testing.T, client *fake.Clientset, namespace string, ex
 	return items
 }
 
-func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
+func ensurePodIsNotAssigned(t *testing.T, pod v1.Pod) {
 	assert.Assert(t, pod.Labels[key.Tenant.Label] == "")
-	assert.Assert(t, pod.Annotations[skipper.FunctionKey.Label] == "")
+	assert.Assert(t, pod.Annotations[skipper.LegacyFunctionKey.Label] == "")
 	assert.Assert(t, pod.Annotations[key.ReplicaSet.Label] == "")
 	assert.Assert(t, pod.Annotations[key.AssignedAt.Label] == "")
 	assert.Assert(t, pod.Annotations[key.ReadyAt.Label] == "")
@@ -80,7 +80,7 @@ func TestAssignPod(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Function
+		fn             *skipper.Assignment
 		cfg            *Config
 		fakeKubernetes *fake.Clientset
 		instance       *skipper.Instance
@@ -100,7 +100,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
 			},
 			check: func(t *testing.T, state *testState) {
-				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
+				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetAssignment().GetNamespace(), 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
 			},
 		},
@@ -125,7 +125,7 @@ func TestAssignPod(t *testing.T) {
 				}()
 			},
 			check: func(t *testing.T, state *testState) {
-				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
+				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetAssignment().GetNamespace(), 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
 			},
 		},
@@ -166,7 +166,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
-				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
+				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetAssignment().GetNamespace(), 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
 			},
 		},
@@ -179,7 +179,7 @@ func TestAssignPod(t *testing.T) {
 				state.fakeKubernetes.Tracker().Add(pod)
 			},
 			check: func(t *testing.T, state *testState) {
-				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
+				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetAssignment().GetNamespace(), 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
 			},
 		},
@@ -213,7 +213,7 @@ func TestAssignPod(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(t),
+				fn:             fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -256,7 +256,7 @@ func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 
 	// add a pod that already has a tenant label
@@ -281,7 +281,7 @@ func TestAssignPodRejectsAlreadyAssigned(t *testing.T) {
 	resultPod := pods.Items[0]
 	assert.Assert(t, resultPod.Labels[key.Tenant.Label] == "other")
 	delete(resultPod.Labels, key.Tenant.Label)
-	ensurePodIsNotAssignedToFunction(t, resultPod)
+	ensurePodIsNotAssigned(t, resultPod)
 }
 
 func TestIsPodRunning(t *testing.T) {
@@ -578,31 +578,70 @@ func TestPortFromPod(t *testing.T) {
 	}
 }
 
-func TestFunctionFromPod(t *testing.T) {
+func TestAssignmentFromPod(t *testing.T) {
 	t.Parallel()
 
 	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
-	fn := fixture.NewFunction(t)
-	fnJSON, _ := json.Marshal(fn)
+	a := fixture.NewAssignment(t)
+	body, _ := json.Marshal(a)
+
+	otherAssignment := fixture.NewAssignment(t)
+	otherBody, _ := json.Marshal(otherAssignment)
 
 	testCases := []struct {
 		name        string
 		pod         *v1.Pod
 		errContains string
-		check       func(*testing.T, *skipper.Function)
+		check       func(*testing.T, *skipper.Assignment)
 	}{
 		{
-			name: "valid pod with function annotation",
+			name: "legacy function annotation only",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: string(fnJSON),
+						skipper.LegacyFunctionKey.Label: string(body),
 					},
 				},
 			},
-			check: func(t *testing.T, resultFn *skipper.Function) {
-				assert.Assert(t, proto.Equal(resultFn, fn))
+			check: func(t *testing.T, got *skipper.Assignment) {
+				assert.Assert(t, proto.Equal(got, a))
 			},
+		},
+		{
+			name: "new assignment annotation only",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						skipper.AssignmentKey.Label: string(body),
+					},
+				},
+			},
+			check: func(t *testing.T, got *skipper.Assignment) {
+				assert.Assert(t, proto.Equal(got, a))
+			},
+		},
+		{
+			name: "both annotations: assignment wins",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						skipper.LegacyFunctionKey.Label: string(otherBody),
+						skipper.AssignmentKey.Label:     string(body),
+					},
+				},
+			},
+			check: func(t *testing.T, got *skipper.Assignment) {
+				assert.Assert(t, proto.Equal(got, a))
+			},
+		},
+		{
+			name: "neither annotation",
+			pod: &v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{},
+				},
+			},
+			errContains: "missing assignment annotation",
 		},
 		{
 			name:        "nil pod",
@@ -610,35 +649,26 @@ func TestFunctionFromPod(t *testing.T) {
 			errContains: "pod is nil",
 		},
 		{
-			name: "missing function annotation",
-			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{},
-				},
-			},
-			errContains: "missing function annotation",
-		},
-		{
-			name: "invalid function JSON",
+			name: "invalid assignment JSON",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: "not valid json",
+						skipper.AssignmentKey.Label: "not valid json",
 					},
 				},
 			},
-			errContains: "failed to unmarshal function from pod annotation",
+			errContains: "failed to unmarshal assignment from pod annotation",
 		},
 		{
-			name: "invalid function - missing required fields",
+			name: "invalid assignment — missing required fields",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: `{"namespace":"","deployment":"","tenant":""}`,
+						skipper.AssignmentKey.Label: `{"namespace":"","deployment":"","tenant":""}`,
 					},
 				},
 			},
-			errContains: "invalid function in pod annotation",
+			errContains: "invalid assignment in pod annotation",
 		},
 	}
 
@@ -646,13 +676,13 @@ func TestFunctionFromPod(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			resultFn, err := ctrl.functionFromPod(tc.pod)
+			got, err := ctrl.assignmentFromPod(tc.pod)
 			if tc.errContains != "" {
 				assert.ErrorContains(t, err, tc.errContains)
 			} else {
 				assert.NilError(t, err)
 				if tc.check != nil {
-					tc.check(t, resultFn)
+					tc.check(t, got)
 				}
 			}
 		})
@@ -663,7 +693,7 @@ func TestInstanceFromPod(t *testing.T) {
 	t.Parallel()
 
 	ctrl := New(testConfig(), nil, fake.NewClientset(), nil)
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	fnJSON, _ := json.Marshal(fn)
 
 	testCases := []struct {
@@ -683,10 +713,10 @@ func TestInstanceFromPod(t *testing.T) {
 						key.Deployment.Label: fn.GetDeployment(),
 					},
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: string(fnJSON),
-						key.ReplicaSet.Label:      "test-replicaset",
-						key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
-						key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
+						skipper.LegacyFunctionKey.Label: string(fnJSON),
+						key.ReplicaSet.Label:            "test-replicaset",
+						key.AssignedAt.Label:            "2024-01-01T00:00:00Z",
+						key.ReadyAt.Label:               "2024-01-01T00:00:01Z",
 					},
 				},
 				Status: v1.PodStatus{
@@ -716,38 +746,38 @@ func TestInstanceFromPod(t *testing.T) {
 			errContains: "pod is nil",
 		},
 		{
-			name: "missing function annotation",
+			name: "missing assignment annotation",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        "test-pod",
 					Annotations: map[string]string{},
 				},
 			},
-			errContains: "missing function annotation",
+			errContains: "missing assignment annotation",
 		},
 		{
-			name: "invalid function JSON",
+			name: "invalid assignment JSON",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: "not valid json",
+						skipper.LegacyFunctionKey.Label: "not valid json",
 					},
 				},
 			},
-			errContains: "failed to unmarshal function",
+			errContains: "failed to unmarshal assignment",
 		},
 		{
-			name: "invalid function - missing required fields",
+			name: "invalid assignment - missing required fields",
 			pod: &v1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: `{"namespace":"","deployment":"","tenant":""}`,
+						skipper.LegacyFunctionKey.Label: `{"namespace":"","deployment":"","tenant":""}`,
 					},
 				},
 			},
-			errContains: "invalid function in pod annotation",
+			errContains: "invalid assignment in pod annotation",
 		},
 		{
 			name: "missing replica set annotation",
@@ -755,7 +785,7 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: string(fnJSON),
+						skipper.LegacyFunctionKey.Label: string(fnJSON),
 					},
 				},
 			},
@@ -767,9 +797,9 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: string(fnJSON),
-						key.ReplicaSet.Label:      "test-replicaset",
-						key.AssignedAt.Label:      "not-a-timestamp",
+						skipper.LegacyFunctionKey.Label: string(fnJSON),
+						key.ReplicaSet.Label:            "test-replicaset",
+						key.AssignedAt.Label:            "not-a-timestamp",
 					},
 				},
 			},
@@ -781,10 +811,10 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: string(fnJSON),
-						key.ReplicaSet.Label:      "test-replicaset",
-						key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
-						key.ReadyAt.Label:         "not-a-timestamp",
+						skipper.LegacyFunctionKey.Label: string(fnJSON),
+						key.ReplicaSet.Label:            "test-replicaset",
+						key.AssignedAt.Label:            "2024-01-01T00:00:00Z",
+						key.ReadyAt.Label:               "not-a-timestamp",
 					},
 				},
 				Status: v1.PodStatus{
@@ -808,10 +838,10 @@ func TestInstanceFromPod(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-pod",
 					Annotations: map[string]string{
-						skipper.FunctionKey.Label: string(fnJSON),
-						key.ReplicaSet.Label:      "test-replicaset",
-						key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
-						key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
+						skipper.LegacyFunctionKey.Label: string(fnJSON),
+						key.ReplicaSet.Label:            "test-replicaset",
+						key.AssignedAt.Label:            "2024-01-01T00:00:00Z",
+						key.ReadyAt.Label:               "2024-01-01T00:00:01Z",
 					},
 				},
 				Status: v1.PodStatus{
@@ -857,7 +887,7 @@ func TestRefreshMetrics(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	fakeKubernetesMetrics := fakekubernetesmetrics.NewSimpleClientset() //nolint:staticcheck // NewClientset isn't generated for this package
 	ctrl := New(testConfig(), nil, fakeKubernetes, fakeKubernetesMetrics)
@@ -900,7 +930,7 @@ func TestRefreshMetricsGarbageCollection(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	fakeKubernetesMetrics := fakekubernetesmetrics.NewSimpleClientset() //nolint:staticcheck // NewClientset isn't generated for this package
 	ctrl := New(testConfig(), nil, fakeKubernetes, fakeKubernetesMetrics)
@@ -942,7 +972,7 @@ func TestGetInstances(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Function
+		fn             *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		instances      []*skipper.Instance
 	}
@@ -963,7 +993,7 @@ func TestGetInstances(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				assert.Assert(t, len(state.instances) == 1, "should have 1 instance")
 				assert.Equal(t, "pod-1", state.instances[0].GetName())
-				assert.Assert(t, proto.Equal(state.instances[0].GetFunction(), state.fn))
+				assert.Assert(t, proto.Equal(state.instances[0].GetAssignment(), state.fn))
 			},
 		},
 		{
@@ -1005,7 +1035,7 @@ func TestGetInstances(t *testing.T) {
 				assert.NilError(t, err)
 
 				// Add pod for different function identity (different tenant)
-				fn2 := proto.Clone(state.fn).(*skipper.Function)
+				fn2 := proto.Clone(state.fn).(*skipper.Assignment)
 				fn2.SetTenant("different-tenant")
 				pod2 := fixture.NewAssignedPod(t, fn2, nil)
 				pod2.Name = "pod-2"
@@ -1027,7 +1057,7 @@ func TestGetInstances(t *testing.T) {
 				assert.NilError(t, err)
 
 				// Add pod with different metadata (same identity)
-				fn2 := proto.Clone(state.fn).(*skipper.Function)
+				fn2 := proto.Clone(state.fn).(*skipper.Assignment)
 				fn2.SetMetadata("different")
 				pod2 := fixture.NewAssignedPod(t, fn2, nil)
 				pod2.Name = "pod-2"
@@ -1215,7 +1245,7 @@ func TestGetInstances(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(t),
+				fn:             fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -1238,7 +1268,7 @@ func TestGetReadyInstances(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Function
+		fn             *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		instances      []*skipper.Instance
 	}
@@ -1324,7 +1354,7 @@ func TestGetReadyInstances(t *testing.T) {
 			name: "different metadata same identity",
 			setup: func(t *testing.T, state *testState) {
 				// create a pod with different metadata than state.fn (same identity)
-				fn := proto.Clone(state.fn).(*skipper.Function)
+				fn := proto.Clone(state.fn).(*skipper.Assignment)
 				fn.SetMetadata("different")
 				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				assert.NilError(t, err)
@@ -1337,7 +1367,7 @@ func TestGetReadyInstances(t *testing.T) {
 			name: "different tenant",
 			setup: func(t *testing.T, state *testState) {
 				// create a pod with different tenant (different identity)
-				fn := proto.Clone(state.fn).(*skipper.Function)
+				fn := proto.Clone(state.fn).(*skipper.Assignment)
 				fn.SetTenant("different-tenant")
 				err := state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, fn, nil))
 				assert.NilError(t, err)
@@ -1356,7 +1386,7 @@ func TestGetReadyInstances(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(t),
+				fn:             fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -1382,7 +1412,7 @@ func TestPatchPod(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Function
+		fn             *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 		pod            *v1.Pod
@@ -1461,7 +1491,7 @@ func TestPatchPod(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(t),
+				fn:             fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -1492,7 +1522,7 @@ func TestDeletePod(t *testing.T) {
 	t.Parallel()
 
 	type testState struct {
-		fn             *skipper.Function
+		fn             *skipper.Assignment
 		fakeKubernetes *fake.Clientset
 		ctrl           *Controller
 		pod            *v1.Pod
@@ -1564,7 +1594,7 @@ func TestDeletePod(t *testing.T) {
 			defer cancel()
 
 			state := &testState{
-				fn:             fixture.NewFunction(t),
+				fn:             fixture.NewAssignment(t),
 				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
 			}
 
@@ -1613,7 +1643,7 @@ func TestDeletePodWhenNotInCache(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 
@@ -1639,7 +1669,7 @@ func TestDeletePodMultiplePods(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
 	ctrl := New(testConfig(), nil, fakeKubernetes, nil)
 

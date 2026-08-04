@@ -12,7 +12,7 @@ import (
 	"gotest.tools/v3/assert"
 )
 
-var testFunction = Function_builder{
+var testAssignment = Assignment_builder{
 	Namespace:  new("skipper-production"),
 	Deployment: new("my-awesome-app-deployment"),
 	Tenant:     new("tenant-12345-abcdef"),
@@ -26,20 +26,20 @@ var testFunction = Function_builder{
 	}.Build(),
 }.Build()
 
-var testFunctions = []*Function{
-	Function_builder{Namespace: new("ns1"), Deployment: new("deploy1"), Tenant: new("tenant1"), Metadata: new("meta1"), Scale: Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10), TargetCpuUsageMilli: proto.Uint32(500), TargetMemoryUsageMib: proto.Uint32(256), TargetInFlightRequests: proto.Uint32(100)}.Build()}.Build(),
-	Function_builder{Namespace: new("ns2"), Deployment: new("deploy2"), Tenant: new("tenant2"), Metadata: new("meta2"), Scale: Scale_builder{MinInstances: proto.Uint32(2), MaxInstances: proto.Uint32(20), TargetCpuUsageMilli: proto.Uint32(600), TargetMemoryUsageMib: proto.Uint32(512), TargetInFlightRequests: proto.Uint32(200)}.Build()}.Build(),
-	Function_builder{Namespace: new("ns3"), Deployment: new("deploy3"), Tenant: new("tenant3"), Metadata: new("meta3"), Scale: Scale_builder{MinInstances: proto.Uint32(3), MaxInstances: proto.Uint32(30), TargetCpuUsageMilli: proto.Uint32(700), TargetMemoryUsageMib: proto.Uint32(1024), TargetInFlightRequests: proto.Uint32(300)}.Build()}.Build(),
-	Function_builder{Namespace: new("ns4"), Deployment: new("deploy4"), Tenant: new("tenant4"), Metadata: new("meta4"), Scale: Scale_builder{MinInstances: proto.Uint32(4), MaxInstances: proto.Uint32(40), TargetCpuUsageMilli: proto.Uint32(800), TargetMemoryUsageMib: proto.Uint32(2048), TargetInFlightRequests: proto.Uint32(400)}.Build()}.Build(),
-	Function_builder{Namespace: new("ns5"), Deployment: new("deploy5"), Tenant: new("tenant5"), Metadata: new("meta5"), Scale: Scale_builder{MinInstances: proto.Uint32(5), MaxInstances: proto.Uint32(50), TargetCpuUsageMilli: proto.Uint32(900), TargetMemoryUsageMib: proto.Uint32(4096), TargetInFlightRequests: proto.Uint32(500)}.Build()}.Build(),
+var testAssignments = []*Assignment{
+	Assignment_builder{Namespace: new("ns1"), Deployment: new("deploy1"), Tenant: new("tenant1"), Metadata: new("meta1"), Scale: Scale_builder{MinInstances: proto.Uint32(1), MaxInstances: proto.Uint32(10), TargetCpuUsageMilli: proto.Uint32(500), TargetMemoryUsageMib: proto.Uint32(256), TargetInFlightRequests: proto.Uint32(100)}.Build()}.Build(),
+	Assignment_builder{Namespace: new("ns2"), Deployment: new("deploy2"), Tenant: new("tenant2"), Metadata: new("meta2"), Scale: Scale_builder{MinInstances: proto.Uint32(2), MaxInstances: proto.Uint32(20), TargetCpuUsageMilli: proto.Uint32(600), TargetMemoryUsageMib: proto.Uint32(512), TargetInFlightRequests: proto.Uint32(200)}.Build()}.Build(),
+	Assignment_builder{Namespace: new("ns3"), Deployment: new("deploy3"), Tenant: new("tenant3"), Metadata: new("meta3"), Scale: Scale_builder{MinInstances: proto.Uint32(3), MaxInstances: proto.Uint32(30), TargetCpuUsageMilli: proto.Uint32(700), TargetMemoryUsageMib: proto.Uint32(1024), TargetInFlightRequests: proto.Uint32(300)}.Build()}.Build(),
+	Assignment_builder{Namespace: new("ns4"), Deployment: new("deploy4"), Tenant: new("tenant4"), Metadata: new("meta4"), Scale: Scale_builder{MinInstances: proto.Uint32(4), MaxInstances: proto.Uint32(40), TargetCpuUsageMilli: proto.Uint32(800), TargetMemoryUsageMib: proto.Uint32(2048), TargetInFlightRequests: proto.Uint32(400)}.Build()}.Build(),
+	Assignment_builder{Namespace: new("ns5"), Deployment: new("deploy5"), Tenant: new("tenant5"), Metadata: new("meta5"), Scale: Scale_builder{MinInstances: proto.Uint32(5), MaxInstances: proto.Uint32(50), TargetCpuUsageMilli: proto.Uint32(900), TargetMemoryUsageMib: proto.Uint32(4096), TargetInFlightRequests: proto.Uint32(500)}.Build()}.Build(),
 }
 
 func TestHashNoCollisions(t *testing.T) {
 	// Test that different identity fields produce different hashes (separator collision prevention)
-	f1 := Function_builder{Namespace: new("ab"), Deployment: new("cd"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
-	f2 := Function_builder{Namespace: new("abc"), Deployment: new("d"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
-	f3 := Function_builder{Namespace: new("a"), Deployment: new("bcd"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
-	f4 := Function_builder{Namespace: new("abcd"), Deployment: new(""), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
+	f1 := Assignment_builder{Namespace: new("ab"), Deployment: new("cd"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
+	f2 := Assignment_builder{Namespace: new("abc"), Deployment: new("d"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
+	f3 := Assignment_builder{Namespace: new("a"), Deployment: new("bcd"), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
+	f4 := Assignment_builder{Namespace: new("abcd"), Deployment: new(""), Tenant: new(""), Scale: Scale_builder{}.Build()}.Build()
 
 	assert.Assert(t, f1.Hash() != f2.Hash(), "f1 and f2 should have different hashes")
 	assert.Assert(t, f1.Hash() != f3.Hash(), "f1 and f3 should have different hashes")
@@ -49,37 +49,37 @@ func TestHashNoCollisions(t *testing.T) {
 	assert.Assert(t, f3.Hash() != f4.Hash(), "f3 and f4 should have different hashes")
 
 	// Also test across Tenant field
-	f5 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("ab"), Scale: Scale_builder{}.Build()}.Build()
-	f6 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("abc"), Scale: Scale_builder{}.Build()}.Build()
+	f5 := Assignment_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("ab"), Scale: Scale_builder{}.Build()}.Build()
+	f6 := Assignment_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("abc"), Scale: Scale_builder{}.Build()}.Build()
 	assert.Assert(t, f5.Hash() != f6.Hash(), "f5 and f6 should have different hashes")
 
 	// Identical identity should have identical hashes regardless of metadata/scale
-	f7 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Metadata: new("meta-a"), Scale: Scale_builder{MaxInstances: proto.Uint32(1)}.Build()}.Build()
-	f8 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Metadata: new("meta-b"), Scale: Scale_builder{MaxInstances: proto.Uint32(99)}.Build()}.Build()
+	f7 := Assignment_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Metadata: new("meta-a"), Scale: Scale_builder{MaxInstances: proto.Uint32(1)}.Build()}.Build()
+	f8 := Assignment_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Metadata: new("meta-b"), Scale: Scale_builder{MaxInstances: proto.Uint32(99)}.Build()}.Build()
 	assert.Assert(t, f7.Hash() == f8.Hash(), "same identity with different metadata/scale should have the same hash")
 
 	// Oneshot changes identity
-	f9 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Oneshot: new(false), Scale: Scale_builder{}.Build()}.Build()
-	f10 := Function_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Oneshot: new(true), Scale: Scale_builder{}.Build()}.Build()
+	f9 := Assignment_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Oneshot: new(false), Scale: Scale_builder{}.Build()}.Build()
+	f10 := Assignment_builder{Namespace: new("ns"), Deployment: new("dep"), Tenant: new("tenant"), Oneshot: new(true), Scale: Scale_builder{}.Build()}.Build()
 	assert.Assert(t, f9.Hash() != f10.Hash(), "oneshot true vs false should have different hashes")
 }
 
 func BenchmarkHash(b *testing.B) {
 	b.Run("XXHash", func(b *testing.B) {
 		for b.Loop() {
-			_ = testFunction.Hash()
+			_ = testAssignment.Hash()
 		}
 	})
 }
 
 func BenchmarkMapLookup(b *testing.B) {
 	b.Run("HashKey", func(b *testing.B) {
-		m := make(map[FunctionHash]int)
-		for i, fn := range testFunctions {
+		m := make(map[AssignmentHash]int)
+		for i, fn := range testAssignments {
 			m[fn.Hash()] = i
 		}
 
-		lookupHash := testFunctions[2].Hash()
+		lookupHash := testAssignments[2].Hash()
 
 		for b.Loop() {
 			_ = m[lookupHash]
@@ -87,12 +87,12 @@ func BenchmarkMapLookup(b *testing.B) {
 	})
 
 	b.Run("HashKeyWithCompute", func(b *testing.B) {
-		m := make(map[FunctionHash]int)
-		for i, fn := range testFunctions {
+		m := make(map[AssignmentHash]int)
+		for i, fn := range testAssignments {
 			m[fn.Hash()] = i
 		}
 
-		lookupFn := testFunctions[2]
+		lookupFn := testAssignments[2]
 
 		for b.Loop() {
 			_ = m[lookupFn.Hash()]
@@ -101,7 +101,7 @@ func BenchmarkMapLookup(b *testing.B) {
 }
 
 func TestFunctionFromHeader(t *testing.T) {
-	validFn := Function_builder{
+	validFn := Assignment_builder{
 		Namespace:  new("test-ns"),
 		Deployment: new("test-deploy"),
 		Tenant:     new("test-tenant"),
@@ -119,17 +119,17 @@ func TestFunctionFromHeader(t *testing.T) {
 		name    string
 		header  string
 		wantErr string
-		wantFn  *Function
+		wantFn  *Assignment
 	}{
 		{
 			name:    "missing header",
 			header:  "",
-			wantErr: "missing " + FunctionKey.Header,
+			wantErr: "missing " + LegacyFunctionKey.Header,
 		},
 		{
 			name:    "invalid JSON",
 			header:  "{invalid json}",
-			wantErr: "failed to unmarshal " + FunctionKey.Header + " header:",
+			wantErr: "failed to unmarshal " + LegacyFunctionKey.Header + " header:",
 		},
 		{
 			name:    "missing namespace",
@@ -202,10 +202,10 @@ func TestFunctionFromHeader(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/", nil)
 			if tc.header != "" {
-				req.Header.Set(FunctionKey.Header, tc.header)
+				req.Header.Set(LegacyFunctionKey.Header, tc.header)
 			}
 
-			fn, err := FunctionFromHeader(req)
+			fn, err := AssignmentFromHeader(req)
 
 			if tc.wantErr != "" {
 				assert.ErrorContains(t, err, tc.wantErr)
@@ -221,9 +221,9 @@ func TestFunctionFromHeader(t *testing.T) {
 func TestFunctionHeaderCacheBounded(t *testing.T) {
 	// Fill cache beyond capacity and confirm it stays bounded.
 	cap := 8
-	c := newFunctionHeaderCache(cap)
+	c := newAssignmentHeaderCache(cap)
 
-	fn := Function_builder{
+	fn := Assignment_builder{
 		Namespace:  new("ns"),
 		Deployment: new("deploy"),
 		Tenant:     new("tenant"),
@@ -241,9 +241,9 @@ func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 	// Verify that the oldest (least recently used) entry is evicted when the
 	// cache is full and a new entry is inserted.
 	cap := 3
-	c := newFunctionHeaderCache(cap)
+	c := newAssignmentHeaderCache(cap)
 
-	fn := Function_builder{
+	fn := Assignment_builder{
 		Namespace:  new("ns"),
 		Deployment: new("deploy"),
 		Tenant:     new("tenant"),
@@ -276,18 +276,18 @@ func TestFunctionHeaderCacheLRUEviction(t *testing.T) {
 }
 
 func TestFunctionFromHeaderCacheIdentity(t *testing.T) {
-	// FunctionFromHeader must return the same pointer for repeated calls with
+	// AssignmentFromHeader must return the same pointer for repeated calls with
 	// the same header value.
 	header := `{"namespace":"id-ns","deployment":"id-deploy","tenant":"id-tenant","scale":{"min_instances":1,"max_instances":5}}`
 
 	req1 := httptest.NewRequest("GET", "/", nil)
-	req1.Header.Set(FunctionKey.Header, header)
-	fn1, err := FunctionFromHeader(req1)
+	req1.Header.Set(LegacyFunctionKey.Header, header)
+	fn1, err := AssignmentFromHeader(req1)
 	assert.NilError(t, err)
 
 	req2 := httptest.NewRequest("GET", "/", nil)
-	req2.Header.Set(FunctionKey.Header, header)
-	fn2, err := FunctionFromHeader(req2)
+	req2.Header.Set(LegacyFunctionKey.Header, header)
+	fn2, err := AssignmentFromHeader(req2)
 	assert.NilError(t, err)
 
 	assert.Assert(t, fn1 == fn2, "same header must return the same pointer (cache identity)")
@@ -297,9 +297,9 @@ func TestFunctionHeaderCacheConcurrentAccess(t *testing.T) {
 	// Verify concurrent reads and writes don't panic or corrupt the cache.
 	t.Parallel()
 
-	c := newFunctionHeaderCache(16)
+	c := newAssignmentHeaderCache(16)
 
-	fn := Function_builder{
+	fn := Assignment_builder{
 		Namespace:  new("ns"),
 		Deployment: new("deploy"),
 		Tenant:     new("tenant"),
@@ -327,7 +327,7 @@ func TestFunctionHeaderCacheConcurrentAccess(t *testing.T) {
 // Ensure xxhash import is used by benchmarks
 var _ = xxhash.New
 
-var sinkFunction *Function
+var sinkAssignment *Assignment
 
 func BenchmarkFunctionFromHeader(b *testing.B) {
 	const validHeader = `{"namespace":"test-ns","deployment":"test-deploy","tenant":"test-tenant","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`
@@ -337,16 +337,16 @@ func BenchmarkFunctionFromHeader(b *testing.B) {
 
 		// Pre-warm the cache.
 		warmReq := httptest.NewRequest(http.MethodGet, "/", nil)
-		warmReq.Header.Set(FunctionKey.Header, validHeader)
-		if _, err := FunctionFromHeader(warmReq); err != nil {
+		warmReq.Header.Set(LegacyFunctionKey.Header, validHeader)
+		if _, err := AssignmentFromHeader(warmReq); err != nil {
 			b.Fatal(err)
 		}
 
 		b.RunParallel(func(pb *testing.PB) {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			req.Header.Set(FunctionKey.Header, validHeader)
+			req.Header.Set(LegacyFunctionKey.Header, validHeader)
 			for pb.Next() {
-				sinkFunction, _ = FunctionFromHeader(req)
+				sinkAssignment, _ = AssignmentFromHeader(req)
 			}
 		})
 	})
@@ -360,8 +360,8 @@ func BenchmarkFunctionFromHeader(b *testing.B) {
 				n := counter.Add(1)
 				header := fmt.Sprintf(`{"namespace":"test-ns","deployment":"test-deploy","tenant":"tenant-%d","metadata":"test-metadata","scale":{"min_instances":1,"max_instances":10,"target_cpu_usage_milli":500,"target_memory_usage_mib":256,"target_in_flight_requests":100}}`, n)
 				req := httptest.NewRequest(http.MethodGet, "/", nil)
-				req.Header.Set(FunctionKey.Header, header)
-				sinkFunction, _ = FunctionFromHeader(req)
+				req.Header.Set(LegacyFunctionKey.Header, header)
+				sinkAssignment, _ = AssignmentFromHeader(req)
 			}
 		})
 	})

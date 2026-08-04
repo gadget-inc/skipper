@@ -97,9 +97,9 @@ Return a snapshot of the cluster's current state -- supervisors, recent events, 
 
 ## Types
 
-### Function
+### Assignment
 
-{{< messageTable Function >}}
+{{< messageTable Assignment >}}
 
 Identity is determined by namespace + deployment + tenant + oneshot. Metadata and scale are excluded from the hash.
 

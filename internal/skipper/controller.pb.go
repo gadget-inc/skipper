@@ -24,7 +24,7 @@ const (
 // Request/Response messages for gRPC service
 type GetInstanceRequest struct {
 	state                           protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Function             *Function              `protobuf:"bytes,1,opt,name=function"`
+	xxx_hidden_Assignment           *Assignment            `protobuf:"bytes,1,opt,name=assignment"`
 	xxx_hidden_ExcludeInstanceNames []string               `protobuf:"bytes,2,rep,name=exclude_instance_names,json=excludeInstanceNames"`
 	unknownFields                   protoimpl.UnknownFields
 	sizeCache                       protoimpl.SizeCache
@@ -55,9 +55,9 @@ func (x *GetInstanceRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *GetInstanceRequest) GetFunction() *Function {
+func (x *GetInstanceRequest) GetAssignment() *Assignment {
 	if x != nil {
-		return x.xxx_hidden_Function
+		return x.xxx_hidden_Assignment
 	}
 	return nil
 }
@@ -69,29 +69,29 @@ func (x *GetInstanceRequest) GetExcludeInstanceNames() []string {
 	return nil
 }
 
-func (x *GetInstanceRequest) SetFunction(v *Function) {
-	x.xxx_hidden_Function = v
+func (x *GetInstanceRequest) SetAssignment(v *Assignment) {
+	x.xxx_hidden_Assignment = v
 }
 
 func (x *GetInstanceRequest) SetExcludeInstanceNames(v []string) {
 	x.xxx_hidden_ExcludeInstanceNames = v
 }
 
-func (x *GetInstanceRequest) HasFunction() bool {
+func (x *GetInstanceRequest) HasAssignment() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_Function != nil
+	return x.xxx_hidden_Assignment != nil
 }
 
-func (x *GetInstanceRequest) ClearFunction() {
-	x.xxx_hidden_Function = nil
+func (x *GetInstanceRequest) ClearAssignment() {
+	x.xxx_hidden_Assignment = nil
 }
 
 type GetInstanceRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Function             *Function
+	Assignment           *Assignment
 	ExcludeInstanceNames []string
 }
 
@@ -99,7 +99,7 @@ func (b0 GetInstanceRequest_builder) Build() *GetInstanceRequest {
 	m0 := &GetInstanceRequest{}
 	b, x := &b0, m0
 	_, _ = b, x
-	x.xxx_hidden_Function = b.Function
+	x.xxx_hidden_Assignment = b.Assignment
 	x.xxx_hidden_ExcludeInstanceNames = b.ExcludeInstanceNames
 	return m0
 }
@@ -325,7 +325,7 @@ func (b0 HeartbeatResponse_builder) Build() *HeartbeatResponse {
 
 type ScaleRequest struct {
 	state                       protoimpl.MessageState `protogen:"opaque.v1"`
-	xxx_hidden_Function         *Function              `protobuf:"bytes,1,opt,name=function"`
+	xxx_hidden_Assignment       *Assignment            `protobuf:"bytes,1,opt,name=assignment"`
 	xxx_hidden_DesiredInstances uint32                 `protobuf:"varint,2,opt,name=desired_instances,json=desiredInstances"`
 	xxx_hidden_Reason           ScaleReason            `protobuf:"varint,3,opt,name=reason,enum=skipper.ScaleReason"`
 	XXX_raceDetectHookData      protoimpl.RaceDetectHookData
@@ -359,9 +359,9 @@ func (x *ScaleRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-func (x *ScaleRequest) GetFunction() *Function {
+func (x *ScaleRequest) GetAssignment() *Assignment {
 	if x != nil {
-		return x.xxx_hidden_Function
+		return x.xxx_hidden_Assignment
 	}
 	return nil
 }
@@ -382,8 +382,8 @@ func (x *ScaleRequest) GetReason() ScaleReason {
 	return ScaleReason_SCALE_REASON_UNSPECIFIED
 }
 
-func (x *ScaleRequest) SetFunction(v *Function) {
-	x.xxx_hidden_Function = v
+func (x *ScaleRequest) SetAssignment(v *Assignment) {
+	x.xxx_hidden_Assignment = v
 }
 
 func (x *ScaleRequest) SetDesiredInstances(v uint32) {
@@ -396,11 +396,11 @@ func (x *ScaleRequest) SetReason(v ScaleReason) {
 	protoimpl.X.SetPresent(&(x.XXX_presence[0]), 2, 3)
 }
 
-func (x *ScaleRequest) HasFunction() bool {
+func (x *ScaleRequest) HasAssignment() bool {
 	if x == nil {
 		return false
 	}
-	return x.xxx_hidden_Function != nil
+	return x.xxx_hidden_Assignment != nil
 }
 
 func (x *ScaleRequest) HasDesiredInstances() bool {
@@ -417,8 +417,8 @@ func (x *ScaleRequest) HasReason() bool {
 	return protoimpl.X.Present(&(x.XXX_presence[0]), 2)
 }
 
-func (x *ScaleRequest) ClearFunction() {
-	x.xxx_hidden_Function = nil
+func (x *ScaleRequest) ClearAssignment() {
+	x.xxx_hidden_Assignment = nil
 }
 
 func (x *ScaleRequest) ClearDesiredInstances() {
@@ -434,7 +434,7 @@ func (x *ScaleRequest) ClearReason() {
 type ScaleRequest_builder struct {
 	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
 
-	Function         *Function
+	Assignment       *Assignment
 	DesiredInstances *uint32
 	Reason           *ScaleReason
 }
@@ -443,7 +443,7 @@ func (b0 ScaleRequest_builder) Build() *ScaleRequest {
 	m0 := &ScaleRequest{}
 	b, x := &b0, m0
 	_, _ = b, x
-	x.xxx_hidden_Function = b.Function
+	x.xxx_hidden_Assignment = b.Assignment
 	if b.DesiredInstances != nil {
 		protoimpl.X.SetPresentNonAtomic(&(x.XXX_presence[0]), 1, 3)
 		x.xxx_hidden_DesiredInstances = *b.DesiredInstances
@@ -740,9 +740,11 @@ var File_controller_proto protoreflect.FileDescriptor
 
 const file_controller_proto_rawDesc = "" +
 	"\n" +
-	"\x10controller.proto\x12\askipper\x1a!google/protobuf/go_features.proto\x1a\vtypes.proto\"y\n" +
-	"\x12GetInstanceRequest\x12-\n" +
-	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x124\n" +
+	"\x10controller.proto\x12\askipper\x1a!google/protobuf/go_features.proto\x1a\vtypes.proto\"\x7f\n" +
+	"\x12GetInstanceRequest\x123\n" +
+	"\n" +
+	"assignment\x18\x01 \x01(\v2\x13.skipper.AssignmentR\n" +
+	"assignment\x124\n" +
 	"\x16exclude_instance_names\x18\x02 \x03(\tR\x14excludeInstanceNames\"D\n" +
 	"\x13GetInstanceResponse\x12-\n" +
 	"\binstance\x18\x01 \x01(\v2\x11.skipper.InstanceR\binstance\"\x88\x01\n" +
@@ -752,9 +754,11 @@ const file_controller_proto_rawDesc = "" +
 	"heartbeats\x18\x02 \x03(\v2\x12.skipper.HeartbeatR\n" +
 	"heartbeats\x12#\n" +
 	"\rforwarded_for\x18\x03 \x03(\tR\fforwardedFor\"\x13\n" +
-	"\x11HeartbeatResponse\"\x98\x01\n" +
-	"\fScaleRequest\x12-\n" +
-	"\bfunction\x18\x01 \x01(\v2\x11.skipper.FunctionR\bfunction\x12+\n" +
+	"\x11HeartbeatResponse\"\x9e\x01\n" +
+	"\fScaleRequest\x123\n" +
+	"\n" +
+	"assignment\x18\x01 \x01(\v2\x13.skipper.AssignmentR\n" +
+	"assignment\x12+\n" +
 	"\x11desired_instances\x18\x02 \x01(\rR\x10desiredInstances\x12,\n" +
 	"\x06reason\x18\x03 \x01(\x0e2\x14.skipper.ScaleReasonR\x06reason\"@\n" +
 	"\rScaleResponse\x12/\n" +
@@ -784,17 +788,17 @@ var file_controller_proto_goTypes = []any{
 	(*ReleaseInstanceResponse)(nil), // 7: skipper.ReleaseInstanceResponse
 	(*GetClusterStateRequest)(nil),  // 8: skipper.GetClusterStateRequest
 	(*GetClusterStateResponse)(nil), // 9: skipper.GetClusterStateResponse
-	(*Function)(nil),                // 10: skipper.Function
+	(*Assignment)(nil),              // 10: skipper.Assignment
 	(*Instance)(nil),                // 11: skipper.Instance
 	(*Heartbeat)(nil),               // 12: skipper.Heartbeat
 	(ScaleReason)(0),                // 13: skipper.ScaleReason
 	(*ClusterState)(nil),            // 14: skipper.ClusterState
 }
 var file_controller_proto_depIdxs = []int32{
-	10, // 0: skipper.GetInstanceRequest.function:type_name -> skipper.Function
+	10, // 0: skipper.GetInstanceRequest.assignment:type_name -> skipper.Assignment
 	11, // 1: skipper.GetInstanceResponse.instance:type_name -> skipper.Instance
 	12, // 2: skipper.HeartbeatRequest.heartbeats:type_name -> skipper.Heartbeat
-	10, // 3: skipper.ScaleRequest.function:type_name -> skipper.Function
+	10, // 3: skipper.ScaleRequest.assignment:type_name -> skipper.Assignment
 	13, // 4: skipper.ScaleRequest.reason:type_name -> skipper.ScaleReason
 	11, // 5: skipper.ScaleResponse.instances:type_name -> skipper.Instance
 	11, // 6: skipper.ReleaseInstanceRequest.instance:type_name -> skipper.Instance

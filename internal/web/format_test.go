@@ -78,20 +78,20 @@ func TestDurationBetween(t *testing.T) {
 func TestFunctionKey(t *testing.T) {
 	t.Parallel()
 
-	fn := skipper.Function_builder{
+	fn := skipper.Assignment_builder{
 		Namespace:  new("default"),
 		Deployment: new("web-app"),
 		Tenant:     new("tenant-1"),
 	}.Build()
 
-	assert.Equal(t, functionKey(fn), "default:web-app:tenant-1")
-	assert.Equal(t, functionKey(nil), "")
+	assert.Equal(t, assignmentKey(fn), "default:web-app:tenant-1")
+	assert.Equal(t, assignmentKey(nil), "")
 }
 
 func TestFunctionPath(t *testing.T) {
 	t.Parallel()
 
-	fn := skipper.Function_builder{
+	fn := skipper.Assignment_builder{
 		Namespace:  new("default"),
 		Deployment: new("web-app"),
 		Tenant:     new("tenant-1"),

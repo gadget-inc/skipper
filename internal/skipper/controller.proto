@@ -10,7 +10,7 @@ option features.(pb.go).api_level = API_OPAQUE;
 
 // Request/Response messages for gRPC service
 message GetInstanceRequest {
-  Function function = 1;
+  Assignment assignment = 1;
   repeated string exclude_instance_names = 2;
 }
 
@@ -27,7 +27,7 @@ message HeartbeatRequest {
 message HeartbeatResponse {}
 
 message ScaleRequest {
-  Function function = 1;
+  Assignment assignment = 1;
   uint32 desired_instances = 2;
   ScaleReason reason = 3;
 }

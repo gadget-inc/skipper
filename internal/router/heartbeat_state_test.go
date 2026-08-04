@@ -14,7 +14,7 @@ import (
 func TestHeartbeatStateConcurrentInFlight(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	state := newHeartbeatState(fn)
 
 	const goroutines = 100
@@ -38,7 +38,7 @@ func TestHeartbeatStateConcurrentInFlight(t *testing.T) {
 func TestHeartbeatStateLastActiveUpdated(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	state := newHeartbeatState(fn)
 
 	before := state.lastActiveTime()
@@ -53,7 +53,7 @@ func TestHeartbeatStateLastActiveUpdated(t *testing.T) {
 func TestHeartbeatStateToProto(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	state := newHeartbeatState(fn)
 
 	state.inFlight.Add(3)
@@ -61,7 +61,7 @@ func TestHeartbeatStateToProto(t *testing.T) {
 
 	hb := state.toProto()
 
-	assert.Assert(t, proto.Equal(hb.GetFunction(), fn),
+	assert.Assert(t, proto.Equal(hb.GetAssignment(), fn),
 		"toProto function should match the original function")
 	assert.Assert(t, hb.GetInFlightRequests() == 3,
 		"expected 3 in-flight requests, got %d", hb.GetInFlightRequests())
@@ -74,11 +74,11 @@ func TestHeartbeatStateToProto(t *testing.T) {
 func TestHeartbeatStateUpdateFunctionOnMetadataChange(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	state := newHeartbeatState(fn)
 
 	// Create a function with the same identity but different metadata.
-	updatedFn := proto.Clone(fn).(*skipper.Function)
+	updatedFn := proto.Clone(fn).(*skipper.Assignment)
 	updatedFn.SetMetadata("updated-metadata")
 
 	// Precondition: same hash, different proto.
@@ -86,41 +86,41 @@ func TestHeartbeatStateUpdateFunctionOnMetadataChange(t *testing.T) {
 	assert.Assert(t, !proto.Equal(fn, updatedFn))
 
 	// Update the function on the heartbeat state.
-	state.updateFunction(updatedFn)
+	state.updateAssignment(updatedFn)
 
 	// The heartbeat should now carry the updated function.
 	hb := state.toProto()
-	assert.Assert(t, proto.Equal(hb.GetFunction(), updatedFn),
+	assert.Assert(t, proto.Equal(hb.GetAssignment(), updatedFn),
 		"heartbeat should send the updated function, not the stale one")
 }
 
-func TestHeartbeatStateConcurrentUpdateFunction(t *testing.T) {
+func TestHeartbeatStateConcurrentUpdateAssignment(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	state := newHeartbeatState(fn)
 
-	updatedFn := proto.Clone(fn).(*skipper.Function)
+	updatedFn := proto.Clone(fn).(*skipper.Assignment)
 	updatedFn.SetMetadata("concurrent-metadata")
 
 	const goroutines = 100
 	var wg sync.WaitGroup
 	for range goroutines {
 		wg.Go(func() {
-			state.updateFunction(updatedFn)
+			state.updateAssignment(updatedFn)
 			_ = state.toProto() // concurrent read
 		})
 	}
 	wg.Wait()
 
 	hb := state.toProto()
-	assert.Assert(t, proto.Equal(hb.GetFunction(), updatedFn))
+	assert.Assert(t, proto.Equal(hb.GetAssignment(), updatedFn))
 }
 
 func TestHeartbeatStateToProtoClampNegative(t *testing.T) {
 	t.Parallel()
 
-	fn := fixture.NewFunction(t)
+	fn := fixture.NewAssignment(t)
 	state := newHeartbeatState(fn)
 
 	// Simulate a race where decrement happens before the proto is built

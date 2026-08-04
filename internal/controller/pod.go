@@ -37,7 +37,7 @@ var (
 	otelHTTPClient            = &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
 )
 
-func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Function) (instance *skipper.Instance, err error) {
+func (ctrl *Controller) assignPod(ctx context.Context, fn *skipper.Assignment) (instance *skipper.Instance, err error) {
 	ctx, span := telemetry.Trace(ctx, "controller.assign_pod")
 	defer span.End()
 
@@ -56,21 +56,27 @@ GET_UNASSIGNED_POD:
 		return nil, err
 	}
 
-	fnJSON, err := json.Marshal(fn)
+	body, err := json.Marshal(fn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal function: %w", err)
+		return nil, fmt.Errorf("failed to marshal assignment: %w", err)
 	}
+	bodyJSON := strconv.Quote(string(body))
 
-	// ensure the pod is part of a replica set and isn't already assigned to a function (operations 1-4)
-	// then copy the replica set name and label/annotate the pod with the function (operations 5-8)
+	// ensure the pod is part of a replica set and isn't already assigned (operations 1-5)
+	// then copy the replica set name and label/annotate the pod (operations 6-10).
+	// Both legacy "skipper/function" and new "skipper/assignment" annotations are
+	// dual-written so a controller running pre-Phase-1 code continues to recognize
+	// the pod via its expected annotation.
 	patches := []byte(`[
 		{ "op": "test", "path": "/metadata/ownerReferences/0/kind", "value": "ReplicaSet" },
 		{ "op": "test", "path": "` + key.Tenant.PatchLabel + `", "value": null },
-		{ "op": "test", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": null },
+		{ "op": "test", "path": "` + skipper.LegacyFunctionKey.PatchAnnotation + `", "value": null },
+		{ "op": "test", "path": "` + skipper.AssignmentKey.PatchAnnotation + `", "value": null },
 		{ "op": "test", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": null },
 		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
 		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.GetTenant() + `" },
-		{ "op": "add", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": ` + strconv.Quote(string(fnJSON)) + ` },
+		{ "op": "add", "path": "` + skipper.LegacyFunctionKey.PatchAnnotation + `", "value": ` + bodyJSON + ` },
+		{ "op": "add", "path": "` + skipper.AssignmentKey.PatchAnnotation + `", "value": ` + bodyJSON + ` },
 		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
 	]`)
 
@@ -156,7 +162,7 @@ GET_UNASSIGNED_POD:
 	return
 }
 
-func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Function) (*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Assignment) (*v1.Pod, error) {
 	ctx, span := telemetry.Trace(ctx, "controller.get_unassigned_pod")
 	defer span.End()
 
@@ -176,7 +182,7 @@ func (ctrl *Controller) getUnassignedPod(ctx context.Context, fn *skipper.Functi
 	})
 }
 
-func (ctrl *Controller) getUnassignedPods(fn *skipper.Function) ([]*v1.Pod, error) {
+func (ctrl *Controller) getUnassignedPods(fn *skipper.Assignment) ([]*v1.Pod, error) {
 	equalDeploymentName, err := labels.NewRequirement(key.Deployment.Label, selection.Equals, []string{fn.GetDeployment()})
 	if err != nil {
 		return nil, err
@@ -191,7 +197,7 @@ func (ctrl *Controller) getUnassignedPods(fn *skipper.Function) ([]*v1.Pod, erro
 	return slices.DeleteFunc(pods, func(pod *v1.Pod) bool { return !isPodReady(pod) }), nil
 }
 
-func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
+func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Assignment) ([]*skipper.Instance, error) {
 	instances, err := ctrl.getInstances(ctx, fn)
 	if err != nil {
 		return nil, err
@@ -201,25 +207,25 @@ func (ctrl *Controller) getReadyInstances(ctx context.Context, fn *skipper.Funct
 	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool { return !instance.HasReadyAt() }), nil
 }
 
-func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
+func (ctrl *Controller) getInstances(ctx context.Context, fn *skipper.Assignment) ([]*skipper.Instance, error) {
 	return ctrl.collectInstances(ctx, fn, true)
 }
 
 // listInstances is a read-only variant of getInstances that does NOT
 // delete invalid pods. Use from observability paths (web UI, status
 // RPCs) where the call must not have side effects.
-func (ctrl *Controller) listInstances(ctx context.Context, fn *skipper.Function) ([]*skipper.Instance, error) {
+func (ctrl *Controller) listInstances(ctx context.Context, fn *skipper.Assignment) ([]*skipper.Instance, error) {
 	return ctrl.collectInstances(ctx, fn, false)
 }
 
-func (ctrl *Controller) collectInstances(ctx context.Context, fn *skipper.Function, cleanup bool) ([]*skipper.Instance, error) {
+func (ctrl *Controller) collectInstances(ctx context.Context, fn *skipper.Assignment, cleanup bool) ([]*skipper.Instance, error) {
 	namespaceLister, found := ctrl.namespaceListers[fn.GetNamespace()]
 	if !found {
 		return nil, fmt.Errorf("managed pod lister not started for namespace %s", fn.GetNamespace())
 	}
 
 	hashKey := strconv.FormatUint(fn.Hash(), 10)
-	objs, err := namespaceLister.podIndexer.ByIndex(functionHashIndex, hashKey)
+	objs, err := namespaceLister.podIndexer.ByIndex(assignmentHashIndex, hashKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pods by function hash: %w", err)
 	}
@@ -400,34 +406,39 @@ func (ctrl *Controller) refreshMetrics(ctx context.Context) {
 	}
 }
 
-func (ctrl *Controller) functionFromPod(pod *v1.Pod) (*skipper.Function, error) {
+func (ctrl *Controller) assignmentFromPod(pod *v1.Pod) (*skipper.Assignment, error) {
 	if pod == nil {
 		return nil, errors.New("pod is nil")
 	}
 
-	fnJSON, ok := pod.Annotations[skipper.FunctionKey.Label]
+	// Prefer the canonical "skipper/assignment" annotation; fall back to the
+	// legacy "skipper/function" annotation written by older controller binaries.
+	body, ok := pod.Annotations[skipper.AssignmentKey.Label]
 	if !ok {
-		return nil, errors.New("missing function annotation")
+		body, ok = pod.Annotations[skipper.LegacyFunctionKey.Label]
+	}
+	if !ok {
+		return nil, errors.New("missing assignment annotation")
 	}
 
-	if fn, ok := ctrl.functionCache.Load(fnJSON); ok {
-		return fn, nil
+	if a, ok := ctrl.assignmentCache.Load(body); ok {
+		return a, nil
 	}
 
-	fn := &skipper.Function{}
-	if err := json.Unmarshal([]byte(fnJSON), fn); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal function from pod annotation: %w", err)
+	a := &skipper.Assignment{}
+	if err := json.Unmarshal([]byte(body), a); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal assignment from pod annotation: %w", err)
 	}
-	if err := fn.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid function in pod annotation: %w", err)
+	if err := a.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid assignment in pod annotation: %w", err)
 	}
 
-	ctrl.functionCache.Store(fnJSON, fn)
-	return fn, nil
+	ctrl.assignmentCache.Store(body, a)
+	return a, nil
 }
 
 func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) {
-	fn, err := ctrl.functionFromPod(pod)
+	fn, err := ctrl.assignmentFromPod(pod)
 	if err != nil {
 		return nil, err
 	}
@@ -460,7 +471,7 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 	}
 
 	instance := &skipper.Instance{}
-	instance.SetFunction(fn)
+	instance.SetAssignment(fn)
 	instance.SetName(pod.Name)
 	instance.SetReplicaSet(replicaSet)
 	instance.SetAssignedAt(timestamppb.New(assignedAt))

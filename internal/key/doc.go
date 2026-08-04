@@ -21,7 +21,7 @@
 //
 // Generic, primitive, and external-type keys live in this package as
 // pre-defined variables (Count, Namespace, Tenant, Request, Pod, ...). Domain
-// types (Function, Heartbeat, Instance, Scale, ...) declare their own typed
+// types (Assignment, Heartbeat, Instance, Scale, ...) declare their own typed
 // keys next to the type, via the public constructors:
 //
 //   - [New] -- general typed key; valueOf returns slog.Value.
@@ -35,17 +35,18 @@
 //
 // Logging:
 //
-//	log.Info(ctx, "processing request", skipper.FunctionKey.Slog(fn))
+//	log.Info(ctx, "processing request", skipper.AssignmentKey.Slog(a))
 //
 // Telemetry context propagation (logs + traces):
 //
-//	ctx = telemetry.With(ctx, skipper.FunctionKey.Attr(fn))
+//	ctx = telemetry.With(ctx, skipper.AssignmentKey.Attr(a))
 //
 // Kubernetes labels, annotations, and HTTP headers (works with both Key and
 // Names; Label is used for both pod.Labels and pod.Annotations because the
 // rendering is identical):
 //
 //	pod.Labels[key.Tenant.Label] = tenant
-//	pod.Annotations[skipper.FunctionKey.Label] = fnJSON
+//	pod.Annotations[skipper.AssignmentKey.Label] = body
+//	pod.Annotations[skipper.LegacyFunctionKey.Label] = body // dual-write back-compat
 //	req.Header.Set(key.Token.Header, token)
 package key

@@ -66,7 +66,7 @@ func Metrics() []metric.Metric {
 type Router struct {
 	config       *Config
 	ctrl         controller.Client
-	heartbeats   *xsync.Map[skipper.FunctionHash, *heartbeatState]
+	heartbeats   *xsync.Map[skipper.AssignmentHash, *heartbeatState]
 	reverseProxy *httputil.ReverseProxy
 	roundTripper http.RoundTripper
 }
@@ -75,7 +75,7 @@ func New(cfg *Config, ctrl controller.Client) *Router {
 	r := &Router{
 		config:       cfg,
 		ctrl:         ctrl,
-		heartbeats:   xsync.NewMap[skipper.FunctionHash, *heartbeatState](),
+		heartbeats:   xsync.NewMap[skipper.AssignmentHash, *heartbeatState](),
 		roundTripper: otelhttp.NewTransport(newHTTPTransport(DefaultHTTPTransportSettings)),
 	}
 
@@ -98,7 +98,7 @@ func (r *Router) Start(ctx context.Context) {
 			} else {
 				hb := state.toProto() // materialise proto only when sending
 				heartbeats = append(heartbeats, hb)
-				heartbeatsTotal.WithLabelValues(hb.GetFunction().GetDeployment()).Inc()
+				heartbeatsTotal.WithLabelValues(hb.GetAssignment().GetDeployment()).Inc()
 			}
 		}
 
@@ -111,7 +111,7 @@ func (r *Router) Start(ctx context.Context) {
 }
 
 func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	fn, err := skipper.FunctionFromHeader(req)
+	fn, err := skipper.AssignmentFromHeader(req)
 	if err != nil {
 		if req.Method == http.MethodGet && req.URL.Path == "/healthz" {
 			rw.WriteHeader(http.StatusOK)
@@ -122,7 +122,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), skipper.FunctionKey.Attr(fn))
+	ctx := telemetry.With(req.Context(), key.Request.Attr(req), key.URL.Attr(req.URL), skipper.LegacyFunctionKey.Attr(fn))
 	requestsTotal.WithLabelValues(fn.GetDeployment()).Inc()
 
 	// get or create the heartbeat state for this function
@@ -130,7 +130,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return newHeartbeatState(fn), false
 	})
 	if loaded {
-		state.updateFunction(fn)
+		state.updateAssignment(fn)
 	}
 
 	// continuously update the heartbeat timestamp for this function while the request is in flight
@@ -151,7 +151,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		state.touch()
 	}()
 
-	reqCtx := withFunction(ctx, fn)
+	reqCtx := withAssignment(ctx, fn)
 
 	// For oneshot functions, track the assigned instance so we can release it after the request.
 	var instResult *instanceResult
@@ -176,7 +176,7 @@ func (r *Router) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
-	fn, err := functionFromContext(req.Context())
+	fn, err := assignmentFromContext(req.Context())
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +275,7 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func rewriteRequestHeaders(pr *httputil.ProxyRequest) {
-	delete(pr.Out.Header, skipper.FunctionKey.Header)
+	delete(pr.Out.Header, skipper.LegacyFunctionKey.Header)
 
 	pr.Out.Host = pr.In.Host
 

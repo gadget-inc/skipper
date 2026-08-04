@@ -37,7 +37,7 @@ func TestKeys(t *testing.T) {
 		key.Duration.Attr(fakeDuration),
 		key.Error.Attr(fakeError),
 		key.ExcludeInstanceNames.Attr(fakeStringSlice),
-		skipper.FunctionKey.Attr(fakeFunction),
+		skipper.LegacyFunctionKey.Attr(fakeAssignment),
 		key.GetInstanceDurationMs.Attr(fakeDuration),
 		skipper.HeartbeatKey.Attr(fakeHeartbeat),
 		key.InFlightRequests.Attr(fakeUint32),
@@ -158,7 +158,7 @@ var (
 		TargetInFlightRequests: new(fakeUint32),
 	}.Build()
 
-	fakeFunction = skipper.Function_builder{
+	fakeAssignment = skipper.Assignment_builder{
 		Namespace:  new(fakeString),
 		Deployment: new(fakeString),
 		Tenant:     new(fakeString),
@@ -167,13 +167,13 @@ var (
 	}.Build()
 
 	fakeHeartbeat = skipper.Heartbeat_builder{
-		Function:         fakeFunction,
+		Assignment:       fakeAssignment,
 		Timestamp:        timestamppb.New(fakeTime),
 		InFlightRequests: new(fakeUint32),
 	}.Build()
 
 	fakeInstance = skipper.Instance_builder{
-		Function:       fakeFunction,
+		Assignment:     fakeAssignment,
 		Name:           new(fakeString),
 		Addr:           new(fakeString),
 		ReplicaSet:     new(fakeString),
