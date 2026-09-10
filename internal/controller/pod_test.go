@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"aidanwoods.dev/go-paseto"
 	"github.com/gadget-inc/skipper/internal/fixture"
 	"github.com/gadget-inc/skipper/internal/key"
 	"github.com/gadget-inc/skipper/internal/skipper"
@@ -41,6 +42,7 @@ func ensureInstanceIsAssignedToPod(t *testing.T, instance *skipper.Instance, pod
 	assert.Assert(t, instance.GetReplicaSet() == pod.Annotations[key.ReplicaSet.Label])
 	assert.Assert(t, instance.GetAssignedAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.AssignedAt.Label])
 	assert.Assert(t, instance.GetReadyAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.ReadyAt.Label])
+	assert.Assert(t, instance.GetTokenExpiresAt().AsTime().Format(time.RFC3339) == pod.Annotations[key.TokenExpiresAt.Label])
 }
 
 // listAssignedPods lists pods and waits for the ready-at annotation to be
@@ -74,6 +76,7 @@ func ensurePodIsNotAssignedToFunction(t *testing.T, pod v1.Pod) {
 	assert.Assert(t, pod.Annotations[key.ReplicaSet.Label] == "")
 	assert.Assert(t, pod.Annotations[key.AssignedAt.Label] == "")
 	assert.Assert(t, pod.Annotations[key.ReadyAt.Label] == "")
+	assert.Assert(t, pod.Annotations[key.TokenExpiresAt.Label] == "")
 }
 
 func TestAssignPod(t *testing.T) {
@@ -84,6 +87,7 @@ func TestAssignPod(t *testing.T) {
 		cfg            *Config
 		fakeKubernetes *fake.Clientset
 		instance       *skipper.Instance
+		tokenExpiry    time.Time // exp claim of the token the pod received
 	}
 
 	testCases := []struct {
@@ -181,6 +185,31 @@ func TestAssignPod(t *testing.T) {
 			check: func(t *testing.T, state *testState) {
 				pods := listAssignedPods(t, state.fakeKubernetes, state.instance.GetFunction().GetNamespace(), 1)
 				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
+			},
+		},
+		{
+			// The supervisor rotates pods based on the token-expires-at annotation,
+			// so it must agree with the exp claim of the token the pod received.
+			name: "records token expiry matching the signed token",
+			setup: func(t *testing.T, state *testState) {
+				state.cfg = testConfig()
+				state.cfg.TokenTTL = 2 * time.Hour
+
+				captureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					parsed, err := paseto.NewParserForValidNow().ParseV2Public(fixture.ControllerPasetoPublicKey, r.Header.Get(key.Token.Header))
+					assert.NilError(t, err)
+					state.tokenExpiry, err = parsed.GetExpiration()
+					assert.NilError(t, err)
+					w.WriteHeader(http.StatusOK)
+				})
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, captureHandler))
+			},
+			check: func(t *testing.T, state *testState) {
+				pods := listAssignedPods(t, state.fakeKubernetes, state.fn.GetNamespace(), 1)
+				ensureInstanceIsAssignedToPod(t, state.instance, pods[0])
+
+				assert.Equal(t, pods[0].Annotations[key.TokenExpiresAt.Label], state.tokenExpiry.UTC().Format(time.RFC3339))
+				assert.Equal(t, state.instance.GetTokenExpiresAt().AsTime().Sub(state.instance.GetAssignedAt().AsTime()), 2*time.Hour)
 			},
 		},
 		{
@@ -666,49 +695,119 @@ func TestInstanceFromPod(t *testing.T) {
 	fn := fixture.NewFunction(t)
 	fnJSON, _ := json.Marshal(fn)
 
+	// readyPod returns a running, ready pod carrying the given annotations.
+	readyPod := func(annotations map[string]string) *v1.Pod {
+		return &v1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pod",
+				Namespace: fn.GetNamespace(),
+				Labels: map[string]string{
+					key.Tenant.Label:     fn.GetTenant(),
+					key.Deployment.Label: fn.GetDeployment(),
+				},
+				Annotations: annotations,
+			},
+			Status: v1.PodStatus{
+				PodIP: "10.0.0.1",
+				Phase: v1.PodRunning,
+				Conditions: []v1.PodCondition{
+					{Type: v1.PodReady, Status: v1.ConditionTrue},
+				},
+			},
+			Spec: v1.PodSpec{
+				Containers: []v1.Container{
+					{Ports: []v1.ContainerPort{{ContainerPort: 8080}}},
+				},
+			},
+		}
+	}
+
 	testCases := []struct {
 		name        string
+		ctrl        *Controller // defaults to the shared controller
 		pod         *v1.Pod
 		errContains string
 		check       func(*testing.T, *skipper.Instance)
 	}{
 		{
 			name: "valid pod with all annotations",
-			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pod",
-					Namespace: fn.GetNamespace(),
-					Labels: map[string]string{
-						key.Tenant.Label:     fn.GetTenant(),
-						key.Deployment.Label: fn.GetDeployment(),
-					},
-					Annotations: map[string]string{
-						skipper.FunctionKey.Label: string(fnJSON),
-						key.ReplicaSet.Label:      "test-replicaset",
-						key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
-						key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
-					},
-				},
-				Status: v1.PodStatus{
-					PodIP: "10.0.0.1",
-					Phase: v1.PodRunning,
-					Conditions: []v1.PodCondition{
-						{Type: v1.PodReady, Status: v1.ConditionTrue},
-					},
-				},
-				Spec: v1.PodSpec{
-					Containers: []v1.Container{
-						{Ports: []v1.ContainerPort{{ContainerPort: 8080}}},
-					},
-				},
-			},
+			pod: readyPod(map[string]string{
+				skipper.FunctionKey.Label: string(fnJSON),
+				key.ReplicaSet.Label:      "test-replicaset",
+				key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
+				key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
+				key.TokenExpiresAt.Label:  "2024-01-08T00:00:00Z",
+			}),
 			check: func(t *testing.T, instance *skipper.Instance) {
 				assert.Assert(t, instance.GetName() == "test-pod")
 				assert.Assert(t, instance.GetAddr() == "10.0.0.1:8080")
 				assert.Assert(t, instance.GetReplicaSet() == "test-replicaset")
 				assert.Assert(t, instance.GetAssignedAt().AsTime().Format(time.RFC3339) == "2024-01-01T00:00:00Z")
 				assert.Assert(t, instance.GetReadyAt().AsTime().Format(time.RFC3339) == "2024-01-01T00:00:01Z")
+				assert.Assert(t, instance.GetTokenExpiresAt().AsTime().Format(time.RFC3339) == "2024-01-08T00:00:00Z")
 			},
+		},
+		{
+			// Pods assigned before the annotation existed derive their expiry
+			// from assigned-at; failing here would get them deleted on upgrade.
+			name: "missing token expires at annotation derives expiry from assigned at",
+			pod: readyPod(map[string]string{
+				skipper.FunctionKey.Label: string(fnJSON),
+				key.ReplicaSet.Label:      "test-replicaset",
+				key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
+				key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
+			}),
+			check: func(t *testing.T, instance *skipper.Instance) {
+				assert.Equal(t, instance.GetTokenExpiresAt().AsTime().Format(time.RFC3339), "2024-01-08T00:00:00Z")
+			},
+		},
+		{
+			// A pod without the annotation was signed with the legacy lifetime,
+			// so a longer configured ttl must not push its derived expiry out.
+			name: "derived expiry is capped at the legacy token ttl",
+			ctrl: func() *Controller {
+				cfg := testConfig()
+				cfg.TokenTTL = 2 * legacyTokenTTL
+				return New(cfg, nil, fake.NewClientset(), nil)
+			}(),
+			pod: readyPod(map[string]string{
+				skipper.FunctionKey.Label: string(fnJSON),
+				key.ReplicaSet.Label:      "test-replicaset",
+				key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
+				key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
+			}),
+			check: func(t *testing.T, instance *skipper.Instance) {
+				assert.Equal(t, instance.GetTokenExpiresAt().AsTime().Format(time.RFC3339), "2024-01-08T00:00:00Z")
+			},
+		},
+		{
+			// A shorter configured ttl bounds the derived expiry.
+			name: "derived expiry uses a shorter configured token ttl",
+			ctrl: func() *Controller {
+				cfg := testConfig()
+				cfg.TokenTTL = 24 * time.Hour
+				return New(cfg, nil, fake.NewClientset(), nil)
+			}(),
+			pod: readyPod(map[string]string{
+				skipper.FunctionKey.Label: string(fnJSON),
+				key.ReplicaSet.Label:      "test-replicaset",
+				key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
+				key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
+			}),
+			check: func(t *testing.T, instance *skipper.Instance) {
+				assert.Equal(t, instance.GetTokenExpiresAt().AsTime().Format(time.RFC3339), "2024-01-02T00:00:00Z")
+			},
+		},
+		{
+			name: "invalid token expires at timestamp",
+			pod: readyPod(map[string]string{
+				skipper.FunctionKey.Label: string(fnJSON),
+				key.ReplicaSet.Label:      "test-replicaset",
+				key.AssignedAt.Label:      "2024-01-01T00:00:00Z",
+				key.ReadyAt.Label:         "2024-01-01T00:00:01Z",
+				key.TokenExpiresAt.Label:  "not-a-timestamp",
+			}),
+			errContains: "failed to parse token expires at annotation",
 		},
 		{
 			name:        "nil pod",
@@ -837,6 +936,11 @@ func TestInstanceFromPod(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
+			ctrl := ctrl
+			if tc.ctrl != nil {
+				ctrl = tc.ctrl
+			}
 
 			instance, err := ctrl.instanceFromPod(tc.pod)
 			if tc.errContains != "" {

@@ -43,6 +43,7 @@ var (
 	Tenant                    = stringKey("tenant")
 	Timestamp                 = timeKey("timestamp")
 	Token                     = newNames("token")
+	TokenExpiresAt            = timeKey("token_expires_at")
 	URL                       = urlKey("url")
 	UnclampedDesiredInstances = uint32Key("unclamped_desired_instances")
 	UnreadyInstances          = intKey("unready_instances")

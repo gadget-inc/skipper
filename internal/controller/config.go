@@ -30,6 +30,8 @@ type Config struct {
 	FunctionNamespaces             []string         `flag:"function-namespaces" description:"The namespaces where functions can be invoked." required:"true"`
 	FunctionAssignPath             string           `flag:"function-assign-path" description:"The path used to assign a function to a pod." default:"/__skipper/assign"`
 	FunctionAssignTimeout          time.Duration    `flag:"function-assign-timeout" description:"The timeout for assigning a function to a pod." default:"30s"`
+	TokenTTL                       time.Duration    `flag:"token-ttl" description:"The lifetime of PASETO tokens issued to assigned pods." default:"168h"`
+	TokenExpiryMargin              time.Duration    `flag:"token-expiry-margin" description:"How long before an assigned pod's token expires to replace the pod." default:"1h"`
 	MaxConcurrentStaleReplacements int              `flag:"max-concurrent-stale-replacements" description:"Maximum number of stale instances that can be replaced concurrently." default:"10"`
 	SkipForbiddenNamespaces        bool             `flag:"skip-forbidden-namespaces" description:"Whether to skip function namespaces that the service account does not have access to." default:"false"`
 	WebPort                        int              `flag:"web-port" description:"The port the web UI listens on." default:"8080"`
@@ -42,7 +44,27 @@ func (c *Config) Validate() error {
 	if c.MaxConcurrentStaleReplacements < 1 {
 		return errors.New("max concurrent stale replacements must be at least 1")
 	}
+	if c.TokenTTL <= 0 {
+		return errors.New("token ttl must be positive")
+	}
+	if c.TokenExpiryMargin <= 0 {
+		return errors.New("token expiry margin must be positive")
+	}
+	if c.TokenExpiryMargin >= c.TokenTTL {
+		return errors.New("token expiry margin must be less than token ttl")
+	}
+	// The supervisor skips graceful replacement while a scale-down decision is
+	// pending, which can last a full stabilization window, and it never runs
+	// during the startup protection period. The margin must outlast both so a
+	// pod is always replaced before the expired-token safety net fires.
+	if floor := c.tokenExpiryMarginFloor(); c.TokenExpiryMargin <= floor {
+		return fmt.Errorf("token expiry margin must be greater than %s (max of hpa downscale stabilization and heartbeat timeout, plus two scale intervals)", floor)
+	}
 	return nil
+}
+
+func (c *Config) tokenExpiryMarginFloor() time.Duration {
+	return max(c.HPADownscaleStabilization, c.HeartbeatTimeout) + 2*c.ScaleInterval
 }
 
 // PasetoPrivateKey wraps paseto.V2AsymmetricSecretKey with text unmarshaling support.

@@ -71,6 +71,7 @@ var messageTableDescriptions = map[string]string{
 	"Instance.replica_set":      "Owning ReplicaSet name; used to detect stale instances after a rollout.",
 	"Instance.assigned_at":      "When the controller atomically claimed the pod for this function.",
 	"Instance.ready_at":         "When the pod confirmed assignment via `/__skipper/assign` and started serving traffic.",
+	"Instance.token_expires_at": "When the PASETO token issued to the pod expires; the controller replaces the pod before this.",
 	"Instance.cpu_usage_milli":  "Most recent CPU usage sample in millicores.",
 	"Instance.memory_usage_mib": "Most recent memory usage sample in mebibytes.",
 

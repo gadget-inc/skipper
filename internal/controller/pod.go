@@ -61,8 +61,13 @@ GET_UNASSIGNED_POD:
 		return nil, fmt.Errorf("failed to marshal function: %w", err)
 	}
 
+	// The token and the pod annotations share one timestamp so the recorded
+	// expiry matches the token's exp claim exactly.
+	now := time.Now()
+	expiresAt := now.Add(ctrl.config.TokenTTL)
+
 	// ensure the pod is part of a replica set and isn't already assigned to a function (operations 1-4)
-	// then copy the replica set name and label/annotate the pod with the function (operations 5-8)
+	// then copy the replica set name and label/annotate the pod with the function (operations 5-9)
 	patches := []byte(`[
 		{ "op": "test", "path": "/metadata/ownerReferences/0/kind", "value": "ReplicaSet" },
 		{ "op": "test", "path": "` + key.Tenant.PatchLabel + `", "value": null },
@@ -71,7 +76,8 @@ GET_UNASSIGNED_POD:
 		{ "op": "copy", "path": "` + key.ReplicaSet.PatchAnnotation + `", "from": "/metadata/ownerReferences/0/name" },
 		{ "op": "add", "path": "` + key.Tenant.PatchLabel + `", "value": "` + fn.GetTenant() + `" },
 		{ "op": "add", "path": "` + skipper.FunctionKey.PatchAnnotation + `", "value": ` + strconv.Quote(string(fnJSON)) + ` },
-		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + time.Now().UTC().Format(time.RFC3339) + `" }
+		{ "op": "add", "path": "` + key.AssignedAt.PatchAnnotation + `", "value": "` + now.UTC().Format(time.RFC3339) + `" },
+		{ "op": "add", "path": "` + key.TokenExpiresAt.PatchAnnotation + `", "value": "` + expiresAt.UTC().Format(time.RFC3339) + `" }
 	]`)
 
 	var assignedPod *v1.Pod
@@ -99,12 +105,11 @@ GET_UNASSIGNED_POD:
 	assignCtx, cancel := context.WithTimeout(ctx, ctrl.config.FunctionAssignTimeout)
 	defer cancel()
 
-	now := time.Now()
 	token := paseto.NewToken()
 	token.SetSubject(fn.GetTenant())
 	token.SetIssuedAt(now)
 	token.SetNotBefore(now)
-	token.SetExpiration(now.Add(7 * 24 * time.Hour))
+	token.SetExpiration(expiresAt)
 
 	var req *http.Request
 	req, err = http.NewRequestWithContext(assignCtx, http.MethodPost, assignURL, nil)
@@ -139,7 +144,7 @@ GET_UNASSIGNED_POD:
 	if assignedPod.Annotations == nil {
 		assignedPod.Annotations = map[string]string{}
 	}
-	readyAtStr := now.UTC().Format(time.RFC3339)
+	readyAtStr := time.Now().UTC().Format(time.RFC3339)
 	assignedPod.Annotations[key.ReadyAt.Label] = readyAtStr
 
 	go func() {
@@ -442,6 +447,11 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 		return nil, fmt.Errorf("failed to parse assigned at annotation: %w", err)
 	}
 
+	tokenExpiresAt, err := ctrl.tokenExpiresAtFromPod(pod, assignedAt)
+	if err != nil {
+		return nil, err
+	}
+
 	port, err := ctrl.portFromPod(pod)
 	if err != nil {
 		return nil, err
@@ -464,6 +474,7 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 	instance.SetName(pod.Name)
 	instance.SetReplicaSet(replicaSet)
 	instance.SetAssignedAt(timestamppb.New(assignedAt))
+	instance.SetTokenExpiresAt(timestamppb.New(tokenExpiresAt))
 	instance.SetAddr(net.JoinHostPort(pod.Status.PodIP, port))
 	instance.SetCpuUsageMilli(cpuUsageMilli)
 	instance.SetMemoryUsageMib(memoryUsageMib)
@@ -477,6 +488,30 @@ func (ctrl *Controller) instanceFromPod(pod *v1.Pod) (*skipper.Instance, error) 
 	}
 
 	return instance, nil
+}
+
+// legacyTokenTTL is the token lifetime for pods that carry no
+// token-expires-at annotation. Their token was signed with this lifetime,
+// so a larger configured TTL must not push the derived expiry past the
+// real one.
+//
+// TODO: remove once every assigned pod carries the skipper/token-expires-at annotation.
+const legacyTokenTTL = 168 * time.Hour
+
+// tokenExpiresAtFromPod returns when the pod's assignment token expires.
+// A pod without the annotation derives its expiry from assigned-at rather
+// than failing, because collectInstances deletes pods that cannot be
+// turned into instances and an upgrade must not delete the fleet.
+func (ctrl *Controller) tokenExpiresAtFromPod(pod *v1.Pod, assignedAt time.Time) (time.Time, error) {
+	tokenExpiresAtStr, ok := pod.Annotations[key.TokenExpiresAt.Label]
+	if !ok {
+		return assignedAt.Add(min(ctrl.config.TokenTTL, legacyTokenTTL)), nil
+	}
+	tokenExpiresAt, err := time.Parse(time.RFC3339, tokenExpiresAtStr)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse token expires at annotation: %w", err)
+	}
+	return tokenExpiresAt, nil
 }
 
 func (ctrl *Controller) portFromPod(pod *v1.Pod) (string, error) {
