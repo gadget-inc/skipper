@@ -129,6 +129,10 @@ func eventTypeLabel(t skipper.EventType) string {
 		return "heartbeat timeout"
 	case skipper.EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP:
 		return "stuck instance cleanup"
+	case skipper.EventType_EVENT_TYPE_TOKEN_EXPIRY_REPLACEMENT:
+		return "token expiry replacement"
+	case skipper.EventType_EVENT_TYPE_EXPIRED_TOKEN_CLEANUP:
+		return "expired token cleanup"
 	default:
 		return "unspecified"
 	}

@@ -75,25 +75,26 @@ The controller finds an unassigned pod, claims it atomically, sends a PASETO ass
 1. **Find an unassigned pod** — waits for a pod with no tenant label, checking every 250ms until one is available.
 2. **Resolve the port** — reads the `skipper/port` annotation if set, otherwise uses the first container port.
 3. **Claim the pod** — applies an atomic patch that fails if the pod is already assigned by another controller.
-4. **Send assignment token** — HTTP POST to `/__skipper/assign` on the pod with a PASETO-signed token (7-day expiry).
+4. **Send assignment token** — HTTP POST to `/__skipper/assign` on the pod with a PASETO-signed token (lifetime set by `--token-ttl`, default 7 days).
 5. **Mark ready** — on success, patches the pod with a `ready-at` timestamp. On failure, deletes the pod and retries.
 
 ## Pod annotations
 
 Skipper uses annotations in the `skipper/` namespace to track pod state:
 
-| Annotation            | Purpose                                              |
-| --------------------- | ---------------------------------------------------- |
-| `skipper/function`    | JSON-encoded Function protobuf                       |
-| `skipper/tenant`      | Tenant identifier (set during assignment)            |
-| `skipper/assigned-at` | RFC 3339 timestamp of assignment                     |
-| `skipper/ready-at`    | RFC 3339 timestamp when the pod confirmed assignment |
-| `skipper/replica-set` | ReplicaSet name (copied from owner reference)        |
-| `skipper/port`        | Optional port override (name or number)              |
+| Annotation                 | Purpose                                              |
+| -------------------------- | ---------------------------------------------------- |
+| `skipper/function`         | JSON-encoded Function protobuf                       |
+| `skipper/tenant`           | Tenant identifier (set during assignment)            |
+| `skipper/assigned-at`      | RFC 3339 timestamp of assignment                     |
+| `skipper/ready-at`         | RFC 3339 timestamp when the pod confirmed assignment |
+| `skipper/token-expires-at` | RFC 3339 timestamp when the assignment token expires |
+| `skipper/replica-set`      | ReplicaSet name (copied from owner reference)        |
+| `skipper/port`             | Optional port override (name or number)              |
 
 ## PASETO tokens
 
-The controller signs assignment tokens using a private key provided via the `--paseto-private-key` flag. Tokens expire after 7 days.
+The controller signs assignment tokens using a private key provided via the `--paseto-private-key` flag. Tokens expire after `--token-ttl` (default: 7 days). The controller records the expiry in the `skipper/token-expires-at` annotation and replaces the pod before the token stops working (see [Stale instance replacement](#stale-instance-replacement)).
 
 During assignment, the token is sent to the pod via HTTP POST to the assignment endpoint. Pods should validate the token signature to confirm the assignment came from a legitimate controller. The pod can show this token to anyone with the controller's public key — including the original caller — to prove it was assigned by a real controller.
 
@@ -112,6 +113,8 @@ Behavior differences from standard functions:
 The controller detects stale instances when a replica set is scaled to zero or function configuration changes. To maintain availability during rollouts, it assigns a replacement pod before deleting the stale one.
 
 Concurrent replacements are limited by `--max-concurrent-stale-replacements` (default: 10). This prevents a large rollout from overwhelming the cluster with simultaneous reassignments.
+
+Instances whose assignment token expires within `--token-expiry-margin` (default: 1 hour) are replaced the same way, so a pod never serves with an expired token. If a replacement could not be assigned before the token expires, the controller deletes the pod anyway and the next scaling pass assigns a fresh one.
 
 Stuck instances -- pods that were assigned but never became ready after 2x the assignment timeout -- are cleaned up automatically.
 

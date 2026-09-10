@@ -179,6 +179,7 @@ var (
 		ReplicaSet:     new(fakeString),
 		AssignedAt:     timestamppb.New(fakeTime),
 		ReadyAt:        timestamppb.New(fakeTime),
+		TokenExpiresAt: timestamppb.New(fakeTime),
 		CpuUsageMilli:  new(fakeUint32),
 		MemoryUsageMib: new(fakeUint32),
 	}.Build()

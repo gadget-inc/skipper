@@ -50,6 +50,7 @@
 		"instance.name": "test",
 		"instance.ready_at": "2024-01-15T10:30:00Z",
 		"instance.replica_set": "test",
+		"instance.token_expires_at": "2024-01-15T10:30:00Z",
 		"k8s.pod.conditions.Ready": "True",
 		"k8s.pod.label.key": "value",
 		"k8s.pod.name": "test",
@@ -159,7 +160,8 @@
 			"memory_usage_mib": 42,
 			"name": "test",
 			"ready_at": "2024-01-15T10:30:00Z",
-			"replica_set": "test"
+			"replica_set": "test",
+			"token_expires_at": "2024-01-15T10:30:00Z"
 		},
 		"k8s.pod": {
 			"conditions": {

@@ -36,6 +36,10 @@ For oneshot functions, the controller waits until it has been running long enoug
 
 Pods stuck in the "assigned" state (never became ready) for longer than 2x the assignment timeout are deleted automatically. This handles cases where the assignment HTTP request failed silently or the pod crashed during assignment.
 
+## Token expiry rotation
+
+Each assigned pod holds a PASETO token that expires after `--token-ttl` (default: 7 days). When a pod's token is within `--token-expiry-margin` (default: 1 hour) of expiring, the controller assigns a replacement pod first and then deletes the old one, so capacity is preserved. A pod whose token has expired without a replacement is deleted on the next converge pass regardless of scaling direction. Oneshot pods are exempt: their single request is left to the heartbeat timeout.
+
 ## Instance release (oneshot)
 
 After a oneshot request completes, the router calls the `ReleaseInstance` RPC. This is fire-and-forget with a 5-second timeout using a background context. The controller deletes the pod. The operation is idempotent -- it returns success even if the pod is already gone.

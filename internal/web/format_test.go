@@ -121,6 +121,8 @@ func TestEventTypeLabel(t *testing.T) {
 	assert.Equal(t, eventTypeLabel(skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT), "stale replacement")
 	assert.Equal(t, eventTypeLabel(skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT), "heartbeat timeout")
 	assert.Equal(t, eventTypeLabel(skipper.EventType_EVENT_TYPE_STUCK_INSTANCE_CLEANUP), "stuck instance cleanup")
+	assert.Equal(t, eventTypeLabel(skipper.EventType_EVENT_TYPE_TOKEN_EXPIRY_REPLACEMENT), "token expiry replacement")
+	assert.Equal(t, eventTypeLabel(skipper.EventType_EVENT_TYPE_EXPIRED_TOKEN_CLEANUP), "expired token cleanup")
 	assert.Equal(t, eventTypeLabel(skipper.EventType_EVENT_TYPE_UNSPECIFIED), "unspecified")
 }
 

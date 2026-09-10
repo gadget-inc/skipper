@@ -34,6 +34,7 @@ message Instance {
   google.protobuf.Timestamp ready_at = 6;
   uint32 cpu_usage_milli = 7;
   uint32 memory_usage_mib = 8;
+  google.protobuf.Timestamp token_expires_at = 9;
 }
 
 message Heartbeat {
@@ -74,6 +75,8 @@ enum EventType {
   EVENT_TYPE_STALE_REPLACEMENT = 5;
   EVENT_TYPE_HEARTBEAT_TIMEOUT = 6;
   EVENT_TYPE_STUCK_INSTANCE_CLEANUP = 7;
+  EVENT_TYPE_TOKEN_EXPIRY_REPLACEMENT = 8;
+  EVENT_TYPE_EXPIRED_TOKEN_CLEANUP = 9;
 }
 
 enum EventSeverity {

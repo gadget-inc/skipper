@@ -3,6 +3,7 @@ package controller
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -20,7 +21,9 @@ import (
 	"gotest.tools/v3/poll"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestSupervisor(t *testing.T) {
@@ -2219,6 +2222,115 @@ func TestCleanupStuckInstances(t *testing.T) {
 	}
 }
 
+// TestCleanupExpiredInstances tests that instances whose assignment token
+// has expired (or will before the next converge) are terminated.
+func TestCleanupExpiredInstances(t *testing.T) {
+	t.Parallel()
+
+	type testState struct {
+		fn             *skipper.Function
+		fakeKubernetes *fake.Clientset
+		ctrl           *Controller
+	}
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *testState)
+		check func(*testing.T, *testState, []*skipper.Instance)
+	}{
+		{
+			name: "terminates instance with expired token",
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+				assert.Assert(t, len(instances) == 0)
+			},
+		},
+		{
+			// The converge loop may not run again before the token expires, so
+			// anything expiring within two scale intervals is already too late.
+			name: "terminates instance whose token expires before the next converge",
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(state.ctrl.config.ScaleInterval).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 0)
+				assert.Assert(t, len(instances) == 0)
+			},
+		},
+		{
+			name: "keeps instance with valid token",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.NewAssignedPod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+				assert.Assert(t, len(instances) == 1)
+			},
+		},
+		{
+			// Keep the instance in the slice so the next converge retries
+			// rather than scaling up as if the pod were gone.
+			name: "keeps instance when delete fails",
+			setup: func(t *testing.T, state *testState) {
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(pod)
+
+				state.fakeKubernetes.PrependReactor("delete", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.New("delete failed")
+				})
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1)
+				assert.Assert(t, len(instances) == 1)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+
+			state := &testState{
+				fn:             fixture.NewFunction(t),
+				fakeKubernetes: fake.NewClientset(fixture.NewControllerPod()),
+			}
+			state.ctrl = New(testConfig(), nil, state.fakeKubernetes, nil)
+
+			tc.setup(t, state)
+
+			err := state.ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			instances, err := state.ctrl.getInstances(ctx, state.fn)
+			assert.NilError(t, err)
+
+			supervisor := state.ctrl.supervisor(state.fn)
+			instances = supervisor.cleanupExpiredInstances(ctx, instances)
+
+			tc.check(t, state, instances)
+		})
+	}
+}
+
 // TestReplaceStaleInstances tests that stale instances (on old replica sets)
 // are properly replaced with instances on new replica sets.
 func TestReplaceStaleInstances(t *testing.T) {
@@ -2325,6 +2437,122 @@ func TestReplaceStaleInstances(t *testing.T) {
 				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{})
 				assert.NilError(t, err)
 				assert.Assert(t, len(pods.Items) == 1)
+			},
+		},
+		{
+			// An instance on the active replica set is still replaced once its
+			// token is within the expiry margin.
+			name: "replaces instance whose token expires within margin",
+			setup: func(t *testing.T, state *testState) {
+				expiringPod := fixture.NewAssignedPod(t, state.fn, nil)
+				expiringPod.Name = "expiring-pod"
+				expiringPod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(state.ctrl.config.TokenExpiryMargin / 2).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(expiringPod)
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
+				})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1, "expected 1 pod, got %d", len(pods.Items))
+				assert.Assert(t, pods.Items[0].Name != "expiring-pod", "expiring pod should have been replaced")
+			},
+		},
+		{
+			name: "keeps instance whose token expires after margin",
+			setup: func(t *testing.T, state *testState) {
+				healthyPod := fixture.NewAssignedPod(t, state.fn, nil)
+				healthyPod.Name = "healthy-pod"
+				healthyPod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(2 * state.ctrl.config.TokenExpiryMargin).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(healthyPod)
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
+				})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1, "expected 1 pod, got %d", len(pods.Items))
+				assert.Equal(t, pods.Items[0].Name, "healthy-pod")
+			},
+		},
+		{
+			// Token expiry must be detected without a replica set lookup, otherwise
+			// a pod whose replica set was garbage-collected would never rotate.
+			name: "replaces expiring instance even when replica set lookup fails",
+			setup: func(t *testing.T, state *testState) {
+				expiringPod := fixture.NewAssignedPod(t, state.fn, nil)
+				expiringPod.Name = "expiring-pod"
+				expiringPod.Annotations[key.ReplicaSet.Label] = "nonexistent-replicaset"
+				expiringPod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(state.ctrl.config.TokenExpiryMargin / 2).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(expiringPod)
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
+				})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1, "expected 1 pod, got %d", len(pods.Items))
+				assert.Assert(t, pods.Items[0].Name != "expiring-pod", "expiring pod should have been replaced")
+			},
+		},
+		{
+			// With only one replacement pod available, the instance closest to
+			// expiry must be the one that gets it.
+			name: "replaces soonest-expiring instance first",
+			setup: func(t *testing.T, state *testState) {
+				laterPod := fixture.NewAssignedPod(t, state.fn, nil)
+				laterPod.Name = "expires-later"
+				laterPod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(state.ctrl.config.TokenExpiryMargin / 2).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(laterPod)
+
+				soonerPod := fixture.NewAssignedPod(t, state.fn, nil)
+				soonerPod.Name = "expires-sooner"
+				soonerPod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(state.ctrl.config.TokenExpiryMargin / 4).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(soonerPod)
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
+				})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 2, "expected 2 pods, got %d", len(pods.Items))
+				names := []string{pods.Items[0].Name, pods.Items[1].Name}
+				assert.Assert(t, slices.Contains(names, "expires-later"), "expires-later should be kept until a pod is available, got %v", names)
+				assert.Assert(t, !slices.Contains(names, "expires-sooner"), "expires-sooner should have been replaced, got %v", names)
+			},
+		},
+		{
+			name: "does not replace expiring oneshot instance",
+			setup: func(t *testing.T, state *testState) {
+				state.fn.SetOneshot(true)
+
+				expiringPod := fixture.NewAssignedPod(t, state.fn, nil)
+				expiringPod.Name = "expiring-pod"
+				expiringPod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(state.ctrl.config.TokenExpiryMargin / 2).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(expiringPod)
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			check: func(t *testing.T, state *testState, instances []*skipper.Instance) {
+				pods, err := state.fakeKubernetes.CoreV1().Pods(state.fn.GetNamespace()).List(t.Context(), metav1.ListOptions{
+					LabelSelector: key.Tenant.Label + "=" + state.fn.GetTenant(),
+				})
+				assert.NilError(t, err)
+				assert.Assert(t, len(pods.Items) == 1, "expected 1 pod, got %d", len(pods.Items))
+				assert.Equal(t, pods.Items[0].Name, "expiring-pod")
 			},
 		},
 		{
@@ -3279,6 +3507,161 @@ func TestConvergeDoesNotReplaceStaleInstancesWhenScalingDown(t *testing.T) {
 		"expected fresh-pod to remain, got %s", pods.Items[0].Name)
 }
 
+// newTokenExpiryConvergeTest builds a controller and supervisor whose
+// scaling decision is driven purely by in-flight requests and whose
+// startup protection period has elapsed, so converge exercises the
+// token-expiry paths rather than being short-circuited by them.
+func newTokenExpiryConvergeTest(t *testing.T) (*skipper.Function, *fake.Clientset, *Controller) {
+	t.Helper()
+
+	fn := fixture.NewFunction(t)
+	fn.GetScale().SetMaxInstances(3)
+	fn.GetScale().SetTargetCpuUsageMilli(0)
+	fn.GetScale().SetTargetMemoryUsageMib(0)
+	fakeKubernetes := fake.NewClientset(fixture.NewControllerPod())
+
+	cfg := testConfig()
+	cfg.HeartbeatTimeout = 10 * time.Second
+	cfg.HPADownscaleStabilization = time.Second
+
+	ctrl := New(cfg, nil, fakeKubernetes, nil)
+	ctrl.setStartedAt(time.Now().Add(-cfg.HeartbeatTimeout - time.Second))
+
+	fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, fn))
+
+	return fn, fakeKubernetes, ctrl
+}
+
+// TestConvergeDeletesExpiredTokenWhenScalingDown verifies that the
+// expired-token safety net runs even during scale-down, when graceful
+// replacement is skipped, and that it removes the expired pod rather
+// than the oldest one.
+func TestConvergeDeletesExpiredTokenWhenScalingDown(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fn, fakeKubernetes, ctrl := newTokenExpiryConvergeTest(t)
+
+	// The oldest pod has a valid token; the newest pod's token has expired.
+	oldPod := fixture.NewAssignedPod(t, fn, nil)
+	oldPod.Name = "old-pod"
+	oldPod.Annotations[key.AssignedAt.Label] = time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	fakeKubernetes.Tracker().Add(oldPod)
+
+	expiredPod := fixture.NewAssignedPod(t, fn, nil)
+	expiredPod.Name = "expired-pod"
+	expiredPod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	fakeKubernetes.Tracker().Add(expiredPod)
+
+	err := ctrl.startInformers(ctx)
+	assert.NilError(t, err)
+
+	supervisor := ctrl.supervisor(fn)
+	supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
+		Function:         fn,
+		Timestamp:        timestamppb.Now(),
+		InFlightRequests: proto.Uint32(10), // ceil(10/50) = 1 instance, so this is a scale-down from 2
+	}.Build())
+
+	err = supervisor.converge(ctx)
+	assert.NilError(t, err)
+
+	pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+		LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+	})
+	assert.NilError(t, err)
+	assert.Assert(t, len(pods.Items) == 1, "expected 1 pod, got %d", len(pods.Items))
+	assert.Equal(t, pods.Items[0].Name, "old-pod")
+
+	var found bool
+	for _, event := range ctrl.events.snapshot() {
+		if event.GetType() == skipper.EventType_EVENT_TYPE_EXPIRED_TOKEN_CLEANUP {
+			found = true
+			break
+		}
+	}
+	assert.Assert(t, found, "expected EXPIRED_TOKEN_CLEANUP event")
+}
+
+// TestConvergeReplacesExpiringToken verifies the end-to-end graceful
+// path: a steady-state function whose only instance is inside the token
+// expiry margin gets a fresh pod assigned and the old one deleted within
+// a single converge, leaving capacity unchanged.
+func TestConvergeReplacesExpiringToken(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name  string
+		setup func(*testing.T, *Controller, *v1.Pod)
+	}{
+		{
+			name: "annotated expiry within margin",
+			setup: func(t *testing.T, ctrl *Controller, pod *v1.Pod) {
+				pod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(ctrl.config.TokenExpiryMargin / 2).UTC().Format(time.RFC3339)
+			},
+		},
+		{
+			// A pod assigned before the annotation existed derives its expiry
+			// from assigned-at and must still be rotated.
+			name: "derived expiry within margin",
+			setup: func(t *testing.T, ctrl *Controller, pod *v1.Pod) {
+				delete(pod.Annotations, key.TokenExpiresAt.Label)
+				pod.Annotations[key.AssignedAt.Label] = time.Now().Add(-ctrl.config.TokenTTL + ctrl.config.TokenExpiryMargin/2).UTC().Format(time.RFC3339)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+
+			fn, fakeKubernetes, ctrl := newTokenExpiryConvergeTest(t)
+
+			expiringPod := fixture.NewAssignedPod(t, fn, nil)
+			expiringPod.Name = "expiring-pod"
+			tc.setup(t, ctrl, expiringPod)
+			fakeKubernetes.Tracker().Add(expiringPod)
+
+			fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, fn, nil))
+
+			err := ctrl.startInformers(ctx)
+			assert.NilError(t, err)
+
+			supervisor := ctrl.supervisor(fn)
+			supervisor.routerHeartbeats.Store(fixture.RouterIP, skipper.Heartbeat_builder{
+				Function:         fn,
+				Timestamp:        timestamppb.Now(),
+				InFlightRequests: proto.Uint32(10), // ceil(10/50) = 1 instance, matching the current count
+			}.Build())
+
+			err = supervisor.converge(ctx)
+			assert.NilError(t, err)
+
+			pods, err := fakeKubernetes.CoreV1().Pods(fn.GetNamespace()).List(ctx, metav1.ListOptions{
+				LabelSelector: key.Tenant.Label + "=" + fn.GetTenant(),
+			})
+			assert.NilError(t, err)
+			assert.Assert(t, len(pods.Items) == 1, "expected 1 pod, got %d", len(pods.Items))
+			assert.Assert(t, pods.Items[0].Name != "expiring-pod", "expiring pod should have been replaced")
+
+			var found bool
+			for _, event := range ctrl.events.snapshot() {
+				if event.GetType() == skipper.EventType_EVENT_TYPE_TOKEN_EXPIRY_REPLACEMENT {
+					assert.Equal(t, event.GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+					found = true
+					break
+				}
+			}
+			assert.Assert(t, found, "expected TOKEN_EXPIRY_REPLACEMENT event")
+		})
+	}
+}
+
 // TestSupervisorStartup verifies that supervisors are started correctly
 // in various scenarios. With the current implementation, start() is called
 // on every supervisor() call, so supervisors are started idempotently
@@ -4205,6 +4588,56 @@ func TestSupervisorEvents(t *testing.T) {
 					}
 				}
 				assert.Assert(t, found, "expected STALE_REPLACEMENT event")
+			},
+		},
+		{
+			name: "token expiry replacement records event",
+			setup: func(t *testing.T, state *testState) {
+				expiringPod := fixture.NewAssignedPod(t, state.fn, nil)
+				expiringPod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(state.ctrl.config.TokenExpiryMargin / 2).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(expiringPod)
+
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+				state.fakeKubernetes.Tracker().Add(fixture.NewAvailablePod(t, state.fn, nil))
+			},
+			run: func(t *testing.T, ctx context.Context, state *testState) {
+				instances, err := state.ctrl.getInstances(ctx, state.fn)
+				assert.NilError(t, err)
+				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor.replaceStaleInstances(ctx, state.fn, instances, len(instances))
+			},
+			check: func(t *testing.T, state *testState) {
+				var found bool
+				for _, event := range state.ctrl.events.snapshot() {
+					assert.Assert(t, event.GetType() != skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT, "token expiry must not be reported as staleness")
+					if event.GetType() == skipper.EventType_EVENT_TYPE_TOKEN_EXPIRY_REPLACEMENT {
+						assert.Equal(t, event.GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_INFO)
+						found = true
+					}
+				}
+				assert.Assert(t, found, "expected TOKEN_EXPIRY_REPLACEMENT event")
+			},
+		},
+		{
+			name: "expired token cleanup records event",
+			setup: func(t *testing.T, state *testState) {
+				state.fakeKubernetes.Tracker().Add(fixture.CurrentReplicaSet(t, state.fn))
+
+				pod := fixture.NewAssignedPod(t, state.fn, nil)
+				pod.Annotations[key.TokenExpiresAt.Label] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+				state.fakeKubernetes.Tracker().Add(pod)
+			},
+			run: func(t *testing.T, ctx context.Context, state *testState) {
+				instances, err := state.ctrl.getInstances(ctx, state.fn)
+				assert.NilError(t, err)
+				supervisor := state.ctrl.supervisor(state.fn)
+				supervisor.cleanupExpiredInstances(ctx, instances)
+			},
+			check: func(t *testing.T, state *testState) {
+				events := state.ctrl.events.snapshot()
+				assert.Assert(t, len(events) == 1, "expected 1 event, got %d", len(events))
+				assert.Equal(t, events[0].GetType(), skipper.EventType_EVENT_TYPE_EXPIRED_TOKEN_CLEANUP)
+				assert.Equal(t, events[0].GetSeverity(), skipper.EventSeverity_EVENT_SEVERITY_WARN)
 			},
 		},
 		{

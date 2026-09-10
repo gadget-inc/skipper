@@ -133,6 +133,7 @@ func NewAssignedPod(t *testing.T, fn *skipper.Function, handler http.Handler) *v
 				key.ReplicaSet.Label:      CurrentReplicaSetName(fn),
 				key.AssignedAt.Label:      time.Now().UTC().Format(time.RFC3339),
 				key.ReadyAt.Label:         time.Now().UTC().Format(time.RFC3339),
+				key.TokenExpiresAt.Label:  time.Now().Add(168 * time.Hour).UTC().Format(time.RFC3339),
 			},
 		},
 		Status: v1.PodStatus{

@@ -19,6 +19,7 @@ func (instance *Instance) LogValue() slog.Value {
 		key.ReplicaSet.Slog(instance.GetReplicaSet()),
 		key.AssignedAt.Slog(instance.GetAssignedAt().AsTime()),
 		key.ReadyAt.Slog(instance.GetReadyAt().AsTime()),
+		key.TokenExpiresAt.Slog(instance.GetTokenExpiresAt().AsTime()),
 		key.CPUUsageMilli.Slog(instance.GetCpuUsageMilli()),
 		key.MemoryUsageMiB.Slog(instance.GetMemoryUsageMib()),
 	)

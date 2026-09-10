@@ -34,9 +34,9 @@ The Supervisor executes the following steps every `--scale-interval` (default: 1
 3. Calculate desired instances using the HPA algorithm
 4. Record the recommendation to the stabilization window
 5. Check responsibility via the hash ring (early return if not responsible)
-6. Clean up stuck instances
+6. Clean up stuck instances and instances whose assignment token has expired
 7. Execute scaling (assign or delete pods)
-8. Replace stale instances (only when not scaling down)
+8. Replace stale instances and instances whose assignment token is about to expire (only when not scaling down)
 
 For oneshot functions, each request gets its own pod. The supervisor only intervenes as a safety net — if a pod's heartbeat times out, the controller deletes it and stops the loop.
 
@@ -75,7 +75,7 @@ When a request arrives for a function with no ready instances, the controller as
 
    All four conditions must hold for the patch to succeed. If any test fails, another controller (or a previous attempt) already claimed the pod — the controller retries with a different pod (409 conflict).
 
-4. **Send assignment token.** HTTP POST to `/__skipper/assign` on the pod with a PASETO-signed token (Ed25519, 7-day expiry).
+4. **Send assignment token.** HTTP POST to `/__skipper/assign` on the pod with a PASETO-signed token (Ed25519, lifetime set by `--token-ttl`). The pod is annotated with the token's expiry so the supervisor can replace it before the token stops working.
 5. **Mark ready.** On success, the controller patches the pod with a `ready-at` timestamp. On failure, it deletes the pod and retries.
 
 This makes assignment idempotent — if two controllers try to assign the same pod simultaneously, only one succeeds.

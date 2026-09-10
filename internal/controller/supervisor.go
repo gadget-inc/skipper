@@ -245,13 +245,15 @@ func (s *Supervisor) recordRecommendation(desiredInstances uint32) Recommendatio
 // The order of operations is designed for efficiency:
 //  1. Calculate scaling decision based on current instances
 //  2. Check responsibility - return early if not responsible (still tracks recommendations)
-//  3. Cleanup stuck instances (cheap - just deletes broken pods)
+//  3. Cleanup stuck and expired-token instances (cheap - just deletes broken pods)
 //  4. Execute scaling (scale up or down as needed)
-//  5. Replace stale instances only when not scaling down
+//  5. Replace stale and token-expiring instances only when not scaling down
 //
 // During scale-down, stale instances are naturally deleted first since
 // scale() deletes oldest instances first and stale instances are
-// typically older (assigned before deployment).
+// typically older (assigned before deployment). The same holds for
+// instances approaching token expiry, since token expiry follows
+// assignment time.
 func (s *Supervisor) converge(ctx context.Context) error {
 	ctx, span := telemetry.Trace(ctx, "controller.supervisor.converge")
 	defer span.End()
@@ -290,6 +292,15 @@ func (s *Supervisor) converge(ctx context.Context) error {
 	// The only role here is to delete orphaned pods when the heartbeat times out
 	// (e.g., router crashed without calling ReleaseInstance).
 	if fn.GetOneshot() {
+		// A oneshot pod outliving its token is a request that has run for
+		// the whole token lifetime. Deleting it would only lose that work,
+		// so surface it and leave the heartbeat timeout in charge.
+		for _, inst := range instances {
+			if s.tokenExpired(inst) {
+				log.Warn(ctx, "oneshot instance token has expired", skipper.InstanceKey.Slog(inst))
+			}
+		}
+
 		if scalingDecision.GetReason() != skipper.ScaleReason_SCALE_REASON_HEARTBEAT_TIMEOUT {
 			return nil
 		}
@@ -366,8 +377,10 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		s.ctrl.events.add(fn, eventType, skipper.EventSeverity_EVENT_SEVERITY_WARN, eventMessage)
 	}
 
-	// 3. Cleanup stuck instances (cheap, run before scaling execution)
+	// 3. Cleanup stuck and expired-token instances (cheap, run before scaling execution
+	// so the scale-up below restores any capacity they were providing)
 	instances = s.cleanupStuckInstances(ctx, instances)
+	instances = s.cleanupExpiredInstances(ctx, instances)
 
 	// 4. Execute scaling
 	ready, unready, err := s.scaleWithoutLock(ctx, fn, instances, scalingDecision)
@@ -375,9 +388,9 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		return err
 	}
 
-	// 5. Replace stale instances only when not scaling down.
-	// During scale-down, stale instances are naturally deleted first
-	// (oldest instances deleted first, and stale instances are typically older).
+	// 5. Replace stale and token-expiring instances only when not scaling down.
+	// During scale-down, these instances are naturally deleted first
+	// (oldest instances deleted first, and they are typically the oldest).
 	// This avoids wasteful pod assignments when we're reducing capacity anyway.
 	if !isScalingDown {
 		s.replaceStaleInstances(ctx, fn, ready, len(ready)+len(unready))
@@ -545,17 +558,81 @@ func (s *Supervisor) cleanupStuckInstances(ctx context.Context, instances []*ski
 	})
 }
 
-// replaceStaleInstances detects instances running on replica sets
-// that have been scaled to 0 (e.g., after a deployment update) and
-// replaces them. For each stale instance, it first assigns a new pod
-// from the active replica set (temporarily exceeding max instances if
-// needed), then terminates the stale instance. This guarantees
-// availability during deployment rollouts.
+// tokenExpiringSoon reports whether the instance's assignment token
+// expires within TokenExpiryMargin, the window in which the supervisor
+// replaces it gracefully.
+func (s *Supervisor) tokenExpiringSoon(instance *skipper.Instance) bool {
+	return time.Until(instance.GetTokenExpiresAt().AsTime()) <= s.ctrl.config.TokenExpiryMargin
+}
+
+// tokenExpired reports whether the instance's assignment token expires
+// before the converge loop is guaranteed to run again. Waiting for the
+// exact expiry would leave the pod serving with a dead token for up to
+// one scale interval.
+func (s *Supervisor) tokenExpired(instance *skipper.Instance) bool {
+	return time.Until(instance.GetTokenExpiresAt().AsTime()) <= 2*s.ctrl.config.ScaleInterval
+}
+
+// cleanupExpiredInstances terminates instances whose assignment token
+// has expired or is about to. These pods cannot authenticate, so
+// they are deleted regardless of scaling direction; the graceful
+// replacement in replaceStaleInstances is expected to retire instances
+// well before this point, and this is the safety net for when it could
+// not (for example, no unassigned pods were available for the whole
+// margin).
+func (s *Supervisor) cleanupExpiredInstances(ctx context.Context, instances []*skipper.Instance) []*skipper.Instance {
+	return slices.DeleteFunc(instances, func(instance *skipper.Instance) bool {
+		if !s.tokenExpired(instance) {
+			return false
+		}
+		ctx := log.With(ctx, skipper.InstanceKey.Slog(instance))
+		log.Warn(ctx, "terminating instance with expired token")
+		err := s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
+		if err != nil {
+			log.Error(ctx, "failed to terminate instance with expired token", key.Error.Slog(err))
+			return false // Keep in slice; another iteration will retry
+		}
+		s.ctrl.events.add(instance.GetFunction(), skipper.EventType_EVENT_TYPE_EXPIRED_TOKEN_CLEANUP, skipper.EventSeverity_EVENT_SEVERITY_WARN,
+			fmt.Sprintf("terminated instance %s with expired token", instance.GetName()))
+		return true
+	})
+}
+
+// replacementReason reports why an instance must be replaced, or false
+// when it should keep running. An instance is replaced when its token
+// is about to expire, when its replica set has been scaled to 0 (a
+// deployment rollout), or when the function config (metadata/scale)
+// has changed. Token expiry is checked before the replica set lookup so
+// an instance whose replica set has been garbage-collected is still
+// rotated.
+func (s *Supervisor) replacementReason(ctx context.Context, lister namespaceLister, fn *skipper.Function, instance *skipper.Instance) (skipper.EventType, bool) {
+	if s.tokenExpiringSoon(instance) {
+		return skipper.EventType_EVENT_TYPE_TOKEN_EXPIRY_REPLACEMENT, true
+	}
+
+	replicaSet, err := lister.replicaSetLister.ReplicaSets(fn.GetNamespace()).Get(instance.GetReplicaSet())
+	if err != nil {
+		log.Warn(ctx, "failed to get replica set for instance", key.Error.Slog(err), skipper.InstanceKey.Slog(instance))
+		return skipper.EventType_EVENT_TYPE_UNSPECIFIED, false
+	}
+
+	if replicaSet.Status.Replicas == 0 || !proto.Equal(instance.GetFunction(), fn) {
+		return skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT, true
+	}
+	return skipper.EventType_EVENT_TYPE_UNSPECIFIED, false
+}
+
+// replaceStaleInstances replaces instances that are stale (see
+// replacementReason) or whose assignment token is about to expire. For
+// each such instance, it first assigns a new pod from the active
+// replica set (temporarily exceeding max instances if needed), then
+// terminates the old instance. This guarantees availability during
+// deployment rollouts and token rotation.
 //
 // This function should only be called when NOT scaling down, as
 // scale-down naturally deletes oldest instances first (which are
-// typically stale). Calling this during scale-down would create
-// wasteful pod assignments.
+// typically stale or closest to expiry). Calling this during scale-down
+// would create wasteful pod assignments.
 //
 // To prevent unbounded pod creation when deletePod fails repeatedly,
 // this function will not assign new replacement pods if the total
@@ -576,21 +653,19 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Func
 		return
 	}
 
+	// Replace the instances closest to token expiry first, so any deferral
+	// from the semaphore or the maxInstances+1 cap falls on the least urgent.
+	slices.SortStableFunc(instances, func(a, b *skipper.Instance) int {
+		return a.GetTokenExpiresAt().AsTime().Compare(b.GetTokenExpiresAt().AsTime())
+	})
+
 	for _, instance := range instances {
-		replicaSet, err := namespaceLister.replicaSetLister.ReplicaSets(fn.GetNamespace()).Get(instance.GetReplicaSet())
-		if err != nil {
-			log.Warn(ctx, "failed to get replica set for instance", key.Error.Slog(err), skipper.InstanceKey.Slog(instance))
+		eventType, replace := s.replacementReason(ctx, namespaceLister, fn, instance)
+		if !replace {
 			continue
 		}
 
-		// Stale if the replica set was scaled to zero (deployment rollout)
-		// or if the function config (metadata/scale) has changed.
-		isStale := replicaSet.Status.Replicas == 0 || !proto.Equal(instance.GetFunction(), fn)
-		if !isStale {
-			continue
-		}
-
-		// Instance is stale - scale up first to ensure a replacement, then terminate
+		// Scale up first to ensure a replacement, then terminate
 		ctx := log.With(ctx, skipper.InstanceKey.Slog(instance))
 
 		// Check if we're already at maxInstances+1 to prevent unbounded pod creation.
@@ -610,9 +685,15 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Func
 			return
 		}
 
-		log.Info(ctx, "replacing stale instance")
-		s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_STALE_REPLACEMENT, skipper.EventSeverity_EVENT_SEVERITY_INFO,
-			fmt.Sprintf("replacing stale instance %s", instance.GetName()))
+		if eventType == skipper.EventType_EVENT_TYPE_TOKEN_EXPIRY_REPLACEMENT {
+			log.Info(ctx, "replacing instance before token expiry", key.TokenExpiresAt.Slog(instance.GetTokenExpiresAt().AsTime()))
+			s.ctrl.events.add(fn, eventType, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+				fmt.Sprintf("replacing instance %s before token expiry", instance.GetName()))
+		} else {
+			log.Info(ctx, "replacing stale instance")
+			s.ctrl.events.add(fn, eventType, skipper.EventSeverity_EVENT_SEVERITY_INFO,
+				fmt.Sprintf("replacing stale instance %s", instance.GetName()))
+		}
 
 		// Assign a new pod from the active replica set (temporarily exceeding max instances).
 		// Use a closure with defer to ensure the semaphore is released even if assignPod panics.
@@ -631,7 +712,7 @@ func (s *Supervisor) replaceStaleInstances(ctx context.Context, fn *skipper.Func
 		currentTotalInstances++
 
 		// Terminate the stale instance now that a replacement has been assigned
-		err = s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
+		err := s.ctrl.deletePod(ctx, instance.GetFunction().GetNamespace(), instance.GetName(), metav1.DeleteOptions{})
 		if err != nil {
 			log.Error(ctx, "failed to terminate stale instance", key.Error.Slog(err))
 			// If deletion fails, currentTotalInstances remains incremented, preventing
