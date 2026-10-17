@@ -25,6 +25,14 @@ import (
 	"github.com/gadget-inc/skipper/internal/skipper"
 )
 
+// ExitPath makes an assigned fixture exit with ExitCode mid-request, so it
+// drops the connection the way an OOM-killed pod does. Integration tests
+// use it to check what the router reports for a oneshot instance that dies.
+const (
+	ExitPath = "/__fixture/exit"
+	ExitCode = 3
+)
+
 // Server is the in-cluster fixture HTTP+WebSocket service. A pod hosts
 // exactly one Server; once /__skipper/assign succeeds it commits to that
 // assignment for its lifetime, and the controller terminates the pod
@@ -32,6 +40,7 @@ import (
 type Server struct {
 	publicKey paseto.V2AsymmetricPublicKey
 	tokenPath string
+	exit      func(code int)
 
 	mu       sync.Mutex
 	assigned bool
@@ -41,7 +50,7 @@ type Server struct {
 // boots in the assigned state -- pods that restart after a successful
 // assign keep their identity.
 func New(publicKey paseto.V2AsymmetricPublicKey, tokenPath string) (*Server, error) {
-	s := &Server{publicKey: publicKey, tokenPath: tokenPath}
+	s := &Server{publicKey: publicKey, tokenPath: tokenPath, exit: os.Exit}
 	if _, err := os.Stat(tokenPath); err == nil {
 		s.assigned = true
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -57,6 +66,7 @@ func (s *Server) Handler() http.Handler {
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/__skipper/assign", s.handleAssign)
+	mux.HandleFunc(ExitPath, s.handleExit)
 	mux.HandleFunc("/", s.handleEcho)
 	return mux
 }
@@ -111,6 +121,20 @@ func (s *Server) handleEcho(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		log.Error(r.Context(), "failed to encode echo response", key.Error.Slog(err))
 	}
+}
+
+func (s *Server) handleExit(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	assigned := s.assigned
+	s.mu.Unlock()
+
+	if !assigned {
+		http.Error(w, "not assigned", http.StatusServiceUnavailable)
+		return
+	}
+
+	log.Warn(r.Context(), "exiting mid-request", key.ExitCode.Slog(ExitCode))
+	s.exit(ExitCode)
 }
 
 func isWebSocketUpgrade(r *http.Request) bool {

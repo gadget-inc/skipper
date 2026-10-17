@@ -16,6 +16,8 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gotest.tools/v3/assert"
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
@@ -739,4 +741,68 @@ func TestClientScale(t *testing.T) {
 			tc.check(t, state, instances, err)
 		})
 	}
+}
+
+// legacyReleaseServer answers ReleaseInstance the way a controller from
+// before report_termination did: with an empty response.
+type legacyReleaseServer struct {
+	skipper.UnimplementedControllerServiceServer
+}
+
+func (s *legacyReleaseServer) ReleaseInstance(ctx context.Context, req *skipper.ReleaseInstanceRequest) (*skipper.ReleaseInstanceResponse, error) {
+	return &skipper.ReleaseInstanceResponse{}, nil
+}
+
+func TestClientReleaseFailedInstance(t *testing.T) {
+	t.Parallel()
+
+	newInstance := func(pod *v1.Pod) *skipper.Instance {
+		return skipper.Instance_builder{
+			Function:   skipper.Function_builder{Namespace: new(pod.Namespace)}.Build(),
+			Name:       new(pod.Name),
+			AssignedAt: timestamppb.New(terminationAssignedAt),
+		}.Build()
+	}
+
+	t.Run("returns the termination and deletes the pod", func(t *testing.T) {
+		t.Parallel()
+
+		pod := newTerminationTestPod(func(pod *v1.Pod) {
+			pod.Status.ContainerStatuses[0].LastTerminationState.Terminated = &v1.ContainerStateTerminated{
+				Reason: "OOMKilled", ExitCode: 137, FinishedAt: terminationKilledAt,
+			}
+		})
+		fakeKubernetes := fake.NewClientset(pod)
+		client, cleanup := setupClient(t, New(testConfig(), nil, fakeKubernetes, nil))
+		defer cleanup()
+
+		termination, err := client.ReleaseFailedInstance(t.Context(), newInstance(pod))
+		assert.NilError(t, err)
+		assert.Equal(t, termination.GetReason(), skipper.TerminationReason_TERMINATION_REASON_OOM_KILLED)
+
+		_, err = fakeKubernetes.CoreV1().Pods(pod.Namespace).Get(t.Context(), pod.Name, metav1.GetOptions{})
+		assert.Assert(t, apierrors.IsNotFound(err), "released pod should be deleted, got err %v", err)
+	})
+
+	t.Run("controller that predates report_termination", func(t *testing.T) {
+		t.Parallel()
+
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		assert.NilError(t, err)
+		srv := grpc.NewServer()
+		skipper.RegisterControllerServiceServer(srv, &legacyReleaseServer{})
+		go func() {
+			_ = srv.Serve(lis)
+		}()
+		defer srv.Stop()
+
+		addr := lis.Addr().(*net.TCPAddr)
+		client, err := NewClient(addr.IP.String(), addr.Port)
+		assert.NilError(t, err)
+		defer client.Close()
+
+		termination, err := client.ReleaseFailedInstance(t.Context(), newInstance(newTerminationTestPod(func(*v1.Pod) {})))
+		assert.NilError(t, err)
+		assert.Equal(t, termination.GetReason(), skipper.TerminationReason_TERMINATION_REASON_UNSPECIFIED)
+	})
 }

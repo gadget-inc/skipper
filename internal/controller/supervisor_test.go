@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestSupervisor(t *testing.T) {
@@ -3966,6 +3968,29 @@ func TestOneshotTerminationAfterHeartbeatTimeout(t *testing.T) {
 	})
 	assert.NilError(t, err)
 	assert.Assert(t, len(pods.Items) == 0, "oneshot pod should be deleted after heartbeat timeout")
+
+	// Verify the pod was marked as terminated by the heartbeat timeout
+	// before it was deleted, so a router still waiting on it can say why.
+	var patched, deleted int
+	for i, action := range fakeKubernetes.Actions() {
+		switch action := action.(type) {
+		case k8stesting.PatchAction:
+			if strings.Contains(string(action.GetPatch()), key.TerminatedBy.PatchAnnotation) {
+				assert.Assert(t, strings.Contains(string(action.GetPatch()), skipper.TerminatedByHeartbeatTimeout))
+				patched = i
+			}
+		case k8stesting.DeleteAction:
+			if action.GetResource().Resource == "pods" {
+				deleted = i
+			}
+		}
+	}
+	assert.Assert(t, patched > 0, "expected the pod to be annotated with %s", key.TerminatedBy.Label)
+	assert.Assert(t, patched < deleted, "expected the annotation patch (action %d) before the delete (action %d)", patched, deleted)
+
+	events := ctrl.events.snapshot()
+	assert.Assert(t, len(events) == 1, "expected 1 event, got %d", len(events))
+	assert.Equal(t, events[0].GetType(), skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT)
 
 	// Verify the supervisor was stopped
 	assert.ErrorIs(t, s.ctx.Err(), context.Canceled)

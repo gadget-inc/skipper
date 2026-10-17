@@ -40,6 +40,8 @@ Pods stuck in the "assigned" state (never became ready) for longer than 2x the a
 
 After a oneshot request completes, the router calls the `ReleaseInstance` RPC. This is fire-and-forget with a 5-second timeout using a background context. The controller deletes the pod. The operation is idempotent -- it returns success even if the pod is already gone.
 
+If the instance dropped the connection mid-request, the router releases it synchronously instead and asks why it stopped. The controller reads the pod until Kubernetes reports a reason or `--instance-termination-wait` (default 5s) passes, records a `pod deleted` event with the reason, and only then deletes the pod. When the controller deletes an orphaned oneshot pod after a heartbeat timeout, it first annotates the pod with `skipper/terminated-by: HeartbeatTimeout` and records a `heartbeat timeout` event, so a request still running on that pod reports skipper as the cause.
+
 ## Function lifecycle
 
 Each function is managed independently:

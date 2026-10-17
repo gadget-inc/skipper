@@ -28,6 +28,12 @@ func withFunction(ctx context.Context, fn *skipper.Function) context.Context {
 // no way to return the instance directly.
 type instanceResult struct {
 	instance *skipper.Instance
+
+	// failed and termination are set when the instance stopped mid-request
+	// and RoundTrip already released it; the proxy's error handler reads
+	// them to explain the 502.
+	failed      *skipper.Instance
+	termination *skipper.InstanceTermination
 }
 
 type instResultCtxKey struct{}

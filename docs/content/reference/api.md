@@ -73,11 +73,14 @@ Release (delete) a pod. Used by routers after oneshot requests complete.
 
 {{< messageTable ReleaseInstanceRequest >}}
 
-**Response:** Empty.
+**Response:**
+
+{{< messageTable ReleaseInstanceResponse >}}
 
 **Behavior:**
 
 - Deletes the pod (idempotent -- returns success even if the pod does not exist)
+- With `report_termination`, first reads the pod from the API server every 250ms for up to `--instance-termination-wait` (default 5s) and returns the first reason it finds. The router sets it when a oneshot instance drops the connection mid-request, then puts the reason in its 502 body (see [Oneshot instance failures](/skipper/guides/routing/#oneshot-instance-failures))
 
 ### GetClusterState
 
@@ -118,6 +121,23 @@ Identity is determined by namespace + deployment + tenant + oneshot. Metadata an
 ### ScaleReason
 
 {{< scaleReasonTable >}}
+
+### InstanceTermination
+
+{{< messageTable InstanceTermination >}}
+
+`reason` is a `TerminationReason`, checked in this order:
+
+<div class="table-scroll">
+
+| Value                                 | Meaning                                                                                                   |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `TERMINATION_REASON_OOM_KILLED`       | A container was killed for exceeding its memory limit after the pod was assigned.                         |
+| `TERMINATION_REASON_POD_TERMINATED`   | The pod is being deleted, was evicted, or is already gone.                                                |
+| `TERMINATION_REASON_CONTAINER_EXITED` | A container exited or was killed for another reason after the pod was assigned.                           |
+| `TERMINATION_REASON_UNSPECIFIED`      | Kubernetes reported nothing within `--instance-termination-wait`, or the controller predates this field. |
+
+</div>
 
 ## Client configuration
 

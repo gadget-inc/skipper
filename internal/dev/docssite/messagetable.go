@@ -29,8 +29,7 @@ var errMessageDescriptionDrift = errors.New("docssite: messageTable description 
 // (lookup against [protoreflect.MessageDescriptor.Name]).
 //
 // Empty request/response messages (`HeartbeatResponse`,
-// `ReleaseInstanceResponse`, `GetClusterStateRequest`) are
-// intentionally excluded -- they render as `**Response:** Empty.`
+// `GetClusterStateRequest`) are intentionally excluded -- they render as `**Response:** Empty.`
 // prose in the docs, not via this shortcode.
 var messageTableRegistry = []string{
 	"Function",
@@ -43,6 +42,8 @@ var messageTableRegistry = []string{
 	"ScaleRequest",
 	"ScaleResponse",
 	"ReleaseInstanceRequest",
+	"ReleaseInstanceResponse",
+	"InstanceTermination",
 	"GetClusterStateResponse",
 }
 
@@ -93,7 +94,17 @@ var messageTableDescriptions = map[string]string{
 
 	"ScaleResponse.instances": "Ready instances after the scale decision was applied.",
 
-	"ReleaseInstanceRequest.instance": "Instance to release.",
+	"ReleaseInstanceRequest.instance":           "Instance to release.",
+	"ReleaseInstanceRequest.report_termination": "Set by routers when the instance stopped mid-request; the controller waits up to `--instance-termination-wait` for Kubernetes to say why, then deletes the pod.",
+
+	"ReleaseInstanceResponse.termination": "Why the instance stopped. Only set when `report_termination` was.",
+
+	"InstanceTermination.reason":             "What stopped the instance; unspecified when Kubernetes reported nothing in time.",
+	"InstanceTermination.container":          "Container that was OOM-killed or exited.",
+	"InstanceTermination.exit_code":          "That container's exit code.",
+	"InstanceTermination.memory_limit_bytes": "The OOM-killed container's memory limit.",
+	"InstanceTermination.terminated_by":      "Who terminated the pod: `HeartbeatTimeout` when skipper deleted it, otherwise Kubernetes' `DisruptionTarget` condition reason (e.g. `EvictionByEvictionAPI`).",
+	"InstanceTermination.message":            "Kubernetes' own explanation: the container's termination message or the `DisruptionTarget` condition message.",
 
 	"GetClusterStateResponse.cluster_state": "Snapshot of the cluster's current supervisor, event, and config state.",
 }
@@ -227,6 +238,10 @@ func lookupMessageDescriptor(name string) (protoreflect.MessageDescriptor, error
 		msg = (&skipper.ScaleResponse{})
 	case "ReleaseInstanceRequest":
 		msg = (&skipper.ReleaseInstanceRequest{})
+	case "ReleaseInstanceResponse":
+		msg = (&skipper.ReleaseInstanceResponse{})
+	case "InstanceTermination":
+		msg = (&skipper.InstanceTermination{})
 	case "GetClusterStateResponse":
 		msg = (&skipper.GetClusterStateResponse{})
 	default:

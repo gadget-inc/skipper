@@ -106,6 +106,7 @@ Behavior differences from standard functions:
 - Scale 1:1 with in-flight requests (each request gets its own pod)
 - After the request completes, the router calls `ReleaseInstance` to delete the pod
 - If the heartbeat times out before the request completes, the controller deletes the orphaned pod
+- If the pod dies mid-request, the router's `502` carries a JSON body saying why (see [Oneshot instance failures](/skipper/guides/routing/#oneshot-instance-failures))
 
 ## Stale instance replacement
 

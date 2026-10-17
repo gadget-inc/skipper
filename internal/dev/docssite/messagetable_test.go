@@ -148,7 +148,9 @@ func TestRenderMessageTable_RequestResponseRegistry(t *testing.T) {
 		{"HeartbeatRequest", []string{"router_ip", "heartbeats", "forwarded_for"}},
 		{"ScaleRequest", []string{"function", "desired_instances", "reason"}},
 		{"ScaleResponse", []string{"instances"}},
-		{"ReleaseInstanceRequest", []string{"instance"}},
+		{"ReleaseInstanceRequest", []string{"instance", "report_termination"}},
+		{"ReleaseInstanceResponse", []string{"termination"}},
+		{"InstanceTermination", []string{"reason", "container", "exit_code", "memory_limit_bytes", "terminated_by", "message"}},
 		{"GetClusterStateResponse", []string{"cluster_state"}},
 	}
 

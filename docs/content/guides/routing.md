@@ -47,6 +47,37 @@ Failed requests are retried with up to 6 total attempts (configurable via `--max
 
 On each retry, the failed instance is excluded so the controller returns a different pod. The request body is preserved across retries.
 
+## Oneshot instance failures
+
+When a oneshot instance drops the connection before it responds, usually because its container was OOM-killed or its pod was evicted, the router does not retry. It asks the controller why the pod stopped, waits up to the controller's `--instance-termination-wait` (default 5s) for Kubernetes to report it, and returns a `502` with a JSON body:
+
+```json
+{
+  "error": "instance operation-runner-7d9c4-x2k8p stopped before it responded: container \"runner\" ran out of memory and was killed at its 6Gi limit (exit code 137)",
+  "reason": "OOMKilled",
+  "instance": "operation-runner-7d9c4-x2k8p",
+  "container": "runner",
+  "exitCode": 137,
+  "memoryLimitBytes": 6442450944
+}
+```
+
+<div class="table-scroll">
+
+| Field              | Present                            | Meaning                                                                                                                                                                   |
+| ------------------ | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`            | Always                             | One sentence saying what happened.                                                                                                                                        |
+| `reason`           | Always                             | `OOMKilled`, `PodTerminated`, `ContainerExited`, or `Unknown`.                                                                                                            |
+| `instance`         | Always                             | Pod name.                                                                                                                                                                 |
+| `container`        | `OOMKilled`, `ContainerExited`     | Container that was killed or exited.                                                                                                                                      |
+| `exitCode`         | `OOMKilled`, `ContainerExited`     | That container's exit code.                                                                                                                                               |
+| `memoryLimitBytes` | `OOMKilled`, when the limit is set | The container's memory limit.                                                                                                                                             |
+| `terminatedBy`     | `PodTerminated`, when known        | `HeartbeatTimeout` when skipper deleted the pod, otherwise Kubernetes' disruption reason (`EvictionByEvictionAPI`, `TerminationByKubelet`, `PreemptionByScheduler`, ...). |
+
+</div>
+
+`Unknown` means Kubernetes reported nothing within the wait. Other proxy errors, and failures on standard functions, return an empty `502` as before.
+
 ## Header rewriting
 
 When proxying to backend pods, the router rewrites headers:

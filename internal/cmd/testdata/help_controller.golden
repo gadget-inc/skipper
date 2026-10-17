@@ -14,6 +14,7 @@ Flags:
       --hpa-downscale-stabilization duration    The stabilization window for downscaling in the HPA algorithm. (env SKIPPER_HPA_DOWNSCALE_STABILIZATION) (default 1m30s)
       --hpa-initial-readiness-delay duration    The initial readiness delay for the HPA algorithm. (env SKIPPER_HPA_INITIAL_READINESS_DELAY) (default 30s)
       --hpa-tolerance float                     The usage ratio tolerance for the HPA algorithm. (env SKIPPER_HPA_TOLERANCE) (default 0.1)
+      --instance-termination-wait duration      How long to wait for Kubernetes to report why a failed oneshot instance stopped before releasing it. (env SKIPPER_INSTANCE_TERMINATION_WAIT) (default 5s)
       --kubeconfig-burst int                    The burst for the kubeconfig client. (env SKIPPER_KUBECONFIG_BURST) (default 200)
       --kubeconfig-qps float                    The QPS for the kubeconfig client. (env SKIPPER_KUBECONFIG_QPS) (default 100)
       --log-file string                         Path to a log file. When set, logs are written to both stderr and this file. (env SKIPPER_LOG_FILE)

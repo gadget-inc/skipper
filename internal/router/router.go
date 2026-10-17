@@ -80,10 +80,11 @@ func New(cfg *Config, ctrl controller.Client) *Router {
 	}
 
 	r.reverseProxy = &httputil.ReverseProxy{
-		Transport:  r,
-		Rewrite:    rewriteRequestHeaders,
-		ErrorLog:   log.StdLogger(slog.LevelError),
-		BufferPool: bufferPool,
+		Transport:    r,
+		Rewrite:      rewriteRequestHeaders,
+		ErrorLog:     log.StdLogger(slog.LevelError),
+		ErrorHandler: r.handleProxyError,
+		BufferPool:   bufferPool,
 	}
 
 	return r
@@ -261,6 +262,16 @@ func (r *Router) RoundTrip(req *http.Request) (*http.Response, error) {
 		ctx = telemetry.With(ctx, key.GetInstanceDurationMs.Attr(getInstanceDuration))
 
 		if err != nil {
+			// A oneshot instance that drops the connection has usually died
+			// (OOM kill, eviction). Ask the controller why before it deletes
+			// the pod and its container statuses. Skip it when the caller is
+			// gone, since nobody would read the answer.
+			if ir := instanceResultFromContext(ctx); ir != nil && req.Context().Err() == nil {
+				ir.instance = nil
+				ir.failed = instance
+				ir.termination = r.releaseFailedInstance(ctx, instance)
+				ctx = telemetry.With(ctx, skipper.TerminationKey.Attr(ir.termination))
+			}
 			log.Error(ctx, "failed to forward request", key.Error.Slog(err))
 		} else {
 			log.Debug(ctx, "forwarding response")
@@ -338,6 +349,29 @@ func (r *Router) releaseInstance(inst *skipper.Instance) {
 			log.Warn(ctx, "failed to release oneshot instance", key.Error.Slog(err), skipper.InstanceKey.Slog(inst))
 		}
 	}()
+}
+
+// releaseFailedInstanceTimeout bounds the ReleaseFailedInstance call. It
+// must outlast the controller's --instance-termination-wait (default 5s)
+// plus the pod delete.
+const releaseFailedInstanceTimeout = 10 * time.Second
+
+// releaseFailedInstance releases a oneshot instance that stopped
+// mid-request and returns why it stopped. It blocks the request until the
+// controller answers, which takes up to the controller's
+// --instance-termination-wait. If the call fails, the instance is released
+// the usual fire-and-forget way and the reason is left unspecified.
+func (r *Router) releaseFailedInstance(ctx context.Context, inst *skipper.Instance) *skipper.InstanceTermination {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseFailedInstanceTimeout)
+	defer cancel()
+
+	termination, err := r.ctrl.ReleaseFailedInstance(ctx, inst)
+	if err != nil {
+		log.Warn(ctx, "failed to release failed oneshot instance", key.Error.Slog(err))
+		r.releaseInstance(inst)
+		return &skipper.InstanceTermination{}
+	}
+	return termination
 }
 
 func (r *Router) calculateBackoff(attempt int) time.Duration {

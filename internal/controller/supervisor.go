@@ -314,10 +314,17 @@ func (s *Supervisor) converge(ctx context.Context) error {
 		}
 
 		for _, inst := range instances {
+			// If a request is still running on this pod, the router will
+			// ask why it died; the annotation lets it say skipper did it.
+			log.Warn(ctx, "deleting orphaned oneshot pod after heartbeat timeout", skipper.InstanceKey.Slog(inst))
+			s.ctrl.markTerminatedBy(ctx, inst, skipper.TerminatedByHeartbeatTimeout)
 			err := s.ctrl.deletePod(ctx, inst.GetFunction().GetNamespace(), inst.GetName(), metav1.DeleteOptions{})
 			if err != nil {
 				log.Error(ctx, "failed to delete orphaned oneshot pod", key.Error.Slog(err), skipper.InstanceKey.Slog(inst))
+				continue
 			}
+			s.ctrl.events.add(fn, skipper.EventType_EVENT_TYPE_HEARTBEAT_TIMEOUT, skipper.EventSeverity_EVENT_SEVERITY_WARN,
+				fmt.Sprintf("heartbeat timeout, deleted oneshot pod %s", inst.GetName()))
 		}
 		return nil
 	}

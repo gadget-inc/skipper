@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gadget-inc/skipper/internal/key"
@@ -95,17 +96,30 @@ func (s *Server) ReleaseInstance(ctx context.Context, req *skipper.ReleaseInstan
 
 	ctx = telemetry.With(ctx, skipper.InstanceKey.Attr(inst))
 
+	// The router asks for a report when the instance died mid-request.
+	// Deleting the pod destroys its container statuses, so read them first.
+	resp := &skipper.ReleaseInstanceResponse{}
+	if req.GetReportTermination() {
+		termination := s.ctrl.awaitTermination(ctx, inst)
+		resp.SetTermination(termination)
+		ctx = telemetry.With(ctx, skipper.TerminationKey.Attr(termination))
+	}
+
 	err := s.ctrl.deletePod(ctx, namespace, name, metav1.DeleteOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return &skipper.ReleaseInstanceResponse{}, nil
-		}
+	if err != nil && !apierrors.IsNotFound(err) {
 		log.Error(ctx, "failed to release instance", key.Error.Slog(err))
 		return nil, status.Errorf(codes.Internal, "failed to release instance: %v", err)
 	}
 
-	log.Info(ctx, "released instance")
-	return &skipper.ReleaseInstanceResponse{}, nil
+	switch {
+	case resp.HasTermination():
+		log.Warn(ctx, "released failed instance")
+		s.ctrl.events.add(inst.GetFunction(), skipper.EventType_EVENT_TYPE_POD_DELETED, skipper.EventSeverity_EVENT_SEVERITY_WARN,
+			fmt.Sprintf("released failed pod %s: %s", name, resp.GetTermination().Summary()))
+	case err == nil:
+		log.Info(ctx, "released instance")
+	}
+	return resp, nil
 }
 
 func (s *Server) GetClusterState(ctx context.Context, _ *skipper.GetClusterStateRequest) (*skipper.GetClusterStateResponse, error) {

@@ -31,6 +31,7 @@ type Config struct {
 	FunctionAssignPath             string           `flag:"function-assign-path" description:"The path used to assign a function to a pod." default:"/__skipper/assign"`
 	FunctionAssignTimeout          time.Duration    `flag:"function-assign-timeout" description:"The timeout for assigning a function to a pod." default:"30s"`
 	MaxConcurrentStaleReplacements int              `flag:"max-concurrent-stale-replacements" description:"Maximum number of stale instances that can be replaced concurrently." default:"10"`
+	InstanceTerminationWait        time.Duration    `flag:"instance-termination-wait" description:"How long to wait for Kubernetes to report why a failed oneshot instance stopped before releasing it." default:"5s"`
 	SkipForbiddenNamespaces        bool             `flag:"skip-forbidden-namespaces" description:"Whether to skip function namespaces that the service account does not have access to." default:"false"`
 	WebPort                        int              `flag:"web-port" description:"The port the web UI listens on." default:"8080"`
 	WebTemplateDir                 string           `flag:"web-template-dir" description:"When set, reload templates from this directory on each request (dev mode)."`

@@ -30,6 +30,7 @@ func TestKeys(t *testing.T) {
 		key.Addr.Attr(fakeString),
 		key.AssignedAt.Attr(fakeTime),
 		key.Attempt.Attr(fakeInt),
+		key.Container.Attr(fakeString),
 		key.CPUUsageMilli.Attr(fakeUint32),
 		key.Count.Attr(fakeInt),
 		key.Deployment.Attr(fakeString),
@@ -37,6 +38,7 @@ func TestKeys(t *testing.T) {
 		key.Duration.Attr(fakeDuration),
 		key.Error.Attr(fakeError),
 		key.ExcludeInstanceNames.Attr(fakeStringSlice),
+		key.ExitCode.Attr(fakeInt),
 		skipper.FunctionKey.Attr(fakeFunction),
 		key.GetInstanceDurationMs.Attr(fakeDuration),
 		skipper.HeartbeatKey.Attr(fakeHeartbeat),
@@ -45,7 +47,9 @@ func TestKeys(t *testing.T) {
 		key.K8sReplicaSet.Attr(fakeReplicaSet),
 		key.Labels.Attr(fakeStringMap),
 		key.MaxInstances.Attr(fakeUint32),
+		key.MemoryLimitBytes.Attr(fakeInt),
 		key.MemoryUsageMiB.Attr(fakeUint32),
+		key.Message.Attr(fakeString),
 		key.Metadata.Attr(fakeString),
 		key.MinInstances.Attr(fakeUint32),
 		key.Name.Attr(fakeString),
@@ -65,6 +69,8 @@ func TestKeys(t *testing.T) {
 		key.TargetInFlightRequests.Attr(fakeUint32),
 		key.TargetMemoryUsageMiB.Attr(fakeUint32),
 		key.Tenant.Attr(fakeString),
+		key.TerminatedBy.Attr(fakeString),
+		skipper.TerminationKey.Attr(fakeTermination),
 		key.Timestamp.Attr(fakeTime),
 		key.URL.Attr(fakeURL),
 		key.UnclampedDesiredInstances.Attr(fakeUint32),
@@ -181,6 +187,15 @@ var (
 		ReadyAt:        timestamppb.New(fakeTime),
 		CpuUsageMilli:  new(fakeUint32),
 		MemoryUsageMib: new(fakeUint32),
+	}.Build()
+
+	fakeTermination = skipper.InstanceTermination_builder{
+		Reason:           skipper.TerminationReason_TERMINATION_REASON_OOM_KILLED.Enum(),
+		Container:        new(fakeString),
+		ExitCode:         new(int32(fakeInt)),
+		MemoryLimitBytes: new(int64(fakeInt)),
+		TerminatedBy:     new(fakeString),
+		Message:          new(fakeString),
 	}.Build()
 
 	fakeScaleDecision = skipper.ScaleDecision_builder{

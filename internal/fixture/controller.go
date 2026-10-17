@@ -17,6 +17,8 @@ type (
 	ScaleHandler           func(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
 	HeartbeatHandler       func(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
 	ReleaseInstanceHandler func(ctx context.Context, inst *skipper.Instance) error
+	// ReleaseFailedInstanceHandler mocks controller.Client.ReleaseFailedInstance.
+	ReleaseFailedInstanceHandler func(ctx context.Context, inst *skipper.Instance) (*skipper.InstanceTermination, error)
 )
 
 const (
@@ -40,6 +42,9 @@ type MockControllerClient struct {
 	heartbeatWasCalled       atomic.Bool
 	releaseInstanceHandler   ReleaseInstanceHandler
 	releaseInstanceWasCalled atomic.Bool
+
+	releaseFailedInstanceHandler   ReleaseFailedInstanceHandler
+	releaseFailedInstanceWasCalled atomic.Bool
 }
 
 // var _ controller.Client = &MockControllerClient{} // import cycle: verified by router_test.go usage
@@ -58,6 +63,9 @@ func NewMockControllerClient(t *testing.T) *MockControllerClient {
 		}
 		if mcc.releaseInstanceHandler != nil && !mcc.releaseInstanceWasCalled.Load() {
 			t.Fatalf("mcc.ReleaseInstance was mocked but never called")
+		}
+		if mcc.releaseFailedInstanceHandler != nil && !mcc.releaseFailedInstanceWasCalled.Load() {
+			t.Fatalf("mcc.ReleaseFailedInstance was mocked but never called")
 		}
 	})
 	return mcc
@@ -97,6 +105,10 @@ func (f *MockControllerClient) AllowReleaseInstance() {
 	f.releaseInstanceWasCalled.Store(true) // Pre-mark as called to skip cleanup check
 }
 
+func (f *MockControllerClient) HandleReleaseFailedInstance(h ReleaseFailedInstanceHandler) {
+	f.releaseFailedInstanceHandler = h
+}
+
 // Instance implements controller.Client.
 func (f *MockControllerClient) Instance(ctx context.Context, fn *skipper.Function, excludeInstanceNames ...string) (instance *skipper.Instance, err error) {
 	if f.instanceHandler == nil {
@@ -131,6 +143,15 @@ func (f *MockControllerClient) ReleaseInstance(ctx context.Context, inst *skippe
 	}
 	f.releaseInstanceWasCalled.Store(true)
 	return f.releaseInstanceHandler(ctx, inst)
+}
+
+// ReleaseFailedInstance implements controller.Client.
+func (f *MockControllerClient) ReleaseFailedInstance(ctx context.Context, inst *skipper.Instance) (*skipper.InstanceTermination, error) {
+	if f.releaseFailedInstanceHandler == nil {
+		f.t.Fatalf("mcc.ReleaseFailedInstance was called but not mocked")
+	}
+	f.releaseFailedInstanceWasCalled.Store(true)
+	return f.releaseFailedInstanceHandler(ctx, inst)
 }
 
 // Close implements controller.Client.

@@ -38,9 +38,12 @@ message ScaleResponse {
 
 message ReleaseInstanceRequest {
   Instance instance = 1;
+  bool report_termination = 2;
 }
 
-message ReleaseInstanceResponse {}
+message ReleaseInstanceResponse {
+  InstanceTermination termination = 1;
+}
 
 message GetClusterStateRequest {}
 

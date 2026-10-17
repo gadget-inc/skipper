@@ -51,6 +51,22 @@ enum ScaleReason {
   SCALE_REASON_NO_READY_INSTANCES = 5;
 }
 
+enum TerminationReason {
+  TERMINATION_REASON_UNSPECIFIED = 0;
+  TERMINATION_REASON_OOM_KILLED = 1;
+  TERMINATION_REASON_CONTAINER_EXITED = 2;
+  TERMINATION_REASON_POD_TERMINATED = 3;
+}
+
+message InstanceTermination {
+  TerminationReason reason = 1;
+  string container = 2;
+  int32 exit_code = 3;
+  int64 memory_limit_bytes = 4;
+  string terminated_by = 5;
+  string message = 6;
+}
+
 message ScaleMetric {
   string name = 1;
   double value = 2;

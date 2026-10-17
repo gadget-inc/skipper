@@ -19,6 +19,9 @@ type Client interface {
 	Heartbeat(ctx context.Context, routerIP string, heartbeats []*skipper.Heartbeat, forwardedFor ...string) error
 	Scale(ctx context.Context, fn *skipper.Function, desiredInstances uint32, reason skipper.ScaleReason) ([]*skipper.Instance, error)
 	ReleaseInstance(ctx context.Context, inst *skipper.Instance) error
+	// ReleaseFailedInstance releases a oneshot instance that stopped
+	// mid-request, first waiting for the controller to find out why.
+	ReleaseFailedInstance(ctx context.Context, inst *skipper.Instance) (*skipper.InstanceTermination, error)
 	Close() error
 }
 
@@ -221,6 +224,24 @@ func (c *client) ReleaseInstance(ctx context.Context, inst *skipper.Instance) er
 	}
 
 	return nil
+}
+
+func (c *client) ReleaseFailedInstance(ctx context.Context, inst *skipper.Instance) (*skipper.InstanceTermination, error) {
+	req := &skipper.ReleaseInstanceRequest{}
+	req.SetInstance(inst)
+	req.SetReportTermination(true)
+
+	resp, err := c.client.ReleaseInstance(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to release failed instance: %w", err)
+	}
+
+	// A controller from before report_termination existed answers with
+	// an empty response, which reads as an unspecified reason.
+	if !resp.HasTermination() {
+		return &skipper.InstanceTermination{}, nil
+	}
+	return resp.GetTermination(), nil
 }
 
 // Close closes the connection.

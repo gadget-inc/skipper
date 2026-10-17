@@ -229,3 +229,36 @@ func TestEchoesAfterAssign(t *testing.T) {
 	assert.Equal(t, got.Body, "hello")
 	assert.Equal(t, got.Headers["X-Custom"], "custom-value")
 }
+
+func TestExitDropsTheConnection(t *testing.T) {
+	t.Parallel()
+
+	env := newFixtureEnv(t)
+	srv, err := New(env.publicKey, env.tokenPath)
+	assert.NilError(t, err)
+
+	// Stand in for os.Exit: record the code, then abort the response so
+	// the client sees the connection drop.
+	exited := make(chan int, 1)
+	srv.exit = func(code int) {
+		exited <- code
+		panic(http.ErrAbortHandler)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	// Before assignment the endpoint refuses, like the echo handler.
+	resp, err := http.Post(ts.URL+ExitPath, "text/plain", nil)
+	assert.NilError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, resp.StatusCode, http.StatusServiceUnavailable)
+
+	assignResp, err := http.DefaultClient.Do(assignRequest(t, ts.URL, env.mintToken(t, "tenant-1"), `{}`))
+	assert.NilError(t, err)
+	assignResp.Body.Close()
+	assert.Equal(t, assignResp.StatusCode, http.StatusOK)
+
+	_, err = http.Post(ts.URL+ExitPath, "text/plain", nil)
+	assert.ErrorContains(t, err, "EOF")
+	assert.Equal(t, <-exited, ExitCode)
+}
